@@ -1,119 +1,223 @@
 import { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
+import { motion, AnimatePresence } from 'framer-motion'
+import { supabase } from '../lib/supabase'
+import toast from 'react-hot-toast'
 
 export default function Login() {
   const router = useRouter()
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState('')
   const [step, setStep] = useState('phone')
+  const [role, setRole] = useState('owner')
   const [loading, setLoading] = useState(false)
 
-  const sendOTP = () => {
+  const sendOTP = async () => {
     if (phone.length !== 10) {
-      alert('Please enter a valid 10-digit phone number')
+      toast.error('Enter 10-digit phone number')
       return
     }
     setLoading(true)
-    setTimeout(() => {
-      alert('Demo OTP: 123456')
+    try {
+      const { error } = await supabase.auth.signInWithOtp({ phone: `+91${phone}` })
+      if (error) throw error
+      toast.success('OTP sent!')
       setStep('otp')
-      setLoading(false)
-    }, 1000)
+    } catch (error) {
+      toast.success('Demo mode: Use OTP 123456')
+      setStep('otp')
+    }
+    setLoading(false)
   }
 
-  const verifyOTP = () => {
+  const verifyOTP = async () => {
     if (otp.length !== 6) {
-      alert('Please enter 6-digit OTP')
+      toast.error('Enter 6-digit OTP')
       return
     }
     setLoading(true)
-    setTimeout(() => {
+    try {
       if (otp === '123456') {
-        localStorage.setItem('isLoggedIn', 'true')
-        localStorage.setItem('userRole', 'owner')
-        alert('Login successful!')
-        router.push('/owner/dashboard')
+        // Check if user exists
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('phone', `+91${phone}`)
+          .single()
+        
+        if (existingUser) {
+          localStorage.setItem('userId', existingUser.id)
+          localStorage.setItem('userRole', existingUser.role)
+          localStorage.setItem('isLoggedIn', 'true')
+          toast.success(`Welcome back, ${existingUser.full_name}!`)
+          
+          if (existingUser.role === 'owner') {
+            router.push('/owner/dashboard')
+          } else {
+            router.push('/tenant/dashboard')
+          }
+        } else {
+          // Create new user
+          const { data: newUser, error } = await supabase
+            .from('users')
+            .insert({ phone: `+91${phone}`, full_name: phone, role: role })
+            .select()
+            .single()
+          
+          if (error) throw error
+          
+          localStorage.setItem('userId', newUser.id)
+          localStorage.setItem('userRole', role)
+          localStorage.setItem('isLoggedIn', 'true')
+          toast.success('Account created successfully!')
+          
+          if (role === 'owner') {
+            router.push('/owner/register-property')
+          } else {
+            router.push('/tenant/dashboard')
+          }
+        }
       } else {
-        alert('Invalid OTP. Use 123456')
+        const { error } = await supabase.auth.verifyOtp({ phone: `+91${phone}`, token: otp, type: 'sms' })
+        if (error) throw error
       }
-      setLoading(false)
-    }, 1000)
+    } catch (error) {
+      toast.error('Invalid OTP. Use 123456 for demo')
+    }
+    setLoading(false)
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full">
+    <div className="min-h-screen bg-gradient-to-br from-primary/20 via-white to-secondary/20 flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5 }}
+        className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full"
+      >
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary">🏠 HOSTELSET</h1>
-          <h2 className="text-2xl font-bold mt-4">Welcome Back</h2>
-          <p className="text-gray-500 mt-2">Login to manage your property</p>
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', delay: 0.2 }}
+            className="w-20 h-20 gradient-bg rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg"
+          >
+            <span className="text-4xl">🏠</span>
+          </motion.div>
+          <h1 className="text-3xl font-bold gradient-text">HOSTELSET</h1>
+          <p className="text-gray-500 mt-2">Login to your account</p>
         </div>
 
-        {step === 'phone' ? (
-          <>
-            <div className="mb-4">
-              <label className="block text-gray-700 mb-2">Phone Number</label>
-              <div className="flex gap-2">
-                <span className="bg-gray-100 px-4 py-3 rounded-lg border">+91</span>
-                <input
-                  type="tel"
-                  placeholder="9876543210"
-                  className="input flex-1"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  maxLength={10}
-                />
+        <AnimatePresence mode="wait">
+          {step === 'phone' ? (
+            <motion.div
+              key="phone"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="space-y-6"
+            >
+              <div>
+                <label className="block text-gray-700 font-semibold mb-2">I am a</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setRole('owner')}
+                    className={`p-4 rounded-xl border-2 transition-all ${
+                      role === 'owner'
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-gray-200 text-gray-500 hover:border-primary/50'
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">🏢</div>
+                    <div className="font-semibold">Property Owner</div>
+                  </button>
+                  <button
+                    onClick={() => setRole('tenant')}
+                    className={`p-4 rounded-xl border-2 transition-all ${
+                      role === 'tenant'
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-gray-200 text-gray-500 hover:border-primary/50'
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">👤</div>
+                    <div className="font-semibold">Tenant</div>
+                  </button>
+                </div>
               </div>
-            </div>
-            <button
-              onClick={sendOTP}
-              disabled={loading}
-              className="btn-primary w-full"
+
+              <div>
+                <label className="block text-gray-700 font-semibold mb-2">Phone Number</label>
+                <div className="flex gap-2">
+                  <span className="bg-gray-100 px-4 py-3 rounded-xl border border-gray-200">+91</span>
+                  <input
+                    type="tel"
+                    placeholder="9876543210"
+                    className="input flex-1"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    maxLength={10}
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={sendOTP}
+                disabled={loading}
+                className="w-full gradient-bg text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50"
+              >
+                {loading ? 'Sending...' : 'Continue →'}
+              </button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="otp"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
             >
-              {loading ? 'Sending...' : 'Send OTP'}
-            </button>
-          </>
-        ) : (
-          <>
-            <div className="mb-4">
-              <label className="block text-gray-700 mb-2">Enter OTP</label>
-              <input
-                type="text"
-                placeholder="123456"
-                className="input text-center text-2xl tracking-widest"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                maxLength={6}
-              />
-              <p className="text-sm text-gray-500 mt-2">OTP sent to +91 {phone}</p>
-            </div>
-            <button
-              onClick={verifyOTP}
-              disabled={loading}
-              className="btn-primary w-full"
-            >
-              {loading ? 'Verifying...' : 'Verify & Login'}
-            </button>
-            <button
-              onClick={() => setStep('phone')}
-              className="w-full mt-3 text-primary hover:underline"
-            >
-              ← Change phone number
-            </button>
-          </>
-        )}
+              <div>
+                <label className="block text-gray-700 font-semibold mb-2">Enter OTP</label>
+                <input
+                  type="text"
+                  placeholder="123456"
+                  className="input text-center text-2xl tracking-widest"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  maxLength={6}
+                />
+                <p className="text-sm text-gray-500 mt-2">OTP sent to +91 {phone}</p>
+              </div>
+
+              <button
+                onClick={verifyOTP}
+                disabled={loading}
+                className="w-full gradient-bg text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50"
+              >
+                {loading ? 'Verifying...' : 'Verify & Login →'}
+              </button>
+
+              <button
+                onClick={() => setStep('phone')}
+                className="w-full text-primary hover:underline text-sm"
+              >
+                ← Change phone number
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="mt-6 text-center">
           <Link href="/register" className="text-primary hover:underline">
-            New Owner? Register your property →
+            New User? Register your property →
           </Link>
         </div>
 
         <div className="mt-4 text-center text-xs text-gray-400">
-          Demo: Any phone number, OTP: 123456
+          Demo: Any phone number | OTP: 123456
         </div>
-      </div>
+      </motion.div>
     </div>
   )
 }
