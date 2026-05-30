@@ -14,11 +14,13 @@ export default function OwnerDashboard() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showRentModal, setShowRentModal] = useState(false)
   const [showRoomModal, setShowRoomModal] = useState(false)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedTenant, setSelectedTenant] = useState(null)
   const [activeTab, setActiveTab] = useState('tenants')
   const [formData, setFormData] = useState({ name: '', phone: '', email: '', rent_amount: '', room_id: '' })
   const [roomForm, setRoomForm] = useState({ room_number: '', sharing_type: 'double', monthly_rent: 10000 })
-  const [stats, setStats] = useState({ totalRooms: 0, occupied: 0, vacant: 0, dueAmount: 0, monthlyRevenue: 0 })
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [stats, setStats] = useState({ totalRooms: 0, occupied: 0, vacant: 0, dueAmount: 0, monthlyRevenue: 0, totalCollected: 0 })
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const sharingTypes = [
@@ -29,7 +31,6 @@ export default function OwnerDashboard() {
     { value: 'five', label: 'Five Sharing', capacity: 5, icon: '👥👥👤', price: 6000, description: 'Shared room for 5 persons' },
   ]
 
-  // Check authentication on mount
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('isLoggedIn')
     const userRole = localStorage.getItem('userRole')
@@ -52,12 +53,11 @@ export default function OwnerDashboard() {
         throw new Error('User not found. Please login again.')
       }
 
-      // Fetch property
       const { data: propertyData, error: propertyError } = await supabase
         .from('properties')
         .select('*')
         .eq('owner_id', userId)
-        .maybeSingle() // Use maybeSingle to avoid PGRST116 error
+        .maybeSingle()
 
       if (propertyError) {
         console.error('Property fetch error:', propertyError)
@@ -67,7 +67,6 @@ export default function OwnerDashboard() {
       if (propertyData) {
         setProperty(propertyData)
 
-        // Fetch rooms
         const { data: roomsData, error: roomsError } = await supabase
           .from('rooms')
           .select('*')
@@ -84,7 +83,6 @@ export default function OwnerDashboard() {
           setStats(prev => ({ ...prev, totalRooms: total, occupied, vacant }))
         }
 
-        // Fetch tenants
         const { data: tenantsData, error: tenantsError } = await supabase
           .from('tenants')
           .select('*, rooms:room_id(*)')
@@ -95,8 +93,9 @@ export default function OwnerDashboard() {
         } else if (tenantsData) {
           setTenants(tenantsData)
           const due = tenantsData.filter(t => t.rent_status === 'pending').reduce((sum, t) => sum + (t.rent_amount || 0), 0)
-          const revenue = tenantsData.filter(t => t.rent_status === 'paid').reduce((sum, t) => sum + (t.rent_amount || 0), 0)
-          setStats(prev => ({ ...prev, dueAmount: due, monthlyRevenue: revenue }))
+          const paid = tenantsData.filter(t => t.rent_status === 'paid').reduce((sum, t) => sum + (t.rent_amount || 0), 0)
+          const totalCollected = tenantsData.reduce((sum, t) => sum + (t.total_paid || 0), 0)
+          setStats(prev => ({ ...prev, dueAmount: due, monthlyRevenue: paid, totalCollected: totalCollected }))
         }
       }
     } catch (error) {
@@ -113,7 +112,6 @@ export default function OwnerDashboard() {
       return
     }
 
-    // Check if room number already exists
     const roomExists = rooms.some(r => r.room_number === roomForm.room_number)
     if (roomExists) {
       toast.error(`Room ${roomForm.room_number} already exists!`)
@@ -124,7 +122,7 @@ export default function OwnerDashboard() {
     try {
       const selectedType = sharingTypes.find(t => t.value === roomForm.sharing_type)
       
-      const { data, error } = await supabase.from('rooms').insert({
+      const { error } = await supabase.from('rooms').insert({
         property_id: property.id,
         room_number: roomForm.room_number,
         sharing_type: roomForm.sharing_type,
@@ -132,7 +130,7 @@ export default function OwnerDashboard() {
         capacity: selectedType.capacity,
         current_occupants: 0,
         status: 'vacant'
-      }).select()
+      })
 
       if (error) throw error
 
@@ -156,6 +154,13 @@ export default function OwnerDashboard() {
 
     if (formData.phone.length !== 10) {
       toast.error('Please enter a valid 10-digit phone number')
+      return
+    }
+
+    // Check if phone number already exists as a tenant in this property
+    const phoneExists = tenants.some(t => t.phone === formData.phone)
+    if (phoneExists) {
+      toast.error('A tenant with this phone number already exists!')
       return
     }
 
@@ -183,7 +188,6 @@ export default function OwnerDashboard() {
       if (existingUser) {
         userId = existingUser.id
       } else {
-        // Create new user
         const { data: newUser, error: createError } = await supabase
           .from('users')
           .insert({
@@ -200,7 +204,6 @@ export default function OwnerDashboard() {
         userId = newUser.id
       }
 
-      // Add tenant
       const { error: tenantError } = await supabase.from('tenants').insert({
         user_id: userId,
         property_id: property.id,
@@ -210,23 +213,22 @@ export default function OwnerDashboard() {
         email: formData.email || null,
         rent_amount: parseInt(formData.rent_amount),
         rent_status: 'pending',
+        pending_amount: parseInt(formData.rent_amount),
+        total_paid: 0,
         move_in_date: new Date().toISOString().split('T')[0]
       })
 
       if (tenantError) throw tenantError
 
-      // Update room occupancy
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
       
-      const { error: updateError } = await supabase
+      await supabase
         .from('rooms')
         .update({ current_occupants: newOccupants, status: newStatus })
         .eq('id', formData.room_id)
 
-      if (updateError) throw updateError
-      
-      toast.success(`Tenant added to Room ${selectedRoom.room_number} (${newOccupants}/${selectedRoom.capacity} occupants)`)
+      toast.success(`Tenant added to Room ${selectedRoom.room_number}!`)
       setShowAddModal(false)
       setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '' })
       await loadData()
@@ -238,14 +240,87 @@ export default function OwnerDashboard() {
     }
   }
 
+  const collectRent = async () => {
+    if (!selectedTenant || !paymentAmount) {
+      toast.error('Please enter payment amount')
+      return
+    }
+
+    const amount = parseInt(paymentAmount)
+    if (amount <= 0) {
+      toast.error('Please enter a valid amount')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      // Record payment in payment_history
+      const { error: paymentError } = await supabase.from('payment_history').insert({
+        tenant_id: selectedTenant.id,
+        amount: amount,
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: 'cash',
+        status: 'success'
+      })
+
+      if (paymentError) throw paymentError
+
+      // Update tenant's total paid and pending amount
+      const newTotalPaid = (selectedTenant.total_paid || 0) + amount
+      const newPendingAmount = Math.max(0, (selectedTenant.pending_amount || selectedTenant.rent_amount) - amount)
+      const newRentStatus = newPendingAmount <= 0 ? 'paid' : 'pending'
+
+      const { error: updateError } = await supabase
+        .from('tenants')
+        .update({
+          total_paid: newTotalPaid,
+          pending_amount: newPendingAmount,
+          rent_status: newRentStatus,
+          last_payment_date: new Date().toISOString().split('T')[0]
+        })
+        .eq('id', selectedTenant.id)
+
+      if (updateError) throw updateError
+
+      toast.success(`₹${amount.toLocaleString()} collected from ${selectedTenant.name}`)
+      setShowPaymentModal(false)
+      setPaymentAmount('')
+      await loadData()
+    } catch (error) {
+      console.error('Collect rent error:', error)
+      toast.error(error.message || 'Failed to record payment')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const markRentPaid = async () => {
     if (!selectedTenant) return
 
     setIsSubmitting(true)
     try {
+      // Record full payment
+      const { error: paymentError } = await supabase.from('payment_history').insert({
+        tenant_id: selectedTenant.id,
+        amount: selectedTenant.rent_amount,
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: 'cash',
+        status: 'success'
+      })
+
+      if (paymentError) throw paymentError
+
+      const newTotalPaid = (selectedTenant.total_paid || 0) + selectedTenant.rent_amount
+
       const { error } = await supabase
         .from('tenants')
-        .update({ rent_status: 'paid', updated_at: new Date().toISOString() })
+        .update({ 
+          rent_status: 'paid', 
+          pending_amount: 0,
+          total_paid: newTotalPaid,
+          last_payment_date: new Date().toISOString().split('T')[0],
+          updated_at: new Date().toISOString()
+        })
         .eq('id', selectedTenant.id)
 
       if (error) throw error
@@ -274,22 +349,12 @@ export default function OwnerDashboard() {
       const newOccupants = Math.max(0, room.current_occupants - 1)
       const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
       
-      // Delete tenant
-      const { error: deleteError } = await supabase
-        .from('tenants')
-        .delete()
-        .eq('id', id)
-
-      if (deleteError) throw deleteError
-
-      // Update room occupancy
-      const { error: updateError } = await supabase
+      await supabase.from('tenants').delete().eq('id', id)
+      await supabase
         .from('rooms')
         .update({ current_occupants: newOccupants, status: newStatus })
         .eq('id', roomId)
 
-      if (updateError) throw updateError
-      
       toast.success('Tenant removed successfully')
       await loadData()
     } catch (error) {
@@ -315,13 +380,7 @@ export default function OwnerDashboard() {
 
     setIsSubmitting(true)
     try {
-      const { error } = await supabase
-        .from('rooms')
-        .delete()
-        .eq('id', id)
-
-      if (error) throw error
-
+      await supabase.from('rooms').delete().eq('id', id)
       toast.success(`Room ${room.room_number} deleted successfully`)
       await loadData()
     } catch (error) {
@@ -398,7 +457,7 @@ export default function OwnerDashboard() {
             <p className="text-3xl font-bold text-primary">{stats.totalRooms}</p>
           </motion.div>
           <motion.div whileHover={{ y: -5 }} className="bg-white rounded-xl p-6 shadow-sm border-l-4 border-green-500">
-            <p className="text-gray-500 text-sm">Full Rooms</p>
+            <p className="text-gray-500 text-sm">Occupied Rooms</p>
             <p className="text-3xl font-bold text-green-600">{stats.occupied}</p>
             <p className="text-xs text-gray-400 mt-1">{stats.totalRooms ? Math.round((stats.occupied/stats.totalRooms)*100) : 0}% occupancy</p>
           </motion.div>
@@ -406,9 +465,9 @@ export default function OwnerDashboard() {
             <p className="text-gray-500 text-sm">Available Rooms</p>
             <p className="text-3xl font-bold text-orange-500">{stats.vacant}</p>
           </motion.div>
-          <motion.div whileHover={{ y: -5 }} className="bg-white rounded-xl p-6 shadow-sm border-l-4 border-red-500">
-            <p className="text-gray-500 text-sm">Pending Rent</p>
-            <p className="text-3xl font-bold text-red-600">₹{stats.dueAmount.toLocaleString()}</p>
+          <motion.div whileHover={{ y: -5 }} className="bg-white rounded-xl p-6 shadow-sm border-l-4 border-blue-500">
+            <p className="text-gray-500 text-sm">Total Collected</p>
+            <p className="text-3xl font-bold text-blue-600">₹{stats.totalCollected.toLocaleString()}</p>
           </motion.div>
         </div>
 
@@ -420,10 +479,10 @@ export default function OwnerDashboard() {
             + Add Room
           </motion.button>
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="bg-green-600 text-white p-4 rounded-xl font-semibold shadow-md">
-            💰 Collect Rent
+            💰 Reports
           </motion.button>
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="bg-purple-600 text-white p-4 rounded-xl font-semibold shadow-md">
-            📊 Reports
+            📊 Analytics
           </motion.button>
         </div>
 
@@ -457,9 +516,10 @@ export default function OwnerDashboard() {
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-600">Name</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-600">Phone</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-600">Room</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-600">Sharing</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-600">Join Date</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-600">Rent</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-600">Status</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-600">Paid</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-600">Pending</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-600">Actions</th>
                   </tr>
                 </thead>
@@ -470,26 +530,18 @@ export default function OwnerDashboard() {
                       <tr key={tenant.id} className="border-b hover:bg-gray-50 transition">
                         <td className="px-6 py-4 font-medium text-gray-800">{tenant.name}</td>
                         <td className="px-6 py-4 text-gray-600">{tenant.phone}</td>
-                        <td className="px-6 py-4 text-gray-600">Room {tenant.rooms?.room_number || 'N/A'}</td>
-                        <td className="px-6 py-4">
-                          <span className="flex items-center gap-1">
-                            {sharingDetails?.icon} {sharingDetails?.label}
-                          </span>
-                        </td>
+                        <td className="px-6 py-4 text-gray-600">Room {tenant.rooms?.room_number} {sharingDetails?.icon}</td>
+                        <td className="px-6 py-4 text-gray-600">{new Date(tenant.move_in_date).toLocaleDateString()}</td>
                         <td className="px-6 py-4 font-semibold text-gray-800">₹{tenant.rent_amount?.toLocaleString()}</td>
+                        <td className="px-6 py-4 text-green-600 font-semibold">₹{(tenant.total_paid || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 text-red-600 font-semibold">₹{(tenant.pending_amount || tenant.rent_amount).toLocaleString()}</td>
                         <td className="px-6 py-4">
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                            tenant.rent_status === 'pending' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                          }`}>
-                            {tenant.rent_status === 'pending' ? '⚠️ Due' : '✅ Paid'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          {tenant.rent_status === 'pending' && (
-                            <button onClick={() => { setSelectedTenant(tenant); setShowRentModal(true) }} className="text-green-600 hover:text-green-800 font-medium mr-4 transition">
-                              Mark Paid
-                            </button>
-                          )}
+                          <button
+                            onClick={() => { setSelectedTenant(tenant); setShowPaymentModal(true) }}
+                            className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm mr-2 hover:bg-green-700"
+                          >
+                            Collect Rent
+                          </button>
                           <button onClick={() => deleteTenant(tenant.id, tenant.room_id)} className="text-red-600 hover:text-red-800 font-medium transition">
                             Delete
                           </button>
@@ -497,7 +549,7 @@ export default function OwnerDashboard() {
                       </tr>
                     )
                   }) : (
-                    <tr><td colSpan="7" className="text-center py-12 text-gray-400">No tenants yet. Click "Add Tenant" to get started.</td></tr>
+                    <tr><td colSpan="8" className="text-center py-12 text-gray-400">No tenants yet. Click "Add Tenant" to get started.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -563,17 +615,31 @@ export default function OwnerDashboard() {
         {activeTab === 'payments' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-xl shadow-sm p-6">
             <h2 className="text-xl font-bold mb-4">Payment Summary</h2>
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="bg-green-50 rounded-xl p-4">
+            <div className="grid md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-green-50 rounded-xl p-4 text-center">
                 <p className="text-green-600 text-sm">Total Collected</p>
-                <p className="text-2xl font-bold text-green-700">₹{stats.monthlyRevenue.toLocaleString()}</p>
-                <p className="text-xs text-green-500 mt-1">This month</p>
+                <p className="text-2xl font-bold text-green-700">₹{stats.totalCollected.toLocaleString()}</p>
               </div>
-              <div className="bg-red-50 rounded-xl p-4">
+              <div className="bg-yellow-50 rounded-xl p-4 text-center">
+                <p className="text-yellow-600 text-sm">This Month</p>
+                <p className="text-2xl font-bold text-yellow-700">₹{stats.monthlyRevenue.toLocaleString()}</p>
+              </div>
+              <div className="bg-red-50 rounded-xl p-4 text-center">
                 <p className="text-red-600 text-sm">Pending Collection</p>
                 <p className="text-2xl font-bold text-red-700">₹{stats.dueAmount.toLocaleString()}</p>
-                <p className="text-xs text-red-500 mt-1">From {tenants.filter(t => t.rent_status === 'pending').length} tenants</p>
               </div>
+            </div>
+            <h3 className="font-semibold mb-3">Recent Transactions</h3>
+            <div className="space-y-2">
+              {tenants.filter(t => t.last_payment_date).map((tenant) => (
+                <div key={tenant.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                  <div><p className="font-medium">{tenant.name}</p><p className="text-xs text-gray-500">Room {tenant.rooms?.room_number}</p></div>
+                  <div className="text-right"><p className="font-bold text-green-600">₹{(tenant.total_paid || 0).toLocaleString()}</p><p className="text-xs text-gray-400">Last paid: {tenant.last_payment_date ? new Date(tenant.last_payment_date).toLocaleDateString() : 'Never'}</p></div>
+                </div>
+              ))}
+              {tenants.filter(t => t.last_payment_date).length === 0 && (
+                <div className="text-center py-8 text-gray-400">No payments recorded yet</div>
+              )}
             </div>
           </motion.div>
         )}
@@ -586,11 +652,11 @@ export default function OwnerDashboard() {
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
               <h2 className="text-2xl font-bold mb-4 text-gray-800">Add New Tenant</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Full Name" className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
-                <input type="tel" placeholder="Phone Number (10 digits)" className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} />
-                <input type="email" placeholder="Email (optional)" className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
-                <input type="number" placeholder="Monthly Rent (₹)" className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} />
-                <select className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}>
+                <input type="text" placeholder="Full Name" className="input" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+                <input type="tel" placeholder="Phone Number (10 digits)" className="input" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} />
+                <input type="email" placeholder="Email (optional)" className="input" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+                <input type="number" placeholder="Monthly Rent (₹)" className="input" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} />
+                <select className="input" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}>
                   <option value="">Select Room</option>
                   {rooms.filter(r => r.current_occupants < r.capacity).map((room) => {
                     const sharingDetails = getSharingDetails(room.sharing_type)
@@ -602,9 +668,6 @@ export default function OwnerDashboard() {
                     )
                   })}
                 </select>
-                <div className="bg-blue-50 rounded-xl p-3 text-sm text-blue-700">
-                  💡 Tenant will be able to login with the phone number provided and see their room details
-                </div>
                 <div className="flex gap-3 mt-6">
                   <button onClick={addTenant} disabled={isSubmitting} className="flex-1 bg-primary text-white py-3 rounded-xl font-semibold disabled:opacity-50">Add Tenant</button>
                   <button onClick={() => setShowAddModal(false)} className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
@@ -622,14 +685,10 @@ export default function OwnerDashboard() {
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
               <h2 className="text-2xl font-bold mb-4 text-gray-800">Add New Room</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Room Number (e.g., 101)" className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
-                <select className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={roomForm.sharing_type} onChange={(e) => {
+                <input type="text" placeholder="Room Number (e.g., 101)" className="input" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
+                <select className="input" value={roomForm.sharing_type} onChange={(e) => {
                   const selected = sharingTypes.find(t => t.value === e.target.value)
-                  setRoomForm({
-                    ...roomForm,
-                    sharing_type: e.target.value,
-                    monthly_rent: selected.price
-                  })
+                  setRoomForm({ ...roomForm, sharing_type: e.target.value, monthly_rent: selected.price })
                 }}>
                   {sharingTypes.map((type) => (
                     <option key={type.value} value={type.value}>
@@ -637,15 +696,7 @@ export default function OwnerDashboard() {
                     </option>
                   ))}
                 </select>
-                <input type="number" placeholder="Monthly Rent (₹)" className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
-                <div className="bg-gray-50 rounded-xl p-3">
-                  <p className="text-sm text-gray-600">📊 Room Summary:</p>
-                  <p className="text-sm font-semibold mt-1">
-                    {sharingTypes.find(t => t.value === roomForm.sharing_type)?.label} • 
-                    Capacity: {sharingTypes.find(t => t.value === roomForm.sharing_type)?.capacity} persons • 
-                    Rent: ₹{roomForm.monthly_rent}/person
-                  </p>
-                </div>
+                <input type="number" placeholder="Monthly Rent (₹)" className="input" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
                 <div className="flex gap-3 mt-6">
                   <button onClick={addRoom} disabled={isSubmitting} className="flex-1 bg-primary text-white py-3 rounded-xl font-semibold disabled:opacity-50">Add Room</button>
                   <button onClick={() => setShowRoomModal(false)} className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
@@ -656,18 +707,25 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Mark Rent Paid Modal */}
+      {/* Collect Rent Modal */}
       <AnimatePresence>
-        {showRentModal && selectedTenant && (
+        {showPaymentModal && selectedTenant && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl p-6 max-w-md w-full text-center shadow-2xl">
-              <div className="text-5xl mb-4 animate-float">💰</div>
-              <h2 className="text-2xl font-bold mb-2 text-gray-800">Confirm Rent Payment</h2>
-              <p className="text-gray-600 mb-2">Mark rent as paid for <strong className="text-primary">{selectedTenant.name}</strong></p>
-              <p className="text-xl font-bold text-primary mb-6">₹{selectedTenant.rent_amount.toLocaleString()}</p>
-              <div className="flex gap-3">
-                <button onClick={markRentPaid} disabled={isSubmitting} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">Confirm Payment</button>
-                <button onClick={() => setShowRentModal(false)} className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Collect Rent</h2>
+              <div className="space-y-4">
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-gray-600">Tenant: <strong>{selectedTenant.name}</strong></p>
+                  <p className="text-gray-600">Room: <strong>{selectedTenant.rooms?.room_number}</strong></p>
+                  <p className="text-gray-600">Monthly Rent: <strong>₹{selectedTenant.rent_amount?.toLocaleString()}</strong></p>
+                  <p className="text-gray-600">Pending Amount: <strong className="text-red-600">₹{(selectedTenant.pending_amount || selectedTenant.rent_amount).toLocaleString()}</strong></p>
+                  <p className="text-gray-600">Total Paid: <strong className="text-green-600">₹{(selectedTenant.total_paid || 0).toLocaleString()}</strong></p>
+                </div>
+                <input type="number" placeholder="Enter Amount (₹)" className="input" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
+                <div className="flex gap-3 mt-6">
+                  <button onClick={collectRent} disabled={isSubmitting} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">Collect Payment</button>
+                  <button onClick={() => { setShowPaymentModal(false); setPaymentAmount('') }} className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
+                </div>
               </div>
             </motion.div>
           </motion.div>
