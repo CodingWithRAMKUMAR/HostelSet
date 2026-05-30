@@ -19,6 +19,7 @@ export default function OwnerDashboard() {
   const [formData, setFormData] = useState({ name: '', phone: '', email: '', rent_amount: '', room_id: '' })
   const [roomForm, setRoomForm] = useState({ room_number: '', sharing_type: 'double', monthly_rent: 10000 })
   const [stats, setStats] = useState({ totalRooms: 0, occupied: 0, vacant: 0, dueAmount: 0, monthlyRevenue: 0 })
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const sharingTypes = [
     { value: 'single', label: 'Single Sharing', capacity: 1, icon: '👤', price: 15000, description: 'Private room for 1 person' },
@@ -28,10 +29,14 @@ export default function OwnerDashboard() {
     { value: 'five', label: 'Five Sharing', capacity: 5, icon: '👥👥👤', price: 6000, description: 'Shared room for 5 persons' },
   ]
 
+  // Check authentication on mount
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('isLoggedIn')
     const userRole = localStorage.getItem('userRole')
-    if (!isLoggedIn || userRole !== 'owner') {
+    const userId = localStorage.getItem('userId')
+    
+    if (!isLoggedIn || userRole !== 'owner' || !userId) {
+      toast.error('Please login to continue')
       router.push('/login')
       return
     }
@@ -43,22 +48,35 @@ export default function OwnerDashboard() {
     try {
       const userId = localStorage.getItem('userId')
       
-      const { data: propertyData } = await supabase
+      if (!userId) {
+        throw new Error('User not found. Please login again.')
+      }
+
+      // Fetch property
+      const { data: propertyData, error: propertyError } = await supabase
         .from('properties')
         .select('*')
         .eq('owner_id', userId)
-        .single()
+        .maybeSingle() // Use maybeSingle to avoid PGRST116 error
+
+      if (propertyError) {
+        console.error('Property fetch error:', propertyError)
+        throw new Error('Failed to load property data')
+      }
 
       if (propertyData) {
         setProperty(propertyData)
 
-        const { data: roomsData } = await supabase
+        // Fetch rooms
+        const { data: roomsData, error: roomsError } = await supabase
           .from('rooms')
           .select('*')
           .eq('property_id', propertyData.id)
           .order('room_number', { ascending: true })
 
-        if (roomsData) {
+        if (roomsError) {
+          console.error('Rooms fetch error:', roomsError)
+        } else if (roomsData) {
           setRooms(roomsData)
           const total = roomsData.length
           const occupied = roomsData.filter(r => r.current_occupants >= r.capacity).length
@@ -66,20 +84,24 @@ export default function OwnerDashboard() {
           setStats(prev => ({ ...prev, totalRooms: total, occupied, vacant }))
         }
 
-        const { data: tenantsData } = await supabase
+        // Fetch tenants
+        const { data: tenantsData, error: tenantsError } = await supabase
           .from('tenants')
           .select('*, rooms:room_id(*)')
           .eq('property_id', propertyData.id)
 
-        if (tenantsData) {
+        if (tenantsError) {
+          console.error('Tenants fetch error:', tenantsError)
+        } else if (tenantsData) {
           setTenants(tenantsData)
-          const due = tenantsData.filter(t => t.rent_status === 'pending').reduce((sum, t) => sum + t.rent_amount, 0)
-          const revenue = tenantsData.filter(t => t.rent_status === 'paid').reduce((sum, t) => sum + t.rent_amount, 0)
+          const due = tenantsData.filter(t => t.rent_status === 'pending').reduce((sum, t) => sum + (t.rent_amount || 0), 0)
+          const revenue = tenantsData.filter(t => t.rent_status === 'paid').reduce((sum, t) => sum + (t.rent_amount || 0), 0)
           setStats(prev => ({ ...prev, dueAmount: due, monthlyRevenue: revenue }))
         }
       }
     } catch (error) {
       console.error('Error loading data:', error)
+      toast.error(error.message || 'Failed to load dashboard data')
     } finally {
       setLoading(false)
     }
@@ -91,25 +113,38 @@ export default function OwnerDashboard() {
       return
     }
 
-    const selectedType = sharingTypes.find(t => t.value === roomForm.sharing_type)
-    
-    const { error } = await supabase.from('rooms').insert({
-      property_id: property.id,
-      room_number: roomForm.room_number,
-      sharing_type: roomForm.sharing_type,
-      monthly_rent: roomForm.monthly_rent || selectedType.price,
-      capacity: selectedType.capacity,
-      current_occupants: 0,
-      status: 'vacant'
-    })
+    // Check if room number already exists
+    const roomExists = rooms.some(r => r.room_number === roomForm.room_number)
+    if (roomExists) {
+      toast.error(`Room ${roomForm.room_number} already exists!`)
+      return
+    }
 
-    if (error) {
-      toast.error('Failed to add room')
-    } else {
+    setIsSubmitting(true)
+    try {
+      const selectedType = sharingTypes.find(t => t.value === roomForm.sharing_type)
+      
+      const { data, error } = await supabase.from('rooms').insert({
+        property_id: property.id,
+        room_number: roomForm.room_number,
+        sharing_type: roomForm.sharing_type,
+        monthly_rent: parseInt(roomForm.monthly_rent) || selectedType.price,
+        capacity: selectedType.capacity,
+        current_occupants: 0,
+        status: 'vacant'
+      }).select()
+
+      if (error) throw error
+
       toast.success(`Room ${roomForm.room_number} (${selectedType.label}) added!`)
       setShowRoomModal(false)
       setRoomForm({ room_number: '', sharing_type: 'double', monthly_rent: 10000 })
-      loadData()
+      await loadData()
+    } catch (error) {
+      console.error('Add room error:', error)
+      toast.error(error.message || 'Failed to add room')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -119,132 +154,187 @@ export default function OwnerDashboard() {
       return
     }
 
+    if (formData.phone.length !== 10) {
+      toast.error('Please enter a valid 10-digit phone number')
+      return
+    }
+
     const selectedRoom = rooms.find(r => r.id === formData.room_id)
+    if (!selectedRoom) {
+      toast.error('Selected room not found')
+      return
+    }
     
     if (selectedRoom.current_occupants >= selectedRoom.capacity) {
       toast.error(`Room is full! Capacity: ${selectedRoom.capacity} occupants`)
       return
     }
 
-    // Create user for tenant
-    const { data: newUser, error: userError } = await supabase
-      .from('users')
-      .insert({
-        phone: formData.phone,
-        email: formData.email,
-        full_name: formData.name,
-        role: 'tenant'
-      })
-      .select()
-      .single()
-
-    if (userError) {
-      // If user exists, get existing user
-      const { data: existingUser } = await supabase
+    setIsSubmitting(true)
+    try {
+      // Check if user already exists
+      let userId = null
+      const { data: existingUser, error: checkError } = await supabase
         .from('users')
-        .select('*')
+        .select('id')
         .eq('phone', formData.phone)
-        .single()
-      
-      if (existingUser) {
-        // Add tenant with existing user
-        const { error: tenantError } = await supabase.from('tenants').insert({
-          user_id: existingUser.id,
-          property_id: property.id,
-          room_id: formData.room_id,
-          name: formData.name,
-          phone: formData.phone,
-          email: formData.email,
-          rent_amount: parseInt(formData.rent_amount),
-          rent_status: 'pending',
-          move_in_date: new Date().toISOString().split('T')[0]
-        })
+        .maybeSingle()
 
-        if (tenantError) throw tenantError
+      if (existingUser) {
+        userId = existingUser.id
       } else {
-        toast.error('Failed to create tenant user')
-        return
+        // Create new user
+        const { data: newUser, error: createError } = await supabase
+          .from('users')
+          .insert({
+            phone: formData.phone,
+            email: formData.email || null,
+            full_name: formData.name,
+            role: 'tenant',
+            is_active: true
+          })
+          .select()
+          .single()
+
+        if (createError) throw createError
+        userId = newUser.id
       }
-    } else {
-      // Add tenant with new user
+
+      // Add tenant
       const { error: tenantError } = await supabase.from('tenants').insert({
-        user_id: newUser.id,
+        user_id: userId,
         property_id: property.id,
         room_id: formData.room_id,
         name: formData.name,
         phone: formData.phone,
-        email: formData.email,
+        email: formData.email || null,
         rent_amount: parseInt(formData.rent_amount),
         rent_status: 'pending',
         move_in_date: new Date().toISOString().split('T')[0]
       })
 
       if (tenantError) throw tenantError
-    }
 
-    const newOccupants = selectedRoom.current_occupants + 1
-    const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
-    
-    await supabase
-      .from('rooms')
-      .update({ current_occupants: newOccupants, status: newStatus })
-      .eq('id', formData.room_id)
-    
-    toast.success(`Tenant added to Room ${selectedRoom.room_number} (${newOccupants}/${selectedRoom.capacity} occupants)`)
-    setShowAddModal(false)
-    setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '' })
-    loadData()
+      // Update room occupancy
+      const newOccupants = selectedRoom.current_occupants + 1
+      const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
+      
+      const { error: updateError } = await supabase
+        .from('rooms')
+        .update({ current_occupants: newOccupants, status: newStatus })
+        .eq('id', formData.room_id)
+
+      if (updateError) throw updateError
+      
+      toast.success(`Tenant added to Room ${selectedRoom.room_number} (${newOccupants}/${selectedRoom.capacity} occupants)`)
+      setShowAddModal(false)
+      setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '' })
+      await loadData()
+    } catch (error) {
+      console.error('Add tenant error:', error)
+      toast.error(error.message || 'Failed to add tenant')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const markRentPaid = async () => {
     if (!selectedTenant) return
 
-    const { error } = await supabase
-      .from('tenants')
-      .update({ rent_status: 'paid', updated_at: new Date() })
-      .eq('id', selectedTenant.id)
+    setIsSubmitting(true)
+    try {
+      const { error } = await supabase
+        .from('tenants')
+        .update({ rent_status: 'paid', updated_at: new Date().toISOString() })
+        .eq('id', selectedTenant.id)
 
-    if (error) {
-      toast.error('Failed to update rent status')
-    } else {
+      if (error) throw error
+
       toast.success(`Rent marked as paid for ${selectedTenant.name}`)
       setShowRentModal(false)
-      loadData()
+      await loadData()
+    } catch (error) {
+      console.error('Mark rent paid error:', error)
+      toast.error(error.message || 'Failed to update rent status')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const deleteTenant = async (id, roomId) => {
-    if (confirm('Are you sure you want to remove this tenant?')) {
+    if (!confirm('⚠️ Are you sure you want to remove this tenant? This action cannot be undone.')) {
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
       const room = rooms.find(r => r.id === roomId)
+      if (!room) throw new Error('Room not found')
+
       const newOccupants = Math.max(0, room.current_occupants - 1)
       const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
       
-      await supabase.from('tenants').delete().eq('id', id)
-      await supabase
+      // Delete tenant
+      const { error: deleteError } = await supabase
+        .from('tenants')
+        .delete()
+        .eq('id', id)
+
+      if (deleteError) throw deleteError
+
+      // Update room occupancy
+      const { error: updateError } = await supabase
         .from('rooms')
         .update({ current_occupants: newOccupants, status: newStatus })
         .eq('id', roomId)
+
+      if (updateError) throw updateError
       
       toast.success('Tenant removed successfully')
-      loadData()
+      await loadData()
+    } catch (error) {
+      console.error('Delete tenant error:', error)
+      toast.error(error.message || 'Failed to remove tenant')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const deleteRoom = async (id) => {
     const room = rooms.find(r => r.id === id)
+    if (!room) return
+
     if (room.current_occupants > 0) {
       toast.error(`Cannot delete room with ${room.current_occupants} occupants. Remove tenants first.`)
       return
     }
-    if (confirm('Are you sure you want to delete this room?')) {
-      await supabase.from('rooms').delete().eq('id', id)
-      toast.success('Room deleted successfully')
-      loadData()
+
+    if (!confirm(`⚠️ Are you sure you want to delete Room ${room.room_number}? This action cannot be undone.`)) {
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const { error } = await supabase
+        .from('rooms')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+
+      toast.success(`Room ${room.room_number} deleted successfully`)
+      await loadData()
+    } catch (error) {
+      console.error('Delete room error:', error)
+      toast.error(error.message || 'Failed to delete room')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const handleLogout = () => {
     localStorage.clear()
+    toast.success('Logged out successfully')
     router.push('/')
   }
 
@@ -268,14 +358,14 @@ export default function OwnerDashboard() {
       <div className="min-h-screen bg-gray-50">
         <nav className="gradient-bg text-white px-6 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold">🏠 HOSTELSET</h1>
-          <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-lg">Logout</button>
+          <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-lg hover:bg-red-600 transition">Logout</button>
         </nav>
         <div className="container mx-auto px-4 py-20 text-center">
           <div className="max-w-md mx-auto">
             <div className="text-6xl mb-6 animate-float">🏠</div>
             <h1 className="text-2xl font-bold mb-4">Welcome to HOSTELSET!</h1>
             <p className="text-gray-500 mb-8">You haven't registered any property yet.</p>
-            <Link href="/owner/register-property" className="btn-primary inline-block">
+            <Link href="/owner/register-property" className="bg-primary text-white px-6 py-3 rounded-xl font-semibold hover:bg-opacity-90 transition inline-block">
               Register Your First Property →
             </Link>
           </div>
@@ -322,11 +412,11 @@ export default function OwnerDashboard() {
           </motion.div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setShowAddModal(true)} className="bg-primary text-white p-4 rounded-xl font-semibold shadow-md">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setShowAddModal(true)} disabled={isSubmitting} className="bg-primary text-white p-4 rounded-xl font-semibold shadow-md disabled:opacity-50">
             + Add Tenant
           </motion.button>
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setShowRoomModal(true)} className="bg-secondary text-white p-4 rounded-xl font-semibold shadow-md">
+          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setShowRoomModal(true)} disabled={isSubmitting} className="bg-secondary text-white p-4 rounded-xl font-semibold shadow-md disabled:opacity-50">
             + Add Room
           </motion.button>
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="bg-green-600 text-white p-4 rounded-xl font-semibold shadow-md">
@@ -374,13 +464,13 @@ export default function OwnerDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tenants.map((tenant) => {
+                  {tenants.length > 0 ? tenants.map((tenant) => {
                     const sharingDetails = getSharingDetails(tenant.rooms?.sharing_type)
                     return (
                       <tr key={tenant.id} className="border-b hover:bg-gray-50 transition">
                         <td className="px-6 py-4 font-medium text-gray-800">{tenant.name}</td>
                         <td className="px-6 py-4 text-gray-600">{tenant.phone}</td>
-                        <td className="px-6 py-4 text-gray-600">Room {tenant.rooms?.room_number}</td>
+                        <td className="px-6 py-4 text-gray-600">Room {tenant.rooms?.room_number || 'N/A'}</td>
                         <td className="px-6 py-4">
                           <span className="flex items-center gap-1">
                             {sharingDetails?.icon} {sharingDetails?.label}
@@ -403,17 +493,14 @@ export default function OwnerDashboard() {
                           <button onClick={() => deleteTenant(tenant.id, tenant.room_id)} className="text-red-600 hover:text-red-800 font-medium transition">
                             Delete
                           </button>
-                         </td>
-                       </tr>
+                        </td>
+                      </tr>
                     )
-                  })}
+                  }) : (
+                    <tr><td colSpan="7" className="text-center py-12 text-gray-400">No tenants yet. Click "Add Tenant" to get started.</td></tr>
+                  )}
                 </tbody>
               </table>
-              {tenants.length === 0 && (
-                <div className="text-center py-12 text-gray-400">
-                  No tenants yet. Click "Add Tenant" to get started.
-                </div>
-              )}
             </div>
           </motion.div>
         )}
@@ -422,7 +509,7 @@ export default function OwnerDashboard() {
         {activeTab === 'rooms' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-xl shadow-sm p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {rooms.map((room) => {
+              {rooms.length > 0 ? rooms.map((room) => {
                 const sharingDetails = getSharingDetails(room.sharing_type)
                 const isFull = room.current_occupants >= room.capacity
                 const availability = room.capacity - room.current_occupants
@@ -465,13 +552,10 @@ export default function OwnerDashboard() {
                     </div>
                   </motion.div>
                 )
-              })}
+              }) : (
+                <div className="col-span-full text-center py-12 text-gray-400">No rooms yet. Click "Add Room" to get started.</div>
+              )}
             </div>
-            {rooms.length === 0 && (
-              <div className="text-center py-12 text-gray-400">
-                No rooms yet. Click "Add Room" to get started.
-              </div>
-            )}
           </motion.div>
         )}
 
@@ -502,11 +586,11 @@ export default function OwnerDashboard() {
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
               <h2 className="text-2xl font-bold mb-4 text-gray-800">Add New Tenant</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Full Name" className="input" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
-                <input type="tel" placeholder="Phone Number (10 digits)" className="input" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} />
-                <input type="email" placeholder="Email (optional)" className="input" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
-                <input type="number" placeholder="Monthly Rent (₹)" className="input" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} />
-                <select className="input" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}>
+                <input type="text" placeholder="Full Name" className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+                <input type="tel" placeholder="Phone Number (10 digits)" className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} />
+                <input type="email" placeholder="Email (optional)" className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+                <input type="number" placeholder="Monthly Rent (₹)" className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} />
+                <select className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}>
                   <option value="">Select Room</option>
                   {rooms.filter(r => r.current_occupants < r.capacity).map((room) => {
                     const sharingDetails = getSharingDetails(room.sharing_type)
@@ -522,7 +606,7 @@ export default function OwnerDashboard() {
                   💡 Tenant will be able to login with the phone number provided and see their room details
                 </div>
                 <div className="flex gap-3 mt-6">
-                  <button onClick={addTenant} className="flex-1 bg-primary text-white py-3 rounded-xl font-semibold">Add Tenant</button>
+                  <button onClick={addTenant} disabled={isSubmitting} className="flex-1 bg-primary text-white py-3 rounded-xl font-semibold disabled:opacity-50">Add Tenant</button>
                   <button onClick={() => setShowAddModal(false)} className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
                 </div>
               </div>
@@ -538,8 +622,8 @@ export default function OwnerDashboard() {
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
               <h2 className="text-2xl font-bold mb-4 text-gray-800">Add New Room</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Room Number (e.g., 101)" className="input" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
-                <select className="input" value={roomForm.sharing_type} onChange={(e) => {
+                <input type="text" placeholder="Room Number (e.g., 101)" className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
+                <select className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={roomForm.sharing_type} onChange={(e) => {
                   const selected = sharingTypes.find(t => t.value === e.target.value)
                   setRoomForm({
                     ...roomForm,
@@ -553,7 +637,7 @@ export default function OwnerDashboard() {
                     </option>
                   ))}
                 </select>
-                <input type="number" placeholder="Monthly Rent (₹)" className="input" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
+                <input type="number" placeholder="Monthly Rent (₹)" className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
                 <div className="bg-gray-50 rounded-xl p-3">
                   <p className="text-sm text-gray-600">📊 Room Summary:</p>
                   <p className="text-sm font-semibold mt-1">
@@ -563,7 +647,7 @@ export default function OwnerDashboard() {
                   </p>
                 </div>
                 <div className="flex gap-3 mt-6">
-                  <button onClick={addRoom} className="flex-1 bg-primary text-white py-3 rounded-xl font-semibold">Add Room</button>
+                  <button onClick={addRoom} disabled={isSubmitting} className="flex-1 bg-primary text-white py-3 rounded-xl font-semibold disabled:opacity-50">Add Room</button>
                   <button onClick={() => setShowRoomModal(false)} className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
                 </div>
               </div>
@@ -582,7 +666,7 @@ export default function OwnerDashboard() {
               <p className="text-gray-600 mb-2">Mark rent as paid for <strong className="text-primary">{selectedTenant.name}</strong></p>
               <p className="text-xl font-bold text-primary mb-6">₹{selectedTenant.rent_amount.toLocaleString()}</p>
               <div className="flex gap-3">
-                <button onClick={markRentPaid} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold">Confirm Payment</button>
+                <button onClick={markRentPaid} disabled={isSubmitting} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">Confirm Payment</button>
                 <button onClick={() => setShowRentModal(false)} className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
               </div>
             </motion.div>
