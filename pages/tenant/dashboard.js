@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -32,6 +31,11 @@ export default function TenantDashboard() {
     const userRole = localStorage.getItem('userRole')
     const userId = localStorage.getItem('userId')
     
+    console.log('Tenant Dashboard - Debug:')
+    console.log('isLoggedIn:', isLoggedIn)
+    console.log('userRole:', userRole)
+    console.log('userId:', userId)
+    
     if (!isLoggedIn || userRole !== 'tenant' || !userId) {
       router.push('/login')
       return
@@ -44,12 +48,13 @@ export default function TenantDashboard() {
     try {
       const userId = localStorage.getItem('userId')
       
-      // Get tenant record with room and property
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
         .select('*, rooms:room_id(*), properties:property_id(*)')
         .eq('user_id', userId)
         .maybeSingle()
+
+      console.log('Tenant data:', tenantData)
 
       if (tenantError) {
         console.error('Tenant fetch error:', tenantError)
@@ -60,7 +65,6 @@ export default function TenantDashboard() {
         setRoom(tenantData.rooms)
         setProperty(tenantData.properties)
 
-        // Get payment history
         const { data: payments, error: paymentsError } = await supabase
           .from('payment_history')
           .select('*')
@@ -73,7 +77,6 @@ export default function TenantDashboard() {
           setPaymentHistory(payments)
         }
 
-        // Get complaints
         const { data: complaintsData, error: complaintsError } = await supabase
           .from('complaints')
           .select('*')
@@ -143,7 +146,6 @@ export default function TenantDashboard() {
 
     setIsSubmitting(true)
     try {
-      // Record payment
       const { error: paymentError } = await supabase.from('payment_history').insert({
         tenant_id: tenant.id,
         amount: amount,
@@ -154,7 +156,6 @@ export default function TenantDashboard() {
 
       if (paymentError) throw paymentError
 
-      // Update tenant
       const newTotalPaid = (tenant.total_paid || 0) + amount
       const newPendingAmount = (tenant.pending_amount || tenant.rent_amount) - amount
       const newRentStatus = newPendingAmount <= 0 ? 'paid' : 'pending'
@@ -231,7 +232,6 @@ export default function TenantDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <nav className="gradient-bg text-white px-6 py-4 flex justify-between items-center shadow-lg sticky top-0 z-50">
         <h1 className="text-2xl font-bold">🏠 HOSTELSET</h1>
         <div className="flex items-center gap-4">
@@ -243,15 +243,12 @@ export default function TenantDashboard() {
       </nav>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Welcome Section */}
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
           <h1 className="text-3xl font-bold text-gray-800">My Stay</h1>
           <p className="text-gray-500 mt-1">Welcome to your home, {tenant.name}</p>
         </motion.div>
 
-        {/* Room & Rent Info Cards */}
         <div className="grid md:grid-cols-2 gap-6 mb-6">
-          {/* Room Card */}
           <motion.div whileHover={{ y: -5 }} className="bg-white rounded-xl shadow-sm p-6">
             <h2 className="text-xl font-bold mb-4">🏠 My Room</h2>
             <p className="text-3xl font-bold text-primary">Room {room?.room_number}</p>
@@ -265,7 +262,6 @@ export default function TenantDashboard() {
             <p className="text-gray-500 text-sm mt-2">Joined on: {new Date(tenant.move_in_date).toLocaleDateString()}</p>
           </motion.div>
 
-          {/* Rent Card */}
           <motion.div whileHover={{ y: -5 }} className="bg-white rounded-xl shadow-sm p-6">
             <h2 className="text-xl font-bold mb-4">💰 Rent Details</h2>
             <div className="space-y-3">
@@ -304,7 +300,6 @@ export default function TenantDashboard() {
           </motion.div>
         </div>
 
-        {/* Quick Actions */}
         <div className="grid grid-cols-2 gap-4 mb-8">
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setShowComplaintModal(true)} className="bg-secondary text-white p-4 rounded-xl font-semibold shadow-md">
             🔧 Raise Complaint
@@ -314,7 +309,6 @@ export default function TenantDashboard() {
           </motion.button>
         </div>
 
-        {/* Payment History Section */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
           <h2 className="text-xl font-bold mb-4">📜 Payment History</h2>
           <div className="space-y-3">
@@ -337,7 +331,6 @@ export default function TenantDashboard() {
           </div>
         </div>
 
-        {/* Complaints Section */}
         <div className="bg-white rounded-xl shadow-sm p-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold">🔧 My Complaints</h2>
