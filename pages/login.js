@@ -40,42 +40,70 @@ export default function Login() {
     try {
       if (otp === '123456') {
         // Check if user exists
-        const { data: existingUser } = await supabase
+        const { data: existingUser, error: fetchError } = await supabase
           .from('users')
           .select('*')
           .eq('phone', `+91${phone}`)
-          .single()
+          .maybeSingle()
         
         if (existingUser) {
+          // User exists - login
           localStorage.setItem('userId', existingUser.id)
           localStorage.setItem('userRole', existingUser.role)
           localStorage.setItem('isLoggedIn', 'true')
+          localStorage.setItem('userName', existingUser.full_name)
           toast.success(`Welcome back, ${existingUser.full_name}!`)
           
+          // Redirect based on role
           if (existingUser.role === 'owner') {
-            router.push('/owner/dashboard')
+            // Check if owner has property
+            const { data: property } = await supabase
+              .from('properties')
+              .select('id')
+              .eq('owner_id', existingUser.id)
+              .maybeSingle()
+            
+            if (property) {
+              router.push('/owner/dashboard')
+            } else {
+              router.push('/owner/register-property')
+            }
           } else {
-            router.push('/tenant/dashboard')
+            // Tenant - check if assigned to room
+            const { data: tenant } = await supabase
+              .from('tenants')
+              .select('id, room_id')
+              .eq('user_id', existingUser.id)
+              .maybeSingle()
+            
+            if (tenant && tenant.room_id) {
+              router.push('/tenant/dashboard')
+            } else {
+              toast.success('No room assigned yet. Contact your PG owner.')
+              router.push('/tenant/waiting')
+            }
           }
         } else {
-          // Create new user
-          const { data: newUser, error } = await supabase
+          // New user - create account
+          const { data: newUser, error: createError } = await supabase
             .from('users')
-            .insert({ phone: `+91${phone}`, full_name: phone, role: role })
+            .insert({ phone: `+91${phone}`, full_name: `User_${phone.slice(-4)}`, role: role })
             .select()
             .single()
           
-          if (error) throw error
+          if (createError) throw createError
           
           localStorage.setItem('userId', newUser.id)
           localStorage.setItem('userRole', role)
           localStorage.setItem('isLoggedIn', 'true')
+          localStorage.setItem('userName', newUser.full_name)
           toast.success('Account created successfully!')
           
           if (role === 'owner') {
             router.push('/owner/register-property')
           } else {
-            router.push('/tenant/dashboard')
+            toast.info('Please wait for owner to assign you a room')
+            router.push('/tenant/waiting')
           }
         }
       } else {
@@ -83,6 +111,7 @@ export default function Login() {
         if (error) throw error
       }
     } catch (error) {
+      console.error('Login error:', error)
       toast.error('Invalid OTP. Use 123456 for demo')
     }
     setLoading(false)
@@ -101,11 +130,11 @@ export default function Login() {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ type: 'spring', delay: 0.2 }}
-            className="w-20 h-20 gradient-bg rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg"
+            className="w-20 h-20 bg-gradient-to-r from-primary to-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg"
           >
             <span className="text-4xl">🏠</span>
           </motion.div>
-          <h1 className="text-3xl font-bold gradient-text">HOSTELSET</h1>
+          <h1 className="text-3xl font-bold text-primary">HOSTELSET</h1>
           <p className="text-gray-500 mt-2">Login to your account</p>
         </div>
 
@@ -153,7 +182,7 @@ export default function Login() {
                   <input
                     type="tel"
                     placeholder="9876543210"
-                    className="input flex-1"
+                    className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary transition-all"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     maxLength={10}
@@ -164,7 +193,7 @@ export default function Login() {
               <button
                 onClick={sendOTP}
                 disabled={loading}
-                className="w-full gradient-bg text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50"
+                className="w-full bg-gradient-to-r from-primary to-orange-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50"
               >
                 {loading ? 'Sending...' : 'Continue →'}
               </button>
@@ -182,7 +211,7 @@ export default function Login() {
                 <input
                   type="text"
                   placeholder="123456"
-                  className="input text-center text-2xl tracking-widest"
+                  className="w-full px-4 py-3 text-center text-2xl tracking-widest border-2 border-gray-200 rounded-xl focus:outline-none focus:border-primary transition-all"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
                   maxLength={6}
@@ -193,7 +222,7 @@ export default function Login() {
               <button
                 onClick={verifyOTP}
                 disabled={loading}
-                className="w-full gradient-bg text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50"
+                className="w-full bg-gradient-to-r from-primary to-orange-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50"
               >
                 {loading ? 'Verifying...' : 'Verify & Login →'}
               </button>
