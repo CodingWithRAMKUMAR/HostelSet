@@ -39,7 +39,7 @@ export default function Login() {
     setLoading(true)
     try {
       if (otp === '123456') {
-        // First check if user exists in database
+        // Check if user exists
         const { data: existingUser, error: fetchError } = await supabase
           .from('users')
           .select('*')
@@ -47,18 +47,15 @@ export default function Login() {
           .maybeSingle()
         
         if (existingUser) {
-          // User exists - check their role
-          console.log('Existing user found:', existingUser)
-          
+          // User exists - login based on their role in database
           localStorage.setItem('userId', existingUser.id)
           localStorage.setItem('userRole', existingUser.role)
           localStorage.setItem('isLoggedIn', 'true')
           localStorage.setItem('userName', existingUser.full_name)
           toast.success(`Welcome back, ${existingUser.full_name}!`)
           
-          // Redirect based on role from database
+          // IMPORTANT: Redirect based on role from DATABASE, not from selection
           if (existingUser.role === 'owner') {
-            // Check if owner has property
             const { data: property } = await supabase
               .from('properties')
               .select('id')
@@ -71,7 +68,6 @@ export default function Login() {
               router.push('/owner/register-property')
             }
           } else if (existingUser.role === 'tenant') {
-            // Tenant - check if assigned to room
             const { data: tenant } = await supabase
               .from('tenants')
               .select('id, room_id')
@@ -87,9 +83,7 @@ export default function Login() {
             router.push('/')
           }
         } else {
-          // New user - create account based on selected role
-          console.log('Creating new user with role:', role)
-          
+          // New user - create account with selected role
           const { data: newUser, error: createError } = await supabase
             .from('users')
             .insert({ 
@@ -100,14 +94,7 @@ export default function Login() {
             .select()
             .single()
           
-          if (createError) {
-            console.error('Create user error:', createError)
-            toast.error('Failed to create account')
-            setLoading(false)
-            return
-          }
-          
-          console.log('New user created:', newUser)
+          if (createError) throw createError
           
           localStorage.setItem('userId', newUser.id)
           localStorage.setItem('userRole', newUser.role)
@@ -115,7 +102,6 @@ export default function Login() {
           localStorage.setItem('userName', newUser.full_name)
           toast.success('Account created successfully!')
           
-          // Redirect based on selected role during signup
           if (newUser.role === 'owner') {
             router.push('/owner/register-property')
           } else {
@@ -194,9 +180,6 @@ export default function Login() {
                     <div className="font-semibold">Tenant</div>
                   </button>
                 </div>
-                <p className="text-xs text-gray-400 mt-2 text-center">
-                  {role === 'owner' ? 'Manage your property and tenants' : 'Find and manage your room'}
-                </p>
               </div>
 
               <div>
