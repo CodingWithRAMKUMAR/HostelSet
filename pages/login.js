@@ -46,16 +46,22 @@ export default function Login() {
           .eq('phone', `+91${phone}`)
           .maybeSingle()
         
+        console.log('Found user:', existingUser) // DEBUG LOG
+        
         if (existingUser) {
-          // User exists - login based on their role in database
+          // IMPORTANT: Use the role from DATABASE, not from selection!
+          const userRole = existingUser.role
+          console.log('User role from database:', userRole) // DEBUG LOG
+          
           localStorage.setItem('userId', existingUser.id)
-          localStorage.setItem('userRole', existingUser.role)
+          localStorage.setItem('userRole', userRole)
           localStorage.setItem('isLoggedIn', 'true')
           localStorage.setItem('userName', existingUser.full_name)
           toast.success(`Welcome back, ${existingUser.full_name}!`)
           
-          // IMPORTANT: Redirect based on role from DATABASE, not from selection
-          if (existingUser.role === 'owner') {
+          // Redirect based on role from DATABASE
+          if (userRole === 'owner') {
+            // Owner flow
             const { data: property } = await supabase
               .from('properties')
               .select('id')
@@ -67,12 +73,15 @@ export default function Login() {
             } else {
               router.push('/owner/register-property')
             }
-          } else if (existingUser.role === 'tenant') {
+          } else if (userRole === 'tenant') {
+            // Tenant flow
             const { data: tenant } = await supabase
               .from('tenants')
               .select('id, room_id')
               .eq('user_id', existingUser.id)
               .maybeSingle()
+            
+            console.log('Tenant assignment:', tenant) // DEBUG LOG
             
             if (tenant && tenant.room_id) {
               router.push('/tenant/dashboard')
@@ -83,7 +92,9 @@ export default function Login() {
             router.push('/')
           }
         } else {
-          // New user - create account with selected role
+          // Create new user with SELECTED role
+          console.log('Creating new user with role:', role) // DEBUG LOG
+          
           const { data: newUser, error: createError } = await supabase
             .from('users')
             .insert({ 
@@ -95,6 +106,8 @@ export default function Login() {
             .single()
           
           if (createError) throw createError
+          
+          console.log('New user created:', newUser) // DEBUG LOG
           
           localStorage.setItem('userId', newUser.id)
           localStorage.setItem('userRole', newUser.role)
@@ -180,6 +193,9 @@ export default function Login() {
                     <div className="font-semibold">Tenant</div>
                   </button>
                 </div>
+                <p className="text-xs text-gray-400 mt-2 text-center">
+                  {role === 'owner' ? 'Manage your property and tenants' : 'Find and manage your room'}
+                </p>
               </div>
 
               <div>
