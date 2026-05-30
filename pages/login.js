@@ -39,7 +39,7 @@ export default function Login() {
     setLoading(true)
     try {
       if (otp === '123456') {
-        // Check if user exists
+        // First check if user exists in database
         const { data: existingUser, error: fetchError } = await supabase
           .from('users')
           .select('*')
@@ -47,14 +47,16 @@ export default function Login() {
           .maybeSingle()
         
         if (existingUser) {
-          // User exists - login
+          // User exists - check their role
+          console.log('Existing user found:', existingUser)
+          
           localStorage.setItem('userId', existingUser.id)
           localStorage.setItem('userRole', existingUser.role)
           localStorage.setItem('isLoggedIn', 'true')
           localStorage.setItem('userName', existingUser.full_name)
           toast.success(`Welcome back, ${existingUser.full_name}!`)
           
-          // Redirect based on role
+          // Redirect based on role from database
           if (existingUser.role === 'owner') {
             // Check if owner has property
             const { data: property } = await supabase
@@ -68,7 +70,7 @@ export default function Login() {
             } else {
               router.push('/owner/register-property')
             }
-          } else {
+          } else if (existingUser.role === 'tenant') {
             // Tenant - check if assigned to room
             const { data: tenant } = await supabase
               .from('tenants')
@@ -79,42 +81,61 @@ export default function Login() {
             if (tenant && tenant.room_id) {
               router.push('/tenant/dashboard')
             } else {
-              toast.success('No room assigned yet. Contact your PG owner.')
               router.push('/tenant/waiting')
             }
+          } else {
+            router.push('/')
           }
         } else {
-          // New user - create account
+          // New user - create account based on selected role
+          console.log('Creating new user with role:', role)
+          
           const { data: newUser, error: createError } = await supabase
             .from('users')
-            .insert({ phone: `+91${phone}`, full_name: `User_${phone.slice(-4)}`, role: role })
+            .insert({ 
+              phone: `+91${phone}`, 
+              full_name: `User_${phone.slice(-4)}`, 
+              role: role 
+            })
             .select()
             .single()
           
-          if (createError) throw createError
+          if (createError) {
+            console.error('Create user error:', createError)
+            toast.error('Failed to create account')
+            setLoading(false)
+            return
+          }
+          
+          console.log('New user created:', newUser)
           
           localStorage.setItem('userId', newUser.id)
-          localStorage.setItem('userRole', role)
+          localStorage.setItem('userRole', newUser.role)
           localStorage.setItem('isLoggedIn', 'true')
           localStorage.setItem('userName', newUser.full_name)
           toast.success('Account created successfully!')
           
-          if (role === 'owner') {
+          // Redirect based on selected role during signup
+          if (newUser.role === 'owner') {
             router.push('/owner/register-property')
           } else {
-            toast.info('Please wait for owner to assign you a room')
             router.push('/tenant/waiting')
           }
         }
       } else {
-        const { error } = await supabase.auth.verifyOtp({ phone: `+91${phone}`, token: otp, type: 'sms' })
+        const { error } = await supabase.auth.verifyOtp({ 
+          phone: `+91${phone}`, 
+          token: otp, 
+          type: 'sms' 
+        })
         if (error) throw error
       }
     } catch (error) {
       console.error('Login error:', error)
       toast.error('Invalid OTP. Use 123456 for demo')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (
@@ -173,6 +194,9 @@ export default function Login() {
                     <div className="font-semibold">Tenant</div>
                   </button>
                 </div>
+                <p className="text-xs text-gray-400 mt-2 text-center">
+                  {role === 'owner' ? 'Manage your property and tenants' : 'Find and manage your room'}
+                </p>
               </div>
 
               <div>
