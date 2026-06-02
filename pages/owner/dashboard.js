@@ -108,7 +108,7 @@ export default function OwnerDashboard() {
     }
   }
 
-  // COMPLETELY REWRITTEN addTenant function - THIS IS THE KEY FIX
+  // COMPLETE FIXED addTenant function - ensures tenant record is created
   const addTenant = async () => {
     // Validation
     if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) {
@@ -135,9 +135,9 @@ export default function OwnerDashboard() {
     setIsSubmitting(true)
     
     try {
+      // Step 1: Create or get user
       let userId = null
       
-      // Step 1: Check if user already exists in users table
       const { data: existingUser, error: findError } = await supabase
         .from('users')
         .select('*')
@@ -145,22 +145,12 @@ export default function OwnerDashboard() {
         .maybeSingle()
       
       if (existingUser) {
-        // User exists - use existing ID
         userId = existingUser.id
-        
-        // Update user name if different
-        if (existingUser.full_name !== formData.name) {
-          await supabase.from('users').update({ full_name: formData.name }).eq('id', userId)
-        }
-        
-        // If user is not tenant role, update it
+        // Update role if needed
         if (existingUser.role !== 'tenant') {
           await supabase.from('users').update({ role: 'tenant' }).eq('id', userId)
         }
-        
-        toast.success(`Existing user found. Adding as tenant.`)
       } else {
-        // Step 2: Create new user
         const { data: newUser, error: createError } = await supabase
           .from('users')
           .insert({ 
@@ -175,63 +165,39 @@ export default function OwnerDashboard() {
         
         if (createError) throw createError
         userId = newUser.id
-        toast.success(`New tenant account created for ${formData.name}!`)
       }
 
-      // Step 3: Check if tenant already exists in tenants table
-      const { data: existingTenant, error: checkTenantError } = await supabase
+      // Step 2: Create tenant record with room assignment (CRITICAL!)
+      const { data: tenantRecord, error: tenantError } = await supabase
         .from('tenants')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('property_id', property.id)
-        .maybeSingle()
+        .insert({
+          user_id: userId,
+          property_id: property.id,
+          room_id: formData.room_id,
+          name: formData.name,
+          phone: formData.phone,
+          email: formData.email || null,
+          rent_amount: parseInt(formData.rent_amount),
+          pending_amount: parseInt(formData.rent_amount),
+          total_paid: 0,
+          rent_status: 'pending',
+          move_in_date: new Date().toISOString().split('T')[0],
+          status: 'active'
+        })
+        .select()
 
-      if (existingTenant) {
-        // Step 4a: Update existing tenant record
-        const { error: updateError } = await supabase
-          .from('tenants')
-          .update({
-            room_id: formData.room_id,
-            name: formData.name,
-            phone: formData.phone,
-            email: formData.email || null,
-            rent_amount: parseInt(formData.rent_amount),
-            pending_amount: parseInt(formData.rent_amount),
-            status: 'active',
-            rent_status: 'pending'
-          })
-          .eq('id', existingTenant.id)
-        
-        if (updateError) throw updateError
-        toast.success(`Tenant updated to Room ${selectedRoom.room_number}!`)
-      } else {
-        // Step 4b: Create new tenant record
-        const { error: tenantError } = await supabase
-          .from('tenants')
-          .insert({
-            user_id: userId,
-            property_id: property.id,
-            room_id: formData.room_id,
-            name: formData.name,
-            phone: formData.phone,
-            email: formData.email || null,
-            rent_amount: parseInt(formData.rent_amount),
-            pending_amount: parseInt(formData.rent_amount),
-            total_paid: 0,
-            rent_status: 'pending',
-            move_in_date: new Date().toISOString().split('T')[0],
-            status: 'active'
-          })
-
-        if (tenantError) throw tenantError
-        toast.success(`Tenant added to Room ${selectedRoom.room_number}!`)
+      if (tenantError) {
+        console.error('Tenant insert error:', tenantError)
+        throw tenantError
       }
 
-      // Step 5: Update room occupancy count
+      console.log('Tenant created:', tenantRecord)
+
+      // Step 3: Update room occupancy
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
       
-      const { error: roomUpdateError } = await supabase
+      await supabase
         .from('rooms')
         .update({ 
           current_occupants: newOccupants, 
@@ -239,11 +205,9 @@ export default function OwnerDashboard() {
         })
         .eq('id', formData.room_id)
 
-      if (roomUpdateError) throw roomUpdateError
-
-      toast.success(`✓ Tenant successfully assigned! They can now login with phone: ${formData.phone}`)
+      toast.success(`✅ Tenant "${formData.name}" added to Room ${selectedRoom.room_number}!`)
+      toast.success(`📱 They can login with phone: ${formData.phone} and OTP: 123456`)
       
-      // Step 6: Reset form and reload data
       setShowAddModal(false)
       setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '' })
       await loadData()
@@ -498,7 +462,7 @@ export default function OwnerDashboard() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Name</th><th>Phone</th><th>Room</th><th>Joined</th><th>Rent</th><th>Paid</th><th>Pending</th><th>Actions</th>
+                  <th>Name</th><th>Phone</th><th>Room</th><th>Rent</th><th>Status</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -506,13 +470,11 @@ export default function OwnerDashboard() {
                   <tr key={t.id}>
                     <td>{t.name}</td>
                     <td>{t.phone}</td>
-                    <td>Room {t.rooms?.room_number}</td>
-                    <td>{formatDate(t.move_in_date)}</td>
+                    <td>Room {t.rooms?.room_number} ({getSharingDetails(t.rooms?.sharing_type)?.label})</td>
                     <td>{formatCurrency(t.rent_amount)}</td>
-                    <td className="text-green-400">{formatCurrency(t.total_paid || 0)}</td>
-                    <td className="text-red-400">{formatCurrency(t.pending_amount || t.rent_amount)}</td>
+                    <td className="text-green-400">{t.status === 'active' ? '✅ Active' : '❌ Inactive'}</td>
                     <td>
-                      <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="btn-success text-xs mr-2">Collect</button>
+                      <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="btn-success text-xs mr-2">Collect Rent</button>
                       <button onClick={() => deleteTenant(t.id, t.room_id)} className="btn-danger text-xs">Delete</button>
                     </td>
                   </tr>
@@ -528,8 +490,7 @@ export default function OwnerDashboard() {
               <div key={app.id} className="card p-4 flex justify-between items-center">
                 <div>
                   <p className="font-semibold">{app.name}</p>
-                  <p className="text-sm text-gray-400">{app.phone} • {app.email}</p>
-                  <p className="text-xs text-gray-500">{app.message}</p>
+                  <p className="text-sm text-gray-400">{app.phone}</p>
                 </div>
                 <button onClick={() => approveApplication(app.id)} className="btn-success text-sm">Approve</button>
               </div>
@@ -544,8 +505,7 @@ export default function OwnerDashboard() {
               <div key={req.id} className="card p-4 flex justify-between items-center">
                 <div>
                   <p className="font-semibold">{req.tenant_name}</p>
-                  <p className="text-sm text-gray-400">Room {req.room_number} • Expected: {formatDate(req.expected_check_out)}</p>
-                  <p className="text-xs text-gray-500">Reason: {req.reason || 'Not specified'}</p>
+                  <p className="text-sm text-gray-400">Room {req.room_number}</p>
                 </div>
                 <button onClick={() => approveVacateRequest(req.id, req.tenant_id, req.room_id)} className="btn-primary text-sm">Approve</button>
               </div>
@@ -558,13 +518,10 @@ export default function OwnerDashboard() {
           <div className="space-y-3">
             {notices.map(notice => (
               <div key={notice.id} className={`card p-4 ${notice.is_urgent ? 'border-l-4 border-l-red-500' : ''}`}>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-semibold">{notice.title}</p>
-                    <p className="text-sm text-gray-400 mt-1">{notice.content}</p>
-                    <p className="text-xs text-gray-500 mt-2">{formatDate(notice.created_at)}</p>
-                  </div>
-                  <span className={`badge-${notice.is_urgent ? 'danger' : 'info'}`}>{notice.type}</span>
+                <div>
+                  <p className="font-semibold">{notice.title}</p>
+                  <p className="text-sm text-gray-400">{notice.content}</p>
+                  <p className="text-xs text-gray-500">{formatDate(notice.created_at)}</p>
                 </div>
               </div>
             ))}
@@ -588,10 +545,6 @@ export default function OwnerDashboard() {
                 <input type="tel" placeholder="9876543210" className="input" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} />
               </div>
               <div>
-                <label className="block text-gray-300 text-sm mb-1">Email (Optional)</label>
-                <input type="email" placeholder="rahul@example.com" className="input" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
-              </div>
-              <div>
                 <label className="block text-gray-300 text-sm mb-1">Monthly Rent (₹) *</label>
                 <input type="number" placeholder="10000" className="input" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} />
               </div>
@@ -604,14 +557,14 @@ export default function OwnerDashboard() {
                     const sharing = getSharingDetails(room.sharing_type)
                     return (
                       <option key={room.id} value={room.id} disabled={available <= 0}>
-                        Room {room.room_number} - {sharing.label} - ₹{formatCurrency(room.monthly_rent)}/month ({available} slots available)
+                        Room {room.room_number} - {sharing.label} - ₹{formatCurrency(room.monthly_rent)}/month ({available} slots)
                       </option>
                     )
                   })}
                 </select>
               </div>
               <div className="bg-blue-500/10 rounded-lg p-3 text-xs text-blue-400">
-                💡 After adding, tenant can login with this phone number and OTP: 123456
+                💡 After adding, tenant can login with phone number and OTP: 123456
               </div>
               <div className="flex gap-3 mt-6">
                 <button onClick={addTenant} disabled={isSubmitting} className="btn-primary flex-1 disabled:opacity-50">
