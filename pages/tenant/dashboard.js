@@ -39,7 +39,6 @@ export default function TenantDashboard() {
     try {
       const userId = localStorage.getItem('userId')
       
-      // Get tenant with room and property details
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
         .select('*, rooms:room_id(*), properties:property_id(*)')
@@ -53,7 +52,6 @@ export default function TenantDashboard() {
         setRoom(tenantData.rooms)
         setProperty(tenantData.properties)
 
-        // Get payment history
         const { data: payments } = await supabase
           .from('payment_history')
           .select('*')
@@ -61,7 +59,6 @@ export default function TenantDashboard() {
           .order('payment_date', { ascending: false })
         setPaymentHistory(payments || [])
 
-        // Get complaints
         const { data: complaintsData } = await supabase
           .from('complaints')
           .select('*')
@@ -69,7 +66,6 @@ export default function TenantDashboard() {
           .order('created_at', { ascending: false })
         setComplaints(complaintsData || [])
 
-        // Get notices
         const { data: noticesData } = await supabase
           .from('notices')
           .select('*')
@@ -77,7 +73,6 @@ export default function TenantDashboard() {
           .order('created_at', { ascending: false })
         setNotices(noticesData || [])
 
-        // Get check-out request
         const { data: checkOutData } = await supabase
           .from('check_out_requests')
           .select('*')
@@ -194,7 +189,6 @@ export default function TenantDashboard() {
     router.push('/') 
   }
 
-  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#0f172a' }}>
@@ -233,7 +227,6 @@ export default function TenantDashboard() {
     )
   }
 
-  // Tenant has room - Show full dashboard
   const sharingDetails = getSharingDetails(room?.sharing_type)
   const pendingAmount = tenant.pending_amount || tenant.rent_amount
   const isRentDue = pendingAmount > 0
@@ -253,7 +246,6 @@ export default function TenantDashboard() {
 
       <div className="container mx-auto px-4 py-8">
         <div className="grid md:grid-cols-2 gap-6 mb-8">
-          {/* Room Card */}
           <div className="card">
             <h2 className="text-xl font-bold mb-4">🏠 My Room</h2>
             <p className="text-3xl font-bold text-primary">Room {room?.room_number}</p>
@@ -266,7 +258,6 @@ export default function TenantDashboard() {
             <p className="text-gray-500 text-sm mt-2">Joined: {formatDate(tenant.move_in_date)}</p>
           </div>
 
-          {/* Rent Card */}
           <div className="card">
             <h2 className="text-xl font-bold mb-4">💰 Rent Details</h2>
             <div className="space-y-3">
@@ -302,7 +293,6 @@ export default function TenantDashboard() {
           </div>
         </div>
 
-        {/* Quick Actions */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
           <button onClick={() => setShowComplaintModal(true)} className="card p-4 text-center font-semibold hover:-translate-y-1 transition">
             🔧 Raise Complaint
@@ -315,7 +305,6 @@ export default function TenantDashboard() {
           </button>
         </div>
 
-        {/* Check-Out Request Status */}
         {checkOutRequest && (
           <div className={`card p-4 mb-8 ${checkOutRequest.status === 'pending' ? 'alert-warning' : checkOutRequest.status === 'approved' ? 'alert-success' : 'alert-danger'}`}>
             <h3 className="font-bold mb-2">📋 Check-Out Request</h3>
@@ -325,7 +314,6 @@ export default function TenantDashboard() {
           </div>
         )}
 
-        {/* Payment History */}
         <div className="card p-6 mb-8">
           <h2 className="text-xl font-bold mb-4">📜 Payment History</h2>
           {paymentHistory.length > 0 ? (
@@ -346,7 +334,6 @@ export default function TenantDashboard() {
           )}
         </div>
 
-        {/* Complaints */}
         <div className="card p-6 mb-8">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold">🔧 My Complaints</h2>
@@ -369,7 +356,6 @@ export default function TenantDashboard() {
           )}
         </div>
 
-        {/* Notices */}
         <div className="card p-6">
           <h2 className="text-xl font-bold mb-4">📢 Notices</h2>
           {notices.length > 0 ? (
@@ -386,7 +372,6 @@ export default function TenantDashboard() {
         </div>
       </div>
 
-      {/* Raise Complaint Modal */}
       {showComplaintModal && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -410,7 +395,6 @@ export default function TenantDashboard() {
         </div>
       )}
 
-      {/* Pay Rent Modal */}
       {showPayModal && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -432,7 +416,6 @@ export default function TenantDashboard() {
         </div>
       )}
 
-      {/* Check-Out Request Modal */}
       {showCheckoutModal && (
         <div className="modal-overlay">
           <div className="modal-content">
