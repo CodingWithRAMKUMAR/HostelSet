@@ -108,6 +108,7 @@ export default function OwnerDashboard() {
     }
   }
 
+  // COMPLETE FIXED addTenant function
   const addTenant = async () => {
     if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) {
       toast.error('Fill all fields')
@@ -115,6 +116,11 @@ export default function OwnerDashboard() {
     }
 
     const selectedRoom = rooms.find(r => r.id === formData.room_id)
+    if (!selectedRoom) {
+      toast.error('Selected room not found')
+      return
+    }
+    
     if (selectedRoom.current_occupants >= selectedRoom.capacity) {
       toast.error(`Room full! Capacity: ${selectedRoom.capacity}`)
       return
@@ -124,23 +130,27 @@ export default function OwnerDashboard() {
     try {
       let userId = null
       
+      // Check if user already exists
       const { data: existingUser } = await supabase
         .from('users')
-        .select('id')
+        .select('*')
         .eq('phone', formData.phone)
         .maybeSingle()
       
       if (existingUser) {
         userId = existingUser.id
-        toast.custom((t) => (
-          <div className="bg-yellow-500 text-white p-3 rounded-lg">User already exists! Adding as tenant to this room.</div>
-        ), { duration: 3000 })
+        // Update existing user's name if needed
+        if (existingUser.full_name !== formData.name) {
+          await supabase.from('users').update({ full_name: formData.name }).eq('id', userId)
+        }
+        toast.success(`User already exists! Adding as tenant to this room.`)
       } else {
+        // Create new user account for tenant
         const { data: newUser, error: createError } = await supabase
           .from('users')
           .insert({ 
             phone: formData.phone, 
-            email: formData.email, 
+            email: formData.email || null, 
             full_name: formData.name, 
             role: 'tenant',
             is_active: true
@@ -150,28 +160,55 @@ export default function OwnerDashboard() {
         
         if (createError) throw createError
         userId = newUser.id
-        toast.success(`Tenant account created for ${formData.name}! They can now login.`)
+        toast.success(`Tenant account created for ${formData.name}!`)
       }
 
-      const { error: tenantError } = await supabase
+      // Check if tenant already exists for this user in this property
+      const { data: existingTenant } = await supabase
         .from('tenants')
-        .insert({
-          user_id: userId,
-          property_id: property.id,
-          room_id: formData.room_id,
-          name: formData.name,
-          phone: formData.phone,
-          email: formData.email || null,
-          rent_amount: parseInt(formData.rent_amount),
-          pending_amount: parseInt(formData.rent_amount),
-          total_paid: 0,
-          rent_status: 'pending',
-          move_in_date: new Date().toISOString().split('T')[0],
-          status: 'active'
-        })
+        .select('*')
+        .eq('user_id', userId)
+        .eq('property_id', property.id)
+        .maybeSingle()
 
-      if (tenantError) throw tenantError
+      if (existingTenant) {
+        // Update existing tenant's room
+        const { error: updateError } = await supabase
+          .from('tenants')
+          .update({
+            room_id: formData.room_id,
+            rent_amount: parseInt(formData.rent_amount),
+            pending_amount: parseInt(formData.rent_amount),
+            status: 'active'
+          })
+          .eq('id', existingTenant.id)
+        
+        if (updateError) throw updateError
+        toast.success(`Tenant updated to Room ${selectedRoom.room_number}!`)
+      } else {
+        // Create new tenant record
+        const { error: tenantError } = await supabase
+          .from('tenants')
+          .insert({
+            user_id: userId,
+            property_id: property.id,
+            room_id: formData.room_id,
+            name: formData.name,
+            phone: formData.phone,
+            email: formData.email || null,
+            rent_amount: parseInt(formData.rent_amount),
+            pending_amount: parseInt(formData.rent_amount),
+            total_paid: 0,
+            rent_status: 'pending',
+            move_in_date: new Date().toISOString().split('T')[0],
+            status: 'active'
+          })
 
+        if (tenantError) throw tenantError
+        toast.success(`Tenant added to Room ${selectedRoom.room_number}!`)
+      }
+
+      // Update room occupancy
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
       
@@ -180,13 +217,13 @@ export default function OwnerDashboard() {
         .update({ current_occupants: newOccupants, status: newStatus })
         .eq('id', formData.room_id)
 
-      toast.success(`Tenant added to Room ${selectedRoom.room_number}! They can now login with phone: ${formData.phone}`)
+      toast.success(`Tenant can now login with phone: ${formData.phone}`)
       setShowAddModal(false)
       setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '' })
       loadData()
     } catch (error) {
       console.error('Add tenant error:', error)
-      toast.error('Failed to add tenant')
+      toast.error('Failed to add tenant: ' + error.message)
     } finally {
       setIsSubmitting(false)
     }
@@ -225,6 +262,53 @@ export default function OwnerDashboard() {
   }
 
   const approveApplication = async (appId) => {
+    // First get the application details
+    const { data: app } = await supabase.from('applications').select('*').eq('id', appId).single()
+    
+    if (app) {
+      // Create user account for applicant
+      const { data: existingUser } = await supabase.from('users').select('*').eq('phone', app.phone).maybeSingle()
+      
+      if (!existingUser) {
+        await supabase.from('users').insert({
+          phone: app.phone,
+          email: app.email,
+          full_name: app.name,
+          role: 'tenant',
+          is_active: true
+        })
+      }
+      
+      // Get the room to get rent amount
+      const { data: room } = await supabase.from('rooms').select('*').eq('id', app.room_id).single()
+      
+      // Create tenant record
+      const { data: userData } = await supabase.from('users').select('id').eq('phone', app.phone).single()
+      
+      if (userData) {
+        await supabase.from('tenants').insert({
+          user_id: userData.id,
+          property_id: app.property_id,
+          room_id: app.room_id,
+          name: app.name,
+          phone: app.phone,
+          email: app.email,
+          rent_amount: room?.monthly_rent || 10000,
+          pending_amount: room?.monthly_rent || 10000,
+          total_paid: 0,
+          rent_status: 'pending',
+          move_in_date: app.expected_move_in || new Date().toISOString().split('T')[0],
+          status: 'active'
+        })
+        
+        // Update room occupancy
+        await supabase.from('rooms').update({ 
+          current_occupants: (room?.current_occupants || 0) + 1,
+          status: (room?.current_occupants + 1) >= room?.capacity ? 'occupied' : 'vacant'
+        }).eq('id', app.room_id)
+      }
+    }
+    
     await supabase.from('applications').update({ status: 'approved', processed_at: new Date() }).eq('id', appId)
     toast.success('Application approved! Tenant can now login.')
     loadData()
@@ -327,7 +411,6 @@ export default function OwnerDashboard() {
       </nav>
       
       <div className="container mx-auto px-4 py-8">
-        {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="stat-card"><div className="stat-number">{stats.totalRooms}</div><div className="stat-label">Total Rooms</div></div>
           <div className="stat-card"><div className="stat-number text-green-400">{stats.occupied}</div><div className="stat-label">Occupied</div></div>
@@ -335,7 +418,6 @@ export default function OwnerDashboard() {
           <div className="stat-card"><div className="stat-number text-blue-400">₹{stats.totalCollected.toLocaleString()}</div><div className="stat-label">Collected</div></div>
         </div>
         
-        {/* Alerts */}
         {alerts.length > 0 && (
           <div className="mb-8 space-y-2">
             {alerts.map((a, i) => (
@@ -346,20 +428,18 @@ export default function OwnerDashboard() {
           </div>
         )}
         
-        {/* Action Buttons */}
         <div className="flex flex-wrap gap-3 mb-8">
           <button onClick={() => setShowAddModal(true)} className="btn-primary text-sm">+ Add Tenant</button>
           <button onClick={() => setShowRoomModal(true)} className="btn-secondary text-sm">+ Add Room</button>
           <button onClick={() => setShowNoticeModal(true)} className="btn-secondary text-sm">📢 Post Notice</button>
         </div>
         
-        {/* Tabs */}
         <div className="flex border-b border-gray-800 mb-6 overflow-x-auto">
           <button onClick={() => setActiveTab('rooms')} className={`px-6 py-3 font-semibold ${activeTab === 'rooms' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>🏠 Rooms</button>
           <button onClick={() => setActiveTab('tenants')} className={`px-6 py-3 font-semibold ${activeTab === 'tenants' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>👥 Tenants</button>
           <button onClick={() => setActiveTab('applications')} className={`px-6 py-3 font-semibold ${activeTab === 'applications' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>📋 Applications {applications.length > 0 && <span className="bg-red-500 text-white rounded-full px-2 text-xs ml-1">{applications.length}</span>}</button>
           <button onClick={() => setActiveTab('vacate')} className={`px-6 py-3 font-semibold ${activeTab === 'vacate' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>🚪 Vacate {vacateRequests.length > 0 && <span className="bg-yellow-500 text-white rounded-full px-2 text-xs ml-1">{vacateRequests.length}</span>}</button>
-          <button onClick={() => setActiveTab('notices')} className={`px-6 py-3 font-semibold ${activeTab === 'notices' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>📢 Notices</button>
+          <button onClick={() | setActiveTab('notices')} className={`px-6 py-3 font-semibold ${activeTab === 'notices' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>📢 Notices</button>
         </div>
 
         {/* Rooms Tab */}
@@ -493,7 +573,7 @@ export default function OwnerDashboard() {
                 ))}
               </select>
               <div className="flex gap-3 mt-6">
-                <button onClick={addTenant} className="btn-primary flex-1">Add</button>
+                <button onClick={addTenant} className="btn-primary flex-1">Add Tenant</button>
                 <button onClick={() => setShowAddModal(false)} className="btn-outline flex-1">Cancel</button>
               </div>
             </div>
@@ -516,7 +596,7 @@ export default function OwnerDashboard() {
               </select>
               <input type="number" placeholder="Monthly Rent" className="input" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
               <div className="flex gap-3 mt-6">
-                <button onClick={addRoom} className="btn-primary flex-1">Add</button>
+                <button onClick={addRoom} className="btn-primary flex-1">Add Room</button>
                 <button onClick={() => setShowRoomModal(false)} className="btn-outline flex-1">Cancel</button>
               </div>
             </div>
