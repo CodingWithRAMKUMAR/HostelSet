@@ -39,30 +39,21 @@ export default function TenantDashboard() {
     try {
       const userId = localStorage.getItem('userId')
       
-      // IMPORTANT: Get tenant with room assignment
+      // Get tenant with room and property details
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
         .select('*, rooms:room_id(*), properties:property_id(*)')
         .eq('user_id', userId)
         .maybeSingle()
 
-      console.log('Tenant data:', tenantData) // Debug log
+      console.log('Tenant data from DB:', tenantData)
 
       if (tenantData) {
         setTenant(tenantData)
         setRoom(tenantData.rooms)
         setProperty(tenantData.properties)
 
-        // If tenant has room_id but room data is missing, fetch room separately
-        if (tenantData.room_id && !tenantData.rooms) {
-          const { data: roomData } = await supabase
-            .from('rooms')
-            .select('*')
-            .eq('id', tenantData.room_id)
-            .single()
-          setRoom(roomData)
-        }
-
+        // Get payment history
         const { data: payments } = await supabase
           .from('payment_history')
           .select('*')
@@ -70,6 +61,7 @@ export default function TenantDashboard() {
           .order('payment_date', { ascending: false })
         setPaymentHistory(payments || [])
 
+        // Get complaints
         const { data: complaintsData } = await supabase
           .from('complaints')
           .select('*')
@@ -77,6 +69,7 @@ export default function TenantDashboard() {
           .order('created_at', { ascending: false })
         setComplaints(complaintsData || [])
 
+        // Get notices
         const { data: noticesData } = await supabase
           .from('notices')
           .select('*')
@@ -84,6 +77,7 @@ export default function TenantDashboard() {
           .order('created_at', { ascending: false })
         setNotices(noticesData || [])
 
+        // Get check-out request
         const { data: checkOutData } = await supabase
           .from('check_out_requests')
           .select('*')
@@ -92,7 +86,6 @@ export default function TenantDashboard() {
           .limit(1)
         setCheckOutRequest(checkOutData?.[0] || null)
       } else {
-        // No tenant record found for this user
         console.log('No tenant record found for userId:', userId)
       }
     } catch (error) { 
@@ -201,6 +194,7 @@ export default function TenantDashboard() {
     router.push('/') 
   }
 
+  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#0f172a' }}>
@@ -209,18 +203,18 @@ export default function TenantDashboard() {
     )
   }
 
-  // If tenant exists but no room assigned
+  // WAITING PAGE - Show this if tenant has NO room assigned
   if (!tenant || !tenant.room_id || !room) {
     return (
       <div className="min-h-screen" style={{ background: '#0f172a' }}>
-        <nav className="navbar py-4 px-6 flex justify-between">
+        <nav className="navbar py-4 px-6 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-primary">🏠 HOSTELSET</h1>
-          <button onClick={handleLogout} className="text-red-500">Logout</button>
+          <button onClick={handleLogout} className="text-red-500 hover:text-red-700">Logout</button>
         </nav>
         <div className="container mx-auto px-4 py-20 text-center">
           <div className="max-w-md mx-auto">
             <div className="text-6xl mb-6 animate-float">⏳</div>
-            <h1 className="text-2xl font-bold text-white mb-4">Waiting for Room Assignment</h1>
+            <h1 className="text-2xl font-bold text-white mb-2">Waiting for Room Assignment</h1>
             <p className="text-gray-400 mb-4">Your tenant account has been created successfully!</p>
             <p className="text-gray-400 mb-6">Please wait for the PG owner to assign you a room.</p>
             <div className="bg-yellow-500/10 border border-yellow-500 rounded-xl p-4 mb-6 text-left">
@@ -239,6 +233,7 @@ export default function TenantDashboard() {
     )
   }
 
+  // Tenant has room - Show full dashboard
   const sharingDetails = getSharingDetails(room?.sharing_type)
   const pendingAmount = tenant.pending_amount || tenant.rent_amount
   const isRentDue = pendingAmount > 0
@@ -258,6 +253,7 @@ export default function TenantDashboard() {
 
       <div className="container mx-auto px-4 py-8">
         <div className="grid md:grid-cols-2 gap-6 mb-8">
+          {/* Room Card */}
           <div className="card">
             <h2 className="text-xl font-bold mb-4">🏠 My Room</h2>
             <p className="text-3xl font-bold text-primary">Room {room?.room_number}</p>
@@ -270,6 +266,7 @@ export default function TenantDashboard() {
             <p className="text-gray-500 text-sm mt-2">Joined: {formatDate(tenant.move_in_date)}</p>
           </div>
 
+          {/* Rent Card */}
           <div className="card">
             <h2 className="text-xl font-bold mb-4">💰 Rent Details</h2>
             <div className="space-y-3">
@@ -305,6 +302,7 @@ export default function TenantDashboard() {
           </div>
         </div>
 
+        {/* Quick Actions */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
           <button onClick={() => setShowComplaintModal(true)} className="card p-4 text-center font-semibold hover:-translate-y-1 transition">
             🔧 Raise Complaint
@@ -317,6 +315,7 @@ export default function TenantDashboard() {
           </button>
         </div>
 
+        {/* Check-Out Request Status */}
         {checkOutRequest && (
           <div className={`card p-4 mb-8 ${checkOutRequest.status === 'pending' ? 'alert-warning' : checkOutRequest.status === 'approved' ? 'alert-success' : 'alert-danger'}`}>
             <h3 className="font-bold mb-2">📋 Check-Out Request</h3>
@@ -326,6 +325,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
+        {/* Payment History */}
         <div className="card p-6 mb-8">
           <h2 className="text-xl font-bold mb-4">📜 Payment History</h2>
           {paymentHistory.length > 0 ? (
@@ -346,6 +346,7 @@ export default function TenantDashboard() {
           )}
         </div>
 
+        {/* Complaints */}
         <div className="card p-6 mb-8">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold">🔧 My Complaints</h2>
@@ -368,6 +369,7 @@ export default function TenantDashboard() {
           )}
         </div>
 
+        {/* Notices */}
         <div className="card p-6">
           <h2 className="text-xl font-bold mb-4">📢 Notices</h2>
           {notices.length > 0 ? (
