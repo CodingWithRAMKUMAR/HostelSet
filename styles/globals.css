@@ -1,0 +1,165 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dark & Slate Theme - Complete */
+body {
+  background: #0f172a;
+  color: #f1f5f9;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Buttons */
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+  padding: 10px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-primary:hover { background: #2563eb; transform: scale(1.02); }
+
+.btn-secondary {
+  background: #1e293b;
+  color: white;
+  padding: 10px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  border: 1px solid #334155;
+  cursor: pointer;
+}
+.btn-secondary:hover { background: #334155; }
+
+.btn-outline {
+  background: transparent;
+  border: 2px solid #3b82f6;
+  color: #3b82f6;
+  padding: 10px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-outline:hover { background: #3b82f6; color: white; }
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: none;
+  cursor: pointer;
+}
+.btn-danger:hover { background: #dc2626; }
+
+.btn-success {
+  background: #10b981;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: none;
+  cursor: pointer;
+}
+.btn-success:hover { background: #059669; }
+
+/* Cards */
+.card {
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 20px;
+  border: 1px solid #334155;
+  transition: all 0.2s;
+}
+.card:hover { transform: translateY(-4px); border-color: #3b82f6; }
+
+/* Stats Card */
+.stat-card {
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+  border: 1px solid #334155;
+}
+.stat-number { font-size: 32px; font-weight: bold; color: #3b82f6; }
+.stat-label { color: #94a3b8; font-size: 14px; margin-top: 8px; }
+
+/* Room Grid Card */
+.room-card {
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid #334155;
+  transition: all 0.2s;
+}
+.room-card:hover { transform: translateY(-4px); border-color: #3b82f6; }
+.room-card-vacant { border-left: 4px solid #10b981; }
+.room-card-occupied { border-left: 4px solid #f59e0b; }
+.room-card-full { border-left: 4px solid #ef4444; }
+
+/* Inputs */
+.input {
+  width: 100%;
+  padding: 12px 16px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  color: white;
+}
+.input:focus { outline: none; border-color: #3b82f6; }
+
+/* Badges */
+.badge-success { background: #10b98120; color: #34d399; padding: 4px 12px; border-radius: 20px; font-size: 12px; }
+.badge-danger { background: #ef444420; color: #f87171; padding: 4px 12px; border-radius: 20px; font-size: 12px; }
+.badge-warning { background: #f59e0b20; color: #fbbf24; padding: 4px 12px; border-radius: 20px; font-size: 12px; }
+.badge-info { background: #3b82f620; color: #60a5fa; padding: 4px 12px; border-radius: 20px; font-size: 12px; }
+
+/* Tables */
+.table-container { overflow-x: auto; background: #1e293b; border-radius: 16px; border: 1px solid #334155; }
+.table { width: 100%; border-collapse: collapse; }
+.table th { text-align: left; padding: 12px 16px; color: #94a3b8; font-size: 12px; border-bottom: 1px solid #334155; }
+.table td { padding: 12px 16px; border-bottom: 1px solid #1e293b; }
+.table tr:hover { background: #33415520; }
+
+/* Modals */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+.modal-content { background: #1e293b; border-radius: 24px; padding: 24px; max-width: 500px; width: 100%; border: 1px solid #334155; max-height: 90vh; overflow-y: auto; }
+
+/* Navbar */
+.navbar { background: #0f172a; border-bottom: 1px solid #1e293b; position: sticky; top: 0; z-index: 50; }
+
+/* Hero */
+.hero-title { font-size: 48px; font-weight: bold; background: linear-gradient(135deg, #3b82f6, #60a5fa); -webkit-background-clip: text; background-clip: text; color: transparent; }
+@media (max-width: 768px) { .hero-title { font-size: 32px; } }
+.hero-subtitle { font-size: 18px; color: #94a3b8; max-width: 600px; margin: 16px auto 0; }
+
+/* Grids */
+.room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+.feature-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 24px; }
+
+/* Alerts */
+.alert-success { background: #10b98120; border: 1px solid #10b981; color: #34d399; padding: 12px 16px; border-radius: 12px; margin-bottom: 16px; }
+.alert-danger { background: #ef444420; border: 1px solid #ef4444; color: #f87171; padding: 12px 16px; border-radius: 12px; margin-bottom: 16px; }
+.alert-warning { background: #f59e0b20; border: 1px solid #f59e0b; color: #fbbf24; padding: 12px 16px; border-radius: 12px; margin-bottom: 16px; }
+.alert-info { background: #3b82f620; border: 1px solid #3b82f6; color: #60a5fa; padding: 12px 16px; border-radius: 12px; margin-bottom: 16px; }
+
+/* Progress Bar */
+.progress-bar { width: 100%; background: #1e293b; border-radius: 9999px; height: 8px; overflow: hidden; }
+.progress-fill { background: #3b82f6; height: 8px; border-radius: 9999px; transition: width 0.3s; }
+
+/* Animations */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { width: 40px; height: 40px; border: 3px solid #1e293b; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto; }
+@keyframes float { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-15px); } }
+.animate-float { animation: float 4s ease-in-out infinite; }
+@keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+.animate-slide-up { animation: slideUp 0.5s ease-out; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #1e293b; border-radius: 10px; }
+::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
