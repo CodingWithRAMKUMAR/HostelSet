@@ -77,21 +77,93 @@ export default function OwnerDashboard() {
     if (error) toast.error('Failed to add room'); else { toast.success(`Room ${roomForm.room_number} added!`); setShowRoomModal(false); setRoomForm({ room_number: '', sharing_type: 'double', monthly_rent: 10000 }); loadData() }
   }
 
+  // FIXED: Add Tenant function - creates user AND tenant record with room assignment
   const addTenant = async () => {
-    if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) { toast.error('Fill all fields'); return }
+    if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) {
+      toast.error('Fill all fields')
+      return
+    }
+
     const selectedRoom = rooms.find(r => r.id === formData.room_id)
-    if (selectedRoom.current_occupants >= selectedRoom.capacity) { toast.error(`Room full! Capacity: ${selectedRoom.capacity}`); return }
+    if (selectedRoom.current_occupants >= selectedRoom.capacity) {
+      toast.error(`Room full! Capacity: ${selectedRoom.capacity}`)
+      return
+    }
     
-    let userId = null
-    const { data: existingUser } = await supabase.from('users').select('id').eq('phone', formData.phone).maybeSingle()
-    if (existingUser) { userId = existingUser.id }
-    else { const { data: newUser } = await supabase.from('users').insert({ phone: formData.phone, email: formData.email, full_name: formData.name, role: 'tenant' }).select().single(); userId = newUser.id }
-    
-    await supabase.from('tenants').insert({ user_id: userId, property_id: property.id, room_id: formData.room_id, name: formData.name, phone: formData.phone, email: formData.email, rent_amount: parseInt(formData.rent_amount), pending_amount: parseInt(formData.rent_amount), total_paid: 0, rent_status: 'pending', move_in_date: new Date().toISOString().split('T')[0] })
-    const newOccupants = selectedRoom.current_occupants + 1
-    await supabase.from('rooms').update({ current_occupants: newOccupants, status: newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant' }).eq('id', formData.room_id)
-    toast.success(`Tenant added to Room ${selectedRoom.room_number}!`)
-    setShowAddModal(false); setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '' }); loadData()
+    setIsSubmitting(true)
+    try {
+      let userId = null
+      
+      // Check if user already exists
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('phone', formData.phone)
+        .maybeSingle()
+      
+      if (existingUser) {
+        userId = existingUser.id
+        toast.custom((t) => (
+          <div className="bg-yellow-500 text-white p-3 rounded-lg">User already exists! Adding as tenant to this room.</div>
+        ), { duration: 3000 })
+      } else {
+        // Create new user account for tenant
+        const { data: newUser, error: createError } = await supabase
+          .from('users')
+          .insert({ 
+            phone: formData.phone, 
+            email: formData.email, 
+            full_name: formData.name, 
+            role: 'tenant',
+            is_active: true
+          })
+          .select()
+          .single()
+        
+        if (createError) throw createError
+        userId = newUser.id
+        toast.success(`Tenant account created for ${formData.name}! They can now login.`)
+      }
+
+      // IMPORTANT: Add tenant to tenants table with room assignment
+      const { error: tenantError } = await supabase
+        .from('tenants')
+        .insert({
+          user_id: userId,
+          property_id: property.id,
+          room_id: formData.room_id,
+          name: formData.name,
+          phone: formData.phone,
+          email: formData.email || null,
+          rent_amount: parseInt(formData.rent_amount),
+          pending_amount: parseInt(formData.rent_amount),
+          total_paid: 0,
+          rent_status: 'pending',
+          move_in_date: new Date().toISOString().split('T')[0],
+          status: 'active'
+        })
+
+      if (tenantError) throw tenantError
+
+      // Update room occupancy
+      const newOccupants = selectedRoom.current_occupants + 1
+      const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
+      
+      await supabase
+        .from('rooms')
+        .update({ current_occupants: newOccupants, status: newStatus })
+        .eq('id', formData.room_id)
+
+      toast.success(`Tenant added to Room ${selectedRoom.room_number}! They can now login with phone: ${formData.phone}`)
+      setShowAddModal(false)
+      setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '' })
+      loadData()
+    } catch (error) {
+      console.error('Add tenant error:', error)
+      toast.error('Failed to add tenant')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const collectRent = async () => {
@@ -168,7 +240,7 @@ export default function OwnerDashboard() {
 
         {activeTab === 'rooms' && (<div className="room-grid">{rooms.map(room => { const sharing = getSharingDetails(room.sharing_type); const isFull = room.current_occupants >= room.capacity; return (<div key={room.id} className={`room-card ${isFull ? 'room-card-full' : 'room-card-vacant'}`}><div className="flex justify-between items-start"><h3 className="text-xl font-bold">Room {room.room_number}</h3><span className="text-2xl">{sharing.icon}</span></div><p className="text-sm text-gray-400">{sharing.label}</p><p className="text-lg font-bold text-primary mt-2">{formatCurrency(room.monthly_rent)}<span className="text-xs">/month</span></p><div className="mt-2 flex justify-between text-sm"><span>👥 {room.current_occupants}/{room.capacity}</span><span className={isFull ? 'text-red-400' : 'text-green-400'}>{isFull ? 'Full' : `${room.capacity - room.current_occupants} slots`}</span></div><div className="progress-bar mt-2"><div className="progress-fill" style={{ width: `${(room.current_occupants/room.capacity)*100}%` }}></div></div><button onClick={() => deleteRoom(room.id)} className="btn-danger text-xs mt-3 w-full">Delete Room</button></div>)})}</div>)}
 
-        {activeTab === 'tenants' && (<div className="table-container"><table className="table"><thead><tr><th>Name</th><th>Phone</th><th>Room</th><th>Joined</th><th>Rent</th><th>Paid</th><th>Pending</th><th>Actions</th></tr></thead><tbody>{tenants.map(t => (<tr key={t.id}><td>{t.name}</td><td>{t.phone}</td><td>Room {t.rooms?.room_number}</td><td>{formatDate(t.move_in_date)}</td><td>{formatCurrency(t.rent_amount)}</td><td className="text-green-400">{formatCurrency(t.total_paid || 0)}</td><td className="text-red-400">{formatCurrency(t.pending_amount || t.rent_amount)}</td><td><button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="btn-success text-xs mr-2">Collect</button><button onClick={() => deleteTenant(t.id, t.room_id)} className="btn-danger text-xs">Delete</button></td></tr>))}</tbody></table></div>)}
+        {activeTab === 'tenants' && (<div className="table-container"><table className="table"><thead><tr><th>Name</th><th>Phone</th><th>Room</th><th>Joined</th><th>Rent</th><th>Paid</th><th>Pending</th><th>Actions</th></tr></thead><tbody>{tenants.map(t => (<tr key={t.id}><td>{t.name}</td><td>{t.phone}</td><td>Room {t.rooms?.room_number}</td><td>{formatDate(t.move_in_date)}</td><td>{formatCurrency(t.rent_amount)}</td><td className="text-green-400">{formatCurrency(t.total_paid || 0)}</td><td className="text-red-400">{formatCurrency(t.pending_amount || t.rent_amount)}</td><td><button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="btn-success text-xs mr-2">Collect</button><button onClick={() => deleteTenant(t.id, t.room_id)} className="btn-danger text-xs">Delete</button></td></tr>))}</tbody></td></div>)}
 
         {activeTab === 'applications' && (<div className="space-y-3">{applications.map(app => (<div key={app.id} className="card p-4 flex justify-between items-center"><div><p className="font-semibold">{app.name}</p><p className="text-sm text-gray-400">{app.phone} • {app.email}</p><p className="text-xs text-gray-500">{app.message}</p></div><button onClick={() => approveApplication(app.id)} className="btn-success text-sm">Approve</button></div>))}{applications.length === 0 && <div className="text-center py-8 text-gray-500">No pending applications</div>}</div>)}
 
