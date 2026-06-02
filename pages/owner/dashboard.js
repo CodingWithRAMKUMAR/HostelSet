@@ -96,11 +96,20 @@ export default function OwnerDashboard() {
     }
   }
 
+  // FIXED: Add room with duplicate check
   const addRoom = async () => {
     if (!roomForm.room_number) { 
       toast.error('Enter room number')
       return 
     }
+
+    // Check if room number already exists
+    const roomExists = rooms.some(r => r.room_number === roomForm.room_number)
+    if (roomExists) {
+      toast.error(`❌ Room ${roomForm.room_number} already exists! Please use a different room number.`)
+      return
+    }
+
     const selectedType = sharingTypes.find(t => t.value === roomForm.sharing_type)
     const { error } = await supabase.from('rooms').insert({ 
       property_id: property.id, 
@@ -112,9 +121,13 @@ export default function OwnerDashboard() {
       status: 'vacant' 
     })
     if (error) {
-      toast.error('Failed to add room')
+      if (error.code === '23505') {
+        toast.error(`❌ Room ${roomForm.room_number} already exists!`)
+      } else {
+        toast.error('Failed to add room')
+      }
     } else { 
-      toast.success(`Room ${roomForm.room_number} added!`)
+      toast.success(`✅ Room ${roomForm.room_number} added!`)
       setShowRoomModal(false)
       setRoomForm({ room_number: '', sharing_type: 'double', monthly_rent: 10000 })
       loadData()
@@ -132,6 +145,13 @@ export default function OwnerDashboard() {
       return
     }
 
+    // Check if phone already exists as tenant
+    const phoneExists = tenants.some(t => t.phone === formData.phone)
+    if (phoneExists) {
+      toast.error(`❌ Tenant with phone ${formData.phone} already exists!`)
+      return
+    }
+
     const selectedRoom = rooms.find(r => r.id === formData.room_id)
     if (!selectedRoom) {
       toast.error('Selected room not found')
@@ -139,7 +159,7 @@ export default function OwnerDashboard() {
     }
     
     if (selectedRoom.current_occupants >= selectedRoom.capacity) {
-      toast.error(`Room ${selectedRoom.room_number} is full! Capacity: ${selectedRoom.capacity}`)
+      toast.error(`❌ Room ${selectedRoom.room_number} is full! Capacity: ${selectedRoom.capacity}`)
       return
     }
     
@@ -159,7 +179,6 @@ export default function OwnerDashboard() {
         if (existingUser.role !== 'tenant') {
           await supabase.from('users').update({ role: 'tenant' }).eq('id', userId)
         }
-        toast.success(`User already exists! Adding as tenant.`)
       } else {
         const { data: newUser, error: createError } = await supabase
           .from('users')
@@ -175,7 +194,6 @@ export default function OwnerDashboard() {
         
         if (createError) throw createError
         userId = newUser.id
-        toast.success(`New user account created for ${formData.name}!`)
       }
 
       const { error: tenantError } = await supabase
@@ -566,11 +584,11 @@ export default function OwnerDashboard() {
                 <label className="block text-gray-300 text-sm mb-1">Select Room *</label>
                 <select className="input" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}>
                   <option value="">-- Select a Room --</option>
-                  {rooms.map(room => {
-                    const available = room.capacity - room.current_occupants
+                  {rooms.filter(r => r.current_occupants < r.capacity).map(room => {
                     const sharing = getSharingDetails(room.sharing_type)
+                    const available = room.capacity - room.current_occupants
                     return (
-                      <option key={room.id} value={room.id} disabled={available <= 0}>
+                      <option key={room.id} value={room.id}>
                         Room {room.room_number} - {sharing.label} - ₹{formatCurrency(room.monthly_rent)}/month ({available} slots)
                       </option>
                     )
@@ -597,14 +615,26 @@ export default function OwnerDashboard() {
           <div className="modal-content">
             <h2 className="text-2xl font-bold mb-4">Add New Room</h2>
             <div className="space-y-4">
-              <input type="text" placeholder="Room Number (e.g., 101)" className="input" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
-              <select className="input" value={roomForm.sharing_type} onChange={(e) => { 
-                const selected = sharingTypes.find(t => t.value === e.target.value)
-                setRoomForm({...roomForm, sharing_type: e.target.value, monthly_rent: selected.price})
-              }}>
-                {sharingTypes.map(type => <option key={type.value} value={type.value}>{type.label} {type.icon} - Capacity: {type.capacity} - ₹{formatCurrency(type.price)}/month</option>)}
-              </select>
-              <input type="number" placeholder="Monthly Rent (₹)" className="input" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
+              <div>
+                <label className="block text-gray-300 text-sm mb-1">Room Number *</label>
+                <input type="text" placeholder="e.g., 101" className="input" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-gray-300 text-sm mb-1">Sharing Type *</label>
+                <select className="input" value={roomForm.sharing_type} onChange={(e) => { 
+                  const selected = sharingTypes.find(t => t.value === e.target.value)
+                  setRoomForm({...roomForm, sharing_type: e.target.value, monthly_rent: selected.price})
+                }}>
+                  {sharingTypes.map(type => <option key={type.value} value={type.value}>{type.label} {type.icon} - Capacity: {type.capacity} - ₹{formatCurrency(type.price)}/month</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-300 text-sm mb-1">Monthly Rent (₹) *</label>
+                <input type="number" placeholder="10000" className="input" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
+              </div>
+              <div className="bg-yellow-500/10 rounded-lg p-3 text-xs text-yellow-400">
+                ⚠️ Room number must be unique. Duplicate rooms are not allowed.
+              </div>
               <div className="flex gap-3 mt-6">
                 <button onClick={addRoom} className="btn-primary flex-1">Add Room</button>
                 <button onClick={() => setShowRoomModal(false)} className="btn-outline flex-1">Cancel</button>
