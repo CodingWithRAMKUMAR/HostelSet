@@ -96,17 +96,15 @@ export default function OwnerDashboard() {
     }
   }
 
-  // FIXED: Add room with duplicate check
   const addRoom = async () => {
     if (!roomForm.room_number) { 
       toast.error('Enter room number')
       return 
     }
 
-    // Check if room number already exists
     const roomExists = rooms.some(r => r.room_number === roomForm.room_number)
     if (roomExists) {
-      toast.error(`❌ Room ${roomForm.room_number} already exists! Please use a different room number.`)
+      toast.error(`❌ Room ${roomForm.room_number} already exists!`)
       return
     }
 
@@ -121,11 +119,7 @@ export default function OwnerDashboard() {
       status: 'vacant' 
     })
     if (error) {
-      if (error.code === '23505') {
-        toast.error(`❌ Room ${roomForm.room_number} already exists!`)
-      } else {
-        toast.error('Failed to add room')
-      }
+      toast.error('Failed to add room')
     } else { 
       toast.success(`✅ Room ${roomForm.room_number} added!`)
       setShowRoomModal(false)
@@ -145,13 +139,6 @@ export default function OwnerDashboard() {
       return
     }
 
-    // Check if phone already exists as tenant
-    const phoneExists = tenants.some(t => t.phone === formData.phone)
-    if (phoneExists) {
-      toast.error(`❌ Tenant with phone ${formData.phone} already exists!`)
-      return
-    }
-
     const selectedRoom = rooms.find(r => r.id === formData.room_id)
     if (!selectedRoom) {
       toast.error('Selected room not found')
@@ -166,8 +153,8 @@ export default function OwnerDashboard() {
     setIsSubmitting(true)
     
     try {
+      // STEP 1: Create user
       let userId = null
-      
       const { data: existingUser } = await supabase
         .from('users')
         .select('*')
@@ -191,12 +178,12 @@ export default function OwnerDashboard() {
           })
           .select()
           .single()
-        
         if (createError) throw createError
         userId = newUser.id
       }
 
-      const { error: tenantError } = await supabase
+      // STEP 2: Create tenant record with room_id
+      const { data: tenantRecord, error: tenantError } = await supabase
         .from('tenants')
         .insert({
           user_id: userId,
@@ -212,9 +199,11 @@ export default function OwnerDashboard() {
           move_in_date: new Date().toISOString().split('T')[0],
           status: 'active'
         })
+        .select()
 
       if (tenantError) throw tenantError
 
+      // STEP 3: Update room occupancy
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
       
@@ -276,7 +265,6 @@ export default function OwnerDashboard() {
   const approveApplication = async (appId) => {
     try {
       const { data: app } = await supabase.from('applications').select('*').eq('id', appId).single()
-      
       const { data: room } = await supabase.from('rooms').select('*').eq('id', app.room_id).single()
       
       let userId = null
