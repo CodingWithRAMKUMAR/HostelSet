@@ -210,6 +210,8 @@ export default function OwnerDashboard() {
         throw tenantError
       }
 
+      console.log('Tenant created:', tenantRecord)
+
       // STEP 3: Update room occupancy
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
@@ -225,7 +227,6 @@ export default function OwnerDashboard() {
       toast.success(`✅ Tenant "${formData.name}" added to Room ${selectedRoom.room_number}!`)
       toast.success(`📱 They can login with phone: ${formData.phone} and OTP: 123456`)
       
-      // Reset form and reload
       setShowAddModal(false)
       setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '' })
       await loadData()
@@ -280,7 +281,6 @@ export default function OwnerDashboard() {
       
       if (appError) throw appError
 
-      // Get room details
       const { data: room, error: roomError } = await supabase
         .from('rooms')
         .select('*')
@@ -289,7 +289,6 @@ export default function OwnerDashboard() {
       
       if (roomError) throw roomError
 
-      // Create user if doesn't exist
       let userId = null
       const { data: existingUser } = await supabase
         .from('users')
@@ -316,7 +315,6 @@ export default function OwnerDashboard() {
         userId = newUser.id
       }
 
-      // Create tenant record
       const { error: tenantError } = await supabase
         .from('tenants')
         .insert({
@@ -336,7 +334,6 @@ export default function OwnerDashboard() {
 
       if (tenantError) throw tenantError
 
-      // Update room occupancy
       const newOccupants = (room.current_occupants || 0) + 1
       await supabase
         .from('rooms')
@@ -346,7 +343,6 @@ export default function OwnerDashboard() {
         })
         .eq('id', app.room_id)
 
-      // Update application status
       await supabase
         .from('applications')
         .update({ status: 'approved', processed_at: new Date() })
@@ -457,7 +453,6 @@ export default function OwnerDashboard() {
       </nav>
       
       <div className="container mx-auto px-4 py-8">
-        {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="stat-card"><div className="stat-number">{stats.totalRooms}</div><div className="stat-label">Total Rooms</div></div>
           <div className="stat-card"><div className="stat-number text-green-400">{stats.occupied}</div><div className="stat-label">Occupied</div></div>
@@ -465,7 +460,6 @@ export default function OwnerDashboard() {
           <div className="stat-card"><div className="stat-number text-blue-400">₹{stats.totalCollected.toLocaleString()}</div><div className="stat-label">Collected</div></div>
         </div>
         
-        {/* Alerts */}
         {alerts.length > 0 && (
           <div className="mb-8 space-y-2">
             {alerts.map((a, i) => (
@@ -476,14 +470,12 @@ export default function OwnerDashboard() {
           </div>
         )}
         
-        {/* Action Buttons */}
         <div className="flex flex-wrap gap-3 mb-8">
           <button onClick={() => setShowAddModal(true)} className="btn-primary text-sm">+ Add Tenant</button>
           <button onClick={() => setShowRoomModal(true)} className="btn-secondary text-sm">+ Add Room</button>
           <button onClick={() => setShowNoticeModal(true)} className="btn-secondary text-sm">📢 Post Notice</button>
         </div>
         
-        {/* Tabs */}
         <div className="flex border-b border-gray-800 mb-6 overflow-x-auto">
           <button onClick={() => setActiveTab('rooms')} className={`px-6 py-3 font-semibold ${activeTab === 'rooms' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>🏠 Rooms</button>
           <button onClick={() => setActiveTab('tenants')} className={`px-6 py-3 font-semibold ${activeTab === 'tenants' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>👥 Tenants</button>
@@ -492,7 +484,6 @@ export default function OwnerDashboard() {
           <button onClick={() => setActiveTab('notices')} className={`px-6 py-3 font-semibold ${activeTab === 'notices' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>📢 Notices</button>
         </div>
 
-        {/* Rooms Tab */}
         {activeTab === 'rooms' && (
           <div className="room-grid">
             {rooms.map(room => {
@@ -522,7 +513,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab */}
         {activeTab === 'tenants' && (
           <div className="table-container">
             <table className="table">
@@ -542,7 +532,7 @@ export default function OwnerDashboard() {
                     <td>
                       <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="btn-success text-xs mr-2">Collect Rent</button>
                       <button onClick={() => deleteTenant(t.id, t.room_id)} className="btn-danger text-xs">Delete</button>
-                    </td>
+                    </tr>
                   </tr>
                 ))}
               </tbody>
@@ -550,7 +540,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Applications Tab */}
         {activeTab === 'applications' && (
           <div className="space-y-3">
             {applications.map(app => (
@@ -566,7 +555,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Vacate Requests Tab */}
         {activeTab === 'vacate' && (
           <div className="space-y-3">
             {vacateRequests.map(req => (
@@ -582,7 +570,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Notices Tab */}
         {activeTab === 'notices' && (
           <div className="space-y-3">
             {notices.map(notice => (
