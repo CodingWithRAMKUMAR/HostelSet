@@ -108,9 +108,16 @@ export default function OwnerDashboard() {
     }
   }
 
+  // COMPLETELY REWRITTEN addTenant function - THIS IS THE KEY FIX
   const addTenant = async () => {
+    // Validation
     if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) {
-      toast.error('Fill all fields')
+      toast.error('Please fill all fields')
+      return
+    }
+
+    if (formData.phone.length !== 10) {
+      toast.error('Enter valid 10-digit phone number')
       return
     }
 
@@ -121,27 +128,39 @@ export default function OwnerDashboard() {
     }
     
     if (selectedRoom.current_occupants >= selectedRoom.capacity) {
-      toast.error(`Room full! Capacity: ${selectedRoom.capacity}`)
+      toast.error(`Room ${selectedRoom.room_number} is full! Capacity: ${selectedRoom.capacity}`)
       return
     }
     
     setIsSubmitting(true)
+    
     try {
       let userId = null
       
-      const { data: existingUser } = await supabase
+      // Step 1: Check if user already exists in users table
+      const { data: existingUser, error: findError } = await supabase
         .from('users')
         .select('*')
         .eq('phone', formData.phone)
         .maybeSingle()
       
       if (existingUser) {
+        // User exists - use existing ID
         userId = existingUser.id
+        
+        // Update user name if different
         if (existingUser.full_name !== formData.name) {
           await supabase.from('users').update({ full_name: formData.name }).eq('id', userId)
         }
-        toast.success(`User already exists! Adding as tenant to this room.`)
+        
+        // If user is not tenant role, update it
+        if (existingUser.role !== 'tenant') {
+          await supabase.from('users').update({ role: 'tenant' }).eq('id', userId)
+        }
+        
+        toast.success(`Existing user found. Adding as tenant.`)
       } else {
+        // Step 2: Create new user
         const { data: newUser, error: createError } = await supabase
           .from('users')
           .insert({ 
@@ -156,10 +175,11 @@ export default function OwnerDashboard() {
         
         if (createError) throw createError
         userId = newUser.id
-        toast.success(`Tenant account created for ${formData.name}!`)
+        toast.success(`New tenant account created for ${formData.name}!`)
       }
 
-      const { data: existingTenant } = await supabase
+      // Step 3: Check if tenant already exists in tenants table
+      const { data: existingTenant, error: checkTenantError } = await supabase
         .from('tenants')
         .select('*')
         .eq('user_id', userId)
@@ -167,19 +187,25 @@ export default function OwnerDashboard() {
         .maybeSingle()
 
       if (existingTenant) {
+        // Step 4a: Update existing tenant record
         const { error: updateError } = await supabase
           .from('tenants')
           .update({
             room_id: formData.room_id,
+            name: formData.name,
+            phone: formData.phone,
+            email: formData.email || null,
             rent_amount: parseInt(formData.rent_amount),
             pending_amount: parseInt(formData.rent_amount),
-            status: 'active'
+            status: 'active',
+            rent_status: 'pending'
           })
           .eq('id', existingTenant.id)
         
         if (updateError) throw updateError
         toast.success(`Tenant updated to Room ${selectedRoom.room_number}!`)
       } else {
+        // Step 4b: Create new tenant record
         const { error: tenantError } = await supabase
           .from('tenants')
           .insert({
@@ -201,18 +227,27 @@ export default function OwnerDashboard() {
         toast.success(`Tenant added to Room ${selectedRoom.room_number}!`)
       }
 
+      // Step 5: Update room occupancy count
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
       
-      await supabase
+      const { error: roomUpdateError } = await supabase
         .from('rooms')
-        .update({ current_occupants: newOccupants, status: newStatus })
+        .update({ 
+          current_occupants: newOccupants, 
+          status: newStatus 
+        })
         .eq('id', formData.room_id)
 
-      toast.success(`Tenant can now login with phone: ${formData.phone}`)
+      if (roomUpdateError) throw roomUpdateError
+
+      toast.success(`✓ Tenant successfully assigned! They can now login with phone: ${formData.phone}`)
+      
+      // Step 6: Reset form and reload data
       setShowAddModal(false)
       setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '' })
-      loadData()
+      await loadData()
+      
     } catch (error) {
       console.error('Add tenant error:', error)
       toast.error('Failed to add tenant: ' + error.message)
@@ -259,40 +294,41 @@ export default function OwnerDashboard() {
     if (app) {
       const { data: existingUser } = await supabase.from('users').select('*').eq('phone', app.phone).maybeSingle()
       
+      let userId
       if (!existingUser) {
-        await supabase.from('users').insert({
+        const { data: newUser } = await supabase.from('users').insert({
           phone: app.phone,
           email: app.email,
           full_name: app.name,
           role: 'tenant',
           is_active: true
-        })
+        }).select().single()
+        userId = newUser.id
+      } else {
+        userId = existingUser.id
       }
       
       const { data: room } = await supabase.from('rooms').select('*').eq('id', app.room_id).single()
-      const { data: userData } = await supabase.from('users').select('id').eq('phone', app.phone).single()
       
-      if (userData) {
-        await supabase.from('tenants').insert({
-          user_id: userData.id,
-          property_id: app.property_id,
-          room_id: app.room_id,
-          name: app.name,
-          phone: app.phone,
-          email: app.email,
-          rent_amount: room?.monthly_rent || 10000,
-          pending_amount: room?.monthly_rent || 10000,
-          total_paid: 0,
-          rent_status: 'pending',
-          move_in_date: app.expected_move_in || new Date().toISOString().split('T')[0],
-          status: 'active'
-        })
-        
-        await supabase.from('rooms').update({ 
-          current_occupants: (room?.current_occupants || 0) + 1,
-          status: (room?.current_occupants + 1) >= room?.capacity ? 'occupied' : 'vacant'
-        }).eq('id', app.room_id)
-      }
+      await supabase.from('tenants').insert({
+        user_id: userId,
+        property_id: app.property_id,
+        room_id: app.room_id,
+        name: app.name,
+        phone: app.phone,
+        email: app.email,
+        rent_amount: room?.monthly_rent || 10000,
+        pending_amount: room?.monthly_rent || 10000,
+        total_paid: 0,
+        rent_status: 'pending',
+        move_in_date: app.expected_move_in || new Date().toISOString().split('T')[0],
+        status: 'active'
+      })
+      
+      await supabase.from('rooms').update({ 
+        current_occupants: (room?.current_occupants || 0) + 1,
+        status: (room?.current_occupants + 1) >= room?.capacity ? 'occupied' : 'vacant'
+      }).eq('id', app.room_id)
     }
     
     await supabase.from('applications').update({ status: 'approved', processed_at: new Date() }).eq('id', appId)
@@ -541,20 +577,46 @@ export default function OwnerDashboard() {
       {showAddModal && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h2 className="text-2xl font-bold mb-4">Add Tenant</h2>
+            <h2 className="text-2xl font-bold mb-4">Add New Tenant</h2>
             <div className="space-y-4">
-              <input type="text" placeholder="Full Name" className="input" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
-              <input type="tel" placeholder="Phone Number" className="input" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} />
-              <input type="email" placeholder="Email" className="input" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
-              <input type="number" placeholder="Monthly Rent" className="input" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} />
-              <select className="input" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}>
-                <option value="">Select Room</option>
-                {rooms.filter(r => r.current_occupants < r.capacity).map(room => (
-                  <option key={room.id} value={room.id}>Room {room.room_number} - {getSharingDetails(room.sharing_type).label} - {formatCurrency(room.monthly_rent)}</option>
-                ))}
-              </select>
+              <div>
+                <label className="block text-gray-300 text-sm mb-1">Full Name *</label>
+                <input type="text" placeholder="e.g., Rahul Sharma" className="input" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-gray-300 text-sm mb-1">Phone Number *</label>
+                <input type="tel" placeholder="9876543210" className="input" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-gray-300 text-sm mb-1">Email (Optional)</label>
+                <input type="email" placeholder="rahul@example.com" className="input" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-gray-300 text-sm mb-1">Monthly Rent (₹) *</label>
+                <input type="number" placeholder="10000" className="input" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-gray-300 text-sm mb-1">Select Room *</label>
+                <select className="input" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}>
+                  <option value="">-- Select a Room --</option>
+                  {rooms.map(room => {
+                    const available = room.capacity - room.current_occupants
+                    const sharing = getSharingDetails(room.sharing_type)
+                    return (
+                      <option key={room.id} value={room.id} disabled={available <= 0}>
+                        Room {room.room_number} - {sharing.label} - ₹{formatCurrency(room.monthly_rent)}/month ({available} slots available)
+                      </option>
+                    )
+                  })}
+                </select>
+              </div>
+              <div className="bg-blue-500/10 rounded-lg p-3 text-xs text-blue-400">
+                💡 After adding, tenant can login with this phone number and OTP: 123456
+              </div>
               <div className="flex gap-3 mt-6">
-                <button onClick={addTenant} className="btn-primary flex-1">Add Tenant</button>
+                <button onClick={addTenant} disabled={isSubmitting} className="btn-primary flex-1 disabled:opacity-50">
+                  {isSubmitting ? 'Adding...' : 'Add Tenant'}
+                </button>
                 <button onClick={() => setShowAddModal(false)} className="btn-outline flex-1">Cancel</button>
               </div>
             </div>
@@ -566,16 +628,16 @@ export default function OwnerDashboard() {
       {showRoomModal && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h2 className="text-2xl font-bold mb-4">Add Room</h2>
+            <h2 className="text-2xl font-bold mb-4">Add New Room</h2>
             <div className="space-y-4">
-              <input type="text" placeholder="Room Number" className="input" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
+              <input type="text" placeholder="Room Number (e.g., 101)" className="input" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
               <select className="input" value={roomForm.sharing_type} onChange={(e) => { 
                 const selected = sharingTypes.find(t => t.value === e.target.value)
                 setRoomForm({...roomForm, sharing_type: e.target.value, monthly_rent: selected.price})
               }}>
-                {sharingTypes.map(type => <option key={type.value} value={type.value}>{type.label} {type.icon} - {formatCurrency(type.price)}</option>)}
+                {sharingTypes.map(type => <option key={type.value} value={type.value}>{type.label} {type.icon} - Capacity: {type.capacity} - ₹{formatCurrency(type.price)}/month</option>)}
               </select>
-              <input type="number" placeholder="Monthly Rent" className="input" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
+              <input type="number" placeholder="Monthly Rent (₹)" className="input" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
               <div className="flex gap-3 mt-6">
                 <button onClick={addRoom} className="btn-primary flex-1">Add Room</button>
                 <button onClick={() => setShowRoomModal(false)} className="btn-outline flex-1">Cancel</button>
