@@ -45,9 +45,9 @@ export default function TenantDashboard() {
         .eq('user_id', userId)
         .maybeSingle()
 
-      console.log('Tenant data from DB:', tenantData)
+      console.log('Tenant data:', tenantData)
 
-      if (tenantData) {
+      if (tenantData && tenantData.room_id) {
         setTenant(tenantData)
         setRoom(tenantData.rooms)
         setProperty(tenantData.properties)
@@ -80,12 +80,10 @@ export default function TenantDashboard() {
           .order('created_at', { ascending: false })
           .limit(1)
         setCheckOutRequest(checkOutData?.[0] || null)
-      } else {
-        console.log('No tenant record found for userId:', userId)
       }
     } catch (error) { 
-      console.error('Error loading data:', error)
-      toast.error('Failed to load your data')
+      console.error('Error:', error)
+      toast.error('Failed to load data')
     } finally { 
       setLoading(false) 
     }
