@@ -108,7 +108,6 @@ export default function OwnerDashboard() {
     }
   }
 
-  // COMPLETE FIXED addTenant function
   const addTenant = async () => {
     if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) {
       toast.error('Fill all fields')
@@ -130,7 +129,6 @@ export default function OwnerDashboard() {
     try {
       let userId = null
       
-      // Check if user already exists
       const { data: existingUser } = await supabase
         .from('users')
         .select('*')
@@ -139,13 +137,11 @@ export default function OwnerDashboard() {
       
       if (existingUser) {
         userId = existingUser.id
-        // Update existing user's name if needed
         if (existingUser.full_name !== formData.name) {
           await supabase.from('users').update({ full_name: formData.name }).eq('id', userId)
         }
         toast.success(`User already exists! Adding as tenant to this room.`)
       } else {
-        // Create new user account for tenant
         const { data: newUser, error: createError } = await supabase
           .from('users')
           .insert({ 
@@ -163,7 +159,6 @@ export default function OwnerDashboard() {
         toast.success(`Tenant account created for ${formData.name}!`)
       }
 
-      // Check if tenant already exists for this user in this property
       const { data: existingTenant } = await supabase
         .from('tenants')
         .select('*')
@@ -172,7 +167,6 @@ export default function OwnerDashboard() {
         .maybeSingle()
 
       if (existingTenant) {
-        // Update existing tenant's room
         const { error: updateError } = await supabase
           .from('tenants')
           .update({
@@ -186,7 +180,6 @@ export default function OwnerDashboard() {
         if (updateError) throw updateError
         toast.success(`Tenant updated to Room ${selectedRoom.room_number}!`)
       } else {
-        // Create new tenant record
         const { error: tenantError } = await supabase
           .from('tenants')
           .insert({
@@ -208,7 +201,6 @@ export default function OwnerDashboard() {
         toast.success(`Tenant added to Room ${selectedRoom.room_number}!`)
       }
 
-      // Update room occupancy
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
       
@@ -262,11 +254,9 @@ export default function OwnerDashboard() {
   }
 
   const approveApplication = async (appId) => {
-    // First get the application details
     const { data: app } = await supabase.from('applications').select('*').eq('id', appId).single()
     
     if (app) {
-      // Create user account for applicant
       const { data: existingUser } = await supabase.from('users').select('*').eq('phone', app.phone).maybeSingle()
       
       if (!existingUser) {
@@ -279,10 +269,7 @@ export default function OwnerDashboard() {
         })
       }
       
-      // Get the room to get rent amount
       const { data: room } = await supabase.from('rooms').select('*').eq('id', app.room_id).single()
-      
-      // Create tenant record
       const { data: userData } = await supabase.from('users').select('id').eq('phone', app.phone).single()
       
       if (userData) {
@@ -301,7 +288,6 @@ export default function OwnerDashboard() {
           status: 'active'
         })
         
-        // Update room occupancy
         await supabase.from('rooms').update({ 
           current_occupants: (room?.current_occupants || 0) + 1,
           status: (room?.current_occupants + 1) >= room?.capacity ? 'occupied' : 'vacant'
@@ -439,10 +425,9 @@ export default function OwnerDashboard() {
           <button onClick={() => setActiveTab('tenants')} className={`px-6 py-3 font-semibold ${activeTab === 'tenants' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>👥 Tenants</button>
           <button onClick={() => setActiveTab('applications')} className={`px-6 py-3 font-semibold ${activeTab === 'applications' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>📋 Applications {applications.length > 0 && <span className="bg-red-500 text-white rounded-full px-2 text-xs ml-1">{applications.length}</span>}</button>
           <button onClick={() => setActiveTab('vacate')} className={`px-6 py-3 font-semibold ${activeTab === 'vacate' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>🚪 Vacate {vacateRequests.length > 0 && <span className="bg-yellow-500 text-white rounded-full px-2 text-xs ml-1">{vacateRequests.length}</span>}</button>
-          <button onClick={() | setActiveTab('notices')} className={`px-6 py-3 font-semibold ${activeTab === 'notices' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>📢 Notices</button>
+          <button onClick={() => setActiveTab('notices')} className={`px-6 py-3 font-semibold ${activeTab === 'notices' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>📢 Notices</button>
         </div>
 
-        {/* Rooms Tab */}
         {activeTab === 'rooms' && (
           <div className="room-grid">
             {rooms.map(room => {
@@ -472,7 +457,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab */}
         {activeTab === 'tenants' && (
           <div className="table-container">
             <table className="table">
@@ -502,7 +486,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Applications Tab */}
         {activeTab === 'applications' && (
           <div className="space-y-3">
             {applications.map(app => (
@@ -519,7 +502,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Vacate Requests Tab */}
         {activeTab === 'vacate' && (
           <div className="space-y-3">
             {vacateRequests.map(req => (
@@ -536,7 +518,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Notices Tab */}
         {activeTab === 'notices' && (
           <div className="space-y-3">
             {notices.map(notice => (
