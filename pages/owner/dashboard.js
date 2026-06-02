@@ -57,13 +57,11 @@ export default function OwnerDashboard() {
         const { data: roomsData } = await supabase.from('rooms').select('*').eq('property_id', propertyData.id).order('room_number')
         setRooms(roomsData || [])
         
-        // Calculate stats from rooms
         const total = roomsData?.length || 0
         const occupied = roomsData?.filter(r => r.current_occupants >= r.capacity).length || 0
         const vacant = total - occupied
         setStats({ totalRooms: total, occupied, vacant, totalCollected: 0, pendingAmount: 0 })
         
-        // Load tenants with room info
         const { data: tenantsData } = await supabase
           .from('tenants')
           .select('*, rooms:room_id(*)')
@@ -123,9 +121,7 @@ export default function OwnerDashboard() {
     }
   }
 
-  // COMPLETELY REWRITTEN - Creates USER and TENANT together
   const addTenant = async () => {
-    // Validation
     if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) {
       toast.error('Please fill all fields')
       return
@@ -150,25 +146,21 @@ export default function OwnerDashboard() {
     setIsSubmitting(true)
     
     try {
-      // STEP 1: Create or get user FIRST
       let userId = null
       
-      const { data: existingUser, error: findError } = await supabase
+      const { data: existingUser } = await supabase
         .from('users')
         .select('*')
         .eq('phone', formData.phone)
         .maybeSingle()
       
       if (existingUser) {
-        // User exists, use it
         userId = existingUser.id
-        // Update role to tenant if not already
         if (existingUser.role !== 'tenant') {
           await supabase.from('users').update({ role: 'tenant' }).eq('id', userId)
         }
         toast.success(`User already exists! Adding as tenant.`)
       } else {
-        // Create NEW user
         const { data: newUser, error: createError } = await supabase
           .from('users')
           .insert({ 
@@ -186,8 +178,7 @@ export default function OwnerDashboard() {
         toast.success(`New user account created for ${formData.name}!`)
       }
 
-      // STEP 2: Create tenant record with user_id and room_id
-      const { data: tenantRecord, error: tenantError } = await supabase
+      const { error: tenantError } = await supabase
         .from('tenants')
         .insert({
           user_id: userId,
@@ -203,16 +194,9 @@ export default function OwnerDashboard() {
           move_in_date: new Date().toISOString().split('T')[0],
           status: 'active'
         })
-        .select()
 
-      if (tenantError) {
-        console.error('Tenant insert error:', tenantError)
-        throw tenantError
-      }
+      if (tenantError) throw tenantError
 
-      console.log('Tenant created:', tenantRecord)
-
-      // STEP 3: Update room occupancy
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
       
@@ -273,66 +257,40 @@ export default function OwnerDashboard() {
 
   const approveApplication = async (appId) => {
     try {
-      const { data: app, error: appError } = await supabase
-        .from('applications')
-        .select('*')
-        .eq('id', appId)
-        .single()
+      const { data: app } = await supabase.from('applications').select('*').eq('id', appId).single()
       
-      if (appError) throw appError
-
-      const { data: room, error: roomError } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('id', app.room_id)
-        .single()
+      const { data: room } = await supabase.from('rooms').select('*').eq('id', app.room_id).single()
       
-      if (roomError) throw roomError
-
       let userId = null
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('*')
-        .eq('phone', app.phone)
-        .maybeSingle()
+      const { data: existingUser } = await supabase.from('users').select('*').eq('phone', app.phone).maybeSingle()
       
       if (existingUser) {
         userId = existingUser.id
       } else {
-        const { data: newUser, error: createError } = await supabase
-          .from('users')
-          .insert({
-            phone: app.phone,
-            email: app.email,
-            full_name: app.name,
-            role: 'tenant',
-            is_active: true
-          })
-          .select()
-          .single()
-        
-        if (createError) throw createError
+        const { data: newUser } = await supabase.from('users').insert({
+          phone: app.phone,
+          email: app.email,
+          full_name: app.name,
+          role: 'tenant',
+          is_active: true
+        }).select().single()
         userId = newUser.id
       }
 
-      const { error: tenantError } = await supabase
-        .from('tenants')
-        .insert({
-          user_id: userId,
-          property_id: app.property_id,
-          room_id: app.room_id,
-          name: app.name,
-          phone: app.phone,
-          email: app.email,
-          rent_amount: room.monthly_rent,
-          pending_amount: room.monthly_rent,
-          total_paid: 0,
-          rent_status: 'pending',
-          move_in_date: app.expected_move_in || new Date().toISOString().split('T')[0],
-          status: 'active'
-        })
-
-      if (tenantError) throw tenantError
+      await supabase.from('tenants').insert({
+        user_id: userId,
+        property_id: app.property_id,
+        room_id: app.room_id,
+        name: app.name,
+        phone: app.phone,
+        email: app.email,
+        rent_amount: room.monthly_rent,
+        pending_amount: room.monthly_rent,
+        total_paid: 0,
+        rent_status: 'pending',
+        move_in_date: app.expected_move_in || new Date().toISOString().split('T')[0],
+        status: 'active'
+      })
 
       const newOccupants = (room.current_occupants || 0) + 1
       await supabase
@@ -532,7 +490,7 @@ export default function OwnerDashboard() {
                     <td>
                       <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="btn-success text-xs mr-2">Collect Rent</button>
                       <button onClick={() => deleteTenant(t.id, t.room_id)} className="btn-danger text-xs">Delete</button>
-                    </tr>
+                    </td>
                   </tr>
                 ))}
               </tbody>
