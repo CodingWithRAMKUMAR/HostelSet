@@ -39,24 +39,62 @@ export default function Login() {
     setLoading(true)
     try {
       if (otp === '123456') {
-        // First, check if user exists by phone (with +91 prefix for database)
-        const { data: existingUser, error: fetchError } = await supabase
+        // FIRST: Try to find user by phone WITHOUT +91 (clean phone)
+        let existingUser = null
+        
+        // Try without +91 first
+        const { data: userWithoutPrefix, error: findError1 } = await supabase
           .from('users')
           .select('*')
-          .eq('phone', `+91${phone}`)
+          .eq('phone', phone)
           .maybeSingle()
+        
+        if (userWithoutPrefix) {
+          existingUser = userWithoutPrefix
+          console.log('Found user without +91 prefix:', existingUser)
+        } else {
+          // Try with +91 prefix
+          const { data: userWithPrefix, error: findError2 } = await supabase
+            .from('users')
+            .select('*')
+            .eq('phone', `+91${phone}`)
+            .maybeSingle()
+          
+          if (userWithPrefix) {
+            existingUser = userWithPrefix
+            console.log('Found user with +91 prefix:', existingUser)
+          }
+        }
         
         console.log('Existing user from DB:', existingUser)
         
         if (existingUser) {
           // For tenant role, check if they have a room assigned
           if (existingUser.role === 'tenant') {
-            // Find tenant by phone number (without +91 for tenants table)
-            const { data: tenant, error: tenantError } = await supabase
+            // Find tenant by phone number (try both formats)
+            let tenant = null
+            
+            // Try without +91
+            const { data: tenantWithoutPrefix } = await supabase
               .from('tenants')
               .select('id, room_id, status, name')
               .eq('phone', phone)
               .maybeSingle()
+            
+            if (tenantWithoutPrefix) {
+              tenant = tenantWithoutPrefix
+            } else {
+              // Try with +91
+              const { data: tenantWithPrefix } = await supabase
+                .from('tenants')
+                .select('id, room_id, status, name')
+                .eq('phone', `+91${phone}`)
+                .maybeSingle()
+              
+              if (tenantWithPrefix) {
+                tenant = tenantWithPrefix
+              }
+            }
             
             console.log('Tenant record found:', tenant)
             
@@ -105,12 +143,13 @@ export default function Login() {
             router.push('/tenant/dashboard')
           }
         } else {
-          // Create new user (without +91 prefix for consistency)
+          // Create new user (store WITHOUT +91 prefix for consistency)
           const cleanPhone = phone
           const { data: newUser, error: createError } = await supabase
             .from('users')
             .insert({ 
-              phone: `+91${cleanPhone}`, 
+              phone: cleanPhone,  // Store without +91
+              email: null,
               full_name: `User_${cleanPhone.slice(-4)}`, 
               role: role,
               is_active: true
@@ -210,6 +249,7 @@ export default function Login() {
                     maxLength={10} 
                   />
                 </div>
+                <p className="text-xs text-gray-500 mt-1">Enter 10-digit mobile number</p>
               </div>
               
               <button 
