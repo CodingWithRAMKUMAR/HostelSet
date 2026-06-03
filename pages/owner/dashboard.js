@@ -128,7 +128,7 @@ export default function OwnerDashboard() {
     }
   }
 
-  // PERMANENT FIX - addTenant function
+  // COMPLETELY REWRITTEN addTenant function - FIXED
   const addTenant = async () => {
     // Validate inputs
     if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) {
@@ -138,6 +138,12 @@ export default function OwnerDashboard() {
 
     if (formData.phone.length !== 10) {
       toast.error('Enter valid 10-digit phone number')
+      return
+    }
+
+    // Make sure property exists
+    if (!property || !property.id) {
+      toast.error('Property not found. Please refresh the page.')
       return
     }
 
@@ -157,9 +163,8 @@ export default function OwnerDashboard() {
     try {
       // STEP 1: Create or get user
       let userId = null
-      let userExists = false
       
-      const { data: existingUser, error: findError } = await supabase
+      const { data: existingUser } = await supabase
         .from('users')
         .select('*')
         .eq('phone', formData.phone)
@@ -167,11 +172,11 @@ export default function OwnerDashboard() {
       
       if (existingUser) {
         userId = existingUser.id
-        userExists = true
         // Update role to tenant if needed
         if (existingUser.role !== 'tenant') {
           await supabase.from('users').update({ role: 'tenant' }).eq('id', userId)
         }
+        console.log('Existing user found:', userId)
       } else {
         const { data: newUser, error: createError } = await supabase
           .from('users')
@@ -187,9 +192,10 @@ export default function OwnerDashboard() {
         
         if (createError) throw createError
         userId = newUser.id
+        console.log('New user created:', userId)
       }
 
-      // STEP 2: Create tenant record with room_id (CRITICAL)
+      // STEP 2: Create tenant record with room_id
       const tenantData = {
         user_id: userId,
         property_id: property.id,
@@ -205,7 +211,7 @@ export default function OwnerDashboard() {
         status: 'active'
       }
       
-      console.log('Inserting tenant with data:', tenantData)
+      console.log('Inserting tenant:', tenantData)
       
       const { data: tenantRecord, error: tenantError } = await supabase
         .from('tenants')
@@ -217,9 +223,9 @@ export default function OwnerDashboard() {
         throw new Error(tenantError.message)
       }
 
-      console.log('Tenant created successfully:', tenantRecord)
+      console.log('Tenant created:', tenantRecord)
 
-      // STEP 3: Update room occupancy
+      // STEP 3: Update room occupancy and status
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
       
@@ -232,6 +238,8 @@ export default function OwnerDashboard() {
         .eq('id', selectedRoom.id)
 
       if (roomUpdateError) throw roomUpdateError
+
+      console.log(`Room ${selectedRoom.room_number} updated: ${newOccupants}/${selectedRoom.capacity} occupants, status: ${newStatus}`)
 
       toast.success(`✅ Tenant "${formData.name}" added to Room ${selectedRoom.room_number}!`)
       toast.success(`📱 They can login with phone: ${formData.phone} and OTP: 123456`)
@@ -436,6 +444,7 @@ export default function OwnerDashboard() {
       </nav>
       
       <div className="container mx-auto px-4 py-8">
+        {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="stat-card"><div className="stat-number">{stats.totalRooms}</div><div className="stat-label">Total Rooms</div></div>
           <div className="stat-card"><div className="stat-number text-green-400">{stats.occupied}</div><div className="stat-label">Occupied</div></div>
@@ -443,6 +452,7 @@ export default function OwnerDashboard() {
           <div className="stat-card"><div className="stat-number text-blue-400">₹{stats.totalCollected.toLocaleString()}</div><div className="stat-label">Collected</div></div>
         </div>
         
+        {/* Alerts */}
         {alerts.length > 0 && (
           <div className="mb-8 space-y-2">
             {alerts.map((a, i) => (
@@ -453,12 +463,14 @@ export default function OwnerDashboard() {
           </div>
         )}
         
+        {/* Action Buttons */}
         <div className="flex flex-wrap gap-3 mb-8">
           <button onClick={() => setShowAddModal(true)} className="btn-primary text-sm">+ Add Tenant</button>
           <button onClick={() => setShowRoomModal(true)} className="btn-secondary text-sm">+ Add Room</button>
           <button onClick={() => setShowNoticeModal(true)} className="btn-secondary text-sm">📢 Post Notice</button>
         </div>
         
+        {/* Tabs */}
         <div className="flex border-b border-gray-800 mb-6 overflow-x-auto">
           <button onClick={() => setActiveTab('rooms')} className={`px-6 py-3 font-semibold ${activeTab === 'rooms' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>🏠 Rooms</button>
           <button onClick={() => setActiveTab('tenants')} className={`px-6 py-3 font-semibold ${activeTab === 'tenants' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>👥 Tenants</button>
@@ -467,6 +479,7 @@ export default function OwnerDashboard() {
           <button onClick={() => setActiveTab('notices')} className={`px-6 py-3 font-semibold ${activeTab === 'notices' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>📢 Notices</button>
         </div>
 
+        {/* Rooms Tab - Grid View */}
         {activeTab === 'rooms' && (
           <div className="room-grid">
             {rooms.map(room => {
@@ -496,6 +509,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
+        {/* Tenants Tab */}
         {activeTab === 'tenants' && (
           <div className="table-container">
             <table className="table">
@@ -523,6 +537,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
+        {/* Applications Tab */}
         {activeTab === 'applications' && (
           <div className="space-y-3">
             {applications.map(app => (
@@ -538,6 +553,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
+        {/* Vacate Requests Tab */}
         {activeTab === 'vacate' && (
           <div className="space-y-3">
             {vacateRequests.map(req => (
@@ -553,6 +569,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
+        {/* Notices Tab */}
         {activeTab === 'notices' && (
           <div className="space-y-3">
             {notices.map(notice => (
