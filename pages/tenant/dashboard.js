@@ -39,9 +39,10 @@ export default function TenantDashboard() {
     try {
       const userId = localStorage.getItem('userId')
       
+      // First, get the tenant record
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
-        .select('*, rooms:room_id(*), properties:property_id(*)')
+        .select('*')
         .eq('user_id', userId)
         .maybeSingle()
 
@@ -49,9 +50,34 @@ export default function TenantDashboard() {
 
       if (tenantData && tenantData.room_id) {
         setTenant(tenantData)
-        setRoom(tenantData.rooms)
-        setProperty(tenantData.properties)
+        
+        // Second, get the room details separately
+        const { data: roomData, error: roomError } = await supabase
+          .from('rooms')
+          .select('*')
+          .eq('id', tenantData.room_id)
+          .single()
+        
+        console.log('Room data:', roomData)
+        
+        if (roomData) {
+          setRoom(roomData)
+        }
+        
+        // Third, get the property details
+        const { data: propertyData, error: propertyError } = await supabase
+          .from('properties')
+          .select('*')
+          .eq('id', tenantData.property_id)
+          .single()
+        
+        console.log('Property data:', propertyData)
+        
+        if (propertyData) {
+          setProperty(propertyData)
+        }
 
+        // Get payment history
         const { data: payments } = await supabase
           .from('payment_history')
           .select('*')
@@ -59,6 +85,7 @@ export default function TenantDashboard() {
           .order('payment_date', { ascending: false })
         setPaymentHistory(payments || [])
 
+        // Get complaints
         const { data: complaintsData } = await supabase
           .from('complaints')
           .select('*')
@@ -66,6 +93,7 @@ export default function TenantDashboard() {
           .order('created_at', { ascending: false })
         setComplaints(complaintsData || [])
 
+        // Get notices
         const { data: noticesData } = await supabase
           .from('notices')
           .select('*')
@@ -73,6 +101,7 @@ export default function TenantDashboard() {
           .order('created_at', { ascending: false })
         setNotices(noticesData || [])
 
+        // Get check-out request
         const { data: checkOutData } = await supabase
           .from('check_out_requests')
           .select('*')
