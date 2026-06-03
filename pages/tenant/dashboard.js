@@ -27,6 +27,8 @@ export default function TenantDashboard() {
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('isLoggedIn')
     const userRole = localStorage.getItem('userRole')
+    console.log('Tenant Dashboard - Checking auth:', { isLoggedIn, userRole })
+    
     if (!isLoggedIn || userRole !== 'tenant') { 
       router.push('/login')
       return 
@@ -38,20 +40,62 @@ export default function TenantDashboard() {
     setLoading(true)
     try {
       const userId = localStorage.getItem('userId')
+      const userPhone = localStorage.getItem('userPhone')
       
-      // First, get the tenant record
-      const { data: tenantData, error: tenantError } = await supabase
-        .from('tenants')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      console.log('Tenant data:', tenantData)
+      console.log('Loading data for userId:', userId)
+      console.log('User phone from storage:', userPhone)
+      
+      // METHOD 1: Try to find tenant by user_id
+      let tenantData = null
+      
+      if (userId) {
+        const { data, error } = await supabase
+          .from('tenants')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle()
+        
+        if (!error && data) {
+          tenantData = data
+          console.log('Found tenant by user_id:', tenantData)
+        }
+      }
+      
+      // METHOD 2: If not found, try by phone number
+      if (!tenantData && userPhone) {
+        const { data, error } = await supabase
+          .from('tenants')
+          .select('*')
+          .eq('phone', userPhone)
+          .maybeSingle()
+        
+        if (!error && data) {
+          tenantData = data
+          console.log('Found tenant by phone:', tenantData)
+        }
+      }
+      
+      // METHOD 3: If still not found, try to get from localStorage phone
+      if (!tenantData) {
+        const storedPhone = localStorage.getItem('tenantPhone') || userPhone
+        if (storedPhone) {
+          const { data, error } = await supabase
+            .from('tenants')
+            .select('*')
+            .eq('phone', storedPhone)
+            .maybeSingle()
+          
+          if (!error && data) {
+            tenantData = data
+            console.log('Found tenant by stored phone:', tenantData)
+          }
+        }
+      }
 
       if (tenantData && tenantData.room_id) {
         setTenant(tenantData)
         
-        // Second, get the room details separately
+        // Get room details
         const { data: roomData, error: roomError } = await supabase
           .from('rooms')
           .select('*')
@@ -62,9 +106,11 @@ export default function TenantDashboard() {
         
         if (roomData) {
           setRoom(roomData)
+        } else if (roomError) {
+          console.error('Room fetch error:', roomError)
         }
         
-        // Third, get the property details
+        // Get property details
         const { data: propertyData, error: propertyError } = await supabase
           .from('properties')
           .select('*')
@@ -109,10 +155,13 @@ export default function TenantDashboard() {
           .order('created_at', { ascending: false })
           .limit(1)
         setCheckOutRequest(checkOutData?.[0] || null)
+        
+      } else {
+        console.log('No tenant found or no room assigned. tenantData:', tenantData)
       }
     } catch (error) { 
-      console.error('Error:', error)
-      toast.error('Failed to load data')
+      console.error('Error in loadData:', error)
+      toast.error('Failed to load data: ' + error.message)
     } finally { 
       setLoading(false) 
     }
