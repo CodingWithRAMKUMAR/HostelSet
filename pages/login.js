@@ -30,18 +30,36 @@ export default function Login() {
     setLoading(true)
     try {
       if (otp === '123456') {
-        const { data: existingUser } = await supabase.from('users').select('*').eq('phone', `+91${phone}`).maybeSingle()
+        // First, check if user exists
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('phone', `+91${phone}`)
+          .maybeSingle()
+        
+        console.log('Existing user:', existingUser)
         
         if (existingUser) {
+          // For tenant role, check if they have a room assigned
           if (existingUser.role === 'tenant') {
-            const { data: tenant } = await supabase.from('tenants').select('id, room_id, status').eq('user_id', existingUser.id).maybeSingle()
+            // IMPORTANT: Use phone number to find tenant, NOT user_id
+            const { data: tenant } = await supabase
+              .from('tenants')
+              .select('id, room_id, status')
+              .eq('phone', phone)  // Changed from user_id to phone
+              .maybeSingle()
+            
+            console.log('Tenant record:', tenant)
+            
             if (!tenant || !tenant.room_id) {
               toast.error('You are not registered with any room. Please contact your PG owner.')
-              setLoading(false); return
+              setLoading(false)
+              return
             }
             if (tenant.status === 'checked_out') {
               toast.error('Your account has been checked out. Please contact owner.')
-              setLoading(false); return
+              setLoading(false)
+              return
             }
           }
           
@@ -49,28 +67,55 @@ export default function Login() {
           localStorage.setItem('userRole', existingUser.role)
           localStorage.setItem('isLoggedIn', 'true')
           localStorage.setItem('userName', existingUser.full_name)
+          localStorage.setItem('userPhone', phone)  // Store phone for debugging
+          
           toast.success(`Welcome back, ${existingUser.full_name}!`)
           
           if (existingUser.role === 'owner') {
-            const { data: property } = await supabase.from('properties').select('id').eq('owner_id', existingUser.id).maybeSingle()
+            const { data: property } = await supabase
+              .from('properties')
+              .select('id')
+              .eq('owner_id', existingUser.id)
+              .maybeSingle()
             property ? router.push('/owner/dashboard') : router.push('/owner/register-property')
           } else {
             router.push('/tenant/dashboard')
           }
         } else {
-          const { data: newUser, error: createError } = await supabase.from('users').insert({ phone: `+91${phone}`, full_name: `User_${phone.slice(-4)}`, role }).select().single()
+          // Create new user
+          const { data: newUser, error: createError } = await supabase
+            .from('users')
+            .insert({ 
+              phone: `+91${phone}`, 
+              full_name: `User_${phone.slice(-4)}`, 
+              role 
+            })
+            .select()
+            .single()
+          
           if (createError) throw createError
+          
           localStorage.setItem('userId', newUser.id)
           localStorage.setItem('userRole', newUser.role)
           localStorage.setItem('isLoggedIn', 'true')
           localStorage.setItem('userName', newUser.full_name)
+          localStorage.setItem('userPhone', phone)
+          
           toast.success('Account created!')
-          role === 'owner' ? router.push('/owner/register-property') : router.push('/tenant/waiting')
+          
+          if (role === 'owner') {
+            router.push('/owner/register-property')
+          } else {
+            router.push('/tenant/waiting')
+          }
         }
       } else {
         await supabase.auth.verifyOtp({ phone: `+91${phone}`, token: otp, type: 'sms' })
       }
-    } catch (error) { toast.error('Invalid OTP. Use 123456') }
+    } catch (error) { 
+      console.error('Login error:', error)
+      toast.error('Invalid OTP. Use 123456') 
+    }
     setLoading(false)
   }
 
