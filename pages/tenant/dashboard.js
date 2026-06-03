@@ -27,7 +27,7 @@ export default function TenantDashboard() {
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('isLoggedIn')
     const userRole = localStorage.getItem('userRole')
-    console.log('Tenant Dashboard - Checking auth:', { isLoggedIn, userRole })
+    console.log('Tenant Dashboard - Auth check:', { isLoggedIn, userRole })
     
     if (!isLoggedIn || userRole !== 'tenant') { 
       router.push('/login')
@@ -39,30 +39,16 @@ export default function TenantDashboard() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const userId = localStorage.getItem('userId')
       const userPhone = localStorage.getItem('userPhone')
+      const userId = localStorage.getItem('userId')
       
-      console.log('Loading data for userId:', userId)
-      console.log('User phone from storage:', userPhone)
+      console.log('Looking for tenant with phone:', userPhone)
+      console.log('Looking for tenant with userId:', userId)
       
-      // METHOD 1: Try to find tenant by user_id
+      // Try to find tenant by phone number (most reliable)
       let tenantData = null
       
-      if (userId) {
-        const { data, error } = await supabase
-          .from('tenants')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle()
-        
-        if (!error && data) {
-          tenantData = data
-          console.log('Found tenant by user_id:', tenantData)
-        }
-      }
-      
-      // METHOD 2: If not found, try by phone number
-      if (!tenantData && userPhone) {
+      if (userPhone) {
         const { data, error } = await supabase
           .from('tenants')
           .select('*')
@@ -75,20 +61,17 @@ export default function TenantDashboard() {
         }
       }
       
-      // METHOD 3: If still not found, try to get from localStorage phone
-      if (!tenantData) {
-        const storedPhone = localStorage.getItem('tenantPhone') || userPhone
-        if (storedPhone) {
-          const { data, error } = await supabase
-            .from('tenants')
-            .select('*')
-            .eq('phone', storedPhone)
-            .maybeSingle()
-          
-          if (!error && data) {
-            tenantData = data
-            console.log('Found tenant by stored phone:', tenantData)
-          }
+      // If not found by phone, try by user_id
+      if (!tenantData && userId) {
+        const { data, error } = await supabase
+          .from('tenants')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle()
+        
+        if (!error && data) {
+          tenantData = data
+          console.log('Found tenant by user_id:', tenantData)
         }
       }
 
@@ -106,8 +89,6 @@ export default function TenantDashboard() {
         
         if (roomData) {
           setRoom(roomData)
-        } else if (roomError) {
-          console.error('Room fetch error:', roomError)
         }
         
         // Get property details
@@ -288,12 +269,11 @@ export default function TenantDashboard() {
             <p className="text-gray-400 mb-4">Your tenant account has been created successfully!</p>
             <p className="text-gray-400 mb-6">Please wait for the PG owner to assign you a room.</p>
             <div className="bg-yellow-500/10 border border-yellow-500 rounded-xl p-4 mb-6 text-left">
-              <p className="text-sm text-yellow-400">📌 What to do next:</p>
+              <p className="text-sm text-yellow-400">📌 Debug Info:</p>
               <ul className="text-sm text-gray-400 mt-2 space-y-1">
-                <li>• Contact your PG owner with your registered phone number</li>
-                <li>• Owner will assign you a room from their dashboard</li>
-                <li>• You will see your room details here once assigned</li>
-                <li>• Then you can pay rent and raise complaints</li>
+                <li>• Phone: {localStorage.getItem('userPhone') || 'Not found'}</li>
+                <li>• User ID: {localStorage.getItem('userId') || 'Not found'}</li>
+                <li>• Contact your PG owner to assign a room</li>
               </ul>
             </div>
             <button onClick={handleLogout} className="btn-primary w-full">Logout</button>
