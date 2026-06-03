@@ -128,9 +128,8 @@ export default function OwnerDashboard() {
     }
   }
 
-  // COMPLETELY REWRITTEN ADD TENANT FUNCTION - WITH VERIFICATION
+  // FIXED addTenant function - Updates room status correctly
   const addTenant = async () => {
-    // Step 1: Validate inputs
     if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) {
       toast.error('Please fill all fields')
       return
@@ -141,10 +140,9 @@ export default function OwnerDashboard() {
       return
     }
 
-    // Step 2: Find the selected room
     const selectedRoom = rooms.find(r => r.id === formData.room_id)
     if (!selectedRoom) {
-      toast.error('Selected room not found! Please refresh and try again.')
+      toast.error('Selected room not found')
       return
     }
     
@@ -154,10 +152,9 @@ export default function OwnerDashboard() {
     }
     
     setIsSubmitting(true)
-    toast.loading('Adding tenant...', { duration: 2000 })
     
     try {
-      // Step 3: Create or get user
+      // Step 1: Create or get user
       let userId = null
       const { data: existingUser } = await supabase
         .from('users')
@@ -186,13 +183,13 @@ export default function OwnerDashboard() {
         userId = newUser.id
       }
 
-      // Step 4: Create tenant record with room_id (CRITICAL)
-      const { data: tenantRecord, error: tenantError } = await supabase
+      // Step 2: Create tenant record
+      const { error: tenantError } = await supabase
         .from('tenants')
         .insert({
           user_id: userId,
           property_id: property.id,
-          room_id: selectedRoom.id,
+          room_id: formData.room_id,
           name: formData.name,
           phone: formData.phone,
           email: formData.email || null,
@@ -203,14 +200,10 @@ export default function OwnerDashboard() {
           move_in_date: new Date().toISOString().split('T')[0],
           status: 'active'
         })
-        .select()
 
-      if (tenantError) {
-        console.error('Tenant insert error:', tenantError)
-        throw new Error(tenantError.message)
-      }
+      if (tenantError) throw tenantError
 
-      // Step 5: Update room occupancy
+      // Step 3: Update room occupancy and status (CRITICAL FIX)
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
       
@@ -220,22 +213,19 @@ export default function OwnerDashboard() {
           current_occupants: newOccupants, 
           status: newStatus 
         })
-        .eq('id', selectedRoom.id)
+        .eq('id', formData.room_id)
 
       if (roomUpdateError) throw roomUpdateError
 
-      toast.dismiss()
       toast.success(`✅ Tenant "${formData.name}" added to Room ${selectedRoom.room_number}!`)
-      toast.success(`📱 Login with: ${formData.phone} | OTP: 123456`)
+      toast.success(`📱 They can login with phone: ${formData.phone} and OTP: 123456`)
       
-      // Step 6: Reset form and reload
       setShowAddModal(false)
       setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '' })
       await loadData()
       
     } catch (error) {
       console.error('Add tenant error:', error)
-      toast.dismiss()
       toast.error('Failed to add tenant: ' + error.message)
     } finally {
       setIsSubmitting(false)
@@ -596,7 +586,7 @@ export default function OwnerDashboard() {
                 </select>
               </div>
               <div className="bg-blue-500/10 rounded-lg p-3 text-xs text-blue-400">
-                💡 After adding, tenant can login with this phone number and OTP: 123456
+                💡 Tenant will automatically get login access with this phone number and OTP: 123456
               </div>
               <div className="flex gap-3 mt-6">
                 <button onClick={addTenant} disabled={isSubmitting} className="btn-primary flex-1 disabled:opacity-50">
