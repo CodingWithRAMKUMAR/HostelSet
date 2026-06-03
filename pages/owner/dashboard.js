@@ -128,7 +128,9 @@ export default function OwnerDashboard() {
     }
   }
 
+  // COMPLETELY REWRITTEN ADD TENANT FUNCTION - WITH VERIFICATION
   const addTenant = async () => {
+    // Step 1: Validate inputs
     if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) {
       toast.error('Please fill all fields')
       return
@@ -139,9 +141,10 @@ export default function OwnerDashboard() {
       return
     }
 
+    // Step 2: Find the selected room
     const selectedRoom = rooms.find(r => r.id === formData.room_id)
     if (!selectedRoom) {
-      toast.error('Selected room not found')
+      toast.error('Selected room not found! Please refresh and try again.')
       return
     }
     
@@ -151,9 +154,10 @@ export default function OwnerDashboard() {
     }
     
     setIsSubmitting(true)
+    toast.loading('Adding tenant...', { duration: 2000 })
     
     try {
-      // STEP 1: Create user
+      // Step 3: Create or get user
       let userId = null
       const { data: existingUser } = await supabase
         .from('users')
@@ -182,13 +186,13 @@ export default function OwnerDashboard() {
         userId = newUser.id
       }
 
-      // STEP 2: Create tenant record with room_id
+      // Step 4: Create tenant record with room_id (CRITICAL)
       const { data: tenantRecord, error: tenantError } = await supabase
         .from('tenants')
         .insert({
           user_id: userId,
           property_id: property.id,
-          room_id: formData.room_id,
+          room_id: selectedRoom.id,
           name: formData.name,
           phone: formData.phone,
           email: formData.email || null,
@@ -201,29 +205,37 @@ export default function OwnerDashboard() {
         })
         .select()
 
-      if (tenantError) throw tenantError
+      if (tenantError) {
+        console.error('Tenant insert error:', tenantError)
+        throw new Error(tenantError.message)
+      }
 
-      // STEP 3: Update room occupancy
+      // Step 5: Update room occupancy
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
       
-      await supabase
+      const { error: roomUpdateError } = await supabase
         .from('rooms')
         .update({ 
           current_occupants: newOccupants, 
           status: newStatus 
         })
-        .eq('id', formData.room_id)
+        .eq('id', selectedRoom.id)
 
+      if (roomUpdateError) throw roomUpdateError
+
+      toast.dismiss()
       toast.success(`✅ Tenant "${formData.name}" added to Room ${selectedRoom.room_number}!`)
-      toast.success(`📱 They can login with phone: ${formData.phone} and OTP: 123456`)
+      toast.success(`📱 Login with: ${formData.phone} | OTP: 123456`)
       
+      // Step 6: Reset form and reload
       setShowAddModal(false)
       setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '' })
       await loadData()
       
     } catch (error) {
       console.error('Add tenant error:', error)
+      toast.dismiss()
       toast.error('Failed to add tenant: ' + error.message)
     } finally {
       setIsSubmitting(false)
@@ -577,14 +589,14 @@ export default function OwnerDashboard() {
                     const available = room.capacity - room.current_occupants
                     return (
                       <option key={room.id} value={room.id}>
-                        Room {room.room_number} - {sharing.label} - ₹{formatCurrency(room.monthly_rent)}/month ({available} slots)
+                        Room {room.room_number} - {sharing.label} - ₹{formatCurrency(room.monthly_rent)}/month ({available} slots available)
                       </option>
                     )
                   })}
                 </select>
               </div>
               <div className="bg-blue-500/10 rounded-lg p-3 text-xs text-blue-400">
-                💡 Tenant will automatically get login access with this phone number and OTP: 123456
+                💡 After adding, tenant can login with this phone number and OTP: 123456
               </div>
               <div className="flex gap-3 mt-6">
                 <button onClick={addTenant} disabled={isSubmitting} className="btn-primary flex-1 disabled:opacity-50">
