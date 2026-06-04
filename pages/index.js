@@ -1,170 +1,175 @@
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { motion } from 'framer-motion'
-import { supabase } from '../lib/supabase'
-import { formatCurrency, getPropertyTypeLabel } from '../lib/utils'
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import Link from 'next/link';
+import Image from 'next/image';
+import { supabase } from '../lib/supabase';
+import { formatCurrency } from '../lib/utils';
 
 export default function Home() {
-  const [scrolled, setScrolled] = useState(false)
-  const [properties, setProperties] = useState([])
-  const [rooms, setRooms] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedCity, setSelectedCity] = useState('all')
-  const [selectedType, setSelectedType] = useState('all')
-  const [cities, setCities] = useState([])
+  const [properties, setProperties] = useState([]);
+  const [filteredProperties, setFilteredProperties] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedType, setSelectedType] = useState('all');
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 50)
-    window.addEventListener('scroll', handleScroll)
-    loadData()
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
+    fetchProperties();
+  }, []);
 
-  const loadData = async () => {
-    setLoading(true)
+  useEffect(() => {
+    filterProperties();
+  }, [searchTerm, selectedType, properties]);
+
+  async function fetchProperties() {
     try {
-      const { data: propertiesData } = await supabase
+      const { data, error } = await supabase
         .from('properties')
         .select('*')
-        .eq('is_active', true)
-      
-      if (propertiesData) {
-        setProperties(propertiesData)
-        const uniqueCities = [...new Set(propertiesData.map(p => p.city).filter(Boolean))]
-        setCities(uniqueCities)
-      }
+        .order('created_at', { ascending: false });
 
-      const { data: roomsData } = await supabase.from('rooms').select('*')
-      if (roomsData) setRooms(roomsData)
+      if (error) throw error;
+      setProperties(data || []);
+      setFilteredProperties(data || []);
     } catch (error) {
-      console.error('Error loading data:', error)
+      console.error('Error fetching properties:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
-  const getAvailableRoomsCount = (propertyId) => {
-    const propertyRooms = rooms.filter(r => r.property_id === propertyId)
-    return propertyRooms.filter(r => r.current_occupants < r.capacity).length
+  function filterProperties() {
+    let filtered = [...properties];
+
+    if (searchTerm) {
+      filtered = filtered.filter(prop =>
+        prop.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        prop.city.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    if (selectedType !== 'all') {
+      filtered = filtered.filter(prop => prop.property_type === selectedType);
+    }
+
+    setFilteredProperties(filtered);
   }
 
-  const filteredProperties = properties.filter(prop => {
-    if (selectedCity !== 'all' && prop.city !== selectedCity) return false
-    if (selectedType !== 'all' && prop.property_type !== selectedType) return false
-    if (searchQuery && !prop.name.toLowerCase().includes(searchQuery.toLowerCase()) && 
-        !prop.city.toLowerCase().includes(searchQuery.toLowerCase())) return false
-    return true
-  })
-
-  const features = [
-    { icon: '💰', title: 'Easy Rent Collection', desc: 'Auto reminders and online payments', color: 'from-green-500 to-emerald-500' },
-    { icon: '📊', title: 'Smart Analytics', desc: 'Real-time occupancy tracking', color: 'from-blue-500 to-cyan-500' },
-    { icon: '🔧', title: 'Maintenance', desc: 'Quick complaint resolution', color: 'from-orange-500 to-red-500' },
-    { icon: '🏠', title: 'Room Management', desc: 'Easy allocation and tracking', color: 'from-purple-500 to-pink-500' },
-    { icon: '🔒', title: 'Secure', desc: 'Bank-grade security', color: 'from-indigo-500 to-blue-500' },
-    { icon: '📱', title: 'Mobile Ready', desc: 'Access from anywhere', color: 'from-teal-500 to-green-500' },
-  ]
-
   return (
-    <div className="min-h-screen">
-      <nav className={`navbar py-4 px-6 flex justify-between items-center fixed top-0 w-full z-50 transition-all ${scrolled ? 'shadow-lg' : ''}`}>
-        <Link href="/" className="text-2xl font-bold text-primary">🏠 HOSTELSET</Link>
-        <div className="flex gap-6 items-center">
-          <Link href="#features" className="text-gray-300 hover:text-primary hidden md:inline">Features</Link>
-          <Link href="#properties" className="text-gray-300 hover:text-primary hidden md:inline">Properties</Link>
-          <Link href="/login" className="text-gray-300 hover:text-primary">Login</Link>
-          <Link href="/owner/register-property" className="btn-primary text-sm">List Property</Link>
-        </div>
-      </nav>
-
-      <div className="pt-32 pb-16 text-center">
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-          <div className="text-7xl mb-6 animate-float">🏠</div>
-          <h1 className="hero-title">Find Your Perfect PG</h1>
-          <p className="hero-subtitle">Set Your Hostel, Simplify Life</p>
-          <div className="max-w-2xl mx-auto mt-8 flex flex-col md:flex-row gap-4">
-            <input type="text" placeholder="Search by city, area, or PG name..." className="input flex-1" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-            <button className="btn-primary" onClick={() => {}}>🔍 Search</button>
-          </div>
-        </motion.div>
-      </div>
-
-      <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <div className="stat-card"><div className="stat-number">10,000+</div><div className="stat-label">Happy Tenants</div></div>
-          <div className="stat-card"><div className="stat-number">500+</div><div className="stat-label">Properties</div></div>
-          <div className="stat-card"><div className="stat-number">₹50Cr+</div><div className="stat-label">Rent Collected</div></div>
-          <div className="stat-card"><div className="stat-number">99.9%</div><div className="stat-label">Satisfaction</div></div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-pink-600/20"></div>
+        <div className="container mx-auto px-4 py-16 relative">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center"
+          >
+            <h1 className="text-5xl md:text-6xl font-bold text-white mb-4">
+              Find Your Perfect
+              <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent"> Hostel Space</span>
+            </h1>
+            <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+              Discover the best hostels and PGs in your city. Safe, comfortable, and affordable living spaces.
+            </p>
+            <Link
+              href="/login"
+              className="inline-block px-8 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition transform hover:scale-105"
+            >
+              Get Started
+            </Link>
+          </motion.div>
         </div>
       </div>
 
-      <section id="features" className="container mx-auto px-4 py-16">
-        <h2 className="text-3xl font-bold text-center mb-12">Why Choose <span className="text-primary">HOSTELSET</span>?</h2>
-        <div className="feature-grid">
-          {features.map((feature, i) => (
-            <motion.div key={i} whileHover={{ y: -5 }} className="card text-center">
-              <div className={`w-16 h-16 bg-gradient-to-br ${feature.color} rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl`}>{feature.icon}</div>
-              <h3 className="text-lg font-bold mb-2">{feature.title}</h3>
-              <p className="text-gray-400 text-sm">{feature.desc}</p>
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      <section id="properties" className="container mx-auto px-4 py-8">
-        <div className="flex flex-wrap gap-3 justify-center mb-8">
-          <button onClick={() => setSelectedCity('all')} className={`px-4 py-2 rounded-full text-sm ${selectedCity === 'all' ? 'bg-primary text-white' : 'bg-secondary text-gray-300'}`}>All Cities</button>
-          {cities.map(city => (
-            <button key={city} onClick={() => setSelectedCity(city)} className={`px-4 py-2 rounded-full text-sm ${selectedCity === city ? 'bg-primary text-white' : 'bg-secondary text-gray-300'}`}>{city}</button>
-          ))}
-          <button onClick={() => setSelectedType('all')} className={`px-4 py-2 rounded-full text-sm ${selectedType === 'all' ? 'bg-primary text-white' : 'bg-secondary text-gray-300'}`}>All Types</button>
-          <button onClick={() => setSelectedType('boys')} className={`px-4 py-2 rounded-full text-sm ${selectedType === 'boys' ? 'bg-primary text-white' : 'bg-secondary text-gray-300'}`}>👨 Boys PG</button>
-          <button onClick={() => setSelectedType('girls')} className={`px-4 py-2 rounded-full text-sm ${selectedType === 'girls' ? 'bg-primary text-white' : 'bg-secondary text-gray-300'}`}>👩 Girls PG</button>
-          <button onClick={() => setSelectedType('co-ed')} className={`px-4 py-2 rounded-full text-sm ${selectedType === 'co-ed' ? 'bg-primary text-white' : 'bg-secondary text-gray-300'}`}>👥 Co-ed PG</button>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-20"><div className="spinner"></div><p className="mt-4 text-gray-400">Loading properties...</p></div>
-        ) : (
-          <>
-            <h2 className="text-2xl font-bold mb-6">{filteredProperties.length} Properties Found</h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredProperties.map((property) => {
-                const availableRooms = getAvailableRoomsCount(property.id)
-                return (
-                  <motion.div key={property.id} whileHover={{ y: -5 }} className="card">
-                    <div className="flex justify-between items-start">
-                      <h3 className="text-xl font-bold">{property.name}</h3>
-                      <span className="badge-info">{getPropertyTypeLabel(property.property_type)}</span>
-                    </div>
-                    <p className="text-gray-400 text-sm mt-1">📍 {property.city}</p>
-                    <p className="text-gray-500 text-sm line-clamp-2 mt-2">{property.description}</p>
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {property.amenities?.slice(0, 3).map((a, i) => <span key={i} className="text-xs bg-dark px-2 py-1 rounded-full">{a}</span>)}
-                    </div>
-                    <div className="flex justify-between items-center mt-4">
-                      <div><span className="text-primary font-bold">{formatCurrency(property.min_rent || 8000)}</span><span className="text-gray-500 text-sm">/month</span></div>
-                      <span className="badge-success">{availableRooms} rooms available</span>
-                    </div>
-                    <Link href={`/property/${property.id}`} className="btn-primary text-sm mt-4 inline-block w-full text-center">View Details →</Link>
-                  </motion.div>
-                )
-              })}
+      {/* Search and Filter Section */}
+      <div className="sticky top-0 z-40 bg-black/30 backdrop-blur-md border-b border-white/10">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="Search by property name or city..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+              />
             </div>
-          </>
-        )}
-      </section>
-
-      <div className="bg-secondary mx-4 my-12 rounded-2xl p-12 text-center">
-        <h2 className="text-2xl font-bold mb-4">Own a PG? List Your Property</h2>
-        <p className="text-gray-400 mb-6">Join 500+ property owners using HOSTELSET</p>
-        <Link href="/owner/register-property" className="btn-primary">List Your Property →</Link>
+            <div className="flex gap-2">
+              {['all', 'Boys', 'Girls', 'Co-ed'].map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setSelectedType(type)}
+                  className={`px-4 py-2 rounded-lg transition ${
+                    selectedType === type
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                  }`}
+                >
+                  {type === 'all' ? 'All' : type}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
-      <footer className="text-center py-8 text-gray-500 text-sm border-t border-gray-800">
-        <p>© 2024 HOSTELSET. All rights reserved.</p>
-      </footer>
+      {/* Properties Grid */}
+      <div className="container mx-auto px-4 py-12">
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-500"></div>
+          </div>
+        ) : filteredProperties.length === 0 ? (
+          <div className="text-center py-16">
+            <p className="text-gray-400 text-lg">No properties found matching your criteria.</p>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredProperties.map((property, index) => (
+              <motion.div
+                key={property.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+                whileHover={{ y: -5 }}
+                className="bg-white/5 backdrop-blur-lg rounded-xl overflow-hidden border border-white/10 hover:border-purple-500/50 transition-all"
+              >
+                <Link href={`/property/${property.id}`}>
+                  <div className="relative h-48">
+                    {property.photos && property.photos[0] ? (
+                      <Image
+                        src={property.photos[0]}
+                        alt={property.name}
+                        fill
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
+                        <span className="text-white text-lg">No Image</span>
+                      </div>
+                    )}
+                    <div className="absolute top-2 right-2 bg-black/70 px-2 py-1 rounded-lg text-xs text-white">
+                      {property.property_type || 'Co-ed'}
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    <h3 className="text-xl font-semibold text-white mb-1">{property.name}</h3>
+                    <p className="text-gray-400 text-sm mb-2">{property.city}</p>
+                    <p className="text-gray-300 text-sm line-clamp-2">{property.description}</p>
+                    <div className="mt-3 flex justify-between items-center">
+                      <span className="text-purple-400 font-semibold">
+                        Starting from ₹{property.min_rent || 'Contact'}
+                      </span>
+                      <span className="text-purple-400 text-sm">View Details →</span>
+                    </div>
+                  </div>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
-  )
+  );
 }
