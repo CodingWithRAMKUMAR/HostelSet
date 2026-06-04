@@ -128,7 +128,6 @@ export default function OwnerDashboard() {
     }
   }
 
-  // COMPLETELY FIXED addTenant function - NO MORE DUPLICATES OR NULL ROOM_ID
   const addTenant = async () => {
     if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) {
       toast.error('Please fill all fields')
@@ -155,7 +154,6 @@ export default function OwnerDashboard() {
     setIsSubmitting(true)
     
     try {
-      // Check if user already exists
       let userId = null
       const { data: existingUser } = await supabase
         .from('users')
@@ -185,7 +183,6 @@ export default function OwnerDashboard() {
         userId = newUser.id
       }
 
-      // Check if tenant already exists
       const { data: existingTenant } = await supabase
         .from('tenants')
         .select('*')
@@ -193,7 +190,6 @@ export default function OwnerDashboard() {
         .maybeSingle()
       
       if (existingTenant) {
-        // Update existing tenant
         const { error: updateError } = await supabase
           .from('tenants')
           .update({
@@ -209,7 +205,6 @@ export default function OwnerDashboard() {
         
         if (updateError) throw updateError
       } else {
-        // Create new tenant
         const { error: tenantError } = await supabase
           .from('tenants')
           .insert({
@@ -230,7 +225,6 @@ export default function OwnerDashboard() {
         if (tenantError) throw tenantError
       }
 
-      // Update room occupancy
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
       
@@ -469,7 +463,6 @@ export default function OwnerDashboard() {
           <button onClick={() => setActiveTab('notices')} className={`px-6 py-3 font-semibold ${activeTab === 'notices' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>📢 Notices</button>
         </div>
 
-        {/* Rooms Tab */}
         {activeTab === 'rooms' && (
           <div className="room-grid">
             {rooms.map(room => {
@@ -499,26 +492,30 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab */}
         {activeTab === 'tenants' && (
           <div className="table-container">
             <table className="table">
               <thead>
                 <tr>
-                  <th>Name</th><th>Phone</th><th>Room</th><th>Rent</th><th>Status</th><th>Actions</th>
-                <tr>
+                  <th>Name</th>
+                  <th>Phone</th>
+                  <th>Room</th>
+                  <th>Rent</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
               </thead>
               <tbody>
                 {tenants.map(t => (
                   <tr key={t.id}>
-                    <td>{t.name}</td>
-                    <td>{t.phone}</td>
-                    <td>Room {t.rooms?.room_number} ({getSharingDetails(t.rooms?.sharing_type)?.label})</td>
-                    <td>{formatCurrency(t.rent_amount)}</td>
-                    <td className="text-green-400">{t.status === 'active' ? '✅ Active' : '❌ Inactive'}</td>
-                    <td>
-                      <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="btn-success text-xs mr-2">Collect Rent</button>
-                      <button onClick={() => deleteTenant(t.id, t.room_id)} className="btn-danger text-xs">Delete</button>
+                    <td className="px-4 py-3">{t.name}</td>
+                    <td className="px-4 py-3">{t.phone}</td>
+                    <td className="px-4 py-3">Room {t.rooms?.room_number}</td>
+                    <td className="px-4 py-3">{formatCurrency(t.rent_amount)}</td>
+                    <td className="px-4 py-3">{t.status === 'active' ? '✅ Active' : '❌ Inactive'}</td>
+                    <td className="px-4 py-3">
+                      <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="btn-success text-xs px-3 py-1 mr-2">Collect</button>
+                      <button onClick={() => deleteTenant(t.id, t.room_id)} className="btn-danger text-xs px-3 py-1">Delete</button>
                     </td>
                   </tr>
                 ))}
@@ -527,7 +524,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Applications Tab */}
         {activeTab === 'applications' && (
           <div className="space-y-3">
             {applications.map(app => (
@@ -543,7 +539,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Vacate Requests Tab */}
         {activeTab === 'vacate' && (
           <div className="space-y-3">
             {vacateRequests.map(req => (
@@ -559,7 +554,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Notices Tab */}
         {activeTab === 'notices' && (
           <div className="space-y-3">
             {notices.map(notice => (
@@ -582,41 +576,20 @@ export default function OwnerDashboard() {
           <div className="modal-content">
             <h2 className="text-2xl font-bold mb-4">Add New Tenant</h2>
             <div className="space-y-4">
-              <div>
-                <label className="block text-gray-300 text-sm mb-1">Full Name *</label>
-                <input type="text" placeholder="e.g., Rahul Sharma" className="input" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
-              </div>
-              <div>
-                <label className="block text-gray-300 text-sm mb-1">Phone Number *</label>
-                <input type="tel" placeholder="9876543210" className="input" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} />
-                <p className="text-xs text-gray-500 mt-1">10-digit mobile number (without +91)</p>
-              </div>
-              <div>
-                <label className="block text-gray-300 text-sm mb-1">Monthly Rent (₹) *</label>
-                <input type="number" placeholder="10000" className="input" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} />
-              </div>
-              <div>
-                <label className="block text-gray-300 text-sm mb-1">Select Room *</label>
-                <select className="input" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}>
-                  <option value="">-- Select a Room --</option>
-                  {rooms.filter(r => r.current_occupants < r.capacity).map(room => {
-                    const sharing = getSharingDetails(room.sharing_type)
-                    const available = room.capacity - room.current_occupants
-                    return (
-                      <option key={room.id} value={room.id}>
-                        Room {room.room_number} - {sharing.label} - ₹{formatCurrency(room.monthly_rent)}/month ({available} slots available)
-                      </option>
-                    )
-                  })}
-                </select>
-              </div>
-              <div className="bg-blue-500/10 rounded-lg p-3 text-xs text-blue-400">
-                ✅ Tenant will automatically get login access with OTP: 123456
-              </div>
+              <input type="text" placeholder="Full Name" className="input" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+              <input type="tel" placeholder="Phone Number" className="input" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} />
+              <input type="email" placeholder="Email" className="input" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+              <input type="number" placeholder="Monthly Rent" className="input" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} />
+              <select className="input" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}>
+                <option value="">Select Room</option>
+                {rooms.filter(r => r.current_occupants < r.capacity).map(room => (
+                  <option key={room.id} value={room.id}>
+                    Room {room.room_number} - {getSharingDetails(room.sharing_type).label} - {formatCurrency(room.monthly_rent)}/month
+                  </option>
+                ))}
+              </select>
               <div className="flex gap-3 mt-6">
-                <button onClick={addTenant} disabled={isSubmitting} className="btn-primary flex-1 disabled:opacity-50">
-                  {isSubmitting ? 'Adding...' : 'Add Tenant'}
-                </button>
+                <button onClick={addTenant} className="btn-primary flex-1">Add Tenant</button>
                 <button onClick={() => setShowAddModal(false)} className="btn-outline flex-1">Cancel</button>
               </div>
             </div>
@@ -630,23 +603,14 @@ export default function OwnerDashboard() {
           <div className="modal-content">
             <h2 className="text-2xl font-bold mb-4">Add New Room</h2>
             <div className="space-y-4">
-              <div>
-                <label className="block text-gray-300 text-sm mb-1">Room Number *</label>
-                <input type="text" placeholder="e.g., 101" className="input" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
-              </div>
-              <div>
-                <label className="block text-gray-300 text-sm mb-1">Sharing Type *</label>
-                <select className="input" value={roomForm.sharing_type} onChange={(e) => { 
-                  const selected = sharingTypes.find(t => t.value === e.target.value)
-                  setRoomForm({...roomForm, sharing_type: e.target.value, monthly_rent: selected.price})
-                }}>
-                  {sharingTypes.map(type => <option key={type.value} value={type.value}>{type.label} {type.icon} - Capacity: {type.capacity} - ₹{formatCurrency(type.price)}/month</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-gray-300 text-sm mb-1">Monthly Rent (₹) *</label>
-                <input type="number" placeholder="10000" className="input" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
-              </div>
+              <input type="text" placeholder="Room Number" className="input" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
+              <select className="input" value={roomForm.sharing_type} onChange={(e) => { 
+                const selected = sharingTypes.find(t => t.value === e.target.value)
+                setRoomForm({...roomForm, sharing_type: e.target.value, monthly_rent: selected.price})
+              }}>
+                {sharingTypes.map(type => <option key={type.value} value={type.value}>{type.label} {type.icon} - ₹{formatCurrency(type.price)}/month</option>)}
+              </select>
+              <input type="number" placeholder="Monthly Rent" className="input" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
               <div className="flex gap-3 mt-6">
                 <button onClick={addRoom} className="btn-primary flex-1">Add Room</button>
                 <button onClick={() => setShowRoomModal(false)} className="btn-outline flex-1">Cancel</button>
