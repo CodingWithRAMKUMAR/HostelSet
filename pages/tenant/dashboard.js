@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../../lib/supabase'
-import { formatCurrency, formatDate, getDaysOverdue, getSharingDetails } from '../../lib/utils'
+import { formatCurrency, formatDate, getDaysOverdue, getSharingDetails, cleanPhoneNumber } from '../../lib/utils'
 import toast from 'react-hot-toast'
 
 export default function TenantDashboard() {
@@ -27,10 +26,6 @@ export default function TenantDashboard() {
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('isLoggedIn')
     const userRole = localStorage.getItem('userRole')
-    const userPhone = localStorage.getItem('userPhone')
-    
-    console.log('Tenant Dashboard - Auth:', { isLoggedIn, userRole, userPhone })
-    
     if (!isLoggedIn || userRole !== 'tenant') {
       router.push('/login')
       return
@@ -42,26 +37,17 @@ export default function TenantDashboard() {
     setLoading(true)
     try {
       const userPhone = localStorage.getItem('userPhone')
+      const cleanPhone = cleanPhoneNumber(userPhone)
       
-      if (!userPhone) {
-        console.error('No userPhone found')
-        setLoading(false)
-        return
-      }
-      
-      // Find tenant by phone number
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
         .select('*')
-        .eq('phone', userPhone)
+        .eq('phone', cleanPhone)
         .maybeSingle()
-      
-      console.log('Tenant found:', tenantData)
       
       if (tenantData && tenantData.room_id) {
         setTenant(tenantData)
         
-        // Get room details
         const { data: roomData } = await supabase
           .from('rooms')
           .select('*')
@@ -69,7 +55,6 @@ export default function TenantDashboard() {
           .single()
         setRoom(roomData)
         
-        // Get property details
         const { data: propertyData } = await supabase
           .from('properties')
           .select('*')
@@ -77,7 +62,6 @@ export default function TenantDashboard() {
           .single()
         setProperty(propertyData)
         
-        // Get payment history
         const { data: payments } = await supabase
           .from('payment_history')
           .select('*')
@@ -85,7 +69,6 @@ export default function TenantDashboard() {
           .order('payment_date', { ascending: false })
         setPaymentHistory(payments || [])
         
-        // Get complaints
         const { data: complaintsData } = await supabase
           .from('complaints')
           .select('*')
@@ -93,7 +76,6 @@ export default function TenantDashboard() {
           .order('created_at', { ascending: false })
         setComplaints(complaintsData || [])
         
-        // Get notices
         const { data: noticesData } = await supabase
           .from('notices')
           .select('*')
@@ -101,7 +83,6 @@ export default function TenantDashboard() {
           .order('created_at', { ascending: false })
         setNotices(noticesData || [])
         
-        // Get check-out request
         const { data: checkOutData } = await supabase
           .from('check_out_requests')
           .select('*')
@@ -109,8 +90,6 @@ export default function TenantDashboard() {
           .order('created_at', { ascending: false })
           .limit(1)
         setCheckOutRequest(checkOutData?.[0] || null)
-      } else {
-        console.log('No tenant found or no room assigned')
       }
     } catch (error) {
       console.error('Error loading data:', error)
@@ -241,11 +220,6 @@ export default function TenantDashboard() {
             <h1 className="text-2xl font-bold text-white mb-2">Waiting for Room Assignment</h1>
             <p className="text-gray-400 mb-4">Your tenant account has been created successfully!</p>
             <p className="text-gray-400 mb-6">Please wait for the PG owner to assign you a room.</p>
-            <div className="bg-yellow-500/10 border border-yellow-500 rounded-xl p-4 mb-6 text-left">
-              <p className="text-sm text-yellow-400">Debug Info:</p>
-              <p className="text-xs text-gray-400 mt-1">Phone: {localStorage.getItem('userPhone') || 'Not found'}</p>
-              <p className="text-xs text-gray-400">User ID: {localStorage.getItem('userId') || 'Not found'}</p>
-            </div>
             <button onClick={handleLogout} className="btn-primary w-full">Logout</button>
           </div>
         </div>
@@ -262,7 +236,6 @@ export default function TenantDashboard() {
 
   return (
     <div className="min-h-screen" style={{ background: '#0f172a' }}>
-      {/* Header */}
       <nav className="navbar py-4 px-6 flex justify-between items-center sticky top-0 z-50">
         <h1 className="text-2xl font-bold text-primary">🏠 HOSTELSET</h1>
         <div className="flex items-center gap-4">
@@ -272,9 +245,7 @@ export default function TenantDashboard() {
       </nav>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Room and Rent Cards */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
-          {/* Room Card */}
           <div className="card">
             <h2 className="text-xl font-bold mb-4">🏠 My Room</h2>
             <p className="text-3xl font-bold text-primary">Room {room?.room_number}</p>
@@ -283,12 +254,10 @@ export default function TenantDashboard() {
             <div className="mt-3 flex items-center gap-2">
               <span className="text-lg">{sharingDetails.icon}</span>
               <span className="text-gray-300">{sharingDetails.label}</span>
-              <span className="text-xs text-gray-500">({sharingDetails.description})</span>
             </div>
-            <p className="text-gray-500 text-sm mt-2">Joined on: {formatDate(tenant.move_in_date)}</p>
+            <p className="text-gray-500 text-sm mt-2">Joined: {formatDate(tenant.move_in_date)}</p>
           </div>
 
-          {/* Rent Card */}
           <div className="card">
             <h2 className="text-xl font-bold mb-4">💰 Rent Details</h2>
             <div className="space-y-3">
@@ -308,17 +277,11 @@ export default function TenantDashboard() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Due Date:</span>
-                <span className="font-bold">Every {property?.rent_due_day || 5}th of the month</span>
+                <span className="font-bold">Every {property?.rent_due_day || 5}th</span>
               </div>
-              {tenant.last_payment_date && (
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Last Payment:</span>
-                  <span className="text-sm text-gray-500">{formatDate(tenant.last_payment_date)}</span>
-                </div>
-              )}
               {daysOverdue > 0 && (
                 <div className="alert-danger mt-2">
-                  ⚠️ Overdue by {daysOverdue} days! Late fee of ₹{property?.late_fee_per_day || 50}/day applies.
+                  ⚠️ Overdue by {daysOverdue} days! Late fee applies.
                 </div>
               )}
             </div>
@@ -330,7 +293,6 @@ export default function TenantDashboard() {
           </div>
         </div>
 
-        {/* Quick Actions */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
           <button onClick={() => setShowComplaintModal(true)} className="card p-4 text-center font-semibold hover:-translate-y-1 transition">
             🔧 Raise Complaint
@@ -343,83 +305,67 @@ export default function TenantDashboard() {
           </button>
         </div>
 
-        {/* Check-Out Request Status */}
         {checkOutRequest && (
           <div className={`card p-4 mb-8 ${checkOutRequest.status === 'pending' ? 'alert-warning' : checkOutRequest.status === 'approved' ? 'alert-success' : 'alert-danger'}`}>
             <h3 className="font-bold mb-2">📋 Check-Out Request</h3>
             <p className="text-sm">Status: <span className="font-semibold">{checkOutRequest.status.toUpperCase()}</span></p>
-            <p className="text-sm">Requested on: {formatDate(checkOutRequest.requested_date)}</p>
-            <p className="text-sm">Expected Check-Out: {formatDate(checkOutRequest.expected_check_out)}</p>
-            {checkOutRequest.reason && <p className="text-sm mt-1">Reason: {checkOutRequest.reason}</p>}
+            <p className="text-sm">Expected Date: {formatDate(checkOutRequest.expected_check_out)}</p>
             {checkOutRequest.owner_notes && <p className="text-sm mt-2 text-gray-400">Owner note: {checkOutRequest.owner_notes}</p>}
           </div>
         )}
 
-        {/* Payment History */}
         <div className="card p-6 mb-8">
           <h2 className="text-xl font-bold mb-4">📜 Payment History</h2>
           {paymentHistory.length > 0 ? (
-            <div className="space-y-3">
-              {paymentHistory.map(p => (
-                <div key={p.id} className="flex justify-between items-center p-3 bg-dark rounded-lg">
-                  <div>
-                    <p className="font-medium">{formatCurrency(p.amount)}</p>
-                    <p className="text-xs text-gray-500">{formatDate(p.payment_date)}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="badge-success">Success</span>
-                    <p className="text-xs text-gray-500 mt-1">{p.payment_method}</p>
-                  </div>
+            paymentHistory.map(p => (
+              <div key={p.id} className="flex justify-between items-center p-3 bg-dark rounded-lg mb-2">
+                <div>
+                  <p className="font-medium">{formatCurrency(p.amount)}</p>
+                  <p className="text-xs text-gray-500">{formatDate(p.payment_date)}</p>
                 </div>
-              ))}
-            </div>
+                <div className="text-right">
+                  <span className="badge-success">Success</span>
+                  <p className="text-xs text-gray-500 mt-1">{p.payment_method}</p>
+                </div>
+              </div>
+            ))
           ) : (
             <div className="text-center py-8 text-gray-500">No payment history yet</div>
           )}
         </div>
 
-        {/* Complaints Section */}
         <div className="card p-6 mb-8">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold">🔧 My Complaints</h2>
-            <button onClick={() => setShowComplaintModal(true)} className="text-primary text-sm hover:underline">+ Raise New Complaint</button>
+            <button onClick={() => setShowComplaintModal(true)} className="text-primary text-sm">+ New</button>
           </div>
           {complaints.length > 0 ? (
-            <div className="space-y-3">
-              {complaints.map(c => (
-                <div key={c.id} className="flex justify-between items-center p-3 bg-dark rounded-lg">
-                  <div className="flex-1">
-                    <p className="font-semibold">{c.title}</p>
-                    <p className="text-sm text-gray-400">{c.description.substring(0, 100)}...</p>
-                    <p className="text-xs text-gray-500 mt-1">Submitted: {formatDate(c.created_at)}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className={`badge-${c.status === 'open' ? 'danger' : c.status === 'in_progress' ? 'warning' : 'success'}`}>
-                      {c.status === 'open' ? 'Open' : c.status === 'in_progress' ? 'In Progress' : 'Resolved'}
-                    </span>
-                  </div>
+            complaints.map(c => (
+              <div key={c.id} className="flex justify-between items-center p-3 bg-dark rounded-lg mb-2">
+                <div>
+                  <p className="font-semibold">{c.title}</p>
+                  <p className="text-xs text-gray-500">{formatDate(c.created_at)}</p>
                 </div>
-              ))}
-            </div>
+                <span className={`badge-${c.status === 'open' ? 'danger' : c.status === 'in_progress' ? 'warning' : 'success'}`}>
+                  {c.status}
+                </span>
+              </div>
+            ))
           ) : (
-            <div className="text-center py-8 text-gray-500">No complaints raised yet</div>
+            <div className="text-center py-8 text-gray-500">No complaints yet</div>
           )}
         </div>
 
-        {/* Notices Section */}
         <div className="card p-6">
           <h2 className="text-xl font-bold mb-4">📢 Notices</h2>
           {notices.length > 0 ? (
-            <div className="space-y-3">
-              {notices.map(n => (
-                <div key={n.id} className={`p-3 rounded-lg ${n.is_urgent ? 'bg-red-500/10 border-l-4 border-red-500' : 'bg-dark'}`}>
-                  <p className="font-semibold">{n.title}</p>
-                  <p className="text-sm text-gray-400 mt-1">{n.content}</p>
-                  <p className="text-xs text-gray-500 mt-2">{formatDate(n.created_at)}</p>
-                  {n.is_urgent && <span className="text-xs text-red-400 mt-1 inline-block">⚠️ Urgent</span>}
-                </div>
-              ))}
-            </div>
+            notices.map(n => (
+              <div key={n.id} className={`p-3 rounded-lg mb-2 ${n.is_urgent ? 'bg-red-500/10 border-l-4 border-red-500' : 'bg-dark'}`}>
+                <p className="font-semibold">{n.title}</p>
+                <p className="text-sm text-gray-400">{n.content}</p>
+                <p className="text-xs text-gray-500 mt-1">{formatDate(n.created_at)}</p>
+              </div>
+            ))
           ) : (
             <div className="text-center py-8 text-gray-500">No notices yet</div>
           )}
@@ -431,43 +377,17 @@ export default function TenantDashboard() {
         {showComplaintModal && (
           <div className="modal-overlay">
             <div className="modal-content">
-              <h2 className="text-2xl font-bold mb-4">Raise a Complaint</h2>
+              <h2 className="text-2xl font-bold mb-4">Raise Complaint</h2>
               <div className="space-y-4">
-                <div>
-                  <label className="block text-gray-300 text-sm mb-1">Subject / Title *</label>
-                  <input
-                    type="text"
-                    placeholder="e.g., AC not working"
-                    className="input"
-                    value={complaintForm.title}
-                    onChange={(e) => setComplaintForm({...complaintForm, title: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-300 text-sm mb-1">Category *</label>
-                  <select
-                    className="input"
-                    value={complaintForm.category}
-                    onChange={(e) => setComplaintForm({...complaintForm, category: e.target.value})}
-                  >
-                    <option value="plumbing">Plumbing Issue</option>
-                    <option value="electrical">Electrical Issue</option>
-                    <option value="cleaning">Cleaning</option>
-                    <option value="internet">Internet/WiFi</option>
-                    <option value="furniture">Furniture Issue</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-gray-300 text-sm mb-1">Description *</label>
-                  <textarea
-                    placeholder="Please describe the issue in detail..."
-                    rows="4"
-                    className="input"
-                    value={complaintForm.description}
-                    onChange={(e) => setComplaintForm({...complaintForm, description: e.target.value})}
-                  />
-                </div>
+                <input type="text" placeholder="Title" className="input" value={complaintForm.title} onChange={(e) => setComplaintForm({...complaintForm, title: e.target.value})} />
+                <select className="input" value={complaintForm.category} onChange={(e) => setComplaintForm({...complaintForm, category: e.target.value})}>
+                  <option value="plumbing">Plumbing</option>
+                  <option value="electrical">Electrical</option>
+                  <option value="cleaning">Cleaning</option>
+                  <option value="internet">Internet</option>
+                  <option value="other">Other</option>
+                </select>
+                <textarea placeholder="Description" rows="4" className="input" value={complaintForm.description} onChange={(e) => setComplaintForm({...complaintForm, description: e.target.value})} />
                 <div className="flex gap-3 mt-6">
                   <button onClick={raiseComplaint} disabled={isSubmitting} className="btn-primary flex-1">
                     {isSubmitting ? 'Submitting...' : 'Submit Complaint'}
@@ -498,15 +418,9 @@ export default function TenantDashboard() {
                   <span className="text-red-400">{formatCurrency(pendingAmount)}</span>
                 </div>
               </div>
-              <input
-                type="number"
-                placeholder="Enter amount to pay (₹)"
-                className="input"
-                value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
-              />
+              <input type="number" placeholder="Enter amount to pay (₹)" className="input" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
               <div className="bg-yellow-500/20 p-3 rounded-lg text-sm text-yellow-400 mt-4">
-                💡 Demo payment. No real transaction will occur.
+                💡 Demo payment. No real transaction.
               </div>
               <div className="flex gap-3 mt-6">
                 <button onClick={payRent} disabled={isSubmitting} className="btn-success flex-1">
@@ -527,28 +441,16 @@ export default function TenantDashboard() {
               <h2 className="text-2xl font-bold mb-4">Request Check-Out</h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-gray-300 text-sm mb-1">Expected Check-Out Date *</label>
-                  <input
-                    type="date"
-                    className="input"
-                    value={checkoutForm.expected_date}
-                    onChange={(e) => setCheckoutForm({...checkoutForm, expected_date: e.target.value})}
-                  />
+                  <label className="block text-gray-300 text-sm mb-1">Expected Check-Out Date</label>
+                  <input type="date" className="input" value={checkoutForm.expected_date} onChange={(e) => setCheckoutForm({...checkoutForm, expected_date: e.target.value})} />
                 </div>
                 <div>
-                  <label className="block text-gray-300 text-sm mb-1">Reason for leaving (Optional)</label>
-                  <textarea
-                    placeholder="e.g., Moving to another city, job change, etc."
-                    rows="3"
-                    className="input"
-                    value={checkoutForm.reason}
-                    onChange={(e) => setCheckoutForm({...checkoutForm, reason: e.target.value})}
-                  />
+                  <label className="block text-gray-300 text-sm mb-1">Reason (Optional)</label>
+                  <textarea placeholder="Why are you leaving?" rows="3" className="input" value={checkoutForm.reason} onChange={(e) => setCheckoutForm({...checkoutForm, reason: e.target.value})} />
                 </div>
                 <div className="alert-warning">
                   <p className="font-semibold">⚠️ Notice Period: 30 days</p>
                   <p className="text-xs mt-1">You will need to clear all pending dues before check-out.</p>
-                  <p className="text-xs mt-1">Security deposit will be refunded after deduction of any pending dues.</p>
                 </div>
                 <div className="flex gap-3 mt-6">
                   <button onClick={requestCheckout} disabled={isSubmitting} className="btn-primary flex-1">
