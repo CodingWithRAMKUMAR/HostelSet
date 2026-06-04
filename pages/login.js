@@ -1,4 +1,4 @@
-// pages/login.js - Updated with proper role handling
+// pages/login.js - Fixed version
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabase';
@@ -39,7 +39,7 @@ export default function Login() {
       if (error) throw error;
       
       setShowOtpInput(true);
-      setMessage('OTP sent successfully!');
+      setMessage('OTP sent successfully! Demo OTP: 123456');
     } catch (error) {
       setMessage('Failed to send OTP. Please try again.');
       console.error(error);
@@ -68,7 +68,6 @@ export default function Login() {
       if (error) throw error;
 
       if (data.user) {
-        // Check if user exists in users table
         const cleanPhone = phoneNumber.replace(/\D/g, '');
         const { data: existingUser } = await supabase
           .from('users')
@@ -77,7 +76,6 @@ export default function Login() {
           .single();
 
         if (!existingUser) {
-          // Create new user
           const { error: insertError } = await supabase
             .from('users')
             .insert([
@@ -90,7 +88,6 @@ export default function Login() {
 
           if (insertError) throw insertError;
         } else {
-          // Update role if different
           if (existingUser.role !== selectedRole) {
             const { error: updateError } = await supabase
               .from('users')
@@ -101,15 +98,12 @@ export default function Login() {
           }
         }
 
-        // Store user data in localStorage
         localStorage.setItem('userRole', selectedRole);
         localStorage.setItem('userPhone', cleanPhone);
 
-        // Redirect based on role
         if (selectedRole === 'owner') {
           router.push('/owner/dashboard');
         } else {
-          // Check if tenant has an assigned room
           const { data: tenantData } = await supabase
             .from('tenants')
             .select('room_id')
@@ -236,7 +230,7 @@ export default function Login() {
 
         {message && (
           <div className={`mt-4 p-3 rounded-lg text-center text-sm ${
-            message.includes('success') ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+            message.includes('successfully') ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
           }`}>
             {message}
           </div>
