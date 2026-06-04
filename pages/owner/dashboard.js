@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase, uploadImage } from '../../lib/supabase'
-import { formatCurrency, formatDate, getSharingDetails, cleanPhoneNumber } from '../../lib/utils'
+import { formatCurrency, formatDate, getSharingDetails, cleanPhoneNumber, getDaysOverdue } from '../../lib/utils'
 import toast from 'react-hot-toast'
 
 export default function OwnerDashboard() {
@@ -22,6 +22,8 @@ export default function OwnerDashboard() {
   const [showRoomModal, setShowRoomModal] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showNoticeModal, setShowNoticeModal] = useState(false)
+  const [showRoomDetailsModal, setShowRoomDetailsModal] = useState(false)
+  const [selectedRoom, setSelectedRoom] = useState(null)
   const [selectedTenant, setSelectedTenant] = useState(null)
   const [selectedComplaint, setSelectedComplaint] = useState(null)
   const [showComplaintResponseModal, setShowComplaintResponseModal] = useState(false)
@@ -33,6 +35,7 @@ export default function OwnerDashboard() {
   const [activeTab, setActiveTab] = useState('overview')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [stats, setStats] = useState({ totalRooms: 0, occupied: 0, vacant: 0, totalCollected: 0, pendingAmount: 0, totalComplaints: 0, pendingVacate: 0 })
+  const [dueAlerts, setDueAlerts] = useState([])
 
   const sharingTypes = [
     { value: 'single', label: 'Single Sharing', capacity: 1, icon: '👤', price: 15000 },
@@ -76,6 +79,30 @@ export default function OwnerDashboard() {
           .eq('property_id', propertyData.id)
         setTenants(tenantsData || [])
         
+        // Calculate due alerts
+        const today = new Date()
+        const dueDate = new Date()
+        dueDate.setDate(propertyData.rent_due_day || 5)
+        const daysUntilDue = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24))
+        
+        const alerts = []
+        if (daysUntilDue === 3) alerts.push({ type: 'rent_due_soon', message: `Rent due in 3 days! Send reminders to tenants.` })
+        if (daysUntilDue === 1) alerts.push({ type: 'rent_due_tomorrow', message: `⚠️ Rent due TOMORROW!` })
+        if (daysUntilDue === 0) alerts.push({ type: 'rent_due_today', message: `🔴 Rent DUE TODAY!` })
+        
+        // Check overdue tenants
+        const overdueTenants = tenantsData?.filter(t => {
+          const dueDate = new Date(t.move_in_date)
+          dueDate.setDate(propertyData.rent_due_day || 5)
+          return t.rent_status === 'pending' && new Date() > dueDate
+        }) || []
+        
+        if (overdueTenants.length > 0) {
+          alerts.push({ type: 'overdue', message: `${overdueTenants.length} tenant(s) have overdue rent!` })
+        }
+        
+        setDueAlerts(alerts)
+        
         const { data: appsData } = await supabase
           .from('applications')
           .select('*')
@@ -83,7 +110,6 @@ export default function OwnerDashboard() {
           .eq('status', 'pending')
         setApplications(appsData || [])
         
-        // Get vacate requests with tenant details
         const { data: vacateData } = await supabase
           .from('check_out_requests')
           .select('*, tenants:tenant_id(*)')
@@ -92,7 +118,6 @@ export default function OwnerDashboard() {
         setVacateRequests(vacateData || [])
         setStats(prev => ({ ...prev, pendingVacate: vacateData?.length || 0 }))
         
-        // Get complaints with tenant details
         const { data: complaintsData } = await supabase
           .from('complaints')
           .select('*, tenants:tenant_id(*)')
@@ -115,6 +140,18 @@ export default function OwnerDashboard() {
     } finally { 
       setLoading(false) 
     }
+  }
+
+  const getTenantsInRoom = (roomId) => {
+    return tenants.filter(t => t.room_id === roomId)
+  }
+
+  const getDaysUntilDue = () => {
+    const today = new Date()
+    const dueDate = new Date()
+    dueDate.setDate(property?.rent_due_day || 5)
+    if (today > dueDate) return 0
+    return Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24))
   }
 
   const handleImageUpload = async (e) => {
@@ -537,7 +574,9 @@ export default function OwnerDashboard() {
     </div>
   )
 
+  const daysUntilDue = getDaysUntilDue()
   const alerts = [
+    ...dueAlerts,
     ...tenants.filter(t => t.rent_status === 'pending' && new Date() > new Date(t.move_in_date).setDate(property.rent_due_day || 5)).map(t => ({ type: 'overdue', message: `${t.name} has overdue rent` })),
     ...vacateRequests.map(r => ({ type: 'vacate', message: `${r.tenant_name} (Room ${r.room_number}) requested check-out for ${formatDate(r.expected_check_out)}` })),
     ...applications.map(() => ({ type: 'application', message: 'New application pending' })),
@@ -589,6 +628,19 @@ export default function OwnerDashboard() {
           </div>
         </div>
         
+        {/* Due Date Alert Banner */}
+        {daysUntilDue > 0 && daysUntilDue <= 5 && (
+          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl flex items-center justify-between">
+            <div>
+              <span className="text-yellow-600 font-semibold">⚠️ Rent Due in {daysUntilDue} days!</span>
+              <p className="text-sm text-yellow-500 mt-1">Send payment reminders to tenants.</p>
+            </div>
+            <button className="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-700 transition">
+              Send Reminders
+            </button>
+          </div>
+        )}
+        
         {/* Alerts Section */}
         {alerts.length > 0 && (
           <div className="mb-8 space-y-2">
@@ -596,11 +648,15 @@ export default function OwnerDashboard() {
             {alerts.map((a, i) => (
               <div key={i} className={`p-3 rounded-lg text-sm ${
                 a.type === 'overdue' ? 'bg-red-50 text-red-700 border border-red-100' :
+                a.type === 'rent_due_soon' ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' :
+                a.type === 'rent_due_today' ? 'bg-red-100 text-red-800 border border-red-200' :
                 a.type === 'vacate' ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' :
                 a.type === 'complaint' ? 'bg-orange-50 text-orange-700 border border-orange-100' :
                 'bg-blue-50 text-blue-700 border border-blue-100'
               }`}>
-                <span className="font-medium">{a.type === 'overdue' ? '🔴' : a.type === 'vacate' ? '🟡' : a.type === 'complaint' ? '🟠' : '🔵'}</span>
+                <span className="font-medium">
+                  {a.type === 'overdue' ? '🔴' : a.type === 'rent_due_soon' ? '🟡' : a.type === 'rent_due_today' ? '🔴' : a.type === 'vacate' ? '🟡' : a.type === 'complaint' ? '🟠' : '🔵'}
+                </span>
                 {' '}{a.message}
               </div>
             ))}
@@ -648,7 +704,7 @@ export default function OwnerDashboard() {
               }`}
             >
               {tab === 'overview' && '📊 Overview'}
-              {tab === 'rooms' && '🏠 Rooms'}
+              {tab === 'rooms' && `🏠 Rooms`}
               {tab === 'tenants' && '👥 Tenants'}
               {tab === 'complaints' && `🔧 Complaints ${stats.totalComplaints > 0 ? `(${stats.totalComplaints})` : ''}`}
               {tab === 'vacate' && `🚪 Vacate ${stats.pendingVacate > 0 ? `(${stats.pendingVacate})` : ''}`}
@@ -662,7 +718,6 @@ export default function OwnerDashboard() {
         {activeTab === 'overview' && (
           <div>
             <div className="grid md:grid-cols-2 gap-6">
-              {/* Recent Tenants */}
               <div className="bg-white rounded-xl border border-gray-100 p-6">
                 <h3 className="font-semibold text-slate-800 mb-4">Recent Tenants</h3>
                 <div className="space-y-3">
@@ -682,7 +737,6 @@ export default function OwnerDashboard() {
                 </div>
               </div>
 
-              {/* Recent Complaints */}
               <div className="bg-white rounded-xl border border-gray-100 p-6">
                 <h3 className="font-semibold text-slate-800 mb-4">Recent Complaints</h3>
                 <div className="space-y-3">
@@ -710,32 +764,78 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Rooms Tab */}
+        {/* Rooms Tab - 3D Cards with Click to View Details */}
         {activeTab === 'rooms' && (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {rooms.map(room => {
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {rooms.map((room) => {
               const sharing = getSharingDetails(room.sharing_type)
               const isFull = room.current_occupants >= room.capacity
               const availableSlots = room.capacity - room.current_occupants
+              const roomTenants = getTenantsInRoom(room.id)
+              const occupancyPercentage = (room.current_occupants / room.capacity) * 100
+              
               return (
-                <div key={room.id} className={`bg-white rounded-xl border-2 p-4 transition-all ${isFull ? 'border-gray-200' : 'border-green-200'}`}>
-                  <div className="flex justify-between items-start mb-3">
-                    <h3 className="text-xl font-bold text-slate-800">Room {room.room_number}</h3>
-                    <span className="text-2xl">{sharing.icon}</span>
-                  </div>
-                  <p className="text-sm text-gray-500 mb-2">{sharing.label}</p>
-                  <p className="text-lg font-bold text-slate-800 mt-2">{formatCurrency(room.monthly_rent)}<span className="text-xs text-gray-400">/month</span></p>
-                  <div className="mt-3">
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-500">Occupancy</span>
-                      <span className="text-slate-600">{room.current_occupants}/{room.capacity}</span>
+                <motion.div
+                  key={room.id}
+                  whileHover={{ y: -8, rotateX: 5 }}
+                  transition={{ type: 'spring', stiffness: 300 }}
+                  className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer border border-gray-100 overflow-hidden group"
+                  style={{ transformStyle: 'preserve-3d' }}
+                  onClick={() => { setSelectedRoom(room); setShowRoomDetailsModal(true) }}
+                >
+                  <div className={`p-5 ${isFull ? 'bg-gradient-to-br from-green-50 to-emerald-50' : 'bg-gradient-to-br from-slate-50 to-gray-50'}`}>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="text-2xl font-bold text-slate-800">Room {room.room_number}</h3>
+                        <p className="text-sm text-gray-500 mt-1">{sharing.label} {sharing.icon}</p>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-xs font-semibold ${isFull ? 'bg-green-500 text-white' : 'bg-orange-500 text-white'}`}>
+                        {isFull ? 'Full' : `${availableSlots} slot available`}
+                      </div>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div className="bg-slate-600 h-2 rounded-full" style={{ width: `${(room.current_occupants / room.capacity) * 100}%` }}></div>
+                    
+                    <div className="mt-4">
+                      <p className="text-2xl font-bold text-slate-800">{formatCurrency(room.monthly_rent)}<span className="text-sm text-gray-400">/month</span></p>
+                    </div>
+
+                    <div className="mt-4">
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-gray-500">Occupancy</span>
+                        <span className="text-slate-600">{room.current_occupants}/{room.capacity}</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                        <motion.div 
+                          className="h-2 rounded-full bg-gradient-to-r from-slate-600 to-slate-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${occupancyPercentage}%` }}
+                          transition={{ duration: 0.5 }}
+                        />
+                      </div>
+                    </div>
+
+                    {roomTenants.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-gray-200">
+                        <p className="text-xs text-gray-500 mb-2">Current Residents:</p>
+                        <div className="flex -space-x-2">
+                          {roomTenants.slice(0, 3).map((tenant, idx) => (
+                            <div key={tenant.id} className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600 border-2 border-white">
+                              {tenant.name.charAt(0)}
+                            </div>
+                          ))}
+                          {roomTenants.length > 3 && (
+                            <div className="w-8 h-8 rounded-full bg-slate-300 flex items-center justify-center text-xs font-bold text-slate-700 border-2 border-white">
+                              +{roomTenants.length - 3}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-4 text-center">
+                      <span className="text-xs text-primary-600 group-hover:underline">Click to view details →</span>
                     </div>
                   </div>
-                  <button onClick={() => deleteRoom(room.id)} className="w-full mt-3 text-red-500 text-sm py-1 border border-red-200 rounded-lg hover:bg-red-50 transition">Delete Room</button>
-                </div>
+                </motion.div>
               )
             })}
             {rooms.length === 0 && <div className="text-center py-12 text-gray-400 col-span-full">No rooms yet. Click "Add Room" to get started.</div>}
@@ -747,14 +847,34 @@ export default function OwnerDashboard() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
-                <tr><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Name</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Phone</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Room</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Rent</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Actions</th></tr></thead>
+                <tr><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Name</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Phone</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Room</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Rent</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Due Date</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Actions</th></tr></thead>
               <tbody>
-                {tenants.map(t => (
-                  <tr key={t.id} className="border-b hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-slate-700">{t.name}</td><td className="px-4 py-3 text-gray-500">{t.phone}</td><td className="px-4 py-3">Room {t.rooms?.room_number} ({getSharingDetails(t.rooms?.sharing_type)?.label})</td><td className="px-4 py-3 font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</td><td className="px-4 py-3"><span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">Active</span></td>
-                    <td className="px-4 py-3"><button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button><button onClick={() => deleteTenant(t.id, t.room_id)} className="text-red-500 text-xs">Delete</button></td>
-                  </tr>
-                ))}
+                {tenants.map(t => {
+                  const dueDate = new Date(t.move_in_date)
+                  dueDate.setDate(property?.rent_due_day || 5)
+                  const daysOverdue = getDaysOverdue(dueDate)
+                  const isOverdue = daysOverdue > 0 && t.rent_status === 'pending'
+                  return (
+                    <tr key={t.id} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-slate-700">{t.name}</td>
+                      <td className="px-4 py-3 text-gray-500">{t.phone}</td>
+                      <td className="px-4 py-3">Room {t.rooms?.room_number} ({getSharingDetails(t.rooms?.sharing_type)?.label})</td>
+                      <td className="px-4 py-3 font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</td>
+                      <td className="px-4 py-3">
+                        {isOverdue ? (
+                          <span className="text-red-500 font-semibold">Overdue by {daysOverdue} days</span>
+                        ) : (
+                          <span className="text-gray-500">Due on {property?.rent_due_day || 5}th</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3"><span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">Active</span></td>
+                      <td className="px-4 py-3">
+                        <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
+                        <button onClick={() => deleteTenant(t.id, t.room_id)} className="text-red-500 text-xs">Delete</button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
             {tenants.length === 0 && <div className="text-center py-12 text-gray-400">No tenants yet. Click "Add Tenant" to get started.</div>}
@@ -868,6 +988,95 @@ export default function OwnerDashboard() {
           </div>
         )}
       </div>
+
+      {/* Room Details Modal */}
+      <AnimatePresence>
+        {showRoomDetailsModal && selectedRoom && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomDetailsModal(false)}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 bg-white border-b border-gray-100 p-6 flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-slate-800">Room {selectedRoom.room_number} Details</h2>
+                <button onClick={() => setShowRoomDetailsModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+              </div>
+              <div className="p-6">
+                <div className="grid md:grid-cols-2 gap-6 mb-6">
+                  <div>
+                    <h3 className="font-semibold text-slate-800 mb-3">Room Information</h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between py-2 border-b border-gray-100">
+                        <span className="text-gray-500">Room Number:</span>
+                        <span className="font-semibold text-slate-700">{selectedRoom.room_number}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-100">
+                        <span className="text-gray-500">Sharing Type:</span>
+                        <span className="font-semibold text-slate-700">{getSharingDetails(selectedRoom.sharing_type)?.label}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-100">
+                        <span className="text-gray-500">Monthly Rent:</span>
+                        <span className="font-semibold text-slate-700">{formatCurrency(selectedRoom.monthly_rent)}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-100">
+                        <span className="text-gray-500">Capacity:</span>
+                        <span className="font-semibold text-slate-700">{selectedRoom.capacity} persons</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-100">
+                        <span className="text-gray-500">Current Occupants:</span>
+                        <span className="font-semibold text-slate-700">{selectedRoom.current_occupants}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-100">
+                        <span className="text-gray-500">Status:</span>
+                        <span className={`font-semibold ${selectedRoom.current_occupants >= selectedRoom.capacity ? 'text-red-500' : 'text-green-500'}`}>
+                          {selectedRoom.current_occupants >= selectedRoom.capacity ? 'Full' : `${selectedRoom.capacity - selectedRoom.current_occupants} slots available`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-slate-800 mb-3">Current Residents</h3>
+                    <div className="space-y-3">
+                      {getTenantsInRoom(selectedRoom.id).map(tenant => (
+                        <div key={tenant.id} className="bg-gray-50 rounded-lg p-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-semibold text-slate-800">{tenant.name}</p>
+                              <p className="text-xs text-gray-500">📞 {tenant.phone}</p>
+                              <p className="text-xs text-gray-500 mt-1">Move-in: {formatDate(tenant.move_in_date)}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-semibold text-slate-700">{formatCurrency(tenant.rent_amount)}/month</p>
+                              <p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>
+                                {tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {getTenantsInRoom(selectedRoom.id).length === 0 && (
+                        <p className="text-gray-400 text-center py-4">No residents currently</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {getTenantsInRoom(selectedRoom.id).length > 0 && (
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-slate-800 mb-2">💡 Quick Actions</h3>
+                    <div className="flex flex-wrap gap-2">
+                      <button className="bg-slate-800 text-white px-3 py-1 rounded text-sm">Send Notice to Room</button>
+                      <button className="border border-slate-300 text-slate-700 px-3 py-1 rounded text-sm">View Payment History</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Add Tenant Modal */}
       <AnimatePresence>
