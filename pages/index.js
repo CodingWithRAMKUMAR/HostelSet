@@ -3,27 +3,6 @@ import Link from 'next/link'
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import { supabase } from '../lib/supabase'
 import { formatCurrency, getPropertyTypeLabel } from '../lib/utils'
-import { 
-  Search, 
-  MapPin, 
-  Wallet, 
-  Shield, 
-  Clock, 
-  Users, 
-  Building, 
-  Star, 
-  ChevronRight,
-  Menu,
-  X,
-  CheckCircle,
-  ArrowRight,
-  Phone,
-  Mail,
-  Facebook,
-  Twitter,
-  Instagram,
-  Linkedin
-} from 'lucide-react'
 
 export default function Home() {
   const [scrolled, setScrolled] = useState(false)
@@ -34,13 +13,10 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCity, setSelectedCity] = useState('all')
   const [selectedType, setSelectedType] = useState('all')
-  const [priceRange, setPriceRange] = useState([5000, 25000])
   const [cities, setCities] = useState([])
-  const [featuredProperties, setFeaturedProperties] = useState([])
 
   const { scrollYProgress } = useScroll()
   const opacity = useTransform(scrollYProgress, [0, 0.2], [1, 0.8])
-  const scale = useTransform(scrollYProgress, [0, 0.2], [1, 0.95])
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50)
@@ -59,7 +35,6 @@ export default function Home() {
       
       if (propertiesData) {
         setProperties(propertiesData)
-        setFeaturedProperties(propertiesData.slice(0, 6))
         const uniqueCities = [...new Set(propertiesData.map(p => p.city).filter(Boolean))]
         setCities(uniqueCities)
       }
@@ -89,19 +64,19 @@ export default function Home() {
   })
 
   const features = [
-    { icon: <Wallet className="w-6 h-6" />, title: 'Easy Rent Collection', desc: 'Auto reminders and online payments', color: 'from-emerald-500 to-teal-500' },
-    { icon: <Shield className="w-6 h-6" />, title: 'Secure & Safe', desc: 'Bank-grade security for all data', color: 'from-blue-500 to-cyan-500' },
-    { icon: <Clock className="w-6 h-6" />, title: 'Real-time Updates', desc: 'Instant notifications and tracking', color: 'from-indigo-500 to-purple-500' },
-    { icon: <Users className="w-6 h-6" />, title: 'Tenant Management', desc: 'Easy onboarding and tracking', color: 'from-rose-500 to-pink-500' },
-    { icon: <Building className="w-6 h-6" />, title: 'Multi-Property', desc: 'Manage multiple properties', color: 'from-amber-500 to-orange-500' },
-    { icon: <Star className="w-6 h-6" />, title: '24/7 Support', desc: 'Dedicated support team', color: 'from-violet-500 to-purple-500' },
+    { icon: '💰', title: 'Easy Rent Collection', desc: 'Auto reminders and online payments' },
+    { icon: '🔒', title: 'Secure & Safe', desc: 'Bank-grade security for all data' },
+    { icon: '⏰', title: 'Real-time Updates', desc: 'Instant notifications and tracking' },
+    { icon: '👥', title: 'Tenant Management', desc: 'Easy onboarding and tracking' },
+    { icon: '🏢', title: 'Multi-Property', desc: 'Manage multiple properties' },
+    { icon: '⭐', title: '24/7 Support', desc: 'Dedicated support team' },
   ]
 
   const stats = [
-    { value: '10,000+', label: 'Happy Tenants', icon: <Users className="w-5 h-5" /> },
-    { value: '500+', label: 'Properties', icon: <Building className="w-5 h-5" /> },
-    { value: '₹50Cr+', label: 'Rent Collected', icon: <Wallet className="w-5 h-5" /> },
-    { value: '99.9%', label: 'Uptime', icon: <Shield className="w-5 h-5" /> },
+    { value: '10,000+', label: 'Happy Tenants', icon: '👥' },
+    { value: '500+', label: 'Properties', icon: '🏢' },
+    { value: '₹50Cr+', label: 'Rent Collected', icon: '💰' },
+    { value: '99.9%', label: 'Uptime', icon: '🔒' },
   ]
 
   return (
@@ -119,7 +94,6 @@ export default function Home() {
               </span>
             </Link>
             
-            {/* Desktop Navigation */}
             <div className="hidden md:flex items-center gap-8">
               <Link href="#features" className="text-gray-600 hover:text-slate-800 transition">Features</Link>
               <Link href="#properties" className="text-gray-600 hover:text-slate-800 transition">Properties</Link>
@@ -131,9 +105,8 @@ export default function Home() {
               </Link>
             </div>
             
-            {/* Mobile Menu Button */}
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden p-2">
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              <span className="text-2xl">{mobileMenuOpen ? '✕' : '☰'}</span>
             </button>
           </div>
         </div>
@@ -162,11 +135,7 @@ export default function Home() {
 
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 overflow-hidden">
-        {/* Background Gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-gray-50" />
-        <div className="absolute top-20 right-10 w-72 h-72 bg-slate-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30" />
-        <div className="absolute bottom-20 left-10 w-72 h-72 bg-gray-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30" />
-        
         <div className="relative container mx-auto px-4 md:px-6">
           <div className="max-w-4xl mx-auto text-center">
             <motion.div
@@ -196,7 +165,7 @@ export default function Home() {
               <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
                 <Link href="/register" className="bg-slate-800 text-white px-8 py-3 rounded-full font-semibold hover:bg-slate-700 transition shadow-md hover:shadow-lg flex items-center justify-center gap-2 group">
                   Get Started
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                  <span className="group-hover:translate-x-1 transition">→</span>
                 </Link>
                 <Link href="#properties" className="border-2 border-slate-300 text-slate-700 px-8 py-3 rounded-full font-semibold hover:border-slate-800 hover:bg-slate-50 transition flex items-center justify-center gap-2">
                   Explore Properties
@@ -213,7 +182,7 @@ export default function Home() {
             >
               <div className="flex flex-col md:flex-row gap-2">
                 <div className="flex-1 flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-xl">
-                  <Search className="w-5 h-5 text-gray-400" />
+                  <span className="text-gray-400">🔍</span>
                   <input
                     type="text"
                     placeholder="Search by city, area, or PG name..."
@@ -237,7 +206,7 @@ export default function Home() {
             >
               {stats.map((stat, index) => (
                 <div key={index} className="text-center">
-                  <div className="flex justify-center mb-2 text-slate-600">{stat.icon}</div>
+                  <div className="text-2xl mb-2">{stat.icon}</div>
                   <div className="text-2xl font-bold text-slate-800">{stat.value}</div>
                   <div className="text-sm text-gray-500">{stat.label}</div>
                 </div>
@@ -270,9 +239,7 @@ export default function Home() {
                 whileHover={{ y: -8 }}
                 className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300"
               >
-                <div className={`w-14 h-14 bg-gradient-to-br ${feature.color} rounded-xl flex items-center justify-center mb-4 text-white shadow-md`}>
-                  {feature.icon}
-                </div>
+                <div className="text-4xl mb-4">{feature.icon}</div>
                 <h3 className="text-xl font-semibold text-slate-800 mb-2">{feature.title}</h3>
                 <p className="text-gray-500">{feature.desc}</p>
               </motion.div>
@@ -288,16 +255,14 @@ export default function Home() {
             <h2 className="text-3xl md:text-4xl font-bold text-slate-800 mb-4">
               How <span className="text-slate-600">HOSTELSET</span> Works
             </h2>
-            <p className="text-gray-500 text-lg">
-              Get started in three simple steps
-            </p>
+            <p className="text-gray-500 text-lg">Get started in three simple steps</p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
             {[
-              { step: '01', title: 'Register Your Property', desc: 'Sign up and list your property details', icon: '📝', color: 'from-blue-500 to-cyan-500' },
-              { step: '02', title: 'Add Rooms & Tenants', desc: 'Manage rooms, add tenants, set rent amounts', icon: '🏠', color: 'from-emerald-500 to-teal-500' },
-              { step: '03', title: 'Start Earning', desc: 'Collect rent online, track payments, grow business', icon: '💰', color: 'from-amber-500 to-orange-500' },
+              { step: '01', title: 'Register Your Property', desc: 'Sign up and list your property details', icon: '📝' },
+              { step: '02', title: 'Add Rooms & Tenants', desc: 'Manage rooms, add tenants, set rent amounts', icon: '🏠' },
+              { step: '03', title: 'Start Earning', desc: 'Collect rent online, track payments, grow business', icon: '💰' },
             ].map((item, index) => (
               <motion.div
                 key={index}
@@ -311,7 +276,7 @@ export default function Home() {
                   <span className="text-xl">{item.icon}</span>
                 </div>
                 <div className="mt-4 mb-4">
-                  <div className={`w-16 h-16 bg-gradient-to-br ${item.color} rounded-2xl flex items-center justify-center mx-auto text-2xl text-white shadow-md`}>
+                  <div className="w-16 h-16 bg-gradient-to-br from-slate-700 to-slate-600 rounded-2xl flex items-center justify-center mx-auto text-2xl text-white shadow-md">
                     {item.step}
                   </div>
                 </div>
@@ -333,9 +298,6 @@ export default function Home() {
               </h2>
               <p className="text-gray-500">Discover the best PG accommodations in your city</p>
             </div>
-            <Link href="/properties" className="text-slate-600 hover:text-slate-800 font-semibold flex items-center gap-1">
-              View All <ChevronRight className="w-4 h-4" />
-            </Link>
           </div>
 
           {/* Filters */}
@@ -444,7 +406,7 @@ export default function Home() {
                           <h3 className="text-xl font-bold text-slate-800">{property.name}</h3>
                         </div>
                         <p className="text-gray-500 text-sm mb-2 flex items-center gap-1">
-                          <MapPin className="w-3 h-3" /> {property.city}
+                          <span>📍</span> {property.city}
                         </p>
                         <div className="flex flex-wrap gap-1 mb-3">
                           {property.amenities?.slice(0, 3).map((a, i) => (
@@ -468,7 +430,7 @@ export default function Home() {
                           className="flex items-center justify-center gap-2 w-full bg-slate-800 text-white py-2.5 rounded-xl font-semibold hover:bg-slate-700 transition group"
                         >
                           View Details
-                          <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                          <span className="group-hover:translate-x-1 transition">→</span>
                         </Link>
                       </div>
                     </motion.div>
@@ -495,17 +457,15 @@ export default function Home() {
             <h2 className="text-3xl md:text-4xl font-bold text-slate-800 mb-4">
               Simple, Transparent <span className="text-slate-600">Pricing</span>
             </h2>
-            <p className="text-gray-500 text-lg">
-              Choose the plan that fits your business needs
-            </p>
+            <p className="text-gray-500 text-lg">Choose the plan that fits your business needs</p>
           </div>
 
           <div className="grid md:grid-cols-4 gap-6">
             {[
-              { name: 'Free', price: '₹0', period: 'forever', features: ['Up to 10 rooms', 'Basic management', 'Manual payments', 'Email support'], button: 'Get Started', popular: false },
-              { name: 'Starter', price: '₹499', period: '/month', features: ['Up to 30 rooms', 'Online payments', 'Payment reminders', 'Complaint management', 'Email & WhatsApp support'], button: 'Start Free Trial', popular: false },
-              { name: 'Pro', price: '₹999', period: '/month', features: ['Up to 100 rooms', 'WhatsApp alerts', 'Analytics dashboard', 'Staff accounts (3)', 'Priority support'], button: 'Start Free Trial', popular: true },
-              { name: 'Enterprise', price: 'Custom', period: '', features: ['Unlimited rooms', 'Multiple properties', 'API access', 'Dedicated support', 'Custom branding'], button: 'Contact Sales', popular: false },
+              { name: 'Free', price: '₹0', period: 'forever', features: ['Up to 10 rooms', 'Basic management', 'Manual payments', 'Email support'], popular: false },
+              { name: 'Starter', price: '₹499', period: '/month', features: ['Up to 30 rooms', 'Online payments', 'Payment reminders', 'Complaint management', 'Email & WhatsApp support'], popular: false },
+              { name: 'Pro', price: '₹999', period: '/month', features: ['Up to 100 rooms', 'WhatsApp alerts', 'Analytics dashboard', 'Staff accounts (3)', 'Priority support'], popular: true },
+              { name: 'Enterprise', price: 'Custom', period: '', features: ['Unlimited rooms', 'Multiple properties', 'API access', 'Dedicated support', 'Custom branding'], popular: false },
             ].map((plan, index) => (
               <motion.div
                 key={index}
@@ -532,7 +492,7 @@ export default function Home() {
                 <ul className="space-y-3 mb-6">
                   {plan.features.map((feature, i) => (
                     <li key={i} className="flex items-center gap-2 text-sm text-gray-600">
-                      <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                      <span className="text-green-500">✓</span>
                       {feature}
                     </li>
                   ))}
@@ -545,7 +505,7 @@ export default function Home() {
                       : 'border-2 border-slate-300 text-slate-700 hover:bg-slate-50'
                   }`}
                 >
-                  {plan.button}
+                  {plan.buttonText || (plan.name === 'Enterprise' ? 'Contact Sales' : 'Start Free Trial')}
                 </Link>
               </motion.div>
             ))}
@@ -570,7 +530,7 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/register" className="bg-white text-slate-800 px-8 py-3 rounded-full font-semibold hover:bg-gray-100 transition shadow-md hover:shadow-lg inline-flex items-center gap-2 group">
                 Start Free Trial
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                <span className="group-hover:translate-x-1 transition">→</span>
               </Link>
               <Link href="/contact" className="border-2 border-white text-white px-8 py-3 rounded-full font-semibold hover:bg-white/10 transition inline-flex items-center gap-2">
                 Contact Sales
@@ -593,10 +553,10 @@ export default function Home() {
                 Set Your Hostel, Simplify Life. India's most trusted PG and hostel management platform.
               </p>
               <div className="flex gap-4">
-                <a href="#" className="text-gray-400 hover:text-slate-600 transition"><Facebook className="w-5 h-5" /></a>
-                <a href="#" className="text-gray-400 hover:text-slate-600 transition"><Twitter className="w-5 h-5" /></a>
-                <a href="#" className="text-gray-400 hover:text-slate-600 transition"><Instagram className="w-5 h-5" /></a>
-                <a href="#" className="text-gray-400 hover:text-slate-600 transition"><Linkedin className="w-5 h-5" /></a>
+                <a href="#" className="text-gray-400 hover:text-slate-600 transition">📘</a>
+                <a href="#" className="text-gray-400 hover:text-slate-600 transition">🐦</a>
+                <a href="#" className="text-gray-400 hover:text-slate-600 transition">📷</a>
+                <a href="#" className="text-gray-400 hover:text-slate-600 transition">🔗</a>
               </div>
             </div>
             <div>
