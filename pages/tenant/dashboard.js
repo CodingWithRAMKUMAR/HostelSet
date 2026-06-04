@@ -138,6 +138,7 @@ export default function TenantDashboard() {
         tenant_id: tenant.id,
         tenant_name: tenant.name,
         room_number: room?.room_number,
+        requested_date: new Date().toISOString().split('T')[0],
         expected_check_out: checkoutForm.expected_date,
         reason: checkoutForm.reason,
         notice_period_days: 30,
@@ -211,8 +212,11 @@ export default function TenantDashboard() {
     return (
       <div className="min-h-screen" style={{ background: '#0f172a' }}>
         <nav className="navbar py-4 px-6 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-primary">🏠 HOSTELSET</h1>
-          <button onClick={handleLogout} className="text-red-500 hover:text-red-700">Logout</button>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-primary">🏠 HOSTELSET</h1>
+            <span className="text-xs bg-primary/20 text-primary px-2 py-1 rounded-full">Tenant</span>
+          </div>
+          <button onClick={handleLogout} className="text-red-400 hover:text-red-300 transition">Logout</button>
         </nav>
         <div className="container mx-auto px-4 py-20 text-center">
           <div className="max-w-md mx-auto">
@@ -220,6 +224,15 @@ export default function TenantDashboard() {
             <h1 className="text-2xl font-bold text-white mb-2">Waiting for Room Assignment</h1>
             <p className="text-gray-400 mb-4">Your tenant account has been created successfully!</p>
             <p className="text-gray-400 mb-6">Please wait for the PG owner to assign you a room.</p>
+            <div className="bg-yellow-500/10 border border-yellow-500 rounded-xl p-4 mb-6 text-left">
+              <p className="text-sm text-yellow-400">📌 What to do next:</p>
+              <ul className="text-sm text-gray-400 mt-2 space-y-1">
+                <li>• Contact your PG owner with your registered phone number</li>
+                <li>• Owner will assign you a room from their dashboard</li>
+                <li>• You will see your room details here once assigned</li>
+                <li>• Then you can pay rent and raise complaints</li>
+              </ul>
+            </div>
             <button onClick={handleLogout} className="btn-primary w-full">Logout</button>
           </div>
         </div>
@@ -236,16 +249,34 @@ export default function TenantDashboard() {
 
   return (
     <div className="min-h-screen" style={{ background: '#0f172a' }}>
+      {/* Header */}
       <nav className="navbar py-4 px-6 flex justify-between items-center sticky top-0 z-50">
-        <h1 className="text-2xl font-bold text-primary">🏠 HOSTELSET</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-primary">🏠 HOSTELSET</h1>
+          <span className="text-xs bg-primary/20 text-primary px-2 py-1 rounded-full">Tenant</span>
+        </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm hidden md:inline">Welcome, {tenant.name}</span>
-          <button onClick={handleLogout} className="text-red-500 hover:text-red-700">Logout</button>
+          <span className="text-sm hidden md:inline text-gray-300">Welcome, {tenant.name}</span>
+          <button onClick={handleLogout} className="text-red-400 hover:text-red-300 transition">Logout</button>
         </div>
       </nav>
 
       <div className="container mx-auto px-4 py-8">
+        {/* Property Images Gallery */}
+        {property?.photos && property.photos.length > 0 && (
+          <div className="card mb-8">
+            <h2 className="text-xl font-bold mb-4">📸 Property Gallery</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {property.photos.slice(0, 4).map((img, i) => (
+                <img key={i} src={img} alt={`Property ${i + 1}`} className="w-full h-32 object-cover rounded-lg hover:opacity-90 transition" />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Room and Rent Cards */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
+          {/* Room Card */}
           <div className="card">
             <h2 className="text-xl font-bold mb-4">🏠 My Room</h2>
             <p className="text-3xl font-bold text-primary">Room {room?.room_number}</p>
@@ -254,10 +285,12 @@ export default function TenantDashboard() {
             <div className="mt-3 flex items-center gap-2">
               <span className="text-lg">{sharingDetails.icon}</span>
               <span className="text-gray-300">{sharingDetails.label}</span>
+              <span className="text-xs text-gray-500">({sharingDetails.description})</span>
             </div>
-            <p className="text-gray-500 text-sm mt-2">Joined: {formatDate(tenant.move_in_date)}</p>
+            <p className="text-gray-500 text-sm mt-2">Joined on: {formatDate(tenant.move_in_date)}</p>
           </div>
 
+          {/* Rent Card */}
           <div className="card">
             <h2 className="text-xl font-bold mb-4">💰 Rent Details</h2>
             <div className="space-y-3">
@@ -277,11 +310,17 @@ export default function TenantDashboard() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Due Date:</span>
-                <span className="font-bold">Every {property?.rent_due_day || 5}th</span>
+                <span className="font-bold">Every {property?.rent_due_day || 5}th of the month</span>
               </div>
+              {tenant.last_payment_date && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Last Payment:</span>
+                  <span className="text-sm text-gray-500">{formatDate(tenant.last_payment_date)}</span>
+                </div>
+              )}
               {daysOverdue > 0 && (
                 <div className="alert-danger mt-2">
-                  ⚠️ Overdue by {daysOverdue} days! Late fee applies.
+                  ⚠️ Overdue by {daysOverdue} days! Late fee of ₹{property?.late_fee_per_day || 50}/day applies.
                 </div>
               )}
             </div>
@@ -293,6 +332,7 @@ export default function TenantDashboard() {
           </div>
         </div>
 
+        {/* Quick Actions */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
           <button onClick={() => setShowComplaintModal(true)} className="card p-4 text-center font-semibold hover:-translate-y-1 transition">
             🔧 Raise Complaint
@@ -305,67 +345,112 @@ export default function TenantDashboard() {
           </button>
         </div>
 
+        {/* Check-Out Request Status - Visible to tenant */}
         {checkOutRequest && (
-          <div className={`card p-4 mb-8 ${checkOutRequest.status === 'pending' ? 'alert-warning' : checkOutRequest.status === 'approved' ? 'alert-success' : 'alert-danger'}`}>
-            <h3 className="font-bold mb-2">📋 Check-Out Request</h3>
-            <p className="text-sm">Status: <span className="font-semibold">{checkOutRequest.status.toUpperCase()}</span></p>
-            <p className="text-sm">Expected Date: {formatDate(checkOutRequest.expected_check_out)}</p>
-            {checkOutRequest.owner_notes && <p className="text-sm mt-2 text-gray-400">Owner note: {checkOutRequest.owner_notes}</p>}
+          <div className={`card p-4 mb-8 ${checkOutRequest.status === 'pending' ? 'border-l-4 border-l-yellow-500' : checkOutRequest.status === 'approved' ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500'}`}>
+            <h3 className="font-bold mb-2">📋 Check-Out Request Status</h3>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <p className="text-gray-400">Status:</p>
+              <p className={`font-semibold ${
+                checkOutRequest.status === 'pending' ? 'text-yellow-400' : 
+                checkOutRequest.status === 'approved' ? 'text-green-400' : 'text-red-400'
+              }`}>{checkOutRequest.status.toUpperCase()}</p>
+              
+              <p className="text-gray-400">Requested on:</p>
+              <p>{formatDate(checkOutRequest.requested_date)}</p>
+              
+              <p className="text-gray-400">Expected Check-Out:</p>
+              <p>{formatDate(checkOutRequest.expected_check_out)}</p>
+              
+              {checkOutRequest.reason && (
+                <>
+                  <p className="text-gray-400">Reason:</p>
+                  <p className="text-gray-300">{checkOutRequest.reason}</p>
+                </>
+              )}
+              {checkOutRequest.owner_notes && (
+                <>
+                  <p className="text-gray-400">Owner Response:</p>
+                  <p className="text-gray-300">{checkOutRequest.owner_notes}</p>
+                </>
+              )}
+            </div>
+            {checkOutRequest.status === 'approved' && (
+              <div className="alert-success mt-3 text-sm">
+                ✅ Your check-out request has been approved. Please clear all pending dues before leaving.
+              </div>
+            )}
           </div>
         )}
 
+        {/* Payment History */}
         <div className="card p-6 mb-8">
           <h2 className="text-xl font-bold mb-4">📜 Payment History</h2>
           {paymentHistory.length > 0 ? (
-            paymentHistory.map(p => (
-              <div key={p.id} className="flex justify-between items-center p-3 bg-dark rounded-lg mb-2">
-                <div>
-                  <p className="font-medium">{formatCurrency(p.amount)}</p>
-                  <p className="text-xs text-gray-500">{formatDate(p.payment_date)}</p>
+            <div className="space-y-3">
+              {paymentHistory.map(p => (
+                <div key={p.id} className="flex justify-between items-center p-3 bg-dark rounded-lg">
+                  <div>
+                    <p className="font-medium">{formatCurrency(p.amount)}</p>
+                    <p className="text-xs text-gray-500">{formatDate(p.payment_date)}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="badge-success">Success</span>
+                    <p className="text-xs text-gray-500 mt-1">{p.payment_method}</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="badge-success">Success</span>
-                  <p className="text-xs text-gray-500 mt-1">{p.payment_method}</p>
-                </div>
-              </div>
-            ))
+              ))}
+            </div>
           ) : (
             <div className="text-center py-8 text-gray-500">No payment history yet</div>
           )}
         </div>
 
+        {/* Complaints Section */}
         <div className="card p-6 mb-8">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold">🔧 My Complaints</h2>
-            <button onClick={() => setShowComplaintModal(true)} className="text-primary text-sm">+ New</button>
+            <button onClick={() => setShowComplaintModal(true)} className="text-primary text-sm hover:underline">+ Raise New Complaint</button>
           </div>
           {complaints.length > 0 ? (
-            complaints.map(c => (
-              <div key={c.id} className="flex justify-between items-center p-3 bg-dark rounded-lg mb-2">
-                <div>
-                  <p className="font-semibold">{c.title}</p>
-                  <p className="text-xs text-gray-500">{formatDate(c.created_at)}</p>
+            <div className="space-y-3">
+              {complaints.map(c => (
+                <div key={c.id} className="flex justify-between items-center p-3 bg-dark rounded-lg">
+                  <div className="flex-1">
+                    <p className="font-semibold">{c.title}</p>
+                    <p className="text-sm text-gray-400">{c.description.substring(0, 100)}...</p>
+                    <p className="text-xs text-gray-500 mt-1">Submitted: {formatDate(c.created_at)}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className={`badge-${c.status === 'open' ? 'danger' : c.status === 'in_progress' ? 'warning' : 'success'}`}>
+                      {c.status === 'open' ? 'Open' : c.status === 'in_progress' ? 'In Progress' : 'Resolved'}
+                    </span>
+                  </div>
                 </div>
-                <span className={`badge-${c.status === 'open' ? 'danger' : c.status === 'in_progress' ? 'warning' : 'success'}`}>
-                  {c.status}
-                </span>
-              </div>
-            ))
+              ))}
+            </div>
           ) : (
-            <div className="text-center py-8 text-gray-500">No complaints yet</div>
+            <div className="text-center py-8 text-gray-500">No complaints raised yet</div>
           )}
         </div>
 
+        {/* Notices Section */}
         <div className="card p-6">
           <h2 className="text-xl font-bold mb-4">📢 Notices</h2>
           {notices.length > 0 ? (
-            notices.map(n => (
-              <div key={n.id} className={`p-3 rounded-lg mb-2 ${n.is_urgent ? 'bg-red-500/10 border-l-4 border-red-500' : 'bg-dark'}`}>
-                <p className="font-semibold">{n.title}</p>
-                <p className="text-sm text-gray-400">{n.content}</p>
-                <p className="text-xs text-gray-500 mt-1">{formatDate(n.created_at)}</p>
-              </div>
-            ))
+            <div className="space-y-3">
+              {notices.map(n => (
+                <div key={n.id} className={`p-3 rounded-lg ${n.is_urgent ? 'bg-red-500/10 border-l-4 border-red-500' : 'bg-dark'}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-semibold">{n.title}</p>
+                    {n.is_urgent && <span className="badge-danger text-xs">URGENT</span>}
+                    <span className="badge-info text-xs">{n.type}</span>
+                  </div>
+                  <p className="text-sm text-gray-400">{n.content}</p>
+                  <p className="text-xs text-gray-500 mt-2">Posted: {formatDate(n.created_at)}</p>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="text-center py-8 text-gray-500">No notices yet</div>
           )}
@@ -375,23 +460,22 @@ export default function TenantDashboard() {
       {/* Raise Complaint Modal */}
       <AnimatePresence>
         {showComplaintModal && (
-          <div className="modal-overlay">
-            <div className="modal-content">
-              <h2 className="text-2xl font-bold mb-4">Raise Complaint</h2>
+          <div className="modal-overlay" onClick={() => setShowComplaintModal(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h2 className="text-2xl font-bold mb-4">Raise a Complaint</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Title" className="input" value={complaintForm.title} onChange={(e) => setComplaintForm({...complaintForm, title: e.target.value})} />
+                <input type="text" placeholder="Subject / Title *" className="input" value={complaintForm.title} onChange={(e) => setComplaintForm({...complaintForm, title: e.target.value})} />
                 <select className="input" value={complaintForm.category} onChange={(e) => setComplaintForm({...complaintForm, category: e.target.value})}>
-                  <option value="plumbing">Plumbing</option>
-                  <option value="electrical">Electrical</option>
+                  <option value="plumbing">Plumbing Issue</option>
+                  <option value="electrical">Electrical Issue</option>
                   <option value="cleaning">Cleaning</option>
-                  <option value="internet">Internet</option>
+                  <option value="internet">Internet/WiFi</option>
+                  <option value="furniture">Furniture Issue</option>
                   <option value="other">Other</option>
                 </select>
-                <textarea placeholder="Description" rows="4" className="input" value={complaintForm.description} onChange={(e) => setComplaintForm({...complaintForm, description: e.target.value})} />
+                <textarea placeholder="Detailed description *" rows="4" className="input" value={complaintForm.description} onChange={(e) => setComplaintForm({...complaintForm, description: e.target.value})} />
                 <div className="flex gap-3 mt-6">
-                  <button onClick={raiseComplaint} disabled={isSubmitting} className="btn-primary flex-1">
-                    {isSubmitting ? 'Submitting...' : 'Submit Complaint'}
-                  </button>
+                  <button onClick={raiseComplaint} disabled={isSubmitting} className="btn-primary flex-1">{isSubmitting ? 'Submitting...' : 'Submit Complaint'}</button>
                   <button onClick={() => setShowComplaintModal(false)} className="btn-outline flex-1">Cancel</button>
                 </div>
               </div>
@@ -403,8 +487,8 @@ export default function TenantDashboard() {
       {/* Pay Rent Modal */}
       <AnimatePresence>
         {showPayModal && (
-          <div className="modal-overlay">
-            <div className="modal-content">
+          <div className="modal-overlay" onClick={() => setShowPayModal(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4 text-center">Pay Rent</h2>
               <div className="bg-dark rounded-xl p-4 mb-4">
                 <p className="text-gray-400 text-sm">Room {room?.room_number} • {property?.name}</p>
@@ -423,9 +507,7 @@ export default function TenantDashboard() {
                 💡 Demo payment. No real transaction.
               </div>
               <div className="flex gap-3 mt-6">
-                <button onClick={payRent} disabled={isSubmitting} className="btn-success flex-1">
-                  {isSubmitting ? 'Processing...' : 'Pay Now'}
-                </button>
+                <button onClick={payRent} disabled={isSubmitting} className="btn-success flex-1">{isSubmitting ? 'Processing...' : 'Pay Now'}</button>
                 <button onClick={() => setShowPayModal(false)} className="btn-outline flex-1">Cancel</button>
               </div>
             </div>
@@ -436,26 +518,30 @@ export default function TenantDashboard() {
       {/* Request Check-Out Modal */}
       <AnimatePresence>
         {showCheckoutModal && (
-          <div className="modal-overlay">
-            <div className="modal-content">
+          <div className="modal-overlay" onClick={() => setShowCheckoutModal(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">Request Check-Out</h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-gray-300 text-sm mb-1">Expected Check-Out Date</label>
+                  <label className="block text-gray-300 text-sm mb-1">Expected Check-Out Date *</label>
                   <input type="date" className="input" value={checkoutForm.expected_date} onChange={(e) => setCheckoutForm({...checkoutForm, expected_date: e.target.value})} />
+                  <p className="text-xs text-gray-500 mt-1">Notice period: 30 days from today</p>
                 </div>
                 <div>
-                  <label className="block text-gray-300 text-sm mb-1">Reason (Optional)</label>
-                  <textarea placeholder="Why are you leaving?" rows="3" className="input" value={checkoutForm.reason} onChange={(e) => setCheckoutForm({...checkoutForm, reason: e.target.value})} />
+                  <label className="block text-gray-300 text-sm mb-1">Reason for leaving (Optional)</label>
+                  <textarea placeholder="e.g., Moving to another city, job change, etc." rows="3" className="input" value={checkoutForm.reason} onChange={(e) => setCheckoutForm({...checkoutForm, reason: e.target.value})} />
                 </div>
                 <div className="alert-warning">
-                  <p className="font-semibold">⚠️ Notice Period: 30 days</p>
-                  <p className="text-xs mt-1">You will need to clear all pending dues before check-out.</p>
+                  <p className="font-semibold">⚠️ Important Notes:</p>
+                  <ul className="text-xs mt-2 space-y-1">
+                    <li>• Notice period: 30 days</li>
+                    <li>• You will need to clear all pending dues before check-out</li>
+                    <li>• Security deposit will be refunded after deduction of any pending dues</li>
+                    <li>• Owner will review and approve your request</li>
+                  </ul>
                 </div>
                 <div className="flex gap-3 mt-6">
-                  <button onClick={requestCheckout} disabled={isSubmitting} className="btn-primary flex-1">
-                    {isSubmitting ? 'Submitting...' : 'Submit Request'}
-                  </button>
+                  <button onClick={requestCheckout} disabled={isSubmitting} className="btn-primary flex-1">{isSubmitting ? 'Submitting...' : 'Submit Request'}</button>
                   <button onClick={() => setShowCheckoutModal(false)} className="btn-outline flex-1">Cancel</button>
                 </div>
               </div>
