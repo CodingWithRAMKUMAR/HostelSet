@@ -43,7 +43,6 @@ export default function Login() {
       if (otp === '123456') {
         const cleanPhone = cleanPhoneNumber(phone)
         
-        // Find user by cleaned phone number
         const { data: existingUser } = await supabase
           .from('users')
           .select('*')
@@ -51,7 +50,6 @@ export default function Login() {
           .maybeSingle()
         
         if (existingUser) {
-          // For tenant - verify room assignment
           if (existingUser.role === 'tenant') {
             const { data: tenantRecord } = await supabase
               .from('tenants')
@@ -92,7 +90,6 @@ export default function Login() {
             router.push('/tenant/dashboard')
           }
         } else {
-          // Create new user
           const { data: newUser, error: createError } = await supabase
             .from('users')
             .insert({
@@ -136,24 +133,24 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#0f172a' }}>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 to-white">
       <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
+        initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5 }}
-        className="bg-secondary rounded-2xl p-8 max-w-md w-full border border-gray-800"
+        className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full border border-gray-100"
       >
         <div className="text-center mb-8">
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ type: 'spring', delay: 0.2 }}
-            className="w-20 h-20 bg-gradient-to-r from-primary to-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg"
+            className="w-16 h-16 bg-gradient-to-r from-slate-700 to-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-md"
           >
-            <span className="text-4xl">🏠</span>
+            <span className="text-3xl">🏠</span>
           </motion.div>
-          <h1 className="text-3xl font-bold gradient-text">HOSTELSET</h1>
-          <p className="text-gray-400 mt-2">Login to your account</p>
+          <h1 className="text-2xl font-bold text-slate-800">HOSTELSET</h1>
+          <p className="text-gray-500 mt-1">Login to your account</p>
         </div>
 
         <AnimatePresence mode="wait">
@@ -166,14 +163,14 @@ export default function Login() {
               className="space-y-6"
             >
               <div>
-                <label className="block text-gray-300 font-semibold mb-2">I am a</label>
+                <label className="block text-gray-700 font-semibold mb-2">I am a</label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => setRole('owner')}
-                    className={`p-4 rounded-xl border-2 transition-all ${
+                    className={`p-3 rounded-xl border-2 transition-all ${
                       role === 'owner'
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-gray-700 text-gray-400 hover:border-primary/50'
+                        ? 'border-slate-800 bg-slate-50 text-slate-800'
+                        : 'border-gray-200 text-gray-500 hover:border-slate-300'
                     }`}
                   >
                     <div className="text-2xl mb-1">🏢</div>
@@ -181,41 +178,41 @@ export default function Login() {
                   </button>
                   <button
                     onClick={() => setRole('tenant')}
-                    className={`p-4 rounded-xl border-2 transition-all ${
+                    className={`p-3 rounded-xl border-2 transition-all ${
                       role === 'tenant'
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-gray-700 text-gray-400 hover:border-primary/50'
+                        ? 'border-slate-800 bg-slate-50 text-slate-800'
+                        : 'border-gray-200 text-gray-500 hover:border-slate-300'
                     }`}
                   >
                     <div className="text-2xl mb-1">👤</div>
                     <div className="font-semibold">Tenant</div>
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 mt-2 text-center">
+                <p className="text-xs text-gray-400 mt-2 text-center">
                   {role === 'tenant' ? 'Only tenants added by owner can login' : 'Manage your property'}
                 </p>
               </div>
 
               <div>
-                <label className="block text-gray-300 font-semibold mb-2">Phone Number</label>
+                <label className="block text-gray-700 font-semibold mb-2">Phone Number</label>
                 <div className="flex gap-2">
-                  <span className="bg-dark px-4 py-3 rounded-xl border border-gray-700 text-gray-300">+91</span>
+                  <span className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200 text-gray-600">+91</span>
                   <input
                     type="tel"
                     placeholder="9876543210"
-                    className="input flex-1"
+                    className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     maxLength={10}
                   />
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Enter 10-digit mobile number</p>
+                <p className="text-xs text-gray-400 mt-1">Enter 10-digit mobile number</p>
               </div>
 
               <button
                 onClick={sendOTP}
                 disabled={loading}
-                className="btn-primary w-full"
+                className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50"
               >
                 {loading ? 'Sending...' : 'Continue →'}
               </button>
@@ -229,11 +226,11 @@ export default function Login() {
               className="space-y-6"
             >
               <div>
-                <label className="block text-gray-300 font-semibold mb-2">Enter OTP</label>
+                <label className="block text-gray-700 font-semibold mb-2">Enter OTP</label>
                 <input
                   type="text"
                   placeholder="123456"
-                  className="input text-center text-2xl tracking-widest"
+                  className="w-full px-4 py-3 text-center text-2xl tracking-widest border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
                   maxLength={6}
@@ -244,14 +241,14 @@ export default function Login() {
               <button
                 onClick={verifyOTP}
                 disabled={loading}
-                className="btn-primary w-full"
+                className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50"
               >
                 {loading ? 'Verifying...' : 'Verify & Login →'}
               </button>
 
               <button
                 onClick={() => setStep('phone')}
-                className="w-full text-primary hover:underline text-sm"
+                className="w-full text-slate-600 hover:text-slate-800 text-sm"
               >
                 ← Change number
               </button>
@@ -260,16 +257,16 @@ export default function Login() {
         </AnimatePresence>
 
         <div className="mt-6 text-center">
-          <Link href="/owner/register-property" className="text-primary text-sm hover:underline">
+          <Link href="/owner/register-property" className="text-slate-600 hover:text-slate-800 text-sm">
             📝 List Your Property →
           </Link>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-gray-800 text-center">
-          <p className="text-xs text-gray-500">
+        <div className="mt-6 pt-4 border-t border-gray-100 text-center">
+          <p className="text-xs text-gray-400">
             Demo: Any 10-digit phone number | OTP: 123456
           </p>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-gray-400 mt-1">
             New users will be automatically registered
           </p>
         </div>
