@@ -1,216 +1,338 @@
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/router'
-import Link from 'next/link'
-import { motion } from 'framer-motion'
-import { supabase } from '../../lib/supabase'
-import { formatCurrency, getSharingDetails, getPropertyTypeLabel, cleanPhoneNumber } from '../../lib/utils'
-import toast from 'react-hot-toast'
+import { useRouter } from 'next/router';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '../../lib/supabase';
+import { formatCurrency } from '../../lib/utils';
+import Image from 'next/image';
+import Link from 'next/link';
 
-export default function PropertyDetail() {
-  const router = useRouter()
-  const { id } = router.query
-  const [property, setProperty] = useState(null)
-  const [rooms, setRooms] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [selectedRoom, setSelectedRoom] = useState(null)
-  const [showApplyModal, setShowApplyModal] = useState(false)
-  const [applyForm, setApplyForm] = useState({ name: '', phone: '', email: '', message: '' })
-  const [currentImageIndex, setCurrentImageIndex] = useState(0)
+export default function PropertyDetails() {
+  const router = useRouter();
+  const { id } = router.query;
+  const [property, setProperty] = useState(null);
+  const [rooms, setRooms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedImage, setSelectedImage] = useState(0);
+  const [showApplyModal, setShowApplyModal] = useState(false);
+  const [selectedRoom, setSelectedRoom] = useState(null);
+  const [applicationData, setApplicationData] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    message: ''
+  });
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (id) loadData()
-  }, [id])
+    if (id) {
+      fetchPropertyData();
+    }
+  }, [id]);
 
-  const loadData = async () => {
-    setLoading(true)
+  async function fetchPropertyData() {
     try {
-      const { data: propertyData } = await supabase
+      // Fetch property details
+      const { data: propertyData, error: propertyError } = await supabase
         .from('properties')
         .select('*')
         .eq('id', id)
-        .single()
-      setProperty(propertyData)
+        .single();
 
-      const { data: roomsData } = await supabase
+      if (propertyError) throw propertyError;
+      setProperty(propertyData);
+
+      // Fetch rooms with availability
+      const { data: roomsData, error: roomsError } = await supabase
         .from('rooms')
-        .select('*')
-        .eq('property_id', id)
-        .order('room_number')
-      setRooms(roomsData || [])
+        .select(`
+          *,
+          tenants:tenants(count)
+        `)
+        .eq('property_id', id);
+
+      if (roomsError) throw roomsError;
+      
+      // Calculate availability for each room
+      const roomsWithAvailability = roomsData.map(room => ({
+        ...room,
+        occupiedCount: room.tenants[0]?.count || 0,
+        available: (room.capacity || room.sharing_type === 'Single' ? 1 : 
+                   room.sharing_type === 'Double' ? 2 :
+                   room.sharing_type === 'Triple' ? 3 :
+                   room.sharing_type === 'Four' ? 4 : 5) - (room.tenants[0]?.count || 0)
+      }));
+      
+      setRooms(roomsWithAvailability);
     } catch (error) {
-      console.error('Error:', error)
+      console.error('Error fetching property:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
-  const handleApply = async () => {
-    if (!applyForm.name || !applyForm.phone) {
-      toast.error('Please fill name and phone number')
-      return
+  async function handleApply(room) {
+    setSelectedRoom(room);
+    setShowApplyModal(true);
+  }
+
+  async function submitApplication() {
+    if (!applicationData.name || !applicationData.phone) {
+      alert('Please fill in all required fields');
+      return;
     }
 
-    const cleanPhone = cleanPhoneNumber(applyForm.phone)
-    if (cleanPhone.length !== 10) {
-      toast.error('Enter valid 10-digit phone number')
-      return
-    }
-
+    setSubmitting(true);
     try {
-      const { error } = await supabase.from('applications').insert({
-        property_id: id,
-        room_id: selectedRoom,
-        name: applyForm.name,
-        phone: cleanPhone,
-        email: applyForm.email,
-        message: applyForm.message,
-        status: 'pending'
-      })
-      if (error) throw error
-      toast.success('Application submitted! Owner will contact you.')
-      setShowApplyModal(false)
-      setApplyForm({ name: '', phone: '', email: '', message: '' })
+      const { error } = await supabase
+        .from('applications')
+        .insert([{
+          property_id: parseInt(id),
+          room_id: selectedRoom.id,
+          applicant_name: applicationData.name,
+          applicant_phone: applicationData.phone,
+          applicant_email: applicationData.email,
+          message: applicationData.message,
+          status: 'pending',
+          created_at: new Date().toISOString()
+        }]);
+
+      if (error) throw error;
+
+      alert('Application submitted successfully! The owner will contact you soon.');
+      setShowApplyModal(false);
+      setApplicationData({ name: '', phone: '', email: '', message: '' });
     } catch (error) {
-      toast.error('Failed to submit application')
-    }
-  }
-
-  const nextImage = () => {
-    if (property?.photos && currentImageIndex < property.photos.length - 1) {
-      setCurrentImageIndex(currentImageIndex + 1)
-    }
-  }
-
-  const prevImage = () => {
-    if (currentImageIndex > 0) {
-      setCurrentImageIndex(currentImageIndex - 1)
+      console.error('Error submitting application:', error);
+      alert('Failed to submit application. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#0f172a' }}>
-        <div className="spinner"></div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-500 mx-auto"></div>
+          <p className="text-white mt-4">Loading property details...</p>
+        </div>
       </div>
-    )
+    );
   }
 
   if (!property) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#0f172a' }}>
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-white">Property not found</h1>
-          <Link href="/" className="text-primary mt-4 inline-block">← Back to Home</Link>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center text-white">
+          <h2 className="text-2xl font-bold mb-4">Property not found</h2>
+          <Link href="/" className="text-purple-400 hover:text-purple-300">
+            Go back home
+          </Link>
         </div>
       </div>
-    )
+    );
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#0f172a' }}>
-      <nav className="navbar py-4 px-6 flex justify-between items-center sticky top-0 z-50">
-        <Link href="/" className="text-2xl font-bold text-primary">🏠 HOSTELSET</Link>
-        <Link href="/login" className="text-gray-300 hover:text-primary">Login</Link>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      {/* Navigation */}
+      <nav className="bg-black/30 backdrop-blur-md border-b border-white/10 sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex justify-between items-center">
+            <Link href="/" className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+              HostelSet
+            </Link>
+            <Link href="/login" className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-white transition">
+              Login
+            </Link>
+          </div>
+        </div>
       </nav>
 
       <div className="container mx-auto px-4 py-8">
-        <button onClick={() => router.back()} className="text-primary mb-6">← Back to Search</button>
-
-        {/* Image Gallery */}
-        {property.photos && property.photos.length > 0 && (
-          <div className="card mb-8 overflow-hidden">
-            <div className="relative">
-              <img 
-                src={property.photos[currentImageIndex]} 
-                alt={property.name} 
-                className="w-full h-96 object-cover rounded-t-2xl"
+        {/* Property Header */}
+        <div className="bg-white/5 backdrop-blur-lg rounded-2xl overflow-hidden border border-white/10 mb-8">
+          {/* Image Gallery */}
+          <div className="relative h-96 bg-black/30">
+            {property.photos && property.photos.length > 0 && (
+              <Image
+                src={property.photos[selectedImage]}
+                alt={property.name}
+                fill
+                className="object-cover"
               />
-              {property.photos.length > 1 && (
-                <>
-                  <button onClick={prevImage} className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70">←</button>
-                  <button onClick={nextImage} className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70">→</button>
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                    {property.photos.map((_, i) => (
-                      <button key={i} onClick={() => setCurrentImageIndex(i)} className={`w-2 h-2 rounded-full ${i === currentImageIndex ? 'bg-white' : 'bg-white/50'}`} />
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+            )}
+            
+            {/* Image Navigation */}
+            {property.photos && property.photos.length > 1 && (
+              <>
+                <button
+                  onClick={() => setSelectedImage((prev) => (prev > 0 ? prev - 1 : property.photos.length - 1))}
+                  className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition"
+                >
+                  ←
+                </button>
+                <button
+                  onClick={() => setSelectedImage((prev) => (prev < property.photos.length - 1 ? prev + 1 : 0))}
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition"
+                >
+                  →
+                </button>
+              </>
+            )}
           </div>
-        )}
 
-        {/* Property Info */}
-        <div className="card mb-8">
-          <h1 className="text-3xl font-bold">{property.name}</h1>
-          <p className="text-gray-400 mt-2">📍 {property.address}, {property.city}</p>
-          <div className="flex flex-wrap gap-2 mt-4">
-            <span className="badge-info">{getPropertyTypeLabel(property.property_type)}</span>
-            {property.amenities?.slice(0, 5).map((a, i) => (
-              <span key={i} className="badge-info">{a}</span>
-            ))}
+          {/* Thumbnails */}
+          {property.photos && property.photos.length > 1 && (
+            <div className="flex gap-2 p-4 overflow-x-auto">
+              {property.photos.map((photo, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedImage(idx)}
+                  className={`relative w-20 h-20 rounded-lg overflow-hidden border-2 transition ${
+                    selectedImage === idx ? 'border-purple-500' : 'border-transparent'
+                  }`}
+                >
+                  <Image src={photo} alt={`Thumbnail ${idx + 1}`} fill className="object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Property Info */}
+          <div className="p-6">
+            <h1 className="text-3xl font-bold text-white mb-2">{property.name}</h1>
+            <p className="text-gray-300 mb-4">{property.city}</p>
+            <div className="flex gap-2 mb-4">
+              <span className="px-3 py-1 bg-purple-600/20 text-purple-300 rounded-full text-sm">
+                {property.property_type || 'Co-ed'}
+              </span>
+              {property.amenities && property.amenities.map((amenity, idx) => (
+                <span key={idx} className="px-3 py-1 bg-white/10 text-gray-300 rounded-full text-sm">
+                  {amenity}
+                </span>
+              ))}
+            </div>
+            <p className="text-gray-300">{property.description}</p>
           </div>
-          <p className="text-gray-300 mt-4">{property.description}</p>
         </div>
 
-        {/* Room Availability */}
-        <h2 className="text-2xl font-bold mb-6">🏠 Available Rooms</h2>
-        <div className="room-grid">
-          {rooms.map((room) => {
-            const sharingDetails = getSharingDetails(room.sharing_type)
-            const isAvailable = room.current_occupants < room.capacity
-            const availableSlots = room.capacity - room.current_occupants
-            
-            return (
-              <div key={room.id} className={`room-card ${isAvailable ? 'room-card-vacant' : 'room-card-occupied'}`}>
-                <div className="flex justify-between items-start">
-                  <h3 className="text-xl font-bold">Room {room.room_number}</h3>
-                  <span className={isAvailable ? 'badge-success' : 'badge-danger'}>
-                    {isAvailable ? `${availableSlots} slot(s) available` : 'Full'}
-                  </span>
-                </div>
-                <p className="text-gray-400 text-sm mt-1">{sharingDetails.label} {sharingDetails.icon}</p>
-                <p className="text-2xl font-bold text-primary mt-3">
-                  {formatCurrency(room.monthly_rent)}<span className="text-sm text-gray-400">/month</span>
-                </p>
-                <p className="text-gray-500 text-sm mt-2">Deposit: {formatCurrency(room.deposit_amount || 0)}</p>
-                {isAvailable && (
-                  <button 
-                    onClick={() => { setSelectedRoom(room.id); setShowApplyModal(true) }} 
-                    className="btn-primary w-full mt-4 text-sm"
-                  >
-                    Apply Now →
-                  </button>
-                )}
-              </div>
-            )
-          })}
+        {/* Rooms Section */}
+        <h2 className="text-2xl font-bold text-white mb-6">Available Rooms</h2>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {rooms.map((room) => (
+            <motion.div
+              key={room.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white/5 backdrop-blur-lg rounded-xl p-6 border border-white/10 hover:border-purple-500/50 transition"
+            >
+              <h3 className="text-xl font-semibold text-white mb-2">
+                Room {room.room_number}
+              </h3>
+              <p className="text-gray-300 mb-2">
+                Type: {room.sharing_type} Sharing
+              </p>
+              <p className="text-2xl font-bold text-purple-400 mb-2">
+                {formatCurrency(room.rent)}/month
+              </p>
+              <p className="text-sm text-gray-400 mb-4">
+                Available: {room.available} / {room.sharing_type === 'Single' ? 1 :
+                          room.sharing_type === 'Double' ? 2 :
+                          room.sharing_type === 'Triple' ? 3 :
+                          room.sharing_type === 'Four' ? 4 : 5} seats
+              </p>
+              <button
+                onClick={() => handleApply(room)}
+                disabled={room.available === 0}
+                className={`w-full py-2 rounded-lg transition ${
+                  room.available > 0
+                    ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                    : 'bg-gray-600 cursor-not-allowed text-gray-300'
+                }`}
+              >
+                {room.available > 0 ? 'Apply Now' : 'Fully Booked'}
+              </button>
+            </motion.div>
+          ))}
         </div>
       </div>
 
       {/* Application Modal */}
       <AnimatePresence>
-        {showApplyModal && (
-          <div className="modal-overlay" onClick={() => setShowApplyModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-2xl font-bold mb-4">Apply for Room</h2>
+        {showApplyModal && selectedRoom && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowApplyModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-gradient-to-br from-slate-800 to-purple-900 rounded-2xl p-6 max-w-md w-full border border-white/20"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-2xl font-bold text-white mb-4">Apply for Room {selectedRoom.room_number}</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Full Name *" className="input" value={applyForm.name} onChange={(e) => setApplyForm({...applyForm, name: e.target.value})} />
-                <div className="flex gap-2">
-                  <span className="bg-dark px-4 py-3 rounded-xl border border-gray-700 text-gray-300">+91</span>
-                  <input type="tel" placeholder="Phone Number *" className="input flex-1" value={applyForm.phone} onChange={(e) => setApplyForm({...applyForm, phone: e.target.value})} maxLength={10} />
+                <div>
+                  <label className="block text-gray-300 mb-2">Full Name *</label>
+                  <input
+                    type="text"
+                    value={applicationData.name}
+                    onChange={(e) => setApplicationData({ ...applicationData, name: e.target.value })}
+                    className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                  />
                 </div>
-                <input type="email" placeholder="Email (optional)" className="input" value={applyForm.email} onChange={(e) => setApplyForm({...applyForm, email: e.target.value})} />
-                <textarea placeholder="Any message for the owner?" rows="3" className="input" value={applyForm.message} onChange={(e) => setApplyForm({...applyForm, message: e.target.value})} />
-                <div className="flex gap-3 mt-6">
-                  <button onClick={handleApply} className="btn-primary flex-1">Submit Application</button>
-                  <button onClick={() => setShowApplyModal(false)} className="btn-outline flex-1">Cancel</button>
+                <div>
+                  <label className="block text-gray-300 mb-2">Phone Number *</label>
+                  <input
+                    type="tel"
+                    value={applicationData.phone}
+                    onChange={(e) => setApplicationData({ ...applicationData, phone: e.target.value })}
+                    className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-300 mb-2">Email (Optional)</label>
+                  <input
+                    type="email"
+                    value={applicationData.email}
+                    onChange={(e) => setApplicationData({ ...applicationData, email: e.target.value })}
+                    className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-300 mb-2">Message (Optional)</label>
+                  <textarea
+                    value={applicationData.message}
+                    onChange={(e) => setApplicationData({ ...applicationData, message: e.target.value })}
+                    rows="3"
+                    className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={submitApplication}
+                    disabled={submitting}
+                    className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg transition disabled:opacity-50"
+                  >
+                    {submitting ? 'Submitting...' : 'Submit Application'}
+                  </button>
+                  <button
+                    onClick={() => setShowApplyModal(false)}
+                    className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg transition"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
-  )
+  );
 }
