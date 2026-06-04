@@ -3,6 +3,7 @@ import { verifyMagicLink } from '../../../lib/auth'
 export default async function handler(req, res) {
   const { token } = req.query
   
+  // Check if token exists
   if (!token) {
     return res.redirect('/login?error=invalid_token')
   }
