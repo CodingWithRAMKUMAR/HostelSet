@@ -11,9 +11,13 @@ export default function WaitingPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#0f172a' }}>
-      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-secondary rounded-2xl p-8 max-w-md w-full text-center border border-gray-800">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-secondary rounded-2xl p-8 max-w-md w-full text-center border border-gray-800"
+      >
         <div className="text-6xl mb-4 animate-float">⏳</div>
-        <h1 className="text-2xl font-bold text-gray-200 mb-2">Waiting for Room Assignment</h1>
+        <h1 className="text-2xl font-bold text-white mb-2">Waiting for Room Assignment</h1>
         <p className="text-gray-400 mb-4">Your tenant account has been created successfully!</p>
         <p className="text-gray-400 mb-6">Please wait for the PG owner to assign you a room.</p>
         <div className="bg-yellow-500/10 border border-yellow-500 rounded-xl p-4 mb-6 text-left">
