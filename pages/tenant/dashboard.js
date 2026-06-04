@@ -27,11 +27,13 @@ export default function TenantDashboard() {
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('isLoggedIn')
     const userRole = localStorage.getItem('userRole')
-    console.log('Tenant Dashboard - Auth check:', { isLoggedIn, userRole })
+    const userPhone = localStorage.getItem('userPhone')
     
-    if (!isLoggedIn || userRole !== 'tenant') { 
+    console.log('Tenant Dashboard - Auth:', { isLoggedIn, userRole, userPhone })
+    
+    if (!isLoggedIn || userRole !== 'tenant') {
       router.push('/login')
-      return 
+      return
     }
     loadData()
   }, [])
@@ -40,70 +42,41 @@ export default function TenantDashboard() {
     setLoading(true)
     try {
       const userPhone = localStorage.getItem('userPhone')
-      const userId = localStorage.getItem('userId')
       
-      console.log('Looking for tenant with phone:', userPhone)
-      console.log('Looking for tenant with userId:', userId)
-      
-      // Try to find tenant by phone number (most reliable)
-      let tenantData = null
-      
-      if (userPhone) {
-        const { data, error } = await supabase
-          .from('tenants')
-          .select('*')
-          .eq('phone', userPhone)
-          .maybeSingle()
-        
-        if (!error && data) {
-          tenantData = data
-          console.log('Found tenant by phone:', tenantData)
-        }
+      if (!userPhone) {
+        console.error('No userPhone found')
+        setLoading(false)
+        return
       }
       
-      // If not found by phone, try by user_id
-      if (!tenantData && userId) {
-        const { data, error } = await supabase
-          .from('tenants')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle()
-        
-        if (!error && data) {
-          tenantData = data
-          console.log('Found tenant by user_id:', tenantData)
-        }
-      }
-
+      // Find tenant by phone number
+      const { data: tenantData, error: tenantError } = await supabase
+        .from('tenants')
+        .select('*')
+        .eq('phone', userPhone)
+        .maybeSingle()
+      
+      console.log('Tenant found:', tenantData)
+      
       if (tenantData && tenantData.room_id) {
         setTenant(tenantData)
         
         // Get room details
-        const { data: roomData, error: roomError } = await supabase
+        const { data: roomData } = await supabase
           .from('rooms')
           .select('*')
           .eq('id', tenantData.room_id)
           .single()
-        
-        console.log('Room data:', roomData)
-        
-        if (roomData) {
-          setRoom(roomData)
-        }
+        setRoom(roomData)
         
         // Get property details
-        const { data: propertyData, error: propertyError } = await supabase
+        const { data: propertyData } = await supabase
           .from('properties')
           .select('*')
           .eq('id', tenantData.property_id)
           .single()
+        setProperty(propertyData)
         
-        console.log('Property data:', propertyData)
-        
-        if (propertyData) {
-          setProperty(propertyData)
-        }
-
         // Get payment history
         const { data: payments } = await supabase
           .from('payment_history')
@@ -111,7 +84,7 @@ export default function TenantDashboard() {
           .eq('tenant_id', tenantData.id)
           .order('payment_date', { ascending: false })
         setPaymentHistory(payments || [])
-
+        
         // Get complaints
         const { data: complaintsData } = await supabase
           .from('complaints')
@@ -119,7 +92,7 @@ export default function TenantDashboard() {
           .eq('tenant_id', tenantData.id)
           .order('created_at', { ascending: false })
         setComplaints(complaintsData || [])
-
+        
         // Get notices
         const { data: noticesData } = await supabase
           .from('notices')
@@ -127,7 +100,7 @@ export default function TenantDashboard() {
           .eq('property_id', tenantData.property_id)
           .order('created_at', { ascending: false })
         setNotices(noticesData || [])
-
+        
         // Get check-out request
         const { data: checkOutData } = await supabase
           .from('check_out_requests')
@@ -136,114 +109,115 @@ export default function TenantDashboard() {
           .order('created_at', { ascending: false })
           .limit(1)
         setCheckOutRequest(checkOutData?.[0] || null)
-        
       } else {
-        console.log('No tenant found or no room assigned. tenantData:', tenantData)
+        console.log('No tenant found or no room assigned')
       }
-    } catch (error) { 
-      console.error('Error in loadData:', error)
-      toast.error('Failed to load data: ' + error.message)
-    } finally { 
-      setLoading(false) 
+    } catch (error) {
+      console.error('Error loading data:', error)
+      toast.error('Failed to load data')
+    } finally {
+      setLoading(false)
     }
   }
 
   const raiseComplaint = async () => {
-    if (!complaintForm.title || !complaintForm.description) { 
-      toast.error('Fill all fields')
-      return 
+    if (!complaintForm.title || !complaintForm.description) {
+      toast.error('Please fill all fields')
+      return
     }
     setIsSubmitting(true)
     try {
-      await supabase.from('complaints').insert({ 
-        tenant_id: tenant.id, 
-        tenant_name: tenant.name, 
-        room_number: room?.room_number, 
-        title: complaintForm.title, 
-        description: complaintForm.description, 
-        category: complaintForm.category, 
-        status: 'open' 
+      const { error } = await supabase.from('complaints').insert({
+        tenant_id: tenant.id,
+        tenant_name: tenant.name,
+        room_number: room?.room_number,
+        title: complaintForm.title,
+        description: complaintForm.description,
+        category: complaintForm.category,
+        status: 'open'
       })
-      toast.success('Complaint raised!')
+      if (error) throw error
+      toast.success('Complaint raised successfully!')
       setShowComplaintModal(false)
       setComplaintForm({ title: '', description: '', category: 'other' })
       await loadData()
-    } catch (error) { 
+    } catch (error) {
       toast.error('Failed to raise complaint')
-    } finally { 
-      setIsSubmitting(false) 
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const requestCheckout = async () => {
-    if (!checkoutForm.expected_date) { 
-      toast.error('Select expected date')
-      return 
+    if (!checkoutForm.expected_date) {
+      toast.error('Please select expected check-out date')
+      return
     }
     setIsSubmitting(true)
     try {
-      await supabase.from('check_out_requests').insert({ 
-        tenant_id: tenant.id, 
-        tenant_name: tenant.name, 
-        room_number: room?.room_number, 
-        expected_check_out: checkoutForm.expected_date, 
-        reason: checkoutForm.reason, 
-        notice_period_days: 30, 
-        status: 'pending' 
+      const { error } = await supabase.from('check_out_requests').insert({
+        tenant_id: tenant.id,
+        tenant_name: tenant.name,
+        room_number: room?.room_number,
+        expected_check_out: checkoutForm.expected_date,
+        reason: checkoutForm.reason,
+        notice_period_days: 30,
+        status: 'pending'
       })
-      toast.success('Request submitted!')
+      if (error) throw error
+      toast.success('Check-out request submitted! Owner will review it.')
       setShowCheckoutModal(false)
       setCheckoutForm({ expected_date: '', reason: '' })
       await loadData()
-    } catch (error) { 
+    } catch (error) {
       toast.error('Failed to submit request')
-    } finally { 
-      setIsSubmitting(false) 
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const payRent = async () => {
-    if (!paymentAmount || parseInt(paymentAmount) <= 0) { 
-      toast.error('Enter valid amount')
-      return 
+    if (!paymentAmount || parseInt(paymentAmount) <= 0) {
+      toast.error('Please enter a valid amount')
+      return
     }
     const amount = parseInt(paymentAmount)
     const maxAmount = tenant.pending_amount || tenant.rent_amount
-    if (amount > maxAmount) { 
-      toast.error(`Amount exceeds pending: ₹${maxAmount.toLocaleString()}`)
-      return 
+    if (amount > maxAmount) {
+      toast.error(`Amount cannot exceed pending amount: ₹${maxAmount.toLocaleString()}`)
+      return
     }
     setIsSubmitting(true)
     try {
-      await supabase.from('payment_history').insert({ 
-        tenant_id: tenant.id, 
-        amount, 
-        payment_date: new Date().toISOString().split('T')[0], 
-        payment_method: 'online', 
-        status: 'success' 
+      await supabase.from('payment_history').insert({
+        tenant_id: tenant.id,
+        amount: amount,
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: 'online',
+        status: 'success'
       })
       const newTotalPaid = (tenant.total_paid || 0) + amount
       const newPendingAmount = maxAmount - amount
-      await supabase.from('tenants').update({ 
-        total_paid: newTotalPaid, 
-        pending_amount: newPendingAmount, 
-        rent_status: newPendingAmount <= 0 ? 'paid' : 'pending', 
-        last_payment_date: new Date().toISOString().split('T')[0] 
+      await supabase.from('tenants').update({
+        total_paid: newTotalPaid,
+        pending_amount: newPendingAmount,
+        rent_status: newPendingAmount <= 0 ? 'paid' : 'pending',
+        last_payment_date: new Date().toISOString().split('T')[0]
       }).eq('id', tenant.id)
       toast.success(`Payment of ₹${amount.toLocaleString()} successful!`)
       setShowPayModal(false)
       setPaymentAmount('')
       await loadData()
-    } catch (error) { 
-      toast.error('Payment failed')
-    } finally { 
-      setIsSubmitting(false) 
+    } catch (error) {
+      toast.error('Payment failed. Please try again.')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
-  const handleLogout = () => { 
+  const handleLogout = () => {
     localStorage.clear()
-    router.push('/') 
+    router.push('/')
   }
 
   if (loading) {
@@ -254,7 +228,6 @@ export default function TenantDashboard() {
     )
   }
 
-  // WAITING PAGE - Show this if tenant has NO room assigned
   if (!tenant || !tenant.room_id || !room) {
     return (
       <div className="min-h-screen" style={{ background: '#0f172a' }}>
@@ -269,12 +242,9 @@ export default function TenantDashboard() {
             <p className="text-gray-400 mb-4">Your tenant account has been created successfully!</p>
             <p className="text-gray-400 mb-6">Please wait for the PG owner to assign you a room.</p>
             <div className="bg-yellow-500/10 border border-yellow-500 rounded-xl p-4 mb-6 text-left">
-              <p className="text-sm text-yellow-400">📌 Debug Info:</p>
-              <ul className="text-sm text-gray-400 mt-2 space-y-1">
-                <li>• Phone: {localStorage.getItem('userPhone') || 'Not found'}</li>
-                <li>• User ID: {localStorage.getItem('userId') || 'Not found'}</li>
-                <li>• Contact your PG owner to assign a room</li>
-              </ul>
+              <p className="text-sm text-yellow-400">Debug Info:</p>
+              <p className="text-xs text-gray-400 mt-1">Phone: {localStorage.getItem('userPhone') || 'Not found'}</p>
+              <p className="text-xs text-gray-400">User ID: {localStorage.getItem('userId') || 'Not found'}</p>
             </div>
             <button onClick={handleLogout} className="btn-primary w-full">Logout</button>
           </div>
@@ -292,6 +262,7 @@ export default function TenantDashboard() {
 
   return (
     <div className="min-h-screen" style={{ background: '#0f172a' }}>
+      {/* Header */}
       <nav className="navbar py-4 px-6 flex justify-between items-center sticky top-0 z-50">
         <h1 className="text-2xl font-bold text-primary">🏠 HOSTELSET</h1>
         <div className="flex items-center gap-4">
@@ -301,7 +272,9 @@ export default function TenantDashboard() {
       </nav>
 
       <div className="container mx-auto px-4 py-8">
+        {/* Room and Rent Cards */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
+          {/* Room Card */}
           <div className="card">
             <h2 className="text-xl font-bold mb-4">🏠 My Room</h2>
             <p className="text-3xl font-bold text-primary">Room {room?.room_number}</p>
@@ -310,10 +283,12 @@ export default function TenantDashboard() {
             <div className="mt-3 flex items-center gap-2">
               <span className="text-lg">{sharingDetails.icon}</span>
               <span className="text-gray-300">{sharingDetails.label}</span>
+              <span className="text-xs text-gray-500">({sharingDetails.description})</span>
             </div>
-            <p className="text-gray-500 text-sm mt-2">Joined: {formatDate(tenant.move_in_date)}</p>
+            <p className="text-gray-500 text-sm mt-2">Joined on: {formatDate(tenant.move_in_date)}</p>
           </div>
 
+          {/* Rent Card */}
           <div className="card">
             <h2 className="text-xl font-bold mb-4">💰 Rent Details</h2>
             <div className="space-y-3">
@@ -326,18 +301,24 @@ export default function TenantDashboard() {
                 <span className="font-bold text-green-400">{formatCurrency(tenant.total_paid || 0)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">Pending:</span>
+                <span className="text-gray-400">Pending Amount:</span>
                 <span className={`font-bold ${isRentDue ? 'text-red-400' : 'text-green-400'}`}>
                   {formatCurrency(pendingAmount)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Due Date:</span>
-                <span className="font-bold">Every {property?.rent_due_day || 5}th</span>
+                <span className="font-bold">Every {property?.rent_due_day || 5}th of the month</span>
               </div>
+              {tenant.last_payment_date && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Last Payment:</span>
+                  <span className="text-sm text-gray-500">{formatDate(tenant.last_payment_date)}</span>
+                </div>
+              )}
               {daysOverdue > 0 && (
-                <div className="alert-danger">
-                  ⚠️ Overdue by {daysOverdue} days! Late fee applies.
+                <div className="alert-danger mt-2">
+                  ⚠️ Overdue by {daysOverdue} days! Late fee of ₹{property?.late_fee_per_day || 50}/day applies.
                 </div>
               )}
             </div>
@@ -349,6 +330,7 @@ export default function TenantDashboard() {
           </div>
         </div>
 
+        {/* Quick Actions */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
           <button onClick={() => setShowComplaintModal(true)} className="card p-4 text-center font-semibold hover:-translate-y-1 transition">
             🔧 Raise Complaint
@@ -361,142 +343,224 @@ export default function TenantDashboard() {
           </button>
         </div>
 
+        {/* Check-Out Request Status */}
         {checkOutRequest && (
           <div className={`card p-4 mb-8 ${checkOutRequest.status === 'pending' ? 'alert-warning' : checkOutRequest.status === 'approved' ? 'alert-success' : 'alert-danger'}`}>
             <h3 className="font-bold mb-2">📋 Check-Out Request</h3>
             <p className="text-sm">Status: <span className="font-semibold">{checkOutRequest.status.toUpperCase()}</span></p>
-            <p className="text-sm">Expected Date: {formatDate(checkOutRequest.expected_check_out)}</p>
+            <p className="text-sm">Requested on: {formatDate(checkOutRequest.requested_date)}</p>
+            <p className="text-sm">Expected Check-Out: {formatDate(checkOutRequest.expected_check_out)}</p>
+            {checkOutRequest.reason && <p className="text-sm mt-1">Reason: {checkOutRequest.reason}</p>}
             {checkOutRequest.owner_notes && <p className="text-sm mt-2 text-gray-400">Owner note: {checkOutRequest.owner_notes}</p>}
           </div>
         )}
 
+        {/* Payment History */}
         <div className="card p-6 mb-8">
           <h2 className="text-xl font-bold mb-4">📜 Payment History</h2>
           {paymentHistory.length > 0 ? (
-            paymentHistory.map(p => (
-              <div key={p.id} className="flex justify-between items-center p-3 bg-dark rounded-lg mb-2">
-                <div>
-                  <p className="font-medium">{formatCurrency(p.amount)}</p>
-                  <p className="text-xs text-gray-500">{formatDate(p.payment_date)}</p>
+            <div className="space-y-3">
+              {paymentHistory.map(p => (
+                <div key={p.id} className="flex justify-between items-center p-3 bg-dark rounded-lg">
+                  <div>
+                    <p className="font-medium">{formatCurrency(p.amount)}</p>
+                    <p className="text-xs text-gray-500">{formatDate(p.payment_date)}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="badge-success">Success</span>
+                    <p className="text-xs text-gray-500 mt-1">{p.payment_method}</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="badge-success">Success</span>
-                  <p className="text-xs text-gray-500 mt-1">{p.payment_method}</p>
-                </div>
-              </div>
-            ))
+              ))}
+            </div>
           ) : (
             <div className="text-center py-8 text-gray-500">No payment history yet</div>
           )}
         </div>
 
+        {/* Complaints Section */}
         <div className="card p-6 mb-8">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold">🔧 My Complaints</h2>
-            <button onClick={() => setShowComplaintModal(true)} className="text-primary text-sm">+ New</button>
+            <button onClick={() => setShowComplaintModal(true)} className="text-primary text-sm hover:underline">+ Raise New Complaint</button>
           </div>
           {complaints.length > 0 ? (
-            complaints.map(c => (
-              <div key={c.id} className="flex justify-between items-center p-3 bg-dark rounded-lg mb-2">
-                <div>
-                  <p className="font-semibold">{c.title}</p>
-                  <p className="text-xs text-gray-500">{formatDate(c.created_at)}</p>
+            <div className="space-y-3">
+              {complaints.map(c => (
+                <div key={c.id} className="flex justify-between items-center p-3 bg-dark rounded-lg">
+                  <div className="flex-1">
+                    <p className="font-semibold">{c.title}</p>
+                    <p className="text-sm text-gray-400">{c.description.substring(0, 100)}...</p>
+                    <p className="text-xs text-gray-500 mt-1">Submitted: {formatDate(c.created_at)}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className={`badge-${c.status === 'open' ? 'danger' : c.status === 'in_progress' ? 'warning' : 'success'}`}>
+                      {c.status === 'open' ? 'Open' : c.status === 'in_progress' ? 'In Progress' : 'Resolved'}
+                    </span>
+                  </div>
                 </div>
-                <span className={`badge-${c.status === 'open' ? 'danger' : c.status === 'in_progress' ? 'warning' : 'success'}`}>
-                  {c.status}
-                </span>
-              </div>
-            ))
+              ))}
+            </div>
           ) : (
-            <div className="text-center py-8 text-gray-500">No complaints yet</div>
+            <div className="text-center py-8 text-gray-500">No complaints raised yet</div>
           )}
         </div>
 
+        {/* Notices Section */}
         <div className="card p-6">
           <h2 className="text-xl font-bold mb-4">📢 Notices</h2>
           {notices.length > 0 ? (
-            notices.map(n => (
-              <div key={n.id} className={`p-3 rounded-lg mb-2 ${n.is_urgent ? 'bg-red-500/10 border-l-4 border-red-500' : 'bg-dark'}`}>
-                <p className="font-semibold">{n.title}</p>
-                <p className="text-sm text-gray-400">{n.content}</p>
-                <p className="text-xs text-gray-500 mt-1">{formatDate(n.created_at)}</p>
-              </div>
-            ))
+            <div className="space-y-3">
+              {notices.map(n => (
+                <div key={n.id} className={`p-3 rounded-lg ${n.is_urgent ? 'bg-red-500/10 border-l-4 border-red-500' : 'bg-dark'}`}>
+                  <p className="font-semibold">{n.title}</p>
+                  <p className="text-sm text-gray-400 mt-1">{n.content}</p>
+                  <p className="text-xs text-gray-500 mt-2">{formatDate(n.created_at)}</p>
+                  {n.is_urgent && <span className="text-xs text-red-400 mt-1 inline-block">⚠️ Urgent</span>}
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="text-center py-8 text-gray-500">No notices yet</div>
           )}
         </div>
       </div>
 
-      {showComplaintModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h2 className="text-2xl font-bold mb-4">Raise Complaint</h2>
-            <div className="space-y-4">
-              <input type="text" placeholder="Title" className="input" value={complaintForm.title} onChange={(e) => setComplaintForm({...complaintForm, title: e.target.value})} />
-              <select className="input" value={complaintForm.category} onChange={(e) => setComplaintForm({...complaintForm, category: e.target.value})}>
-                <option value="plumbing">Plumbing</option>
-                <option value="electrical">Electrical</option>
-                <option value="cleaning">Cleaning</option>
-                <option value="internet">Internet</option>
-                <option value="other">Other</option>
-              </select>
-              <textarea placeholder="Description" rows="4" className="input" value={complaintForm.description} onChange={(e) => setComplaintForm({...complaintForm, description: e.target.value})} />
-              <div className="flex gap-3 mt-6">
-                <button onClick={raiseComplaint} className="btn-primary flex-1">Submit</button>
-                <button onClick={() => setShowComplaintModal(false)} className="btn-outline flex-1">Cancel</button>
+      {/* Raise Complaint Modal */}
+      <AnimatePresence>
+        {showComplaintModal && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <h2 className="text-2xl font-bold mb-4">Raise a Complaint</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-gray-300 text-sm mb-1">Subject / Title *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., AC not working"
+                    className="input"
+                    value={complaintForm.title}
+                    onChange={(e) => setComplaintForm({...complaintForm, title: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-300 text-sm mb-1">Category *</label>
+                  <select
+                    className="input"
+                    value={complaintForm.category}
+                    onChange={(e) => setComplaintForm({...complaintForm, category: e.target.value})}
+                  >
+                    <option value="plumbing">Plumbing Issue</option>
+                    <option value="electrical">Electrical Issue</option>
+                    <option value="cleaning">Cleaning</option>
+                    <option value="internet">Internet/WiFi</option>
+                    <option value="furniture">Furniture Issue</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-gray-300 text-sm mb-1">Description *</label>
+                  <textarea
+                    placeholder="Please describe the issue in detail..."
+                    rows="4"
+                    className="input"
+                    value={complaintForm.description}
+                    onChange={(e) => setComplaintForm({...complaintForm, description: e.target.value})}
+                  />
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button onClick={raiseComplaint} disabled={isSubmitting} className="btn-primary flex-1">
+                    {isSubmitting ? 'Submitting...' : 'Submit Complaint'}
+                  </button>
+                  <button onClick={() => setShowComplaintModal(false)} className="btn-outline flex-1">Cancel</button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
-      {showPayModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h2 className="text-2xl font-bold mb-4 text-center">Pay Rent</h2>
-            <div className="bg-dark rounded-xl p-4 mb-4">
-              <p><strong>{tenant.name}</strong> - Room {room?.room_number}</p>
-              <p>Monthly Rent: {formatCurrency(tenant.rent_amount)}</p>
-              <p>Pending: {formatCurrency(pendingAmount)}</p>
-            </div>
-            <input type="number" placeholder="Enter Amount" className="input" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
-            <div className="bg-yellow-500/20 p-3 rounded-lg text-sm text-yellow-400 mt-4">
-              💡 Demo payment. No real transaction.
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={payRent} className="btn-success flex-1">Pay Now</button>
-              <button onClick={() => setShowPayModal(false)} className="btn-outline flex-1">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showCheckoutModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h2 className="text-2xl font-bold mb-4">Request Check-Out</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Expected Check-Out Date</label>
-                <input type="date" className="input" value={checkoutForm.expected_date} onChange={(e) => setCheckoutForm({...checkoutForm, expected_date: e.target.value})} />
+      {/* Pay Rent Modal */}
+      <AnimatePresence>
+        {showPayModal && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <h2 className="text-2xl font-bold mb-4 text-center">Pay Rent</h2>
+              <div className="bg-dark rounded-xl p-4 mb-4">
+                <p className="text-gray-400 text-sm">Room {room?.room_number} • {property?.name}</p>
+                <p className="text-2xl font-bold text-primary mt-1">{formatCurrency(tenant.rent_amount)}</p>
+                <div className="flex justify-between mt-3 pt-3 border-t border-gray-700">
+                  <span className="text-gray-400">Total Paid:</span>
+                  <span className="text-green-400">{formatCurrency(tenant.total_paid || 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Pending:</span>
+                  <span className="text-red-400">{formatCurrency(pendingAmount)}</span>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Reason (Optional)</label>
-                <textarea placeholder="Why are you leaving?" rows="3" className="input" value={checkoutForm.reason} onChange={(e) => setCheckoutForm({...checkoutForm, reason: e.target.value})} />
-              </div>
-              <div className="alert-warning">
-                <p className="font-semibold">⚠️ Notice Period: 30 days</p>
-                <p className="text-xs mt-1">You will need to clear all pending dues before check-out.</p>
+              <input
+                type="number"
+                placeholder="Enter amount to pay (₹)"
+                className="input"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+              />
+              <div className="bg-yellow-500/20 p-3 rounded-lg text-sm text-yellow-400 mt-4">
+                💡 Demo payment. No real transaction will occur.
               </div>
               <div className="flex gap-3 mt-6">
-                <button onClick={requestCheckout} className="btn-primary flex-1">Submit Request</button>
-                <button onClick={() => setShowCheckoutModal(false)} className="btn-outline flex-1">Cancel</button>
+                <button onClick={payRent} disabled={isSubmitting} className="btn-success flex-1">
+                  {isSubmitting ? 'Processing...' : 'Pay Now'}
+                </button>
+                <button onClick={() => setShowPayModal(false)} className="btn-outline flex-1">Cancel</button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
+
+      {/* Request Check-Out Modal */}
+      <AnimatePresence>
+        {showCheckoutModal && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <h2 className="text-2xl font-bold mb-4">Request Check-Out</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-gray-300 text-sm mb-1">Expected Check-Out Date *</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={checkoutForm.expected_date}
+                    onChange={(e) => setCheckoutForm({...checkoutForm, expected_date: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-300 text-sm mb-1">Reason for leaving (Optional)</label>
+                  <textarea
+                    placeholder="e.g., Moving to another city, job change, etc."
+                    rows="3"
+                    className="input"
+                    value={checkoutForm.reason}
+                    onChange={(e) => setCheckoutForm({...checkoutForm, reason: e.target.value})}
+                  />
+                </div>
+                <div className="alert-warning">
+                  <p className="font-semibold">⚠️ Notice Period: 30 days</p>
+                  <p className="text-xs mt-1">You will need to clear all pending dues before check-out.</p>
+                  <p className="text-xs mt-1">Security deposit will be refunded after deduction of any pending dues.</p>
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button onClick={requestCheckout} disabled={isSubmitting} className="btn-primary flex-1">
+                    {isSubmitting ? 'Submitting...' : 'Submit Request'}
+                  </button>
+                  <button onClick={() => setShowCheckoutModal(false)} className="btn-outline flex-1">Cancel</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
