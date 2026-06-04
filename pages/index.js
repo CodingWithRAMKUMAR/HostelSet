@@ -1,4 +1,4 @@
-// pages/index.js - Complete Production Ready Version
+// pages/index.js - Fixed version
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import Link from 'next/link';
@@ -14,7 +14,7 @@ import {
   Users, 
   Building2,
   ChevronRight,
-  Home,
+  HomeIcon,
   Sparkles,
   TrendingUp,
   CheckCircle,
@@ -38,7 +38,7 @@ import {
   Eye
 } from 'lucide-react';
 
-export default function Home() {
+export default function HomePage() {
   const router = useRouter();
   const [properties, setProperties] = useState([]);
   const [filteredProperties, setFilteredProperties] = useState([]);
@@ -72,19 +72,16 @@ export default function Home() {
 
   async function fetchStats() {
     try {
-      // Get total properties
       const { count: propertyCount } = await supabase
         .from('properties')
         .select('*', { count: 'exact', head: true });
       
-      // Get unique cities
       const { data: cities } = await supabase
         .from('properties')
         .select('city');
       
       const uniqueCities = [...new Set(cities?.map(c => c.city).filter(Boolean))];
       
-      // Get total rooms
       const { count: roomCount } = await supabase
         .from('rooms')
         .select('*', { count: 'exact', head: true });
@@ -106,7 +103,7 @@ export default function Home() {
         .from('properties')
         .select(`
           *,
-          rooms!inner (
+          rooms (
             id,
             room_number,
             sharing_type,
@@ -118,7 +115,6 @@ export default function Home() {
 
       if (error) throw error;
       
-      // Process properties to add computed fields
       const processedProperties = data?.map(prop => ({
         ...prop,
         min_rent: prop.rooms && prop.rooms.length > 0 
@@ -165,15 +161,8 @@ export default function Home() {
   const categories = [
     { id: 'all', name: 'All Properties', icon: Building2, description: 'View all properties' },
     { id: 'boys', name: 'Boys Hostel', icon: Users, description: 'Safe & secure for boys' },
-    { id: 'girls', name: 'Girls Hostel', icon: Home, description: 'Women safety prioritized' },
+    { id: 'girls', name: 'Girls Hostel', icon: HomeIcon, description: 'Women safety prioritized' },
     { id: 'co-ed', name: 'Co-ed', icon: Users, description: 'Mixed accommodation' },
-  ];
-
-  const amenitiesList = [
-    { name: 'WiFi', icon: Wifi },
-    { name: 'Food', icon: Coffee },
-    { name: 'Security', icon: Shield },
-    { name: 'AC', icon: Zap },
   ];
 
   const fadeInUp = {
@@ -204,7 +193,7 @@ export default function Home() {
               onClick={() => router.push('/')}
             >
               <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
-                <Home className="w-5 h-5 text-white" />
+                <HomeIcon className="w-5 h-5 text-white" />
               </div>
               <span className="text-xl font-bold text-slate-900">HostelSet</span>
             </motion.div>
@@ -434,11 +423,6 @@ export default function Home() {
               <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">Featured Properties</h2>
               <p className="text-slate-600">Handpicked hostels just for you</p>
             </div>
-            {filteredProperties.length > 6 && (
-              <button className="text-slate-600 font-semibold hover:text-slate-900 flex items-center gap-2">
-                View All <ChevronRight className="w-4 h-4" />
-              </button>
-            )}
           </motion.div>
 
           {loading ? (
@@ -621,7 +605,7 @@ export default function Home() {
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
-                  <Home className="w-5 h-5 text-white" />
+                  <HomeIcon className="w-5 h-5 text-white" />
                 </div>
                 <span className="text-xl font-bold text-slate-900">HostelSet</span>
               </div>
