@@ -469,7 +469,7 @@ export default function OwnerDashboard() {
           <button onClick={() => setActiveTab('notices')} className={`px-6 py-3 font-semibold ${activeTab === 'notices' ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}>📢 Notices</button>
         </div>
 
-        {/* Rooms Tab - Grid View */}
+        {/* Rooms Tab */}
         {activeTab === 'rooms' && (
           <div className="room-grid">
             {rooms.map(room => {
@@ -506,7 +506,7 @@ export default function OwnerDashboard() {
               <thead>
                 <tr>
                   <th>Name</th><th>Phone</th><th>Room</th><th>Rent</th><th>Status</th><th>Actions</th>
-                </tr>
+                <tr>
               </thead>
               <tbody>
                 {tenants.map(t => (
