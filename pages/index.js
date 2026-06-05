@@ -163,7 +163,7 @@ export default function Home() {
               </p>
               
               <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-                <Link href="/register" className="bg-slate-800 text-white px-8 py-3 rounded-full font-semibold hover:bg-slate-700 transition shadow-md hover:shadow-lg flex items-center justify-center gap-2 group">
+                <Link href="/login" className="bg-slate-800 text-white px-8 py-3 rounded-full font-semibold hover:bg-slate-700 transition shadow-md hover:shadow-lg flex items-center justify-center gap-2 group">
                   Get Started
                   <span className="group-hover:translate-x-1 transition">→</span>
                 </Link>
@@ -498,14 +498,14 @@ export default function Home() {
                   ))}
                 </ul>
                 <Link
-                  href={plan.name === 'Enterprise' ? '/contact' : '/register'}
+                  href={plan.name === 'Enterprise' ? '/contact' : '/login'}
                   className={`block text-center py-2.5 rounded-xl font-semibold transition ${
                     plan.popular
                       ? 'bg-slate-800 text-white hover:bg-slate-700'
                       : 'border-2 border-slate-300 text-slate-700 hover:bg-slate-50'
                   }`}
                 >
-                  {plan.buttonText || (plan.name === 'Enterprise' ? 'Contact Sales' : 'Start Free Trial')}
+                  {plan.name === 'Enterprise' ? 'Contact Sales' : 'Get Started'}
                 </Link>
               </motion.div>
             ))}
@@ -528,8 +528,8 @@ export default function Home() {
               Join thousands of successful PG owners using HOSTELSET to manage their properties
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/register" className="bg-white text-slate-800 px-8 py-3 rounded-full font-semibold hover:bg-gray-100 transition shadow-md hover:shadow-lg inline-flex items-center gap-2 group">
-                Start Free Trial
+              <Link href="/login" className="bg-white text-slate-800 px-8 py-3 rounded-full font-semibold hover:bg-gray-100 transition shadow-md hover:shadow-lg inline-flex items-center gap-2 group">
+                Get Started
                 <span className="group-hover:translate-x-1 transition">→</span>
               </Link>
               <Link href="/contact" className="border-2 border-white text-white px-8 py-3 rounded-full font-semibold hover:bg-white/10 transition inline-flex items-center gap-2">
