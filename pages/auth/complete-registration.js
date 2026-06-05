@@ -34,15 +34,17 @@ export default function CompleteRegistration() {
     }
   }
 
+  const handleResendLink = () => {
+    router.push('/login')
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
     
-    // Clean phone number - remove any non-digit characters
     const cleanedPhone = formData.phone.replace(/\D/g, '')
     
-    // Check if phone is exactly 10 digits
     if (cleanedPhone.length !== 10) {
       setError('Please enter a valid 10-digit phone number')
       setLoading(false)
@@ -67,7 +69,13 @@ export default function CompleteRegistration() {
       const data = await response.json()
       
       if (!response.ok) {
-        throw new Error(data.error || 'Registration failed')
+        if (data.error === 'Invalid or expired magic link. Please request a new one.') {
+          setError('Your magic link has expired or been used. Please request a new login link.')
+        } else {
+          throw new Error(data.error || 'Registration failed')
+        }
+        setLoading(false)
+        return
       }
       
       // Redirect based on role
@@ -103,7 +111,15 @@ export default function CompleteRegistration() {
         <div className="bg-white rounded-2xl shadow-xl p-8">
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
-              {error}
+              <p className="mb-2">{error}</p>
+              {error.includes('expired') && (
+                <button
+                  onClick={handleResendLink}
+                  className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                >
+                  Get New Login Link
+                </button>
+              )}
             </div>
           )}
           
