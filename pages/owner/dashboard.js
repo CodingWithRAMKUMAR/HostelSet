@@ -154,6 +154,45 @@ export default function OwnerDashboard() {
     return Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24))
   }
 
+  // FIXED: Application approval with duplicate prevention
+  const approveApplication = async (applicationId) => {
+    // Prevent multiple simultaneous approvals
+    if (isSubmitting) {
+      toast.error('Please wait, processing previous request...')
+      return
+    }
+
+    setIsSubmitting(true)
+    
+    try {
+      const response = await fetch('/api/approve-application', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ applicationId })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        toast.success('✅ Application approved! Tenant has been added.')
+        await loadData() // Refresh the dashboard
+      } else {
+        if (data.alreadyApproved) {
+          toast.error('❌ This application has already been approved!')
+        } else if (data.alreadyRejected) {
+          toast.error('❌ This application has already been rejected!')
+        } else {
+          toast.error(data.error || 'Failed to approve application')
+        }
+      }
+    } catch (error) {
+      console.error('Approve error:', error)
+      toast.error('Something went wrong. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files)
     if (files.length === 0) return
@@ -727,7 +766,7 @@ export default function OwnerDashboard() {
           ))}
         </div>
 
-        {/* Overview Tab - Same as your existing code */}
+        {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div>
             <div className="grid md:grid-cols-2 gap-6">
@@ -963,7 +1002,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Applications Tab */}
+        {/* Applications Tab - FIXED with duplicate prevention */}
         {activeTab === 'applications' && (
           <div className="space-y-4">
             {applications.map(app => (
@@ -975,8 +1014,12 @@ export default function OwnerDashboard() {
                   {app.message && <p className="text-sm text-gray-600 mt-1">💬 {app.message}</p>}
                   <p className="text-xs text-gray-400 mt-1">Applied: {formatDate(app.created_at)}</p>
                 </div>
-                <button onClick={() => approveApplication(app.id)} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition">
-                  Approve →
+                <button 
+                  onClick={() => approveApplication(app.id)} 
+                  disabled={isSubmitting}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? 'Processing...' : 'Approve →'}
                 </button>
               </div>
             ))}
@@ -1101,18 +1144,18 @@ export default function OwnerDashboard() {
             <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">Add New Tenant</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
-                <input type="tel" placeholder="Phone Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} />
+                <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+                <input type="tel" placeholder="Phone Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} />
                 <input 
                   type="email" 
                   placeholder="Email Address *" 
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl" 
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" 
                   value={formData.email} 
                   onChange={(e) => setFormData({...formData, email: e.target.value})} 
                 />
                 <p className="text-xs text-blue-500 -mt-2">Tenant will receive magic login link on this email</p>
-                <input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} />
-                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}>
+                <input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} />
+                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}>
                   <option value="">Select Room</option>
                   {rooms.filter(r => r.current_occupants < r.capacity).map(room => (
                     <option key={room.id} value={room.id}>Room {room.room_number} - {getSharingDetails(room.sharing_type).label} - ₹{formatCurrency(room.monthly_rent)}/month</option>
@@ -1137,14 +1180,14 @@ export default function OwnerDashboard() {
             <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">Add New Room</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Room Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
-                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.sharing_type} onChange={(e) => { 
+                <input type="text" placeholder="Room Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
+                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={roomForm.sharing_type} onChange={(e) => { 
                   const selected = sharingTypes.find(t => t.value === e.target.value)
                   setRoomForm({...roomForm, sharing_type: e.target.value, monthly_rent: selected.price})
                 }}>
                   {sharingTypes.map(type => <option key={type.value} value={type.value}>{type.label} {type.icon} - ₹{formatCurrency(type.price)}/month</option>)}
                 </select>
-                <input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
+                <input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
                 <div className="flex gap-3 mt-6">
                   <button onClick={addRoom} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Add Room</button>
                   <button onClick={() => setShowRoomModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
@@ -1167,7 +1210,7 @@ export default function OwnerDashboard() {
                 <p>Monthly Rent: {formatCurrency(selectedTenant.rent_amount)}</p>
                 <p className="text-red-500">Pending: {formatCurrency(selectedTenant.pending_amount || selectedTenant.rent_amount)}</p>
               </div>
-              <input type="number" placeholder="Enter Amount (₹)" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
+              <input type="number" placeholder="Enter Amount (₹)" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800 mb-4" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
               <div className="flex gap-3">
                 <button onClick={collectRent} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold">Collect</button>
                 <button onClick={() => setShowPaymentModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
@@ -1184,9 +1227,9 @@ export default function OwnerDashboard() {
             <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">Post Notice</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Title *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.title} onChange={(e) => setNoticeForm({...noticeForm, title: e.target.value})} />
-                <textarea placeholder="Content *" rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.content} onChange={(e) => setNoticeForm({...noticeForm, content: e.target.value})} />
-                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.type} onChange={(e) => setNoticeForm({...noticeForm, type: e.target.value})}>
+                <input type="text" placeholder="Title *" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={noticeForm.title} onChange={(e) => setNoticeForm({...noticeForm, title: e.target.value})} />
+                <textarea placeholder="Content *" rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={noticeForm.content} onChange={(e) => setNoticeForm({...noticeForm, content: e.target.value})} />
+                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={noticeForm.type} onChange={(e) => setNoticeForm({...noticeForm, type: e.target.value})}>
                   <option value="general">General</option>
                   <option value="maintenance">Maintenance</option>
                   <option value="payment">Payment</option>
@@ -1195,7 +1238,7 @@ export default function OwnerDashboard() {
                 </select>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={noticeForm.is_urgent} onChange={(e) => setNoticeForm({...noticeForm, is_urgent: e.target.checked})} className="w-4 h-4" />
-                  <span className="text-sm">Mark as Urgent</span>
+                  <span className="text-sm text-gray-700">Mark as Urgent</span>
                 </label>
                 <div className="flex gap-3 mt-6">
                   <button onClick={postNotice} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
@@ -1217,7 +1260,7 @@ export default function OwnerDashboard() {
               <h2 className="text-2xl font-bold mb-4">Respond to Complaint</h2>
               <p className="text-sm text-gray-500 mb-2">From: {selectedComplaint.tenant_name}</p>
               <p className="text-sm text-gray-600 mb-4">"{selectedComplaint.title}"</p>
-              <textarea placeholder="Your response..." rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={complaintResponse} onChange={(e) => setComplaintResponse(e.target.value)} />
+              <textarea placeholder="Your response..." rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800 mb-4" value={complaintResponse} onChange={(e) => setComplaintResponse(e.target.value)} />
               <div className="flex gap-3">
                 <button onClick={respondToComplaint} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Send Response</button>
                 <button onClick={() => setShowComplaintResponseModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
