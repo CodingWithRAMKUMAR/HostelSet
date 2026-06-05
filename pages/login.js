@@ -135,7 +135,7 @@ export default function Login() {
                 <input
                   type="email"
                   placeholder="you@example.com"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 transition"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 transition text-gray-800"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
