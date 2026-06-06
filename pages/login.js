@@ -43,34 +43,17 @@ export default function Login() {
       if (otp === '123456') {
         const cleanPhone = cleanPhoneNumber(phone)
         
+        // Find user by phone number
         const { data: existingUser } = await supabase
           .from('users')
           .select('*')
           .eq('phone', cleanPhone)
           .maybeSingle()
         
+        console.log('Found user:', existingUser)
+        
         if (existingUser) {
-          if (existingUser.role === 'tenant') {
-            const { data: tenantRecord } = await supabase
-              .from('tenants')
-              .select('id, room_id, status, name')
-              .eq('phone', cleanPhone)
-              .maybeSingle()
-            
-            if (!tenantRecord || !tenantRecord.room_id) {
-              toast.error('You are not registered with any room. Please contact your PG owner.')
-              setLoading(false)
-              return
-            }
-            if (tenantRecord.status === 'checked_out') {
-              toast.error('Your account has been checked out. Please contact owner.')
-              setLoading(false)
-              return
-            }
-            localStorage.setItem('tenantId', tenantRecord.id)
-            localStorage.setItem('tenantName', tenantRecord.name)
-          }
-          
+          // Store session
           localStorage.setItem('userId', existingUser.id)
           localStorage.setItem('userRole', existingUser.role)
           localStorage.setItem('isLoggedIn', 'true')
@@ -79,43 +62,26 @@ export default function Login() {
           
           toast.success(`Welcome back, ${existingUser.full_name}!`)
           
+          // Redirect based on role
           if (existingUser.role === 'owner') {
             const { data: property } = await supabase
               .from('properties')
               .select('id')
               .eq('owner_id', existingUser.id)
               .maybeSingle()
-            property ? router.push('/owner/dashboard') : router.push('/owner/register-property')
+            
+            if (property) {
+              router.push('/owner/dashboard')
+            } else {
+              router.push('/owner/register-property')
+            }
           } else {
             router.push('/tenant/dashboard')
           }
         } else {
-          const { data: newUser, error: createError } = await supabase
-            .from('users')
-            .insert({
-              phone: cleanPhone,
-              full_name: `User_${cleanPhone.slice(-4)}`,
-              role: role,
-              is_active: true
-            })
-            .select()
-            .single()
-          
-          if (createError) throw createError
-          
-          localStorage.setItem('userId', newUser.id)
-          localStorage.setItem('userRole', newUser.role)
-          localStorage.setItem('isLoggedIn', 'true')
-          localStorage.setItem('userName', newUser.full_name)
-          localStorage.setItem('userPhone', cleanPhone)
-          
-          toast.success('Account created!')
-          
-          if (role === 'owner') {
-            router.push('/owner/register-property')
-          } else {
-            router.push('/tenant/waiting')
-          }
+          toast.error('User not found. Please register first.')
+          setLoading(false)
+          return
         }
       } else {
         const { error } = await supabase.auth.verifyOtp({
@@ -196,17 +162,17 @@ export default function Login() {
               <div>
                 <label className="block text-gray-700 font-semibold mb-2">Phone Number</label>
                 <div className="flex gap-2">
-                  <span className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200 text-gray-600">+91</span>
+                  <span className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200">+91</span>
                   <input
                     type="tel"
                     placeholder="9876543210"
-                    className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
+                    className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     maxLength={10}
                   />
                 </div>
-                <p className="text-xs text-gray-400 mt-1">Enter 10-digit mobile number</p>
+                <p className="text-xs text-gray-400 mt-1">Enter the number you registered with</p>
               </div>
 
               <button
@@ -230,7 +196,7 @@ export default function Login() {
                 <input
                   type="text"
                   placeholder="123456"
-                  className="w-full px-4 py-3 text-center text-2xl tracking-widest border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
+                  className="w-full px-4 py-3 text-center text-2xl tracking-widest border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
                   maxLength={6}
@@ -264,10 +230,7 @@ export default function Login() {
 
         <div className="mt-6 pt-4 border-t border-gray-100 text-center">
           <p className="text-xs text-gray-400">
-            Demo: Any 10-digit phone number | OTP: 123456
-          </p>
-          <p className="text-xs text-gray-400 mt-1">
-            New users will be automatically registered
+            Demo: Use OTP 123456
           </p>
         </div>
       </motion.div>
