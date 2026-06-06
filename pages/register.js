@@ -3,7 +3,6 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { supabase } from '../lib/supabase'
-import { cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
 
 export default function Register() {
@@ -28,7 +27,7 @@ export default function Register() {
     setLoading(true)
     
     try {
-      const cleanPhone = cleanPhoneNumber(formData.phone)
+      const cleanPhone = formData.phone
       
       if (cleanPhone.length !== 10) {
         toast.error('Enter valid 10-digit phone number')
@@ -36,19 +35,7 @@ export default function Register() {
         return
       }
 
-      // Check if user already exists
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('phone', cleanPhone)
-        .maybeSingle()
-
-      if (existingUser) {
-        toast.error('User already exists! Please login.')
-        router.push('/login')
-        setLoading(false)
-        return
-      }
+      console.log('Attempting to create user...')
 
       // Create new user
       const { data: newUser, error: userError } = await supabase
@@ -61,15 +48,27 @@ export default function Register() {
           is_active: true
         })
         .select()
-        .single()
       
-      if (userError) throw userError
+      if (userError) {
+        console.error('User creation error:', userError)
+        toast.error(userError.message)
+        setLoading(false)
+        return
+      }
+
+      console.log('User created:', newUser)
+
+      if (!newUser || newUser.length === 0) {
+        toast.error('Failed to create user')
+        setLoading(false)
+        return
+      }
 
       // Create property
       const { error: propertyError } = await supabase
         .from('properties')
         .insert({
-          owner_id: newUser.id,
+          owner_id: newUser[0].id,
           name: formData.name,
           address: formData.address,
           city: formData.city,
@@ -77,7 +76,12 @@ export default function Register() {
           is_active: true
         })
 
-      if (propertyError) throw propertyError
+      if (propertyError) {
+        console.error('Property creation error:', propertyError)
+        toast.error(propertyError.message)
+        setLoading(false)
+        return
+      }
 
       toast.success('Registration successful! Please login.')
       router.push('/login')
@@ -146,7 +150,6 @@ export default function Register() {
                     required
                   />
                 </div>
-                <p className="text-xs text-gray-400 mt-1">You will login with this number</p>
               </div>
 
               <div>
