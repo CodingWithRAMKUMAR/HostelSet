@@ -9,7 +9,6 @@ import toast from 'react-hot-toast'
 export default function Register() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [step, setStep] = useState(1)
   const [formData, setFormData] = useState({
     name: '',
     ownerName: '',
@@ -17,36 +16,41 @@ export default function Register() {
     email: '',
     address: '',
     city: '',
-    pincode: '',
-    propertyType: 'boys',
-    totalRooms: '',
-    description: '',
-    amenities: []
+    propertyType: 'boys'
   })
-
-  const amenitiesList = [
-    'WiFi', 'AC', 'Parking', 'Food', 'Gym', 'Laundry', 
-    'Security', 'Study Room', 'TV', 'Water Filter', 'Geyser', 'Bed', 'Study Table', 'Attached Bathroom'
-  ]
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
 
-  const toggleAmenity = (amenity) => {
-    setFormData(prev => ({
-      ...prev,
-      amenities: prev.amenities.includes(amenity)
-        ? prev.amenities.filter(a => a !== amenity)
-        : [...prev.amenities, amenity]
-    }))
-  }
-
-  const handleSubmit = async () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault()
     setLoading(true)
+    
     try {
       const cleanPhone = cleanPhoneNumber(formData.phone)
       
+      if (cleanPhone.length !== 10) {
+        toast.error('Enter valid 10-digit phone number')
+        setLoading(false)
+        return
+      }
+
+      // Check if user already exists
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('phone', cleanPhone)
+        .maybeSingle()
+
+      if (existingUser) {
+        toast.error('User already exists! Please login.')
+        router.push('/login')
+        setLoading(false)
+        return
+      }
+
+      // Create new user
       const { data: newUser, error: userError } = await supabase
         .from('users')
         .insert({
@@ -61,24 +65,23 @@ export default function Register() {
       
       if (userError) throw userError
 
+      // Create property
       const { error: propertyError } = await supabase
         .from('properties')
         .insert({
           owner_id: newUser.id,
           name: formData.name,
-          description: formData.description,
           address: formData.address,
           city: formData.city,
-          pincode: formData.pincode,
           property_type: formData.propertyType,
-          amenities: formData.amenities,
           is_active: true
         })
 
       if (propertyError) throw propertyError
 
-      toast.success('Property registered successfully! Please login.')
+      toast.success('Registration successful! Please login.')
       router.push('/login')
+      
     } catch (error) {
       console.error('Registration error:', error)
       toast.error('Registration failed. Please try again.')
@@ -89,7 +92,7 @@ export default function Register() {
 
   return (
     <div className="min-h-screen py-12 bg-gradient-to-br from-gray-50 to-white">
-      <div className="container mx-auto max-w-3xl px-4">
+      <div className="container mx-auto max-w-2xl px-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -101,106 +104,114 @@ export default function Register() {
           </div>
 
           <div className="p-8">
-            <div className="flex justify-between mb-8">
-              {[1, 2, 3, 4].map(s => (
-                <div key={s} className="flex-1 text-center">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center mx-auto transition-all ${
-                    step >= s ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-400'
-                  }`}>
-                    {s}
-                  </div>
-                  <p className="text-xs mt-2 text-gray-500">
-                    {s === 1 ? 'Property' : s === 2 ? 'Owner' : s === 3 ? 'Amenities' : 'Submit'}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {step === 1 && (
-              <div className="space-y-4">
-                <input name="name" placeholder="Property Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
-                <textarea name="description" placeholder="Property Description" rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} />
-                <input name="address" placeholder="Full Address *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
-                <div className="grid grid-cols-2 gap-4">
-                  <input name="city" placeholder="City *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
-                  <input name="pincode" placeholder="Pincode" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} />
-                </div>
-                <select name="propertyType" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange}>
-                  <option value="boys">Boys PG</option>
-                  <option value="girls">Girls PG</option>
-                  <option value="co-ed">Co-ed PG</option>
-                  <option value="professionals">Working Professionals</option>
-                </select>
-                <input name="totalRooms" type="number" placeholder="Total Rooms *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="block text-gray-700 font-semibold mb-2">Property Name *</label>
+                <input
+                  type="text"
+                  name="name"
+                  placeholder="e.g., Sunshine PG"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                  value={formData.name}
+                  onChange={handleChange}
+                  required
+                />
               </div>
-            )}
 
-            {step === 2 && (
-              <div className="space-y-4">
-                <input name="ownerName" placeholder="Owner Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+              <div>
+                <label className="block text-gray-700 font-semibold mb-2">Owner Name *</label>
+                <input
+                  type="text"
+                  name="ownerName"
+                  placeholder="Full name"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                  value={formData.ownerName}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-semibold mb-2">Phone Number *</label>
                 <div className="flex gap-2">
                   <span className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200">+91</span>
-                  <input name="phone" placeholder="Phone Number *" className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                  <input
+                    type="tel"
+                    name="phone"
+                    placeholder="9876543210"
+                    className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    maxLength={10}
+                    required
+                  />
                 </div>
-                <input name="email" type="email" placeholder="Email *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                <p className="text-xs text-gray-400 mt-1">You will login with this number</p>
               </div>
-            )}
 
-            {step === 3 && (
               <div>
-                <label className="block text-gray-700 mb-3">Select Amenities</label>
-                <div className="grid grid-cols-2 gap-3">
-                  {amenitiesList.map(amenity => (
-                    <button
-                      key={amenity}
-                      type="button"
-                      onClick={() => toggleAmenity(amenity)}
-                      className={`p-3 rounded-xl border-2 transition-all ${
-                        formData.amenities.includes(amenity)
-                          ? 'border-slate-800 bg-slate-50 text-slate-800'
-                          : 'border-gray-200 text-gray-500 hover:border-slate-300'
-                      }`}
-                    >
-                      {amenity}
-                    </button>
-                  ))}
+                <label className="block text-gray-700 font-semibold mb-2">Email Address *</label>
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="owner@example.com"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                  value={formData.email}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-semibold mb-2">Full Address *</label>
+                <input
+                  type="text"
+                  name="address"
+                  placeholder="Street, area, landmark"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                  value={formData.address}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">City *</label>
+                  <input
+                    type="text"
+                    name="city"
+                    placeholder="Bangalore"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                    value={formData.city}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">Property Type</label>
+                  <select
+                    name="propertyType"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                    value={formData.propertyType}
+                    onChange={handleChange}
+                  >
+                    <option value="boys">Boys PG</option>
+                    <option value="girls">Girls PG</option>
+                    <option value="co-ed">Co-ed PG</option>
+                    <option value="professionals">Working Professionals</option>
+                  </select>
                 </div>
               </div>
-            )}
 
-            {step === 4 && (
-              <div className="bg-slate-50 rounded-xl p-6">
-                <p className="text-slate-800 text-lg mb-4 text-center font-semibold">✨ Review Your Details</p>
-                <div className="grid md:grid-cols-2 gap-4 text-sm">
-                  <div><p className="text-gray-500">Property Name:</p><p className="font-semibold text-slate-700">{formData.name || 'Not entered'}</p></div>
-                  <div><p className="text-gray-500">Location:</p><p className="font-semibold text-slate-700">{formData.city || 'Not entered'}</p></div>
-                  <div><p className="text-gray-500">Property Type:</p><p className="font-semibold text-slate-700">{formData.propertyType}</p></div>
-                  <div><p className="text-gray-500">Total Rooms:</p><p className="font-semibold text-slate-700">{formData.totalRooms || 'Not entered'}</p></div>
-                  <div><p className="text-gray-500">Amenities:</p><p className="font-semibold text-slate-700">{formData.amenities.length} selected</p></div>
-                  <div><p className="text-gray-500">Owner:</p><p className="font-semibold text-slate-700">{formData.ownerName || 'Not entered'}</p></div>
-                  <div><p className="text-gray-500">Phone:</p><p className="font-semibold text-slate-700">{formData.phone || 'Not entered'}</p></div>
-                  <div><p className="text-gray-500">Email:</p><p className="font-semibold text-slate-700">{formData.email || 'Not entered'}</p></div>
-                </div>
-                <p className="text-gray-400 text-sm text-center mt-4">Click Complete Registration to finish</p>
-              </div>
-            )}
-
-            <div className="flex gap-4 mt-8">
-              {step > 1 && (
-                <button onClick={() => setStep(step - 1)} className="flex-1 border-2 border-slate-300 text-slate-700 py-3 rounded-xl font-semibold hover:bg-slate-50 transition">
-                  ← Back
-                </button>
-              )}
-              {step < 4 ? (
-                <button onClick={() => setStep(step + 1)} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition">
-                  Continue →
-                </button>
-              ) : (
-                <button onClick={handleSubmit} disabled={loading} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 disabled:opacity-50 transition">
-                  {loading ? 'Registering...' : 'Complete Registration →'}
-                </button>
-              )}
-            </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50 mt-4"
+              >
+                {loading ? 'Registering...' : 'Register Property →'}
+              </button>
+            </form>
 
             <div className="mt-6 text-center">
               <Link href="/login" className="text-slate-600 hover:text-slate-800 text-sm">
