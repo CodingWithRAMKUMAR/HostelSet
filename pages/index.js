@@ -39,7 +39,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-gray-50">
-      {/* Modern Navbar */}
+      {/* MODERN NAVBAR - FIXED ROUTING */}
       <nav className={`fixed top-0 w-full z-50 transition-all duration-500 ${
         scrolled 
           ? 'bg-white/90 backdrop-blur-xl shadow-lg py-3' 
@@ -47,6 +47,7 @@ export default function Home() {
       }`}>
         <div className="container mx-auto px-4 md:px-8">
           <div className="flex justify-between items-center">
+            {/* Logo - Stays on home page */}
             <Link href="/" className="flex items-center gap-3 group">
               <motion.div 
                 whileHover={{ rotate: 360, scale: 1.1 }}
@@ -60,18 +61,28 @@ export default function Home() {
               </span>
             </Link>
             
-            <div className="hidden md:flex items-center gap-10">
-              <Link href="/login" className="text-gray-600 hover:text-slate-800 transition-all duration-300 font-medium hover:scale-105">
+            {/* DESKTOP NAVIGATION - FIXED LINKS */}
+            <div className="hidden md:flex items-center gap-4">
+              {/* Login Button - Outline Style */}
+              <Link 
+                href="/login" 
+                className="px-5 py-2.5 rounded-full border-2 border-slate-300 text-slate-700 font-semibold hover:border-slate-800 hover:bg-slate-50 transition-all duration-300 flex items-center gap-2"
+              >
+                <span>👤</span>
                 Login
               </Link>
+              
+              {/* List Property Button - Solid Gradient */}
               <Link 
                 href="/owner/register-property" 
-                className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105"
+                className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105 flex items-center gap-2"
               >
+                <span>✨</span>
                 List Property
               </Link>
             </div>
             
+            {/* Mobile Menu Button */}
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
               className="md:hidden p-3 rounded-full bg-white/80 backdrop-blur-sm shadow-sm"
@@ -82,7 +93,7 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* Modern Mobile Menu */}
+      {/* MOBILE MENU - FIXED LINKS */}
       {mobileMenuOpen && (
         <motion.div 
           initial={{ opacity: 0, y: -20 }}
@@ -90,15 +101,22 @@ export default function Home() {
           exit={{ opacity: 0, y: -20 }}
           className="fixed top-20 left-4 right-4 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl z-40 md:hidden border border-gray-100"
         >
-          <div className="flex flex-col p-6 gap-4">
-            <Link href="/login" className="py-3 text-gray-600 hover:text-slate-800 font-medium text-center" onClick={() => setMobileMenuOpen(false)}>
-              Login
-            </Link>
+          <div className="p-4">
             <Link 
-              href="/owner/register-property" 
-              className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-6 py-3 rounded-full text-center font-semibold"
+              href="/login" 
+              className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-slate-300 text-slate-700 font-semibold hover:bg-gray-50 transition-all duration-300 mb-3"
               onClick={() => setMobileMenuOpen(false)}
             >
+              <span>👤</span>
+              Login
+            </Link>
+            
+            <Link 
+              href="/owner/register-property" 
+              className="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-slate-800 to-slate-700 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all duration-300"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <span>✨</span>
               List Property
             </Link>
           </div>
@@ -344,17 +362,16 @@ export default function Home() {
                 Set Your Hostel, Simplify Life. India's most trusted PG and hostel management platform.
               </p>
               <div className="flex gap-4">
-                {['📘', '🐦', '📷', '🔗'].map((icon, i) => (
-                  <a key={i} href="#" className="text-gray-400 hover:text-slate-600 transition-all duration-300 hover:scale-110 text-xl">
-                    {icon}
-                  </a>
-                ))}
+                <a href="#" className="text-gray-400 hover:text-slate-600 transition-all duration-300 hover:scale-110 text-xl">📘</a>
+                <a href="#" className="text-gray-400 hover:text-slate-600 transition-all duration-300 hover:scale-110 text-xl">🐦</a>
+                <a href="#" className="text-gray-400 hover:text-slate-600 transition-all duration-300 hover:scale-110 text-xl">📷</a>
+                <a href="#" className="text-gray-400 hover:text-slate-600 transition-all duration-300 hover:scale-110 text-xl">🔗</a>
               </div>
             </div>
             <div>
               <h4 className="font-bold text-slate-800 mb-6 text-lg">Product</h4>
               <ul className="space-y-3 text-gray-500">
-                <li><Link href="/features" className="hover:text-slate-800 transition">Features</Link></li>
+                <li><a href="#" className="hover:text-slate-800 transition">Features</a></li>
                 <li><Link href="/owner/register-property" className="hover:text-slate-800 transition">List Property</Link></li>
                 <li><Link href="/login" className="hover:text-slate-800 transition">Login</Link></li>
                 <li><Link href="/register" className="hover:text-slate-800 transition">Register</Link></li>
@@ -363,19 +380,19 @@ export default function Home() {
             <div>
               <h4 className="font-bold text-slate-800 mb-6 text-lg">Company</h4>
               <ul className="space-y-3 text-gray-500">
-                <li><Link href="/about" className="hover:text-slate-800 transition">About Us</Link></li>
-                <li><Link href="/contact" className="hover:text-slate-800 transition">Contact</Link></li>
-                <li><Link href="/blog" className="hover:text-slate-800 transition">Blog</Link></li>
-                <li><Link href="/careers" className="hover:text-slate-800 transition">Careers</Link></li>
+                <li><a href="#" className="hover:text-slate-800 transition">About Us</a></li>
+                <li><a href="#" className="hover:text-slate-800 transition">Contact</a></li>
+                <li><a href="#" className="hover:text-slate-800 transition">Blog</a></li>
+                <li><a href="#" className="hover:text-slate-800 transition">Careers</a></li>
               </ul>
             </div>
             <div>
               <h4 className="font-bold text-slate-800 mb-6 text-lg">Legal</h4>
               <ul className="space-y-3 text-gray-500">
-                <li><Link href="/privacy" className="hover:text-slate-800 transition">Privacy Policy</Link></li>
-                <li><Link href="/terms" className="hover:text-slate-800 transition">Terms of Service</Link></li>
-                <li><Link href="/cookie" className="hover:text-slate-800 transition">Cookie Policy</Link></li>
-                <li><Link href="/refund" className="hover:text-slate-800 transition">Refund Policy</Link></li>
+                <li><a href="#" className="hover:text-slate-800 transition">Privacy Policy</a></li>
+                <li><a href="#" className="hover:text-slate-800 transition">Terms of Service</a></li>
+                <li><a href="#" className="hover:text-slate-800 transition">Cookie Policy</a></li>
+                <li><a href="#" className="hover:text-slate-800 transition">Refund Policy</a></li>
               </ul>
             </div>
           </div>
