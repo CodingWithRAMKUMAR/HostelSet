@@ -1,7 +1,24 @@
 import '../styles/globals.css'
 import { Toaster } from 'react-hot-toast'
+import { useEffect } from 'react'
+import { useRouter } from 'next/router'
 
 export default function App({ Component, pageProps }) {
+  const router = useRouter()
+
+  useEffect(() => {
+    const checkSession = () => {
+      const isLoggedIn = localStorage.getItem('isLoggedIn')
+      const protectedRoutes = ['/owner', '/tenant']
+      const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
+      
+      if (isProtectedRoute && !isLoggedIn && router.pathname !== '/login') {
+        router.push('/login')
+      }
+    }
+    checkSession()
+  }, [router.pathname])
+
   return (
     <>
       <Toaster 
