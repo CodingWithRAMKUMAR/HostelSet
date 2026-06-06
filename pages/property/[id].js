@@ -113,12 +113,8 @@ export default function PropertyDetail() {
     )
   }
 
-  const sharingDetails = getSharingDetails
-  const hasPhotos = property.photos && property.photos.length > 0
-
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
@@ -137,12 +133,10 @@ export default function PropertyDetail() {
       </header>
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
-        {/* Back Button */}
         <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-500 hover:text-slate-800 mb-6 transition group">
           <span className="group-hover:-translate-x-1 transition">←</span> Back to Search
         </button>
 
-        {/* Property Title Section */}
         <div className="mb-8">
           <h1 className="text-3xl md:text-4xl font-bold text-slate-800 mb-2">{property.name}</h1>
           <div className="flex flex-wrap items-center gap-4 text-gray-500">
@@ -155,55 +149,29 @@ export default function PropertyDetail() {
         {/* Image Gallery */}
         <div className="mb-8">
           <div className="relative bg-gray-100 rounded-2xl overflow-hidden">
-            {hasPhotos ? (
+            {property.photos && property.photos.length > 0 ? (
               <>
-                <img 
-                  src={property.photos[currentImageIndex]} 
-                  alt={property.name} 
-                  className="w-full h-[400px] object-cover"
-                />
+                <img src={property.photos[currentImageIndex]} alt={property.name} className="w-full h-[400px] object-cover" />
                 {property.photos.length > 1 && (
                   <>
-                    <button 
-                      onClick={prevImage} 
-                      className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-slate-800 p-2 rounded-full shadow-md transition"
-                    >
-                      ←
-                    </button>
-                    <button 
-                      onClick={nextImage} 
-                      className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-slate-800 p-2 rounded-full shadow-md transition"
-                    >
-                      →
-                    </button>
+                    <button onClick={prevImage} className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-slate-800 p-2 rounded-full shadow-md transition">←</button>
+                    <button onClick={nextImage} className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-slate-800 p-2 rounded-full shadow-md transition">→</button>
                     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
                       {property.photos.map((_, i) => (
-                        <button 
-                          key={i} 
-                          onClick={() => setCurrentImageIndex(i)} 
-                          className={`w-2 h-2 rounded-full transition ${i === currentImageIndex ? 'bg-white w-4' : 'bg-white/50'}`}
-                        />
+                        <button key={i} onClick={() => setCurrentImageIndex(i)} className={`w-2 h-2 rounded-full transition ${i === currentImageIndex ? 'bg-white w-4' : 'bg-white/50'}`} />
                       ))}
                     </div>
                   </>
                 )}
               </>
             ) : (
-              <div className="w-full h-[400px] flex items-center justify-center text-8xl bg-gradient-to-br from-slate-100 to-gray-100">
-                🏠
-              </div>
+              <div className="w-full h-[400px] flex items-center justify-center text-8xl bg-gradient-to-br from-slate-100 to-gray-100">🏠</div>
             )}
           </div>
-          {hasPhotos && property.photos.length > 1 && (
+          {property.photos && property.photos.length > 1 && (
             <div className="flex gap-2 mt-3 overflow-x-auto pb-2">
               {property.photos.map((photo, i) => (
-                <button
-                  key={i}
-                  onClick={() => setCurrentImageIndex(i)}
-                  className={`w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${
-                    i === currentImageIndex ? 'border-slate-800' : 'border-transparent opacity-70 hover:opacity-100'
-                  }`}
-                >
+                <button key={i} onClick={() => setCurrentImageIndex(i)} className={`w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${i === currentImageIndex ? 'border-slate-800' : 'border-transparent opacity-70 hover:opacity-100'}`}>
                   <img src={photo} alt="" className="w-full h-full object-cover" />
                 </button>
               ))}
@@ -213,114 +181,51 @@ export default function PropertyDetail() {
 
         {/* Tabs */}
         <div className="flex border-b border-gray-200 mb-6">
-          <button
-            onClick={() => setActiveTab('rooms')}
-            className={`px-6 py-3 font-semibold transition ${
-              activeTab === 'rooms'
-                ? 'text-slate-800 border-b-2 border-slate-800'
-                : 'text-gray-500 hover:text-slate-600'
-            }`}
-          >
-            🏠 Rooms & Availability
-          </button>
-          <button
-            onClick={() => setActiveTab('amenities')}
-            className={`px-6 py-3 font-semibold transition ${
-              activeTab === 'amenities'
-                ? 'text-slate-800 border-b-2 border-slate-800'
-                : 'text-gray-500 hover:text-slate-600'
-            }`}
-          >
-            ✨ Amenities
-          </button>
-          <button
-            onClick={() => setActiveTab('about')}
-            className={`px-6 py-3 font-semibold transition ${
-              activeTab === 'about'
-                ? 'text-slate-800 border-b-2 border-slate-800'
-                : 'text-gray-500 hover:text-slate-600'
-            }`}
-          >
-            📖 About
-          </button>
+          <button onClick={() => setActiveTab('rooms')} className={`px-6 py-3 font-semibold transition ${activeTab === 'rooms' ? 'text-slate-800 border-b-2 border-slate-800' : 'text-gray-500 hover:text-slate-600'}`}>🏠 Rooms & Availability</button>
+          <button onClick={() => setActiveTab('amenities')} className={`px-6 py-3 font-semibold transition ${activeTab === 'amenities' ? 'text-slate-800 border-b-2 border-slate-800' : 'text-gray-500 hover:text-slate-600'}`}>✨ Amenities</button>
+          <button onClick={() => setActiveTab('about')} className={`px-6 py-3 font-semibold transition ${activeTab === 'about' ? 'text-slate-800 border-b-2 border-slate-800' : 'text-gray-500 hover:text-slate-600'}`}>📖 About</button>
         </div>
 
-        {/* Rooms Tab */}
         {activeTab === 'rooms' && (
-          <div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {rooms.map((room) => {
-                const sharing = getSharingDetails(room.sharing_type)
-                const isAvailable = room.current_occupants < room.capacity
-                const availableSlots = room.capacity - room.current_occupants
-                
-                return (
-                  <motion.div
-                    key={room.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    whileHover={{ y: -4 }}
-                    className={`bg-white rounded-2xl border-2 p-6 transition-all ${
-                      isAvailable 
-                        ? 'border-green-200 hover:border-green-400' 
-                        : 'border-gray-200 opacity-70'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h3 className="text-2xl font-bold text-slate-800">Room {room.room_number}</h3>
-                        <p className="text-gray-500 text-sm mt-1">{sharing.label} {sharing.icon}</p>
-                      </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        isAvailable 
-                          ? 'bg-green-100 text-green-700' 
-                          : 'bg-gray-100 text-gray-500'
-                      }`}>
-                        {isAvailable ? `${availableSlots} slot available` : 'Full'}
-                      </span>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {rooms.map((room) => {
+              const sharing = getSharingDetails(room.sharing_type)
+              const isAvailable = room.current_occupants < room.capacity
+              const availableSlots = room.capacity - room.current_occupants
+              return (
+                <div key={room.id} className={`bg-white rounded-2xl border-2 p-6 transition-all ${isAvailable ? 'border-green-200 hover:border-green-400' : 'border-gray-200 opacity-70'}`}>
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-2xl font-bold text-slate-800">Room {room.room_number}</h3>
+                      <p className="text-gray-500 text-sm mt-1">{sharing.label} {sharing.icon}</p>
                     </div>
-                    
-                    <div className="mb-4">
-                      <p className="text-3xl font-bold text-slate-800">{formatCurrency(room.monthly_rent)}</p>
-                      <p className="text-gray-400 text-sm">per month</p>
-                      <p className="text-gray-400 text-sm mt-1">Deposit: {formatCurrency(room.deposit_amount || 0)}</p>
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${isAvailable ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                      {isAvailable ? `${availableSlots} slot available` : 'Full'}
+                    </span>
+                  </div>
+                  <div className="mb-4">
+                    <p className="text-3xl font-bold text-slate-800">{formatCurrency(room.monthly_rent)}</p>
+                    <p className="text-gray-400 text-sm">per month</p>
+                    <p className="text-gray-400 text-sm mt-1">Deposit: {formatCurrency(room.deposit_amount || 0)}</p>
+                  </div>
+                  <div className="mb-4">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-500">Occupancy</span>
+                      <span className="text-slate-600">{room.current_occupants}/{room.capacity}</span>
                     </div>
-
-                    <div className="mb-4">
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="text-gray-500">Occupancy</span>
-                        <span className="text-slate-600">{room.current_occupants}/{room.capacity}</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-slate-600 h-2 rounded-full transition-all duration-500"
-                          style={{ width: `${(room.current_occupants / room.capacity) * 100}%` }}
-                        />
-                      </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="bg-slate-600 h-2 rounded-full" style={{ width: `${(room.current_occupants / room.capacity) * 100}%` }} />
                     </div>
-
-                    {isAvailable && (
-                      <button
-                        onClick={() => { setSelectedRoom(room.id); setShowApplyModal(true) }}
-                        className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition mt-2"
-                      >
-                        Apply Now →
-                      </button>
-                    )}
-                  </motion.div>
-                )
-              })}
-            </div>
-            {rooms.length === 0 && (
-              <div className="text-center py-12 bg-gray-50 rounded-2xl">
-                <div className="text-4xl mb-3">🏠</div>
-                <p className="text-gray-500">No rooms available at the moment</p>
-              </div>
-            )}
+                  </div>
+                  {isAvailable && (
+                    <button onClick={() => { setSelectedRoom(room.id); setShowApplyModal(true) }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition mt-2">Apply Now →</button>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 
-        {/* Amenities Tab */}
         {activeTab === 'amenities' && (
           <div className="bg-gray-50 rounded-2xl p-8">
             <h2 className="text-xl font-bold text-slate-800 mb-4">Amenities & Facilities</h2>
@@ -331,21 +236,14 @@ export default function PropertyDetail() {
                   <span>{amenity}</span>
                 </div>
               ))}
-              {(property.amenities || []).length === 0 && (
-                <p className="text-gray-400 col-span-full text-center py-8">No amenities listed</p>
-              )}
             </div>
           </div>
         )}
 
-        {/* About Tab */}
         {activeTab === 'about' && (
           <div className="bg-gray-50 rounded-2xl p-8">
             <h2 className="text-xl font-bold text-slate-800 mb-4">About this Property</h2>
-            <p className="text-gray-600 leading-relaxed">
-              {property.description || 'No description provided.'}
-            </p>
-            
+            <p className="text-gray-600 leading-relaxed">{property.description || 'No description provided.'}</p>
             <div className="mt-6 pt-6 border-t border-gray-200">
               <h3 className="font-semibold text-slate-800 mb-2">Property Details</h3>
               <div className="grid sm:grid-cols-2 gap-4 text-sm">
@@ -375,66 +273,29 @@ export default function PropertyDetail() {
       <AnimatePresence>
         {showApplyModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowApplyModal(false)}>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl max-w-md w-full p-6"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold text-slate-800">Apply for Room</h2>
                 <button onClick={() => setShowApplyModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
               </div>
               <div className="space-y-4">
-                <input
-                  type="text"
-                  placeholder="Full Name *"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 transition"
-                  value={applyForm.name}
-                  onChange={(e) => setApplyForm({...applyForm, name: e.target.value})}
-                />
+                <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" value={applyForm.name} onChange={(e) => setApplyForm({...applyForm, name: e.target.value})} />
                 <div className="flex gap-2">
                   <span className="bg-gray-100 px-4 py-3 rounded-xl border border-gray-200 text-gray-600">+91</span>
-                  <input
-                    type="tel"
-                    placeholder="Phone Number *"
-                    className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 transition"
-                    value={applyForm.phone}
-                    onChange={(e) => setApplyForm({...applyForm, phone: e.target.value})}
-                    maxLength={10}
-                  />
+                  <input type="tel" placeholder="Phone Number *" className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" value={applyForm.phone} onChange={(e) => setApplyForm({...applyForm, phone: e.target.value})} maxLength={10} />
                 </div>
-                <input
-                  type="email"
-                  placeholder="Email (optional)"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 transition"
-                  value={applyForm.email}
-                  onChange={(e) => setApplyForm({...applyForm, email: e.target.value})}
-                />
-                <textarea
-                  placeholder="Any message for the owner?"
-                  rows="3"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 transition resize-none"
-                  value={applyForm.message}
-                  onChange={(e) => setApplyForm({...applyForm, message: e.target.value})}
-                />
-                <button
-                  onClick={handleApply}
-                  className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition"
-                >
-                  Submit Application
-                </button>
+                <input type="email" placeholder="Email (optional)" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" value={applyForm.email} onChange={(e) => setApplyForm({...applyForm, email: e.target.value})} />
+                <textarea placeholder="Any message for the owner?" rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 resize-none" value={applyForm.message} onChange={(e) => setApplyForm({...applyForm, message: e.target.value})} />
+                <button onClick={handleApply} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition">Submit Application</button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Footer */}
       <footer className="bg-gray-50 border-t border-gray-100 mt-12 py-8">
         <div className="container mx-auto px-4 text-center text-gray-500 text-sm">
-          <p>&copy; 2024 HOSTELSET. All rights reserved.</p>
+          <p>&copy; 2026 HOSTELSET. All rights reserved.</p>
         </div>
       </footer>
     </div>
