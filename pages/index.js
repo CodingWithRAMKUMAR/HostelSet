@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
+import { motion, useScroll, useTransform } from 'framer-motion'
 import { supabase } from '../lib/supabase'
 import { formatCurrency, getPropertyTypeLabel } from '../lib/utils'
 
 export default function Home() {
   const [scrolled, setScrolled] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [properties, setProperties] = useState([])
   const [rooms, setRooms] = useState([])
   const [loading, setLoading] = useState(true)
@@ -14,6 +13,7 @@ export default function Home() {
   const [selectedCity, setSelectedCity] = useState('all')
   const [selectedType, setSelectedType] = useState('all')
   const [cities, setCities] = useState([])
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const { scrollYProgress } = useScroll()
   const opacity = useTransform(scrollYProgress, [0, 0.2], [1, 0.8])
@@ -53,8 +53,6 @@ export default function Home() {
     return propertyRooms.filter(r => r.current_occupants < r.capacity).length
   }
 
-  const getPropertyRating = () => (4.5 + Math.random() * 0.5).toFixed(1)
-
   const filteredProperties = properties.filter(prop => {
     if (selectedCity !== 'all' && prop.city !== selectedCity) return false
     if (selectedType !== 'all' && prop.property_type !== selectedType) return false
@@ -89,9 +87,7 @@ export default function Home() {
           <div className="flex justify-between items-center">
             <Link href="/" className="flex items-center gap-2 group">
               <span className="text-2xl">🏠</span>
-              <span className="text-xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
-                HOSTELSET
-              </span>
+              <span className="text-xl font-bold text-slate-800">HOSTELSET</span>
             </Link>
             
             <div className="hidden md:flex items-center gap-8">
@@ -113,25 +109,18 @@ export default function Home() {
       </nav>
 
       {/* Mobile Menu */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-16 left-0 right-0 bg-white shadow-lg z-40 md:hidden"
-          >
-            <div className="flex flex-col p-6 gap-4">
-              <Link href="#features" className="py-2 text-gray-600 hover:text-slate-800" onClick={() => setMobileMenuOpen(false)}>Features</Link>
-              <Link href="#properties" className="py-2 text-gray-600 hover:text-slate-800" onClick={() => setMobileMenuOpen(false)}>Properties</Link>
-              <Link href="#how-it-works" className="py-2 text-gray-600 hover:text-slate-800" onClick={() => setMobileMenuOpen(false)}>How it Works</Link>
-              <Link href="#pricing" className="py-2 text-gray-600 hover:text-slate-800" onClick={() => setMobileMenuOpen(false)}>Pricing</Link>
-              <Link href="/login" className="py-2 text-slate-800 font-semibold" onClick={() => setMobileMenuOpen(false)}>Login</Link>
-              <Link href="/owner/register-property" className="bg-slate-800 text-white px-5 py-2 rounded-full text-center" onClick={() => setMobileMenuOpen(false)}>List Property</Link>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {mobileMenuOpen && (
+        <div className="fixed top-16 left-0 right-0 bg-white shadow-lg z-40 md:hidden">
+          <div className="flex flex-col p-6 gap-4">
+            <Link href="#features" className="py-2 text-gray-600 hover:text-slate-800" onClick={() => setMobileMenuOpen(false)}>Features</Link>
+            <Link href="#properties" className="py-2 text-gray-600 hover:text-slate-800" onClick={() => setMobileMenuOpen(false)}>Properties</Link>
+            <Link href="#how-it-works" className="py-2 text-gray-600 hover:text-slate-800" onClick={() => setMobileMenuOpen(false)}>How it Works</Link>
+            <Link href="#pricing" className="py-2 text-gray-600 hover:text-slate-800" onClick={() => setMobileMenuOpen(false)}>Pricing</Link>
+            <Link href="/login" className="py-2 text-slate-800 font-semibold" onClick={() => setMobileMenuOpen(false)}>Login</Link>
+            <Link href="/owner/register-property" className="bg-slate-800 text-white px-5 py-2 rounded-full text-center" onClick={() => setMobileMenuOpen(false)}>List Property</Link>
+          </div>
+        </div>
+      )}
 
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 overflow-hidden">
@@ -163,7 +152,7 @@ export default function Home() {
               </p>
               
               <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-                <Link href="/login" className="bg-slate-800 text-white px-8 py-3 rounded-full font-semibold hover:bg-slate-700 transition shadow-md hover:shadow-lg flex items-center justify-center gap-2 group">
+                <Link href="/register" className="bg-slate-800 text-white px-8 py-3 rounded-full font-semibold hover:bg-slate-700 transition shadow-md hover:shadow-lg flex items-center justify-center gap-2 group">
                   Get Started
                   <span className="group-hover:translate-x-1 transition">→</span>
                 </Link>
@@ -377,7 +366,7 @@ export default function Home() {
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredProperties.slice(0, 6).map((property, index) => {
                   const availableRooms = getAvailableRoomsCount(property.id)
-                  const rating = getPropertyRating()
+                  const rating = (4.5 + Math.random() * 0.5).toFixed(1)
                   return (
                     <motion.div
                       key={property.id}
@@ -402,13 +391,11 @@ export default function Home() {
                         </div>
                       </div>
                       <div className="p-5">
-                        <div className="flex justify-between items-start mb-2">
-                          <h3 className="text-xl font-bold text-slate-800">{property.name}</h3>
-                        </div>
-                        <p className="text-gray-500 text-sm mb-2 flex items-center gap-1">
+                        <h3 className="text-xl font-bold text-slate-800">{property.name}</h3>
+                        <p className="text-gray-500 text-sm mt-1 flex items-center gap-1">
                           <span>📍</span> {property.city}
                         </p>
-                        <div className="flex flex-wrap gap-1 mb-3">
+                        <div className="flex flex-wrap gap-1 mt-3 mb-3">
                           {property.amenities?.slice(0, 3).map((a, i) => (
                             <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">{a}</span>
                           ))}
@@ -498,14 +485,14 @@ export default function Home() {
                   ))}
                 </ul>
                 <Link
-                  href={plan.name === 'Enterprise' ? '/contact' : '/login'}
+                  href={plan.name === 'Enterprise' ? '/contact' : '/register'}
                   className={`block text-center py-2.5 rounded-xl font-semibold transition ${
                     plan.popular
                       ? 'bg-slate-800 text-white hover:bg-slate-700'
                       : 'border-2 border-slate-300 text-slate-700 hover:bg-slate-50'
                   }`}
                 >
-                  {plan.name === 'Enterprise' ? 'Contact Sales' : 'Get Started'}
+                  {plan.name === 'Enterprise' ? 'Contact Sales' : 'Start Free Trial'}
                 </Link>
               </motion.div>
             ))}
@@ -528,8 +515,8 @@ export default function Home() {
               Join thousands of successful PG owners using HOSTELSET to manage their properties
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/login" className="bg-white text-slate-800 px-8 py-3 rounded-full font-semibold hover:bg-gray-100 transition shadow-md hover:shadow-lg inline-flex items-center gap-2 group">
-                Get Started
+              <Link href="/register" className="bg-white text-slate-800 px-8 py-3 rounded-full font-semibold hover:bg-gray-100 transition shadow-md hover:shadow-lg inline-flex items-center gap-2 group">
+                Start Free Trial
                 <span className="group-hover:translate-x-1 transition">→</span>
               </Link>
               <Link href="/contact" className="border-2 border-white text-white px-8 py-3 rounded-full font-semibold hover:bg-white/10 transition inline-flex items-center gap-2">
