@@ -575,7 +575,7 @@ export default function Home() {
             </div>
           </div>
           <div className="border-t border-gray-100 mt-8 pt-8 text-center text-gray-400 text-sm">
-            <p>&copy; 2024 HOSTELSET. All rights reserved.</p>
+            <p>&copy; 2026 HOSTELSET. All rights reserved.</p>
           </div>
         </div>
       </footer>
