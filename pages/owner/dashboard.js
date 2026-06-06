@@ -46,7 +46,6 @@ export default function OwnerDashboard() {
     { value: 'five', label: 'Five Sharing', capacity: 5, icon: '👥👥👤', price: 6000 },
   ]
 
-  // Calculate next due date based on join date
   const calculateNextDueDate = (joinDate) => {
     const join = new Date(joinDate)
     const today = new Date()
@@ -60,7 +59,6 @@ export default function OwnerDashboard() {
     return nextDue
   }
 
-  // Calculate rent due status
   const calculateRentDueStatus = (tenant) => {
     if (!tenant) return { daysUntilDue: null, status: 'paid', message: '', dueAmount: 0, nextDueDate: null }
     
@@ -165,23 +163,37 @@ export default function OwnerDashboard() {
     setLoading(true)
     try {
       const userId = localStorage.getItem('userId')
-      const { data: propertyData } = await supabase.from('properties').select('*').eq('owner_id', userId).maybeSingle()
+      const { data: propertyData, error: propertyError } = await supabase
+        .from('properties')
+        .select('*')
+        .eq('owner_id', userId)
+        .maybeSingle()
+      
+      if (propertyError) throw propertyError
       
       if (propertyData) {
         setProperty(propertyData)
         setPropertyImages(propertyData.photos || [])
         
-        const { data: roomsData } = await supabase.from('rooms').select('*').eq('property_id', propertyData.id).order('room_number')
+        const { data: roomsData, error: roomsError } = await supabase
+          .from('rooms')
+          .select('*')
+          .eq('property_id', propertyData.id)
+          .order('room_number')
+        
+        if (roomsError) throw roomsError
         setRooms(roomsData || [])
         
         const total = roomsData?.length || 0
         const occupied = roomsData?.filter(r => r.current_occupants >= r.capacity).length || 0
         const vacant = total - occupied
         
-        const { data: tenantsData } = await supabase
+        const { data: tenantsData, error: tenantsError } = await supabase
           .from('tenants')
           .select('*, rooms:room_id(*)')
           .eq('property_id', propertyData.id)
+        
+        if (tenantsError) throw tenantsError
         
         const tenantsWithDue = (tenantsData || []).map(tenant => ({
           ...tenant,
@@ -189,7 +201,6 @@ export default function OwnerDashboard() {
         }))
         setTenants(tenantsWithDue)
         
-        // Calculate total collected
         let totalCollected = 0
         if (tenantsData && tenantsData.length > 0) {
           for (const tenant of tenantsData) {
@@ -248,103 +259,85 @@ export default function OwnerDashboard() {
           .eq('property_id', propertyData.id)
           .order('created_at', { ascending: false })
         setNotices(noticesData || [])
-        
-        // Check for due alerts
-        checkDueAlerts(tenantsWithDue)
-        checkVacateAlerts(vacateData || [])
       }
     } catch (error) { 
       console.error('Load error:', error)
-      toast.error('Failed to load data', { duration: 2000 })
+      toast.error('Failed to load data: ' + error.message, { duration: 3000 })
     } finally { 
       setLoading(false) 
     }
-  }
-
-  const checkDueAlerts = (tenantsList) => {
-    const lastAlertDate = localStorage.getItem('lastDueAlertDate')
-    const today = new Date().toDateString()
-    
-    if (lastAlertDate === today) return
-    
-    tenantsList.forEach(tenant => {
-      const { status, daysUntilDue, message } = tenant.dueStatus
-      if (status === 'due_soon' && daysUntilDue <= 3 && daysUntilDue > 0) {
-        toast(`${tenant.name}: ${message}`, { duration: 5000, icon: '📢' })
-      } else if (status === 'overdue') {
-        toast.error(`${tenant.name}: ${message}`, { duration: 5000 })
-      }
-    })
-    
-    localStorage.setItem('lastDueAlertDate', today)
-  }
-
-  const checkVacateAlerts = (vacateList) => {
-    const today = new Date()
-    vacateList.forEach(req => {
-      const expectedDate = new Date(req.expected_check_out)
-      const daysUntilVacate = Math.ceil((expectedDate - today) / (1000 * 60 * 60 * 24))
-      
-      if (daysUntilVacate <= 7 && daysUntilVacate > 0) {
-        toast(`🚪 ${req.tenant_name} vacates in ${daysUntilVacate} days!`, { duration: 5000, icon: '⚠️' })
-      } else if (daysUntilVacate <= 0) {
-        toast.error(`🚪 ${req.tenant_name} vacate date passed!`, { duration: 5000 })
-      }
-    })
   }
 
   const getTenantsInRoom = (roomId) => {
     return tenants.filter(t => t.room_id === roomId)
   }
 
-  // FIXED: Image upload handler
+  // FIXED: Image upload handler with better error handling
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files)
     if (files.length === 0) return
     
     setUploadingImage(true)
     let successCount = 0
-    let failCount = 0
     
-    try {
-      for (const file of files) {
-        try {
-          const url = await uploadImage(file, `property-${property.id}`)
-          if (url) {
-            const newImages = [...propertyImages, url]
-            const { error: updateError } = await supabase
-              .from('properties')
-              .update({ photos: newImages })
-              .eq('id', property.id)
-            
-            if (updateError) throw updateError
-            setPropertyImages(newImages)
-            successCount++
-          }
-        } catch (err) {
-          console.error(`Failed to upload ${file.name}:`, err)
-          failCount++
-          toast.error(`${file.name}: ${err.message}`)
+    for (const file of files) {
+      try {
+        // Validate file
+        if (!file.type.startsWith('image/')) {
+          toast.error(`${file.name} is not an image`)
+          continue
         }
+        
+        if (file.size > 5 * 1024 * 1024) {
+          toast.error(`${file.name} exceeds 5MB limit`)
+          continue
+        }
+        
+        // Upload to storage
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}.${fileExt}`
+        const filePath = `property-${property.id}/${fileName}`
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('property-photos')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          })
+        
+        if (uploadError) throw uploadError
+        
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('property-photos')
+          .getPublicUrl(filePath)
+        
+        // Update property with new image URL
+        const newImages = [...propertyImages, publicUrl]
+        const { error: updateError } = await supabase
+          .from('properties')
+          .update({ photos: newImages })
+          .eq('id', property.id)
+        
+        if (updateError) throw updateError
+        
+        setPropertyImages(newImages)
+        successCount++
+        
+      } catch (error) {
+        console.error(`Failed to upload ${file.name}:`, error)
+        toast.error(`${file.name}: ${error.message}`)
       }
-      
-      if (successCount > 0) {
-        toast.success(`${successCount} photo(s) uploaded!`)
-      }
-      if (failCount > 0) {
-        toast.error(`${failCount} photo(s) failed`)
-      }
-      
-      e.target.value = ''
-    } catch (error) {
-      console.error('Upload error:', error)
-      toast.error('Upload failed: ' + error.message)
-    } finally {
-      setUploadingImage(false)
     }
+    
+    if (successCount > 0) {
+      toast.success(`${successCount} photo(s) uploaded!`, { duration: 2000 })
+    }
+    
+    setUploadingImage(false)
+    e.target.value = ''
   }
 
-  // FIXED: Remove image
   const removeImage = async (imageUrl) => {
     setIsSubmitting(true)
     try {
@@ -355,10 +348,6 @@ export default function OwnerDashboard() {
         .eq('id', property.id)
       
       if (error) throw error
-      
-      // Also delete from storage
-      await deleteImage(imageUrl)
-      
       setPropertyImages(newImages)
       toast.success('Photo removed', { duration: 1500 })
     } catch (error) {
@@ -393,7 +382,7 @@ export default function OwnerDashboard() {
       status: 'vacant' 
     })
     if (error) {
-      toast.error('Failed to add room')
+      toast.error('Failed to add room: ' + error.message)
     } else { 
       toast.success(`Room ${roomForm.room_number} added!`, { duration: 2000 })
       setShowRoomModal(false)
@@ -503,7 +492,7 @@ export default function OwnerDashboard() {
       
     } catch (error) {
       console.error('Add tenant error:', error)
-      toast.error('Failed to add tenant')
+      toast.error('Failed to add tenant: ' + error.message)
     } finally {
       setIsSubmitting(false)
     }
@@ -538,7 +527,7 @@ export default function OwnerDashboard() {
       
     } catch (error) {
       console.error('Post notice error:', error)
-      toast.error('Failed to post notice')
+      toast.error('Failed to post notice: ' + error.message)
     } finally {
       setIsSubmitting(false)
     }
@@ -614,7 +603,7 @@ export default function OwnerDashboard() {
       
     } catch (error) {
       console.error('Collect rent error:', error)
-      toast.error('Failed to collect rent')
+      toast.error('Failed to collect rent: ' + error.message)
     } finally {
       setIsSubmitting(false)
     }
@@ -876,24 +865,30 @@ export default function OwnerDashboard() {
         <div className="bg-white rounded-xl border border-gray-100 p-6 mb-8">
           <h2 className="text-lg font-semibold text-slate-800 mb-4">📸 Property Photos</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {propertyImages && propertyImages.map((img, i) => (
-              <div key={i} className="relative group">
-                <img 
-                  src={img} 
-                  alt={`Property ${i + 1}`} 
-                  className="w-full h-24 object-cover rounded-lg"
-                  onError={(e) => {
-                    e.target.src = 'https://via.placeholder.com/150?text=Error'
-                  }}
-                />
-                <button 
-                  onClick={() => removeImage(img)} 
-                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-sm opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
-                >
-                  ✕
-                </button>
+            {propertyImages && propertyImages.length > 0 ? (
+              propertyImages.map((img, i) => (
+                <div key={i} className="relative group">
+                  <img 
+                    src={img} 
+                    alt={`Property ${i + 1}`} 
+                    className="w-full h-24 object-cover rounded-lg"
+                    onError={(e) => {
+                      e.target.src = 'https://via.placeholder.com/150?text=Error'
+                    }}
+                  />
+                  <button 
+                    onClick={() => removeImage(img)} 
+                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-sm opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="col-span-full text-center py-4 text-gray-400 text-sm">
+                No photos yet. Click "Add Photo" to upload property images.
               </div>
-            ))}
+            )}
             <label className={`border-2 border-dashed border-gray-300 rounded-lg h-24 flex flex-col items-center justify-center cursor-pointer hover:border-slate-400 transition ${uploadingImage ? 'opacity-50 cursor-wait' : ''}`}>
               <div className="text-center">
                 <div className="text-2xl mb-1">{uploadingImage ? '⏳' : '📷'}</div>
@@ -910,12 +905,6 @@ export default function OwnerDashboard() {
               />
             </label>
           </div>
-          {uploadingImage && (
-            <div className="text-center text-slate-600 text-sm mt-2 flex items-center justify-center gap-2">
-              <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin"></div>
-              Uploading...
-            </div>
-          )}
         </div>
         
         {/* Action Buttons */}
@@ -1113,25 +1102,19 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* Add Tenant Modal */}
+      {/* MODALS - Same as before */}
       <AnimatePresence>{showAddModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowAddModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Add New Tenant</h2><div className="space-y-4"><input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} /><input type="tel" placeholder="Phone Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} /><input type="email" placeholder="Email (optional)" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} /><input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} /><div className="grid grid-cols-2 gap-3"><input type="number" placeholder="Advance Months" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.advance_amount} onChange={(e) => setFormData({...formData, advance_amount: e.target.value})} /><input type="number" placeholder="Joining Fee (₹)" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.joining_fee} onChange={(e) => setFormData({...formData, joining_fee: e.target.value})} /></div><select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}><option value="">Select Room</option>{rooms.filter(r => r.current_occupants < r.capacity).map(room => (<option key={room.id} value={room.id}>Room {room.room_number} - {getSharingDetails(room.sharing_type)?.label} - ₹{formatCurrency(room.monthly_rent)}/month</option>))}</select><div className="flex gap-3 mt-6"><button onClick={addTenant} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Adding...' : 'Add Tenant'}</button><button onClick={() => setShowAddModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
-      {/* Add Room Modal */}
       <AnimatePresence>{showRoomModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Add New Room</h2><div className="space-y-4"><input type="text" placeholder="Room Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} /><select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.sharing_type} onChange={(e) => { const selected = sharingTypes.find(t => t.value === e.target.value); setRoomForm({...roomForm, sharing_type: e.target.value, monthly_rent: selected.price}) }}>{sharingTypes.map(type => <option key={type.value} value={type.value}>{type.label} {type.icon} - ₹{formatCurrency(type.price)}/month</option>)}</select><input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} /><div className="flex gap-3 mt-6"><button onClick={addRoom} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Add Room</button><button onClick={() => setShowRoomModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
-      {/* Collect Rent Modal */}
       <AnimatePresence>{showPaymentModal && selectedTenant && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Collect Rent</h2><div className="bg-gray-50 rounded-xl p-4 mb-4"><p className="font-semibold">{selectedTenant.name}</p><p className="text-sm text-gray-500">Room {selectedTenant.rooms?.room_number}</p><p>Monthly Rent: {formatCurrency(selectedTenant.rent_amount)}</p><p className="text-red-500">Pending: {formatCurrency(selectedTenant.pending_amount || selectedTenant.rent_amount)}</p></div><input type="number" placeholder="Enter Amount (₹)" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} /><div className="flex gap-3"><button onClick={collectRent} disabled={isSubmitting} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Processing...' : 'Collect'}</button><button onClick={() => setShowPaymentModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div>)}</AnimatePresence>
 
-      {/* Post Notice Modal */}
       <AnimatePresence>{showNoticeModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowNoticeModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Post Notice</h2><div className="space-y-4"><input type="text" placeholder="Title *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.title} onChange={(e) => setNoticeForm({...noticeForm, title: e.target.value})} /><textarea placeholder="Content *" rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.content} onChange={(e) => setNoticeForm({...noticeForm, content: e.target.value})} /><select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.type} onChange={(e) => setNoticeForm({...noticeForm, type: e.target.value})}><option value="general">General</option><option value="maintenance">Maintenance</option><option value="payment">Payment</option><option value="event">Event</option><option value="emergency">Emergency</option></select><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={noticeForm.is_urgent} onChange={(e) => setNoticeForm({...noticeForm, is_urgent: e.target.checked})} className="w-4 h-4" /><span className="text-sm">Mark as Urgent</span></label><div className="flex gap-3 mt-6"><button onClick={postNotice} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Posting...' : 'Post Notice'}</button><button onClick={() => setShowNoticeModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
-      {/* Settings Modal */}
-      <AnimatePresence>{showSettingsModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSettingsModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">⚙️ Property Settings</h2><div className="space-y-4"><div><label className="block text-sm font-semibold text-gray-700 mb-2">Joining Fee (₹)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.joining_fee} onChange={(e) => setSettings({...settings, joining_fee: parseInt(e.target.value) || 0})} /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Advance Months Required</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.advance_months} onChange={(e) => setSettings({...settings, advance_months: parseInt(e.target.value) || 1})} min="1" max="6" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Alert Threshold (days before due)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.due_day} onChange={(e) => setSettings({...settings, due_day: parseInt(e.target.value) || 5})} min="1" max="30" /><p className="text-xs text-gray-400 mt-1">Show alerts X days before rent due date</p></div><div className="flex gap-3 mt-6"><button onClick={saveSettings} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Save Settings'}</button><button onClick={() => setShowSettingsModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
+      <AnimatePresence>{showSettingsModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSettingsModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">⚙️ Property Settings</h2><div className="space-y-4"><div><label className="block text-sm font-semibold text-gray-700 mb-2">Joining Fee (₹)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.joining_fee} onChange={(e) => setSettings({...settings, joining_fee: parseInt(e.target.value) || 0})} /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Advance Months Required</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.advance_months} onChange={(e) => setSettings({...settings, advance_months: parseInt(e.target.value) || 1})} min="1" max="6" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Alert Threshold (days before due)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.due_day} onChange={(e) => setSettings({...settings, due_day: parseInt(e.target.value) || 5})} min="1" max="30" /></div><div className="flex gap-3 mt-6"><button onClick={saveSettings} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Save Settings'}</button><button onClick={() => setShowSettingsModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
-      {/* Respond to Complaint Modal */}
       <AnimatePresence>{showComplaintResponseModal && selectedComplaint && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComplaintResponseModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Respond to Complaint</h2><p className="text-sm text-gray-500 mb-2">From: {selectedComplaint.tenant_name}</p><p className="text-sm text-gray-600 mb-4">"{selectedComplaint.title}"</p><textarea placeholder="Your response..." rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={complaintResponse} onChange={(e) => setComplaintResponse(e.target.value)} /><div className="flex gap-3"><button onClick={respondToComplaint} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Send Response</button><button onClick={() => setShowComplaintResponseModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div>)}</AnimatePresence>
 
-      {/* Room Details Modal */}
       <AnimatePresence>{showRoomDetailsModal && selectedRoom && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomDetailsModal(false)}><div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}><div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold text-slate-800">Room {selectedRoom.room_number} Details</h2><button onClick={() => setShowRoomDetailsModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button></div><div className="grid md:grid-cols-2 gap-6"><div><h3 className="font-semibold text-slate-800 mb-3">Room Information</h3><div className="space-y-2 text-sm"><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Room Number:</span><span className="font-semibold text-slate-700">{selectedRoom.room_number}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Sharing Type:</span><span className="font-semibold text-slate-700">{getSharingDetails(selectedRoom.sharing_type)?.label}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Monthly Rent:</span><span className="font-semibold text-slate-700">{formatCurrency(selectedRoom.monthly_rent)}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Capacity:</span><span className="font-semibold text-slate-700">{selectedRoom.capacity} persons</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Current Occupants:</span><span className="font-semibold text-slate-700">{selectedRoom.current_occupants}</span></div></div></div><div><h3 className="font-semibold text-slate-800 mb-3">Current Residents</h3><div className="space-y-3">{getTenantsInRoom(selectedRoom.id).map(tenant => (<div key={tenant.id} className="bg-gray-50 rounded-lg p-3"><div className="flex justify-between items-start"><div><p className="font-semibold text-slate-800">{tenant.name}</p><p className="text-xs text-gray-500">📞 {tenant.phone}</p><p className="text-xs text-gray-500 mt-1">Move-in: {formatDate(tenant.move_in_date)}</p></div><div className="text-right"><p className="text-sm font-semibold text-slate-700">{formatCurrency(tenant.rent_amount)}/month</p><p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>{tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}</p></div></div></div>))}{getTenantsInRoom(selectedRoom.id).length === 0 && <p className="text-gray-400 text-center py-4">No residents currently</p>}</div></div></div></div></div>)}</AnimatePresence>
     </div>
   )
