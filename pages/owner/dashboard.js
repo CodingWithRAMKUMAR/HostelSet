@@ -30,13 +30,7 @@ export default function OwnerDashboard() {
   const [showComplaintResponseModal, setShowComplaintResponseModal] = useState(false)
   const [complaintResponse, setComplaintResponse] = useState('')
   const [formData, setFormData] = useState({ 
-    name: '', 
-    phone: '', 
-    email: '', 
-    rent_amount: '', 
-    room_id: '', 
-    advance_amount: '1', 
-    joining_fee: '0' 
+    name: '', phone: '', email: '', rent_amount: '', room_id: '', advance_amount: '1', joining_fee: '0' 
   })
   const [roomForm, setRoomForm] = useState({ room_number: '', sharing_type: 'double', monthly_rent: 10000 })
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false })
@@ -45,15 +39,11 @@ export default function OwnerDashboard() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [settings, setSettings] = useState({ joining_fee: 0, advance_months: 1, due_day: 5 })
   const [stats, setStats] = useState({ 
-    totalRooms: 0, 
-    occupied: 0, 
-    vacant: 0, 
-    totalCollected: 0, 
-    pendingAmount: 0, 
-    totalComplaints: 0, 
-    pendingVacate: 0, 
-    overdueCount: 0 
+    totalRooms: 0, occupied: 0, vacant: 0, totalCollected: 0, pendingAmount: 0, 
+    totalComplaints: 0, pendingVacate: 0, overdueCount: 0 
   })
+  const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false)
+  const [tenantToDelete, setTenantToDelete] = useState(null)
 
   const sharingTypes = [
     { value: 'single', label: 'Single Sharing', capacity: 1, icon: '👤', price: 15000 },
@@ -212,7 +202,6 @@ export default function OwnerDashboard() {
         }))
         setTenants(tenantsWithDue)
         
-        // Calculate total collected
         let totalCollected = 0
         if (tenantsData && tenantsData.length > 0) {
           for (const tenant of tenantsData) {
@@ -400,7 +389,6 @@ export default function OwnerDashboard() {
     setIsSubmitting(false)
   }
 
-  // FIXED: Add Tenant function - Removed problematic columns
   const addTenant = async () => {
     if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) {
       toast.error('Please fill all fields')
@@ -461,7 +449,6 @@ export default function OwnerDashboard() {
       const monthlyRent = parseInt(formData.rent_amount)
       const totalJoiningAmount = (monthlyRent * advanceMonths) + joiningFee
 
-      // Simplified insert without problematic columns
       const { error: tenantError } = await supabase
         .from('tenants')
         .insert({
@@ -479,10 +466,7 @@ export default function OwnerDashboard() {
           status: 'active'
         })
 
-      if (tenantError) {
-        console.error('Tenant insert error:', tenantError)
-        throw tenantError
-      }
+      if (tenantError) throw tenantError
 
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
@@ -500,13 +484,7 @@ export default function OwnerDashboard() {
       
       setShowAddModal(false)
       setFormData({ 
-        name: '', 
-        phone: '', 
-        email: '', 
-        rent_amount: '', 
-        room_id: '', 
-        advance_amount: '1', 
-        joining_fee: '0' 
+        name: '', phone: '', email: '', rent_amount: '', room_id: '', advance_amount: '1', joining_fee: '0' 
       })
       await loadData()
       
@@ -515,6 +493,129 @@ export default function OwnerDashboard() {
       toast.error('Failed to add tenant: ' + error.message)
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  // ============================================
+  // COMPLETE TENANT DELETION - CLEANS UP ALL RELATED DATA
+  // ============================================
+  const deleteTenantComplete = async (tenantId, roomId, userId) => {
+    setIsSubmitting(true)
+    try {
+      // Step 1: Delete payment history for this tenant
+      const { error: paymentError } = await supabase
+        .from('payment_history')
+        .delete()
+        .eq('tenant_id', tenantId)
+      
+      if (paymentError) console.error('Payment deletion error:', paymentError)
+      
+      // Step 2: Delete complaints for this tenant
+      const { error: complaintError } = await supabase
+        .from('complaints')
+        .delete()
+        .eq('tenant_id', tenantId)
+      
+      if (complaintError) console.error('Complaint deletion error:', complaintError)
+      
+      // Step 3: Delete vacate requests for this tenant
+      const { error: vacateError } = await supabase
+        .from('check_out_requests')
+        .delete()
+        .eq('tenant_id', tenantId)
+      
+      if (vacateError) console.error('Vacate request deletion error:', vacateError)
+      
+      // Step 4: Delete the tenant record
+      const { error: tenantError } = await supabase
+        .from('tenants')
+        .delete()
+        .eq('id', tenantId)
+      
+      if (tenantError) throw tenantError
+      
+      // Step 5: Update room occupancy
+      const room = rooms.find(r => r.id === roomId)
+      if (room) {
+        const newOccupants = Math.max(0, room.current_occupants - 1)
+        const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
+        
+        await supabase
+          .from('rooms')
+          .update({ 
+            current_occupants: newOccupants, 
+            status: newStatus 
+          })
+          .eq('id', roomId)
+      }
+      
+      // Step 6: Delete the user from users table (or mark as inactive)
+      if (userId) {
+        // Option A: Delete user completely (if no other records)
+        const { error: userError } = await supabase
+          .from('users')
+          .delete()
+          .eq('id', userId)
+        
+        if (userError) {
+          // If deletion fails (maybe foreign key constraints), mark as inactive instead
+          await supabase
+            .from('users')
+            .update({ is_active: false, role: 'inactive' })
+            .eq('id', userId)
+        }
+      }
+      
+      toast.success('✅ Tenant and all related data permanently deleted!', { duration: 3000 })
+      await loadData()
+      
+    } catch (error) {
+      console.error('Delete tenant error:', error)
+      toast.error('Failed to delete tenant: ' + error.message)
+    } finally {
+      setIsSubmitting(false)
+      setShowConfirmDeleteModal(false)
+      setTenantToDelete(null)
+    }
+  }
+
+  // Delete just the tenant (keep user for history)
+  const deleteTenantSoft = async (tenantId, roomId, userId) => {
+    setIsSubmitting(true)
+    try {
+      // Update room occupancy
+      const room = rooms.find(r => r.id === roomId)
+      if (room) {
+        const newOccupants = Math.max(0, room.current_occupants - 1)
+        const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
+        
+        await supabase
+          .from('rooms')
+          .update({ 
+            current_occupants: newOccupants, 
+            status: newStatus 
+          })
+          .eq('id', roomId)
+      }
+      
+      // Delete tenant only (keep user and history)
+      const { error: tenantError } = await supabase
+        .from('tenants')
+        .delete()
+        .eq('id', tenantId)
+      
+      if (tenantError) throw tenantError
+      
+      toast.success('Tenant removed from room (history preserved)', { duration: 2000 })
+      await loadData()
+      
+    } catch (error) {
+      console.error('Soft delete error:', error)
+      toast.error('Failed to remove tenant')
+    } finally {
+      setIsSubmitting(false)
+      setShowConfirmDeleteModal(false)
+      setTenantToDelete(null)
     }
   }
 
@@ -769,27 +870,6 @@ export default function OwnerDashboard() {
     }
   }
 
-  const deleteTenant = async (id, roomId) => {
-    if (!confirm('Remove this tenant?')) return
-    const room = rooms.find(r => r.id === roomId)
-    const newOccupants = Math.max(0, room.current_occupants - 1)
-    
-    setIsSubmitting(true)
-    try {
-      await supabase.from('tenants').delete().eq('id', id)
-      await supabase.from('rooms').update({ 
-        current_occupants: newOccupants, 
-        status: newOccupants >= room.capacity ? 'occupied' : 'vacant' 
-      }).eq('id', roomId)
-      toast.success('Tenant removed', { duration: 1500 })
-      await loadData()
-    } catch (error) {
-      toast.error('Failed to remove tenant')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
   const deleteRoom = async (id) => {
     const room = rooms.find(r => r.id === id)
     if (room.current_occupants > 0) { 
@@ -1019,12 +1099,22 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab */}
+        {/* Tenants Tab - WITH IMPROVED DELETE BUTTON */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
-                <tr><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Name</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Phone</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Room</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Rent</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Paid</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Pending</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Actions</th></tr></thead>
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Name</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Phone</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Room</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Rent</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Paid</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Pending</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Actions</th>
+                </tr>
+              </thead>
               <tbody>
                 {tenants.map(t => {
                   const dueStatus = calculateRentDueStatus(t)
@@ -1042,7 +1132,18 @@ export default function OwnerDashboard() {
                         {dueStatus.status === 'pending' && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs">💰 {dueStatus.message}</span>}
                         {dueStatus.status === 'paid' && <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">✅ {dueStatus.message}</span>}
                       </td>
-                      <td className="px-4 py-3"><button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button><button onClick={() => deleteTenant(t.id, t.room_id)} className="text-red-500 text-xs">Delete</button></td>
+                      <td className="px-4 py-3">
+                        <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
+                        <button 
+                          onClick={() => {
+                            setTenantToDelete(t)
+                            setShowConfirmDeleteModal(true)
+                          }} 
+                          className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition"
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -1074,8 +1175,8 @@ export default function OwnerDashboard() {
         {activeTab === 'vacate' && (
           <div className="space-y-4">
             {vacateRequests.map(req => {
-              const today = new Date()
               const expectedDate = new Date(req.expected_check_out)
+              const today = new Date()
               const daysUntilVacate = Math.ceil((expectedDate - today) / (1000 * 60 * 60 * 24))
               return (
                 <div key={req.id} className={`bg-white rounded-xl border p-4 ${daysUntilVacate <= 7 ? 'border-red-200 bg-red-50' : 'border-yellow-100'}`}>
@@ -1119,6 +1220,50 @@ export default function OwnerDashboard() {
           </div>
         )}
       </div>
+
+      {/* Confirm Delete Modal */}
+      <AnimatePresence>
+        {showConfirmDeleteModal && tenantToDelete && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
+            <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+              <h2 className="text-2xl font-bold mb-4 text-red-600">⚠️ Delete Tenant</h2>
+              <p className="text-gray-600 mb-4">Are you sure you want to delete <strong>{tenantToDelete.name}</strong>?</p>
+              <div className="bg-yellow-50 p-3 rounded-lg mb-4">
+                <p className="text-sm text-yellow-800">This will permanently delete:</p>
+                <ul className="text-xs text-yellow-700 mt-2 space-y-1 list-disc list-inside">
+                  <li>Tenant record from rooms</li>
+                  <li>Payment history</li>
+                  <li>Complaints filed</li>
+                  <li>Vacate requests</li>
+                  <li>User account (optional)</li>
+                </ul>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button 
+                  onClick={() => deleteTenantComplete(tenantToDelete.id, tenantToDelete.room_id, tenantToDelete.user_id)} 
+                  disabled={isSubmitting} 
+                  className="flex-1 bg-red-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Deleting...' : '🗑️ Delete Permanently'}
+                </button>
+                <button 
+                  onClick={() => deleteTenantSoft(tenantToDelete.id, tenantToDelete.room_id, tenantToDelete.user_id)} 
+                  disabled={isSubmitting} 
+                  className="flex-1 bg-yellow-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50"
+                >
+                  Remove from Room Only
+                </button>
+                <button 
+                  onClick={() => setShowConfirmDeleteModal(false)} 
+                  className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Add Tenant Modal */}
       <AnimatePresence>{showAddModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowAddModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Add New Tenant</h2><div className="space-y-4"><input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} /><input type="tel" placeholder="Phone Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} /><input type="email" placeholder="Email (optional)" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} /><input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} /><div className="grid grid-cols-2 gap-3"><input type="number" placeholder="Advance Months" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.advance_amount} onChange={(e) => setFormData({...formData, advance_amount: e.target.value})} /><input type="number" placeholder="Joining Fee (₹)" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.joining_fee} onChange={(e) => setFormData({...formData, joining_fee: e.target.value})} /></div><select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}><option value="">Select Room</option>{rooms.map(room => (<option key={room.id} value={room.id}>Room {room.room_number} - {getSharingDetails(room.sharing_type)?.label} - ₹{formatCurrency(room.monthly_rent)}/month</option>))}</select><div className="flex gap-3 mt-6"><button onClick={addTenant} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Adding...' : 'Add Tenant'}</button><button onClick={() => setShowAddModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
