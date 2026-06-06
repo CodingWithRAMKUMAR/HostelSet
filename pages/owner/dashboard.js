@@ -90,7 +90,6 @@ export default function OwnerDashboard() {
         if (daysUntilDue === 1) alerts.push({ type: 'rent_due_tomorrow', message: `⚠️ Rent due TOMORROW!` })
         if (daysUntilDue === 0) alerts.push({ type: 'rent_due_today', message: `🔴 Rent DUE TODAY!` })
         
-        // Check overdue tenants
         const overdueTenants = tenantsData?.filter(t => {
           const dueDate = new Date(t.move_in_date)
           dueDate.setDate(propertyData.rent_due_day || 5)
@@ -152,45 +151,6 @@ export default function OwnerDashboard() {
     dueDate.setDate(property?.rent_due_day || 5)
     if (today > dueDate) return 0
     return Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24))
-  }
-
-  // FIXED: Application approval with duplicate prevention
-  const approveApplication = async (applicationId) => {
-    // Prevent multiple simultaneous approvals
-    if (isSubmitting) {
-      toast.error('Please wait, processing previous request...')
-      return
-    }
-
-    setIsSubmitting(true)
-    
-    try {
-      const response = await fetch('/api/approve-application', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ applicationId })
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        toast.success('✅ Application approved! Tenant has been added.')
-        await loadData() // Refresh the dashboard
-      } else {
-        if (data.alreadyApproved) {
-          toast.error('❌ This application has already been approved!')
-        } else if (data.alreadyRejected) {
-          toast.error('❌ This application has already been rejected!')
-        } else {
-          toast.error(data.error || 'Failed to approve application')
-        }
-      }
-    } catch (error) {
-      console.error('Approve error:', error)
-      toast.error('Something went wrong. Please try again.')
-    } finally {
-      setIsSubmitting(false)
-    }
   }
 
   const handleImageUpload = async (e) => {
@@ -272,23 +232,15 @@ export default function OwnerDashboard() {
     setIsSubmitting(false)
   }
 
-  // UPDATED addTenant function - NOW REQUIRES EMAIL
   const addTenant = async () => {
-    // Validate all fields including email
-    if (!formData.name || !formData.phone || !formData.email || !formData.rent_amount || !formData.room_id) {
-      toast.error('Please fill all fields including email')
+    if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) {
+      toast.error('Please fill all fields')
       return
     }
 
     const cleanPhone = cleanPhoneNumber(formData.phone)
     if (cleanPhone.length !== 10) {
       toast.error('Enter valid 10-digit phone number')
-      return
-    }
-
-    // Validate email format
-    if (!formData.email.includes('@')) {
-      toast.error('Enter valid email address')
       return
     }
 
@@ -318,16 +270,12 @@ export default function OwnerDashboard() {
         if (existingUser.role !== 'tenant') {
           await supabase.from('users').update({ role: 'tenant' }).eq('id', userId)
         }
-        // Update email if not set
-        if (!existingUser.email) {
-          await supabase.from('users').update({ email: formData.email }).eq('id', userId)
-        }
       } else {
         const { data: newUser, error: createError } = await supabase
           .from('users')
           .insert({ 
             phone: cleanPhone,
-            email: formData.email, 
+            email: formData.email || null, 
             full_name: formData.name, 
             role: 'tenant',
             is_active: true
@@ -353,7 +301,6 @@ export default function OwnerDashboard() {
             room_id: selectedRoom.id,
             name: formData.name,
             phone: cleanPhone,
-            email: formData.email,
             rent_amount: parseInt(formData.rent_amount),
             pending_amount: parseInt(formData.rent_amount),
             status: 'active'
@@ -370,7 +317,7 @@ export default function OwnerDashboard() {
             room_id: selectedRoom.id,
             name: formData.name,
             phone: cleanPhone,
-            email: formData.email,
+            email: formData.email || null,
             rent_amount: parseInt(formData.rent_amount),
             pending_amount: parseInt(formData.rent_amount),
             total_paid: 0,
@@ -394,7 +341,7 @@ export default function OwnerDashboard() {
         .eq('id', selectedRoom.id)
 
       toast.success(`✅ Tenant "${formData.name}" added to Room ${selectedRoom.room_number}!`)
-      toast.success(`📧 Magic link will be sent to: ${formData.email}`)
+      toast.success(`📱 Login with: ${cleanPhone} | OTP: 123456`)
       
       setShowAddModal(false)
       setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '' })
@@ -829,10 +776,9 @@ export default function OwnerDashboard() {
               return (
                 <motion.div
                   key={room.id}
-                  whileHover={{ y: -8, rotateX: 5 }}
+                  whileHover={{ y: -8 }}
                   transition={{ type: 'spring', stiffness: 300 }}
-                  className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer border border-gray-100 overflow-hidden group"
-                  style={{ transformStyle: 'preserve-3d' }}
+                  className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer border border-gray-100 overflow-hidden"
                   onClick={() => { setSelectedRoom(room); setShowRoomDetailsModal(true) }}
                 >
                   <div className={`p-5 ${isFull ? 'bg-gradient-to-br from-green-50 to-emerald-50' : 'bg-gradient-to-br from-slate-50 to-gray-50'}`}>
@@ -899,7 +845,7 @@ export default function OwnerDashboard() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
-                <tr><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Name</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Phone</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Email</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Room</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Rent</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Due Date</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Actions</th></tr></thead>
+                <tr><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Name</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Phone</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Room</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Rent</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Due Date</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th><th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Actions</th></tr></thead>
               <tbody>
                 {tenants.map(t => {
                   const dueDate = new Date(t.move_in_date)
@@ -910,7 +856,6 @@ export default function OwnerDashboard() {
                     <tr key={t.id} className="border-b hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium text-slate-700">{t.name}</td>
                       <td className="px-4 py-3 text-gray-500">{t.phone}</td>
-                      <td className="px-4 py-3 text-gray-500">{t.email || '—'}</td>
                       <td className="px-4 py-3">Room {t.rooms?.room_number} ({getSharingDetails(t.rooms?.sharing_type)?.label})</td>
                       <td className="px-4 py-3 font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</td>
                       <td className="px-4 py-3">
@@ -925,7 +870,7 @@ export default function OwnerDashboard() {
                         <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
                         <button onClick={() => deleteTenant(t.id, t.room_id)} className="text-red-500 text-xs">Delete</button>
                        </td>
-                    </tr>
+                     </tr>
                   )
                 })}
               </tbody>
@@ -1002,7 +947,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Applications Tab - FIXED with duplicate prevention */}
+        {/* Applications Tab */}
         {activeTab === 'applications' && (
           <div className="space-y-4">
             {applications.map(app => (
@@ -1010,16 +955,11 @@ export default function OwnerDashboard() {
                 <div>
                   <h3 className="font-semibold text-slate-800">{app.name}</h3>
                   <p className="text-sm text-gray-500">📞 {app.phone}</p>
-                  <p className="text-sm text-gray-500">📧 {app.email || '—'}</p>
                   {app.message && <p className="text-sm text-gray-600 mt-1">💬 {app.message}</p>}
                   <p className="text-xs text-gray-400 mt-1">Applied: {formatDate(app.created_at)}</p>
                 </div>
-                <button 
-                  onClick={() => approveApplication(app.id)} 
-                  disabled={isSubmitting}
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSubmitting ? 'Processing...' : 'Approve →'}
+                <button onClick={() => approveApplication(app.id)} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition">
+                  Approve →
                 </button>
               </div>
             ))}
@@ -1067,32 +1007,12 @@ export default function OwnerDashboard() {
                   <div>
                     <h3 className="font-semibold text-slate-800 mb-3">Room Information</h3>
                     <div className="space-y-2 text-sm">
-                      <div className="flex justify-between py-2 border-b border-gray-100">
-                        <span className="text-gray-500">Room Number:</span>
-                        <span className="font-semibold text-slate-700">{selectedRoom.room_number}</span>
-                      </div>
-                      <div className="flex justify-between py-2 border-b border-gray-100">
-                        <span className="text-gray-500">Sharing Type:</span>
-                        <span className="font-semibold text-slate-700">{getSharingDetails(selectedRoom.sharing_type)?.label}</span>
-                      </div>
-                      <div className="flex justify-between py-2 border-b border-gray-100">
-                        <span className="text-gray-500">Monthly Rent:</span>
-                        <span className="font-semibold text-slate-700">{formatCurrency(selectedRoom.monthly_rent)}</span>
-                      </div>
-                      <div className="flex justify-between py-2 border-b border-gray-100">
-                        <span className="text-gray-500">Capacity:</span>
-                        <span className="font-semibold text-slate-700">{selectedRoom.capacity} persons</span>
-                      </div>
-                      <div className="flex justify-between py-2 border-b border-gray-100">
-                        <span className="text-gray-500">Current Occupants:</span>
-                        <span className="font-semibold text-slate-700">{selectedRoom.current_occupants}</span>
-                      </div>
-                      <div className="flex justify-between py-2 border-b border-gray-100">
-                        <span className="text-gray-500">Status:</span>
-                        <span className={`font-semibold ${selectedRoom.current_occupants >= selectedRoom.capacity ? 'text-red-500' : 'text-green-500'}`}>
-                          {selectedRoom.current_occupants >= selectedRoom.capacity ? 'Full' : `${selectedRoom.capacity - selectedRoom.current_occupants} slots available`}
-                        </span>
-                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Room Number:</span><span className="font-semibold text-slate-700">{selectedRoom.room_number}</span></div>
+                      <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Sharing Type:</span><span className="font-semibold text-slate-700">{getSharingDetails(selectedRoom.sharing_type)?.label}</span></div>
+                      <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Monthly Rent:</span><span className="font-semibold text-slate-700">{formatCurrency(selectedRoom.monthly_rent)}</span></div>
+                      <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Capacity:</span><span className="font-semibold text-slate-700">{selectedRoom.capacity} persons</span></div>
+                      <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Current Occupants:</span><span className="font-semibold text-slate-700">{selectedRoom.current_occupants}</span></div>
+                      <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Status:</span><span className={`font-semibold ${selectedRoom.current_occupants >= selectedRoom.capacity ? 'text-red-500' : 'text-green-500'}`}>{selectedRoom.current_occupants >= selectedRoom.capacity ? 'Full' : `${selectedRoom.capacity - selectedRoom.current_occupants} slots available`}</span></div>
                     </div>
                   </div>
                   <div>
@@ -1104,67 +1024,44 @@ export default function OwnerDashboard() {
                             <div>
                               <p className="font-semibold text-slate-800">{tenant.name}</p>
                               <p className="text-xs text-gray-500">📞 {tenant.phone}</p>
-                              <p className="text-xs text-gray-500">📧 {tenant.email || '—'}</p>
                               <p className="text-xs text-gray-500 mt-1">Move-in: {formatDate(tenant.move_in_date)}</p>
                             </div>
                             <div className="text-right">
                               <p className="text-sm font-semibold text-slate-700">{formatCurrency(tenant.rent_amount)}/month</p>
-                              <p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>
-                                {tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}
-                              </p>
+                              <p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>{tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}</p>
                             </div>
                           </div>
                         </div>
                       ))}
-                      {getTenantsInRoom(selectedRoom.id).length === 0 && (
-                        <p className="text-gray-400 text-center py-4">No residents currently</p>
-                      )}
+                      {getTenantsInRoom(selectedRoom.id).length === 0 && <p className="text-gray-400 text-center py-4">No residents currently</p>}
                     </div>
                   </div>
                 </div>
-                {getTenantsInRoom(selectedRoom.id).length > 0 && (
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <h3 className="font-semibold text-slate-800 mb-2">💡 Quick Actions</h3>
-                    <div className="flex flex-wrap gap-2">
-                      <button className="bg-slate-800 text-white px-3 py-1 rounded text-sm">Send Notice to Room</button>
-                      <button className="border border-slate-300 text-slate-700 px-3 py-1 rounded text-sm">View Payment History</button>
-                    </div>
-                  </div>
-                )}
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Add Tenant Modal - UPDATED with Email Field */}
+      {/* Add Tenant Modal */}
       <AnimatePresence>
         {showAddModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowAddModal(false)}>
             <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">Add New Tenant</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
-                <input type="tel" placeholder="Phone Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} />
-                <input 
-                  type="email" 
-                  placeholder="Email Address *" 
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" 
-                  value={formData.email} 
-                  onChange={(e) => setFormData({...formData, email: e.target.value})} 
-                />
-                <p className="text-xs text-blue-500 -mt-2">Tenant will receive magic login link on this email</p>
-                <input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} />
-                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}>
+                <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+                <input type="tel" placeholder="Phone Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} />
+                <input type="email" placeholder="Email (optional)" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+                <input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} />
+                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}>
                   <option value="">Select Room</option>
                   {rooms.filter(r => r.current_occupants < r.capacity).map(room => (
                     <option key={room.id} value={room.id}>Room {room.room_number} - {getSharingDetails(room.sharing_type).label} - ₹{formatCurrency(room.monthly_rent)}/month</option>
                   ))}
                 </select>
                 <div className="flex gap-3 mt-6">
-                  <button onClick={addTenant} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
-                    {isSubmitting ? 'Adding...' : 'Add Tenant'}
-                  </button>
+                  <button onClick={addTenant} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Add Tenant</button>
                   <button onClick={() => setShowAddModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
                 </div>
               </div>
@@ -1180,14 +1077,14 @@ export default function OwnerDashboard() {
             <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">Add New Room</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Room Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
-                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={roomForm.sharing_type} onChange={(e) => { 
+                <input type="text" placeholder="Room Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} />
+                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.sharing_type} onChange={(e) => { 
                   const selected = sharingTypes.find(t => t.value === e.target.value)
                   setRoomForm({...roomForm, sharing_type: e.target.value, monthly_rent: selected.price})
                 }}>
                   {sharingTypes.map(type => <option key={type.value} value={type.value}>{type.label} {type.icon} - ₹{formatCurrency(type.price)}/month</option>)}
                 </select>
-                <input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
+                <input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
                 <div className="flex gap-3 mt-6">
                   <button onClick={addRoom} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Add Room</button>
                   <button onClick={() => setShowRoomModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
@@ -1210,7 +1107,7 @@ export default function OwnerDashboard() {
                 <p>Monthly Rent: {formatCurrency(selectedTenant.rent_amount)}</p>
                 <p className="text-red-500">Pending: {formatCurrency(selectedTenant.pending_amount || selectedTenant.rent_amount)}</p>
               </div>
-              <input type="number" placeholder="Enter Amount (₹)" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800 mb-4" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
+              <input type="number" placeholder="Enter Amount (₹)" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
               <div className="flex gap-3">
                 <button onClick={collectRent} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold">Collect</button>
                 <button onClick={() => setShowPaymentModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
@@ -1227,9 +1124,9 @@ export default function OwnerDashboard() {
             <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">Post Notice</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Title *" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={noticeForm.title} onChange={(e) => setNoticeForm({...noticeForm, title: e.target.value})} />
-                <textarea placeholder="Content *" rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={noticeForm.content} onChange={(e) => setNoticeForm({...noticeForm, content: e.target.value})} />
-                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800" value={noticeForm.type} onChange={(e) => setNoticeForm({...noticeForm, type: e.target.value})}>
+                <input type="text" placeholder="Title *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.title} onChange={(e) => setNoticeForm({...noticeForm, title: e.target.value})} />
+                <textarea placeholder="Content *" rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.content} onChange={(e) => setNoticeForm({...noticeForm, content: e.target.value})} />
+                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.type} onChange={(e) => setNoticeForm({...noticeForm, type: e.target.value})}>
                   <option value="general">General</option>
                   <option value="maintenance">Maintenance</option>
                   <option value="payment">Payment</option>
@@ -1238,12 +1135,10 @@ export default function OwnerDashboard() {
                 </select>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={noticeForm.is_urgent} onChange={(e) => setNoticeForm({...noticeForm, is_urgent: e.target.checked})} className="w-4 h-4" />
-                  <span className="text-sm text-gray-700">Mark as Urgent</span>
+                  <span className="text-sm">Mark as Urgent</span>
                 </label>
                 <div className="flex gap-3 mt-6">
-                  <button onClick={postNotice} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
-                    {isSubmitting ? 'Posting...' : 'Post Notice'}
-                  </button>
+                  <button onClick={postNotice} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Posting...' : 'Post Notice'}</button>
                   <button onClick={() => setShowNoticeModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
                 </div>
               </div>
@@ -1260,7 +1155,7 @@ export default function OwnerDashboard() {
               <h2 className="text-2xl font-bold mb-4">Respond to Complaint</h2>
               <p className="text-sm text-gray-500 mb-2">From: {selectedComplaint.tenant_name}</p>
               <p className="text-sm text-gray-600 mb-4">"{selectedComplaint.title}"</p>
-              <textarea placeholder="Your response..." rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-800 mb-4" value={complaintResponse} onChange={(e) => setComplaintResponse(e.target.value)} />
+              <textarea placeholder="Your response..." rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={complaintResponse} onChange={(e) => setComplaintResponse(e.target.value)} />
               <div className="flex gap-3">
                 <button onClick={respondToComplaint} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Send Response</button>
                 <button onClick={() => setShowComplaintResponseModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
