@@ -191,21 +191,20 @@ export default function OwnerDashboard() {
         const occupied = roomsData?.filter(r => r.current_occupants >= r.capacity).length || 0
         const vacant = total - occupied
         
-        // FIXED: Join with rooms table to get room_number
+        // Get tenants with room details
         const { data: tenantsData } = await supabase
           .from('tenants')
-          .select(`
-            *,
-            rooms:room_id (room_number, sharing_type, monthly_rent)
-          `)
+          .select('*')
           .eq('property_id', propertyData.id)
         
-        const tenantsWithRoomNumber = (tenantsData || []).map(tenant => ({
-          ...tenant,
-          room_number: tenant.rooms?.room_number || 'N/A',
-          room_type: tenant.rooms?.sharing_type,
-          room_rent: tenant.rooms?.monthly_rent
-        }))
+        // Enrich tenants with room numbers
+        const tenantsWithRoomNumber = (tenantsData || []).map(tenant => {
+          const room = roomsData?.find(r => r.id === tenant.room_id)
+          return {
+            ...tenant,
+            room_number: room ? room.room_number : 'N/A'
+          }
+        })
         
         const tenantsWithDue = tenantsWithRoomNumber.map(tenant => ({
           ...tenant,
@@ -515,65 +514,27 @@ export default function OwnerDashboard() {
   const deleteTenantComplete = async (tenantId, roomId, userId) => {
     setIsSubmitting(true)
     try {
-      const { error: paymentError } = await supabase
-        .from('payment_history')
-        .delete()
-        .eq('tenant_id', tenantId)
-      
-      if (paymentError) console.error('Payment deletion error:', paymentError)
-      
-      const { error: complaintError } = await supabase
-        .from('complaints')
-        .delete()
-        .eq('tenant_id', tenantId)
-      
-      if (complaintError) console.error('Complaint deletion error:', complaintError)
-      
-      const { error: vacateError } = await supabase
-        .from('check_out_requests')
-        .delete()
-        .eq('tenant_id', tenantId)
-      
-      if (vacateError) console.error('Vacate request deletion error:', vacateError)
-      
-      const { error: tenantError } = await supabase
-        .from('tenants')
-        .delete()
-        .eq('id', tenantId)
-      
-      if (tenantError) throw tenantError
+      await supabase.from('payment_history').delete().eq('tenant_id', tenantId)
+      await supabase.from('complaints').delete().eq('tenant_id', tenantId)
+      await supabase.from('check_out_requests').delete().eq('tenant_id', tenantId)
+      await supabase.from('tenants').delete().eq('id', tenantId)
       
       const room = rooms.find(r => r.id === roomId)
       if (room) {
         const newOccupants = Math.max(0, room.current_occupants - 1)
         const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
-        
-        await supabase
-          .from('rooms')
-          .update({ 
-            current_occupants: newOccupants, 
-            status: newStatus 
-          })
-          .eq('id', roomId)
+        await supabase.from('rooms').update({ current_occupants: newOccupants, status: newStatus }).eq('id', roomId)
       }
       
       if (userId) {
-        const { error: userError } = await supabase
-          .from('users')
-          .delete()
-          .eq('id', userId)
-        
+        const { error: userError } = await supabase.from('users').delete().eq('id', userId)
         if (userError) {
-          await supabase
-            .from('users')
-            .update({ is_active: false, role: 'inactive' })
-            .eq('id', userId)
+          await supabase.from('users').update({ is_active: false, role: 'inactive' }).eq('id', userId)
         }
       }
       
       toast.success('✅ Tenant and all related data permanently deleted!', { duration: 3000 })
       await loadData()
-      
     } catch (error) {
       console.error('Delete tenant error:', error)
       toast.error('Failed to delete tenant: ' + error.message)
@@ -584,33 +545,19 @@ export default function OwnerDashboard() {
     }
   }
 
-  const deleteTenantSoft = async (tenantId, roomId, userId) => {
+  const deleteTenantSoft = async (tenantId, roomId) => {
     setIsSubmitting(true)
     try {
       const room = rooms.find(r => r.id === roomId)
       if (room) {
         const newOccupants = Math.max(0, room.current_occupants - 1)
         const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
-        
-        await supabase
-          .from('rooms')
-          .update({ 
-            current_occupants: newOccupants, 
-            status: newStatus 
-          })
-          .eq('id', roomId)
+        await supabase.from('rooms').update({ current_occupants: newOccupants, status: newStatus }).eq('id', roomId)
       }
       
-      const { error: tenantError } = await supabase
-        .from('tenants')
-        .delete()
-        .eq('id', tenantId)
-      
-      if (tenantError) throw tenantError
-      
+      await supabase.from('tenants').delete().eq('id', tenantId)
       toast.success('Tenant removed from room (history preserved)', { duration: 2000 })
       await loadData()
-      
     } catch (error) {
       console.error('Soft delete error:', error)
       toast.error('Failed to remove tenant')
@@ -627,10 +574,7 @@ export default function OwnerDashboard() {
       return 
     }
     
-    if (isSubmitting) return
-    
     setIsSubmitting(true)
-    
     try {
       const { error } = await supabase.from('notices').insert({ 
         property_id: property.id, 
@@ -647,7 +591,6 @@ export default function OwnerDashboard() {
       setShowNoticeModal(false)
       setNoticeForm({ title: '', content: '', type: 'general', is_urgent: false })
       await loadData()
-      
     } catch (error) {
       console.error('Post notice error:', error)
       toast.error('Failed to post notice: ' + error.message)
@@ -661,13 +604,8 @@ export default function OwnerDashboard() {
     
     setIsSubmitting(true)
     try {
-      const { error } = await supabase
-        .from('notices')
-        .delete()
-        .eq('id', noticeId)
-      
+      const { error } = await supabase.from('notices').delete().eq('id', noticeId)
       if (error) throw error
-      
       toast.success('Notice deleted', { duration: 1500 })
       await loadData()
     } catch (error) {
@@ -691,7 +629,6 @@ export default function OwnerDashboard() {
     }
     
     setIsSubmitting(true)
-    
     try {
       const { error: paymentError } = await supabase.from('payment_history').insert({ 
         tenant_id: selectedTenant.id, 
@@ -700,7 +637,6 @@ export default function OwnerDashboard() {
         payment_method: 'cash',
         status: 'success'
       })
-
       if (paymentError) throw paymentError
 
       const newTotalPaid = (selectedTenant.total_paid || 0) + amount
@@ -723,7 +659,6 @@ export default function OwnerDashboard() {
       setShowPaymentModal(false)
       setPaymentAmount('')
       await loadData()
-      
     } catch (error) {
       console.error('Collect rent error:', error)
       toast.error('Failed to collect rent: ' + error.message)
@@ -747,7 +682,6 @@ export default function OwnerDashboard() {
         .eq('id', selectedComplaint.id)
       
       if (error) throw error
-      
       toast.success('Response sent', { duration: 1500 })
       setShowComplaintResponseModal(false)
       setComplaintResponse('')
@@ -773,7 +707,6 @@ export default function OwnerDashboard() {
         .eq('id', complaintId)
       
       if (error) throw error
-      
       toast.success('Complaint resolved', { duration: 1500 })
       await loadData()
     } catch (error) {
@@ -814,7 +747,6 @@ export default function OwnerDashboard() {
     setIsSubmitting(true)
     try {
       const { data: app } = await supabase.from('applications').select('*').eq('id', appId).single()
-      
       const { data: room } = await supabase.from('rooms').select('*').eq('id', app.room_id).single()
       
       let userId = null
@@ -849,19 +781,12 @@ export default function OwnerDashboard() {
       })
 
       const newOccupants = (room.current_occupants || 0) + 1
-      await supabase
-        .from('rooms')
-        .update({ 
-          current_occupants: newOccupants, 
-          status: newOccupants >= room.capacity ? 'occupied' : 'vacant' 
-        })
-        .eq('id', app.room_id)
+      await supabase.from('rooms').update({ 
+        current_occupants: newOccupants, 
+        status: newOccupants >= room.capacity ? 'occupied' : 'vacant' 
+      }).eq('id', app.room_id)
 
-      await supabase
-        .from('applications')
-        .update({ status: 'approved', processed_at: new Date() })
-        .eq('id', appId)
-
+      await supabase.from('applications').update({ status: 'approved', processed_at: new Date() }).eq('id', appId)
       toast.success('Application approved!', { duration: 2000 })
       await loadData()
     } catch (error) {
@@ -939,7 +864,6 @@ export default function OwnerDashboard() {
       </nav>
       
       <div className="container mx-auto px-4 py-8">
-        {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
             <div className="text-2xl font-bold text-slate-800">{stats.totalRooms}</div>
@@ -963,31 +887,18 @@ export default function OwnerDashboard() {
           </div>
         </div>
         
-        {/* Property Photos Section */}
         <div className="bg-white rounded-xl border border-gray-100 p-6 mb-8">
           <h2 className="text-lg font-semibold text-slate-800 mb-4">📸 Property Photos</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {propertyImages && propertyImages.length > 0 ? (
               propertyImages.map((img, i) => (
                 <div key={i} className="relative group">
-                  <img 
-                    src={img} 
-                    alt={`Property ${i + 1}`} 
-                    className="w-full h-24 object-cover rounded-lg"
-                    onError={(e) => { e.target.src = 'https://via.placeholder.com/150?text=Error' }}
-                  />
-                  <button 
-                    onClick={() => removeImage(img)} 
-                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-sm opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
-                  >
-                    ✕
-                  </button>
+                  <img src={img} alt={`Property ${i + 1}`} className="w-full h-24 object-cover rounded-lg" onError={(e) => { e.target.src = 'https://via.placeholder.com/150?text=Error' }} />
+                  <button onClick={() => removeImage(img)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-sm opacity-0 group-hover:opacity-100 transition flex items-center justify-center">✕</button>
                 </div>
               ))
             ) : (
-              <div className="col-span-full text-center py-4 text-gray-400 text-sm">
-                No photos yet. Click "Add Photo" to upload property images.
-              </div>
+              <div className="col-span-full text-center py-4 text-gray-400 text-sm">No photos yet. Click "Add Photo" to upload property images.</div>
             )}
             <label className={`border-2 border-dashed border-gray-300 rounded-lg h-24 flex flex-col items-center justify-center cursor-pointer hover:border-slate-400 transition ${uploadingImage ? 'opacity-50 cursor-wait' : ''}`}>
               <div className="text-center">
@@ -995,19 +906,11 @@ export default function OwnerDashboard() {
                 <div className="text-xs text-gray-400">{uploadingImage ? 'Uploading...' : 'Add Photo'}</div>
                 <div className="text-xs text-gray-300 mt-1">JPEG, PNG up to 5MB</div>
               </div>
-              <input 
-                type="file" 
-                accept="image/jpeg,image/jpg,image/png,image/webp" 
-                multiple 
-                className="hidden" 
-                onChange={handleImageUpload} 
-                disabled={uploadingImage} 
-              />
+              <input type="file" accept="image/jpeg,image/jpg,image/png,image/webp" multiple className="hidden" onChange={handleImageUpload} disabled={uploadingImage} />
             </label>
           </div>
         </div>
         
-        {/* Action Buttons */}
         <div className="flex flex-wrap gap-3 mb-8">
           <button onClick={() => setShowAddModal(true)} className="bg-slate-800 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-slate-700 transition">+ Add Tenant</button>
           <button onClick={() => setShowRoomModal(true)} className="border-2 border-slate-300 text-slate-700 px-5 py-2 rounded-full text-sm font-semibold hover:bg-slate-50 transition">+ Add Room</button>
@@ -1015,7 +918,6 @@ export default function OwnerDashboard() {
           <button onClick={() => setShowSettingsModal(true)} className="border-2 border-blue-300 text-blue-700 px-5 py-2 rounded-full text-sm font-semibold hover:bg-blue-50 transition">⚙️ Settings</button>
         </div>
         
-        {/* Tabs */}
         <div className="flex flex-wrap border-b border-gray-200 mb-6 gap-2">
           {['overview', 'rooms', 'tenants', 'complaints', 'vacate', 'applications', 'notices'].map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 text-sm font-semibold capitalize transition-all rounded-t-lg ${activeTab === tab ? 'bg-slate-800 text-white' : 'text-gray-500 hover:text-slate-700 hover:bg-gray-50'}`}>
@@ -1030,7 +932,6 @@ export default function OwnerDashboard() {
           ))}
         </div>
 
-        {/* Overview Tab - FIXED: Shows room number instead of UUID */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border border-gray-100 p-6">
@@ -1040,14 +941,8 @@ export default function OwnerDashboard() {
                   const dueStatus = calculateRentDueStatus(t)
                   return (
                     <div key={t.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <p className="font-medium text-slate-700">{t.name}</p>
-                        <p className="text-xs text-gray-400">Room {t.room_number || getRoomNumberById(t.room_id)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</p>
-                        <p className={`text-xs ${dueStatus.status === 'overdue' ? 'text-red-500' : dueStatus.status === 'due_soon' ? 'text-orange-500' : 'text-green-500'}`}>{dueStatus.message}</p>
-                      </div>
+                      <div><p className="font-medium text-slate-700">{t.name}</p><p className="text-xs text-gray-400">Room {t.room_number || getRoomNumberById(t.room_id)}</p></div>
+                      <div className="text-right"><p className="font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</p><p className={`text-xs ${dueStatus.status === 'overdue' ? 'text-red-500' : dueStatus.status === 'due_soon' ? 'text-orange-500' : 'text-green-500'}`}>{dueStatus.message}</p></div>
                     </div>
                   )
                 })}
@@ -1071,7 +966,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Rooms Tab */}
         {activeTab === 'rooms' && (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {rooms.map((room) => {
@@ -1104,7 +998,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab - FIXED: Shows room number instead of UUID */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1139,28 +1032,19 @@ export default function OwnerDashboard() {
                       </td>
                       <td className="px-4 py-3">
                         <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
-                        <button 
-                          onClick={() => {
-                            setTenantToDelete(t)
-                            setShowConfirmDeleteModal(true)
-                          }} 
-                          className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition"
-                        >
-                          Delete
-                        </button>
-                       </td>
-                    </table>
+                        <button onClick={() => { setTenantToDelete(t); setShowConfirmDeleteModal(true) }} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition">Delete</button>
+                      </td>
+                    </tr>
                   )
                 })}
                 {tenants.length === 0 && (
-                  <td><td colSpan="8" className="text-center py-8 text-gray-500">No tenants added yet</td></tr>
+                  <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants added yet</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         )}
 
-        {/* Complaints Tab */}
         {activeTab === 'complaints' && (
           <div className="space-y-4">
             {complaints.map(c => (
@@ -1176,7 +1060,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Vacate Requests Tab */}
         {activeTab === 'vacate' && (
           <div className="space-y-4">
             {vacateRequests.map(req => {
@@ -1196,7 +1079,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Applications Tab */}
         {activeTab === 'applications' && (
           <div className="space-y-4">
             {applications.map(app => (
@@ -1209,7 +1091,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Notices Tab */}
         {activeTab === 'notices' && (
           <div className="space-y-4">
             <button onClick={() => setShowNoticeModal(true)} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold mb-4 hover:bg-slate-700 transition">+ Post New Notice</button>
@@ -1226,69 +1107,42 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* Confirm Delete Modal */}
-      <AnimatePresence>
-        {showConfirmDeleteModal && tenantToDelete && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
-            <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-2xl font-bold mb-4 text-red-600">⚠️ Delete Tenant</h2>
-              <p className="text-gray-600 mb-4">Are you sure you want to delete <strong>{tenantToDelete.name}</strong>?</p>
-              <div className="bg-yellow-50 p-3 rounded-lg mb-4">
-                <p className="text-sm text-yellow-800">This will permanently delete:</p>
-                <ul className="text-xs text-yellow-700 mt-2 space-y-1 list-disc list-inside">
-                  <li>Tenant record from rooms</li>
-                  <li>Payment history</li>
-                  <li>Complaints filed</li>
-                  <li>Vacate requests</li>
-                  <li>User account (optional)</li>
-                </ul>
-              </div>
-              <div className="flex gap-3 mt-6">
-                <button 
-                  onClick={() => deleteTenantComplete(tenantToDelete.id, tenantToDelete.room_id, tenantToDelete.user_id)} 
-                  disabled={isSubmitting} 
-                  className="flex-1 bg-red-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50"
-                >
-                  {isSubmitting ? 'Deleting...' : '🗑️ Delete Permanently'}
-                </button>
-                <button 
-                  onClick={() => deleteTenantSoft(tenantToDelete.id, tenantToDelete.room_id, tenantToDelete.user_id)} 
-                  disabled={isSubmitting} 
-                  className="flex-1 bg-yellow-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50"
-                >
-                  Remove from Room Only
-                </button>
-                <button 
-                  onClick={() => setShowConfirmDeleteModal(false)} 
-                  className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold"
-                >
-                  Cancel
-                </button>
-              </div>
+      <AnimatePresence>{showConfirmDeleteModal && tenantToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
+          <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-2xl font-bold mb-4 text-red-600">⚠️ Delete Tenant</h2>
+            <p className="text-gray-600 mb-4">Are you sure you want to delete <strong>{tenantToDelete.name}</strong>?</p>
+            <div className="bg-yellow-50 p-3 rounded-lg mb-4">
+              <p className="text-sm text-yellow-800">This will permanently delete:</p>
+              <ul className="text-xs text-yellow-700 mt-2 space-y-1 list-disc list-inside">
+                <li>Tenant record from rooms</li>
+                <li>Payment history</li>
+                <li>Complaints filed</li>
+                <li>Vacate requests</li>
+                <li>User account (optional)</li>
+              </ul>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => deleteTenantComplete(tenantToDelete.id, tenantToDelete.room_id, tenantToDelete.user_id)} disabled={isSubmitting} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Deleting...' : '🗑️ Delete Permanently'}</button>
+              <button onClick={() => deleteTenantSoft(tenantToDelete.id, tenantToDelete.room_id)} disabled={isSubmitting} className="flex-1 bg-yellow-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">Remove from Room Only</button>
+              <button onClick={() => setShowConfirmDeleteModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
             </div>
           </div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}</AnimatePresence>
 
-      {/* Add Tenant Modal */}
       <AnimatePresence>{showAddModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowAddModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Add New Tenant</h2><div className="space-y-4"><input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} /><input type="tel" placeholder="Phone Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} /><input type="email" placeholder="Email (optional)" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} /><input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.rent_amount} onChange={(e) => setFormData({...formData, rent_amount: e.target.value})} /><div className="grid grid-cols-2 gap-3"><input type="number" placeholder="Advance Months" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.advance_amount} onChange={(e) => setFormData({...formData, advance_amount: e.target.value})} /><input type="number" placeholder="Joining Fee (₹)" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.joining_fee} onChange={(e) => setFormData({...formData, joining_fee: e.target.value})} /></div><select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.room_id} onChange={(e) => setFormData({...formData, room_id: e.target.value})}><option value="">Select Room</option>{rooms.map(room => (<option key={room.id} value={room.id}>Room {room.room_number} - {getSharingDetails(room.sharing_type)?.label} - ₹{formatCurrency(room.monthly_rent)}/month</option>))}</select><div className="flex gap-3 mt-6"><button onClick={addTenant} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Adding...' : 'Add Tenant'}</button><button onClick={() => setShowAddModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
-      {/* Add Room Modal */}
       <AnimatePresence>{showRoomModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Add New Room</h2><div className="space-y-4"><input type="text" placeholder="Room Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} /><select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.sharing_type} onChange={(e) => { const selected = sharingTypes.find(t => t.value === e.target.value); setRoomForm({...roomForm, sharing_type: e.target.value, monthly_rent: selected.price}) }}>{sharingTypes.map(type => <option key={type.value} value={type.value}>{type.label} {type.icon} - ₹{formatCurrency(type.price)}/month</option>)}</select><input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} /><div className="flex gap-3 mt-6"><button onClick={addRoom} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Add Room</button><button onClick={() => setShowRoomModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
-      {/* Collect Rent Modal */}
       <AnimatePresence>{showPaymentModal && selectedTenant && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Collect Rent</h2><div className="bg-gray-50 rounded-xl p-4 mb-4"><p className="font-semibold">{selectedTenant.name}</p><p className="text-sm text-gray-500">Room {selectedTenant.room_number || getRoomNumberById(selectedTenant.room_id)}</p><p>Monthly Rent: {formatCurrency(selectedTenant.rent_amount)}</p><p className="text-red-500">Pending: {formatCurrency(selectedTenant.pending_amount || selectedTenant.rent_amount)}</p></div><input type="number" placeholder="Enter Amount (₹)" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} /><div className="flex gap-3"><button onClick={collectRent} disabled={isSubmitting} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Processing...' : 'Collect'}</button><button onClick={() => setShowPaymentModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div>)}</AnimatePresence>
 
-      {/* Post Notice Modal */}
       <AnimatePresence>{showNoticeModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowNoticeModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Post Notice</h2><div className="space-y-4"><input type="text" placeholder="Title *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.title} onChange={(e) => setNoticeForm({...noticeForm, title: e.target.value})} /><textarea placeholder="Content *" rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.content} onChange={(e) => setNoticeForm({...noticeForm, content: e.target.value})} /><select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.type} onChange={(e) => setNoticeForm({...noticeForm, type: e.target.value})}><option value="general">General</option><option value="maintenance">Maintenance</option><option value="payment">Payment</option><option value="event">Event</option><option value="emergency">Emergency</option></select><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={noticeForm.is_urgent} onChange={(e) => setNoticeForm({...noticeForm, is_urgent: e.target.checked})} className="w-4 h-4" /><span className="text-sm">Mark as Urgent</span></label><div className="flex gap-3 mt-6"><button onClick={postNotice} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Posting...' : 'Post Notice'}</button><button onClick={() => setShowNoticeModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
-      {/* Settings Modal */}
       <AnimatePresence>{showSettingsModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSettingsModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">⚙️ Property Settings</h2><div className="space-y-4"><div><label className="block text-sm font-semibold text-gray-700 mb-2">Joining Fee (₹)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.joining_fee} onChange={(e) => setSettings({...settings, joining_fee: parseInt(e.target.value) || 0})} /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Advance Months Required</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.advance_months} onChange={(e) => setSettings({...settings, advance_months: parseInt(e.target.value) || 1})} min="1" max="6" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Alert Threshold (days before due)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.due_day} onChange={(e) => setSettings({...settings, due_day: parseInt(e.target.value) || 5})} min="1" max="30" /></div><div className="flex gap-3 mt-6"><button onClick={saveSettings} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Save Settings'}</button><button onClick={() => setShowSettingsModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
-      {/* Respond to Complaint Modal */}
       <AnimatePresence>{showComplaintResponseModal && selectedComplaint && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComplaintResponseModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Respond to Complaint</h2><p className="text-sm text-gray-500 mb-2">From: {selectedComplaint.tenant_name}</p><p className="text-sm text-gray-600 mb-4">"{selectedComplaint.title}"</p><textarea placeholder="Your response..." rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={complaintResponse} onChange={(e) => setComplaintResponse(e.target.value)} /><div className="flex gap-3"><button onClick={respondToComplaint} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Send Response</button><button onClick={() => setShowComplaintResponseModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div>)}</AnimatePresence>
 
-      {/* Room Details Modal */}
       <AnimatePresence>{showRoomDetailsModal && selectedRoom && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomDetailsModal(false)}><div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}><div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold text-slate-800">Room {selectedRoom.room_number} Details</h2><button onClick={() => setShowRoomDetailsModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button></div><div className="grid md:grid-cols-2 gap-6"><div><h3 className="font-semibold text-slate-800 mb-3">Room Information</h3><div className="space-y-2 text-sm"><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Room Number:</span><span className="font-semibold text-slate-700">{selectedRoom.room_number}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Sharing Type:</span><span className="font-semibold text-slate-700">{getSharingDetails(selectedRoom.sharing_type)?.label}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Monthly Rent:</span><span className="font-semibold text-slate-700">{formatCurrency(selectedRoom.monthly_rent)}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Capacity:</span><span className="font-semibold text-slate-700">{selectedRoom.capacity} persons</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Current Occupants:</span><span className="font-semibold text-slate-700">{selectedRoom.current_occupants}</span></div></div></div><div><h3 className="font-semibold text-slate-800 mb-3">Current Residents</h3><div className="space-y-3">{getTenantsInRoom(selectedRoom.id).map(tenant => (<div key={tenant.id} className="bg-gray-50 rounded-lg p-3"><div className="flex justify-between items-start"><div><p className="font-semibold text-slate-800">{tenant.name}</p><p className="text-xs text-gray-500">📞 {tenant.phone}</p><p className="text-xs text-gray-500 mt-1">Move-in: {formatDate(tenant.move_in_date)}</p></div><div className="text-right"><p className="text-sm font-semibold text-slate-700">{formatCurrency(tenant.rent_amount)}/month</p><p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>{tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}</p></div></div></div>))}{getTenantsInRoom(selectedRoom.id).length === 0 && <p className="text-gray-400 text-center py-4">No residents currently</p>}</div></div></div></div></div>)}</AnimatePresence>
     </div>
   )
