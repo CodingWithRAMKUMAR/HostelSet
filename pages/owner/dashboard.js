@@ -191,12 +191,23 @@ export default function OwnerDashboard() {
         const occupied = roomsData?.filter(r => r.current_occupants >= r.capacity).length || 0
         const vacant = total - occupied
         
+        // FIXED: Join with rooms table to get room_number
         const { data: tenantsData } = await supabase
           .from('tenants')
-          .select('*')
+          .select(`
+            *,
+            rooms:room_id (room_number, sharing_type, monthly_rent)
+          `)
           .eq('property_id', propertyData.id)
         
-        const tenantsWithDue = (tenantsData || []).map(tenant => ({
+        const tenantsWithRoomNumber = (tenantsData || []).map(tenant => ({
+          ...tenant,
+          room_number: tenant.rooms?.room_number || 'N/A',
+          room_type: tenant.rooms?.sharing_type,
+          room_rent: tenant.rooms?.monthly_rent
+        }))
+        
+        const tenantsWithDue = tenantsWithRoomNumber.map(tenant => ({
           ...tenant,
           dueStatus: calculateRentDueStatus(tenant)
         }))
@@ -272,6 +283,11 @@ export default function OwnerDashboard() {
 
   const getTenantsInRoom = (roomId) => {
     return tenants.filter(t => t.room_id === roomId)
+  }
+
+  const getRoomNumberById = (roomId) => {
+    const room = rooms.find(r => r.id === roomId)
+    return room ? room.room_number : 'N/A'
   }
 
   const handleImageUpload = async (e) => {
@@ -496,13 +512,9 @@ export default function OwnerDashboard() {
     }
   }
 
-  // ============================================
-  // COMPLETE TENANT DELETION - CLEANS UP ALL RELATED DATA
-  // ============================================
   const deleteTenantComplete = async (tenantId, roomId, userId) => {
     setIsSubmitting(true)
     try {
-      // Step 1: Delete payment history for this tenant
       const { error: paymentError } = await supabase
         .from('payment_history')
         .delete()
@@ -510,7 +522,6 @@ export default function OwnerDashboard() {
       
       if (paymentError) console.error('Payment deletion error:', paymentError)
       
-      // Step 2: Delete complaints for this tenant
       const { error: complaintError } = await supabase
         .from('complaints')
         .delete()
@@ -518,7 +529,6 @@ export default function OwnerDashboard() {
       
       if (complaintError) console.error('Complaint deletion error:', complaintError)
       
-      // Step 3: Delete vacate requests for this tenant
       const { error: vacateError } = await supabase
         .from('check_out_requests')
         .delete()
@@ -526,7 +536,6 @@ export default function OwnerDashboard() {
       
       if (vacateError) console.error('Vacate request deletion error:', vacateError)
       
-      // Step 4: Delete the tenant record
       const { error: tenantError } = await supabase
         .from('tenants')
         .delete()
@@ -534,7 +543,6 @@ export default function OwnerDashboard() {
       
       if (tenantError) throw tenantError
       
-      // Step 5: Update room occupancy
       const room = rooms.find(r => r.id === roomId)
       if (room) {
         const newOccupants = Math.max(0, room.current_occupants - 1)
@@ -549,16 +557,13 @@ export default function OwnerDashboard() {
           .eq('id', roomId)
       }
       
-      // Step 6: Delete the user from users table (or mark as inactive)
       if (userId) {
-        // Option A: Delete user completely (if no other records)
         const { error: userError } = await supabase
           .from('users')
           .delete()
           .eq('id', userId)
         
         if (userError) {
-          // If deletion fails (maybe foreign key constraints), mark as inactive instead
           await supabase
             .from('users')
             .update({ is_active: false, role: 'inactive' })
@@ -579,11 +584,9 @@ export default function OwnerDashboard() {
     }
   }
 
-  // Delete just the tenant (keep user for history)
   const deleteTenantSoft = async (tenantId, roomId, userId) => {
     setIsSubmitting(true)
     try {
-      // Update room occupancy
       const room = rooms.find(r => r.id === roomId)
       if (room) {
         const newOccupants = Math.max(0, room.current_occupants - 1)
@@ -598,7 +601,6 @@ export default function OwnerDashboard() {
           .eq('id', roomId)
       }
       
-      // Delete tenant only (keep user and history)
       const { error: tenantError } = await supabase
         .from('tenants')
         .delete()
@@ -1028,7 +1030,7 @@ export default function OwnerDashboard() {
           ))}
         </div>
 
-        {/* Overview Tab */}
+        {/* Overview Tab - FIXED: Shows room number instead of UUID */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border border-gray-100 p-6">
@@ -1038,7 +1040,10 @@ export default function OwnerDashboard() {
                   const dueStatus = calculateRentDueStatus(t)
                   return (
                     <div key={t.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                      <div><p className="font-medium text-slate-700">{t.name}</p><p className="text-xs text-gray-400">Room {t.room_id}</p></div>
+                      <div>
+                        <p className="font-medium text-slate-700">{t.name}</p>
+                        <p className="text-xs text-gray-400">Room {t.room_number || getRoomNumberById(t.room_id)}</p>
+                      </div>
                       <div className="text-right">
                         <p className="font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</p>
                         <p className={`text-xs ${dueStatus.status === 'overdue' ? 'text-red-500' : dueStatus.status === 'due_soon' ? 'text-orange-500' : 'text-green-500'}`}>{dueStatus.message}</p>
@@ -1099,7 +1104,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab - WITH IMPROVED DELETE BUTTON */}
+        {/* Tenants Tab - FIXED: Shows room number instead of UUID */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1122,7 +1127,7 @@ export default function OwnerDashboard() {
                     <tr key={t.id} className={`border-b hover:bg-gray-50 ${dueStatus.status === 'overdue' ? 'bg-red-50' : dueStatus.status === 'due_soon' ? 'bg-orange-50' : ''}`}>
                       <td className="px-4 py-3 font-medium text-slate-700">{t.name}</td>
                       <td className="px-4 py-3 text-gray-500">{t.phone}</td>
-                      <td className="px-4 py-3">Room {t.room_id}</td>
+                      <td className="px-4 py-3 font-medium text-slate-700">Room {t.room_number || getRoomNumberById(t.room_id)}</td>
                       <td className="px-4 py-3 font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</td>
                       <td className="px-4 py-3 text-green-600 font-semibold">{formatCurrency(t.total_paid || 0)}</td>
                       <td className="px-4 py-3 text-red-500 font-semibold">{formatCurrency(t.pending_amount || t.rent_amount)}</td>
@@ -1143,12 +1148,12 @@ export default function OwnerDashboard() {
                         >
                           Delete
                         </button>
-                      </td>
-                    </tr>
+                       </td>
+                    </table>
                   )
                 })}
                 {tenants.length === 0 && (
-                  <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants added yet</td></tr>
+                  <td><td colSpan="8" className="text-center py-8 text-gray-500">No tenants added yet</td></tr>
                 )}
               </tbody>
             </table>
@@ -1272,7 +1277,7 @@ export default function OwnerDashboard() {
       <AnimatePresence>{showRoomModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Add New Room</h2><div className="space-y-4"><input type="text" placeholder="Room Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} /><select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.sharing_type} onChange={(e) => { const selected = sharingTypes.find(t => t.value === e.target.value); setRoomForm({...roomForm, sharing_type: e.target.value, monthly_rent: selected.price}) }}>{sharingTypes.map(type => <option key={type.value} value={type.value}>{type.label} {type.icon} - ₹{formatCurrency(type.price)}/month</option>)}</select><input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} /><div className="flex gap-3 mt-6"><button onClick={addRoom} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Add Room</button><button onClick={() => setShowRoomModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
       {/* Collect Rent Modal */}
-      <AnimatePresence>{showPaymentModal && selectedTenant && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Collect Rent</h2><div className="bg-gray-50 rounded-xl p-4 mb-4"><p className="font-semibold">{selectedTenant.name}</p><p className="text-sm text-gray-500">Room {selectedTenant.room_id}</p><p>Monthly Rent: {formatCurrency(selectedTenant.rent_amount)}</p><p className="text-red-500">Pending: {formatCurrency(selectedTenant.pending_amount || selectedTenant.rent_amount)}</p></div><input type="number" placeholder="Enter Amount (₹)" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} /><div className="flex gap-3"><button onClick={collectRent} disabled={isSubmitting} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Processing...' : 'Collect'}</button><button onClick={() => setShowPaymentModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div>)}</AnimatePresence>
+      <AnimatePresence>{showPaymentModal && selectedTenant && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Collect Rent</h2><div className="bg-gray-50 rounded-xl p-4 mb-4"><p className="font-semibold">{selectedTenant.name}</p><p className="text-sm text-gray-500">Room {selectedTenant.room_number || getRoomNumberById(selectedTenant.room_id)}</p><p>Monthly Rent: {formatCurrency(selectedTenant.rent_amount)}</p><p className="text-red-500">Pending: {formatCurrency(selectedTenant.pending_amount || selectedTenant.rent_amount)}</p></div><input type="number" placeholder="Enter Amount (₹)" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} /><div className="flex gap-3"><button onClick={collectRent} disabled={isSubmitting} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Processing...' : 'Collect'}</button><button onClick={() => setShowPaymentModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div>)}</AnimatePresence>
 
       {/* Post Notice Modal */}
       <AnimatePresence>{showNoticeModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowNoticeModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Post Notice</h2><div className="space-y-4"><input type="text" placeholder="Title *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.title} onChange={(e) => setNoticeForm({...noticeForm, title: e.target.value})} /><textarea placeholder="Content *" rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.content} onChange={(e) => setNoticeForm({...noticeForm, content: e.target.value})} /><select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.type} onChange={(e) => setNoticeForm({...noticeForm, type: e.target.value})}><option value="general">General</option><option value="maintenance">Maintenance</option><option value="payment">Payment</option><option value="event">Event</option><option value="emergency">Emergency</option></select><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={noticeForm.is_urgent} onChange={(e) => setNoticeForm({...noticeForm, is_urgent: e.target.checked})} className="w-4 h-4" /><span className="text-sm">Mark as Urgent</span></label><div className="flex gap-3 mt-6"><button onClick={postNotice} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Posting...' : 'Post Notice'}</button><button onClick={() => setShowNoticeModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
