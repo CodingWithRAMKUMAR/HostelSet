@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { supabase } from '../lib/supabase'
+import { supabase, signUpWithEmail } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
 export default function Register() {
@@ -13,6 +13,8 @@ export default function Register() {
     ownerName: '',
     phone: '',
     email: '',
+    password: '',
+    confirmPassword: '',
     address: '',
     city: '',
     propertyType: 'boys'
@@ -26,49 +28,45 @@ export default function Register() {
     e.preventDefault()
     setLoading(true)
     
+    // Validation
+    const cleanPhone = formData.phone
+    if (cleanPhone.length !== 10) {
+      toast.error('Enter valid 10-digit phone number')
+      setLoading(false)
+      return
+    }
+    
+    if (formData.password !== formData.confirmPassword) {
+      toast.error('Passwords do not match')
+      setLoading(false)
+      return
+    }
+    
+    if (formData.password.length < 6) {
+      toast.error('Password must be at least 6 characters')
+      setLoading(false)
+      return
+    }
+
     try {
-      const cleanPhone = formData.phone
+      // Step 1: Create auth user + custom user record using the helper
+      const signUpResult = await signUpWithEmail(formData.email, formData.password, {
+        full_name: formData.ownerName,
+        phone: cleanPhone,
+        role: 'owner'
+      })
       
-      if (cleanPhone.length !== 10) {
-        toast.error('Enter valid 10-digit phone number')
-        setLoading(false)
-        return
+      if (!signUpResult.success) {
+        throw new Error(signUpResult.error)
       }
-
-      console.log('Attempting to create user...')
-
-      // Create new user
-      const { data: newUser, error: userError } = await supabase
-        .from('users')
-        .insert({
-          phone: cleanPhone,
-          email: formData.email,
-          full_name: formData.ownerName,
-          role: 'owner',
-          is_active: true
-        })
-        .select()
       
-      if (userError) {
-        console.error('User creation error:', userError)
-        toast.error(userError.message)
-        setLoading(false)
-        return
-      }
-
-      console.log('User created:', newUser)
-
-      if (!newUser || newUser.length === 0) {
-        toast.error('Failed to create user')
-        setLoading(false)
-        return
-      }
-
-      // Create property
+      const userId = signUpResult.user.id
+      
+      // Step 2: Create property
       const { error: propertyError } = await supabase
         .from('properties')
         .insert({
-          owner_id: newUser[0].id,
+          owner_id: userId,
           name: formData.name,
           address: formData.address,
           city: formData.city,
@@ -83,12 +81,12 @@ export default function Register() {
         return
       }
 
-      toast.success('Registration successful! Please login.')
+      toast.success('Registration successful! Please login with your email and password.')
       router.push('/login')
       
     } catch (error) {
       console.error('Registration error:', error)
-      toast.error('Registration failed. Please try again.')
+      toast.error(error.message || 'Registration failed. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -109,60 +107,90 @@ export default function Register() {
 
           <div className="p-8">
             <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label className="block text-gray-700 font-semibold mb-2">Property Name *</label>
-                <input
-                  type="text"
-                  name="name"
-                  placeholder="e.g., Sunshine PG"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                  value={formData.name}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-gray-700 font-semibold mb-2">Owner Name *</label>
-                <input
-                  type="text"
-                  name="ownerName"
-                  placeholder="Full name"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                  value={formData.ownerName}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-gray-700 font-semibold mb-2">Phone Number *</label>
-                <div className="flex gap-2">
-                  <span className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200">+91</span>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">Property Name *</label>
                   <input
-                    type="tel"
-                    name="phone"
-                    placeholder="9876543210"
-                    className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                    value={formData.phone}
+                    type="text"
+                    name="name"
+                    placeholder="e.g., Sunshine PG"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                    value={formData.name}
                     onChange={handleChange}
-                    maxLength={10}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">Owner Name *</label>
+                  <input
+                    type="text"
+                    name="ownerName"
+                    placeholder="Full name"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                    value={formData.ownerName}
+                    onChange={handleChange}
                     required
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-gray-700 font-semibold mb-2">Email Address *</label>
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="owner@example.com"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">Phone Number *</label>
+                  <div className="flex gap-2">
+                    <span className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200">+91</span>
+                    <input
+                      type="tel"
+                      name="phone"
+                      placeholder="9876543210"
+                      className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      maxLength={10}
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">Email Address *</label>
+                  <input
+                    type="email"
+                    name="email"
+                    placeholder="owner@example.com"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">Password *</label>
+                  <input
+                    type="password"
+                    name="password"
+                    placeholder="••••••••"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                    value={formData.password}
+                    onChange={handleChange}
+                    required
+                    minLength={6}
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">Confirm Password *</label>
+                  <input
+                    type="password"
+                    name="confirmPassword"
+                    placeholder="••••••••"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
               </div>
 
               <div>
