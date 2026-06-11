@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { supabase, signUpWithEmail } from '../lib/supabase'
+import { signUpWithEmail } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
 export default function Register() {
@@ -27,42 +27,36 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
-    
-    // Validation
+
+    if (formData.password !== formData.confirmPassword) {
+      toast.error('Passwords do not match')
+      setLoading(false)
+      return
+    }
+    if (formData.password.length < 6) {
+      toast.error('Password must be at least 6 characters')
+      setLoading(false)
+      return
+    }
     const cleanPhone = formData.phone
     if (cleanPhone.length !== 10) {
       toast.error('Enter valid 10-digit phone number')
       setLoading(false)
       return
     }
-    
-    if (formData.password !== formData.confirmPassword) {
-      toast.error('Passwords do not match')
-      setLoading(false)
-      return
-    }
-    
-    if (formData.password.length < 6) {
-      toast.error('Password must be at least 6 characters')
-      setLoading(false)
-      return
-    }
 
     try {
-      // Step 1: Create auth user + custom user record using the helper
+      // Sign up with email & password
       const signUpResult = await signUpWithEmail(formData.email, formData.password, {
         full_name: formData.ownerName,
         phone: cleanPhone,
         role: 'owner'
       })
-      
-      if (!signUpResult.success) {
-        throw new Error(signUpResult.error)
-      }
-      
+      if (!signUpResult.success) throw new Error(signUpResult.error)
+
       const userId = signUpResult.user.id
-      
-      // Step 2: Create property
+
+      // Create property
       const { error: propertyError } = await supabase
         .from('properties')
         .insert({
@@ -73,20 +67,13 @@ export default function Register() {
           property_type: formData.propertyType,
           is_active: true
         })
+      if (propertyError) throw propertyError
 
-      if (propertyError) {
-        console.error('Property creation error:', propertyError)
-        toast.error(propertyError.message)
-        setLoading(false)
-        return
-      }
-
-      toast.success('Registration successful! Please login with your email and password.')
+      toast.success('Registration successful! Please login.')
       router.push('/login')
-      
     } catch (error) {
       console.error('Registration error:', error)
-      toast.error(error.message || 'Registration failed. Please try again.')
+      toast.error(error.message || 'Registration failed')
     } finally {
       setLoading(false)
     }
@@ -110,27 +97,11 @@ export default function Register() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-gray-700 font-semibold mb-2">Property Name *</label>
-                  <input
-                    type="text"
-                    name="name"
-                    placeholder="e.g., Sunshine PG"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                    value={formData.name}
-                    onChange={handleChange}
-                    required
-                  />
+                  <input type="text" name="name" placeholder="e.g., Sunshine PG" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.name} onChange={handleChange} required />
                 </div>
                 <div>
                   <label className="block text-gray-700 font-semibold mb-2">Owner Name *</label>
-                  <input
-                    type="text"
-                    name="ownerName"
-                    placeholder="Full name"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                    value={formData.ownerName}
-                    onChange={handleChange}
-                    required
-                  />
+                  <input type="text" name="ownerName" placeholder="Full name" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.ownerName} onChange={handleChange} required />
                 </div>
               </div>
 
@@ -139,94 +110,39 @@ export default function Register() {
                   <label className="block text-gray-700 font-semibold mb-2">Phone Number *</label>
                   <div className="flex gap-2">
                     <span className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200">+91</span>
-                    <input
-                      type="tel"
-                      name="phone"
-                      placeholder="9876543210"
-                      className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                      value={formData.phone}
-                      onChange={handleChange}
-                      maxLength={10}
-                      required
-                    />
+                    <input type="tel" name="phone" placeholder="9876543210" className="flex-1 px-4 py-3 border border-gray-200 rounded-xl" value={formData.phone} onChange={handleChange} maxLength={10} required />
                   </div>
                 </div>
                 <div>
                   <label className="block text-gray-700 font-semibold mb-2">Email Address *</label>
-                  <input
-                    type="email"
-                    name="email"
-                    placeholder="owner@example.com"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                    value={formData.email}
-                    onChange={handleChange}
-                    required
-                  />
+                  <input type="email" name="email" placeholder="owner@example.com" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.email} onChange={handleChange} required />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-gray-700 font-semibold mb-2">Password *</label>
-                  <input
-                    type="password"
-                    name="password"
-                    placeholder="••••••••"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                    value={formData.password}
-                    onChange={handleChange}
-                    required
-                    minLength={6}
-                  />
+                  <input type="password" name="password" placeholder="••••••••" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.password} onChange={handleChange} required />
                 </div>
                 <div>
                   <label className="block text-gray-700 font-semibold mb-2">Confirm Password *</label>
-                  <input
-                    type="password"
-                    name="confirmPassword"
-                    placeholder="••••••••"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                    value={formData.confirmPassword}
-                    onChange={handleChange}
-                    required
-                  />
+                  <input type="password" name="confirmPassword" placeholder="••••••••" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.confirmPassword} onChange={handleChange} required />
                 </div>
               </div>
 
               <div>
                 <label className="block text-gray-700 font-semibold mb-2">Full Address *</label>
-                <input
-                  type="text"
-                  name="address"
-                  placeholder="Street, area, landmark"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                  value={formData.address}
-                  onChange={handleChange}
-                  required
-                />
+                <input type="text" name="address" placeholder="Street, area, landmark" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.address} onChange={handleChange} required />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-gray-700 font-semibold mb-2">City *</label>
-                  <input
-                    type="text"
-                    name="city"
-                    placeholder="Bangalore"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                    value={formData.city}
-                    onChange={handleChange}
-                    required
-                  />
+                  <input type="text" name="city" placeholder="Bangalore" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.city} onChange={handleChange} required />
                 </div>
                 <div>
                   <label className="block text-gray-700 font-semibold mb-2">Property Type</label>
-                  <select
-                    name="propertyType"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                    value={formData.propertyType}
-                    onChange={handleChange}
-                  >
+                  <select name="propertyType" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.propertyType} onChange={handleChange}>
                     <option value="boys">Boys PG</option>
                     <option value="girls">Girls PG</option>
                     <option value="co-ed">Co-ed PG</option>
@@ -235,19 +151,13 @@ export default function Register() {
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50 mt-4"
-              >
+              <button type="submit" disabled={loading} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50 mt-4">
                 {loading ? 'Registering...' : 'Register Property →'}
               </button>
             </form>
 
             <div className="mt-6 text-center">
-              <Link href="/login" className="text-slate-600 hover:text-slate-800 text-sm">
-                Already have an account? Login
-              </Link>
+              <Link href="/login" className="text-slate-600 hover:text-slate-800 text-sm">Already have an account? Login</Link>
             </div>
           </div>
         </motion.div>
