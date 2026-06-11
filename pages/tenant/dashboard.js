@@ -248,7 +248,7 @@ export default function TenantDashboard() {
     }
   }
 
-  // NEW: Dodo Payments rent payment flow (replaces OTP demo)
+  // Dodo Payments rent payment (replaces OTP demo)
   const initiateDodoPayment = async () => {
     const amount = tenant.pending_amount || tenant.rent_amount
     if (amount <= 0) {
@@ -488,7 +488,6 @@ export default function TenantDashboard() {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Room Details */}
             <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition">
               <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
                 <span className="text-xl">🏠</span> Your Room Details
@@ -520,8 +519,6 @@ export default function TenantDashboard() {
                 </div>
               </div>
             </div>
-
-            {/* Property Info */}
             <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition">
               <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
                 <span className="text-xl">🏢</span> Property Information
@@ -649,7 +646,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
-        {/* Payment History Tab - Fixed table JSX */}
+        {/* Payment History Tab */}
         {activeTab === 'payments' && (
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
@@ -683,7 +680,7 @@ export default function TenantDashboard() {
         )}
       <\/div>
 
-      {/* Payment Modal - Dodo UPI Flow (no OTP) */}
+      {/* Payment Modal - Dodo UPI Flow */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
