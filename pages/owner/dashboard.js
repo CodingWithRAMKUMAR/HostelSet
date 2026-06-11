@@ -277,6 +277,7 @@ export default function OwnerDashboard() {
     }
   }, [])
 
+  // ========== SETTINGS & MEMBERSHIP ==========
   const loadSettings = async () => {
     try {
       const userId = localStorage.getItem('userId')
@@ -395,6 +396,7 @@ export default function OwnerDashboard() {
     }
   }
 
+  // ========== HELPER FUNCTIONS ==========
   const getTenantsInRoom = (roomId) => {
     return tenants.filter(t => t.room_id === roomId)
   }
@@ -404,6 +406,7 @@ export default function OwnerDashboard() {
     return room ? room.room_number : 'N/A'
   }
 
+  // ========== IMAGE UPLOAD ==========
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files)
     if (files.length === 0) return
@@ -468,6 +471,7 @@ export default function OwnerDashboard() {
     }
   }
 
+  // ========== ROOM MANAGEMENT ==========
   const addRoom = async () => {
     if (!roomForm.room_number) { 
       toast.error('Enter room number')
@@ -500,6 +504,26 @@ export default function OwnerDashboard() {
     setIsSubmitting(false)
   }
 
+  const deleteRoom = async (id) => {
+    const room = rooms.find(r => r.id === id)
+    if (room.current_occupants > 0) { 
+      toast.error(`Cannot delete room with ${room.current_occupants} occupants`)
+      return 
+    }
+    if (!confirm(`Delete Room ${room.room_number}?`)) return
+    setIsSubmitting(true)
+    try {
+      await supabase.from('rooms').delete().eq('id', id)
+      toast.success('Room deleted', { duration: 1500 })
+      loadData()
+    } catch (error) {
+      toast.error('Failed to delete room')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // ========== TENANT MANAGEMENT ==========
   const addTenant = async () => {
     if (!formData.name || !formData.phone || !formData.email || !formData.rent_amount || !formData.room_id) {
       toast.error('Please fill all fields (Email is required)')
@@ -661,6 +685,7 @@ export default function OwnerDashboard() {
     }
   }
 
+  // ========== NOTICES ==========
   const postNotice = async () => {
     if (!noticeForm.title || !noticeForm.content) { 
       toast.error('Please fill both title and content')
@@ -705,6 +730,7 @@ export default function OwnerDashboard() {
     }
   }
 
+  // ========== RENT COLLECTION ==========
   const collectRent = async () => {
     if (!selectedTenant || !paymentAmount) { 
       toast.error('Enter amount')
@@ -751,6 +777,7 @@ export default function OwnerDashboard() {
     }
   }
 
+  // ========== COMPLAINTS ==========
   const respondToComplaint = async () => {
     if (!selectedComplaint) return
     setIsSubmitting(true)
@@ -796,6 +823,7 @@ export default function OwnerDashboard() {
     }
   }
 
+  // ========== VACATE REQUESTS ==========
   const approveVacateRequest = async (requestId, tenantId, roomId) => {
     if (!confirm('Approve vacate request?')) return
     setIsSubmitting(true)
@@ -820,6 +848,7 @@ export default function OwnerDashboard() {
     }
   }
 
+  // ========== APPLICATIONS ==========
   const approveApplication = async (appId) => {
     setIsSubmitting(true)
     try {
@@ -869,25 +898,7 @@ export default function OwnerDashboard() {
     }
   }
 
-  const deleteRoom = async (id) => {
-    const room = rooms.find(r => r.id === id)
-    if (room.current_occupants > 0) { 
-      toast.error(`Cannot delete room with ${room.current_occupants} occupants`)
-      return 
-    }
-    if (!confirm(`Delete Room ${room.room_number}?`)) return
-    setIsSubmitting(true)
-    try {
-      await supabase.from('rooms').delete().eq('id', id)
-      toast.success('Room deleted', { duration: 1500 })
-      await loadData()
-    } catch (error) {
-      toast.error('Failed to delete room')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
+  // ========== LOGOUT ==========
   const handleLogout = () => { 
     localStorage.clear()
     router.push('/') 
@@ -1060,7 +1071,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Rooms Tab – already has vacate badge */}
+        {/* Rooms Tab */}
         {activeTab === 'rooms' && (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {rooms.map((room) => {
@@ -1099,7 +1110,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab (unchanged – already has status badges) */}
+        {/* Tenants Tab */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1141,16 +1152,16 @@ export default function OwnerDashboard() {
                         {isNoticePeriod && daysToVacate !== null && daysToVacate <= 0 && (
                           <span className="ml-1 px-2 py-1 bg-red-200 text-red-800 rounded-full text-xs">⚠️ Vacate overdue</span>
                         )}
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
                         <button onClick={() => { setTenantToDelete(t); setShowConfirmDeleteModal(true) }} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition">Delete</button>
                       </td>
-                    </tr>
+                    </td>
                   )
                 })}
                 {tenants.length === 0 && (
-                  <td><td colSpan="8" className="text-center py-8 text-gray-500">No tenants added yet</td></tr>
+                  <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants added yet</td></tr>
                 )}
               </tbody>
             </table>
@@ -1223,7 +1234,7 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* All Modals (unchanged – preserved from your working version) */}
+      {/* All Modals – unchanged from your working version */}
       <AnimatePresence>{showConfirmDeleteModal && tenantToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
