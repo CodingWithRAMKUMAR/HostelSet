@@ -37,13 +37,16 @@ export default function OwnerDashboard() {
   const [paymentAmount, setPaymentAmount] = useState('')
   const [activeTab, setActiveTab] = useState('overview')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [settings, setSettings] = useState({ joining_fee: 0, advance_months: 1, due_day: 5 })
+  const [settings, setSettings] = useState({ joining_fee: 0, advance_months: 1, due_day: 5, upi_id: '' })
   const [stats, setStats] = useState({ 
     totalRooms: 0, occupied: 0, vacant: 0, totalCollected: 0, pendingAmount: 0, 
     totalComplaints: 0, pendingVacate: 0, overdueCount: 0 
   })
   const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false)
   const [tenantToDelete, setTenantToDelete] = useState(null)
+  const [showMembershipModal, setShowMembershipModal] = useState(false)
+  const [membershipActive, setMembershipActive] = useState(false)
+  const [membershipLoading, setMembershipLoading] = useState(false)
 
   const sharingTypes = [
     { value: 'single', label: 'Single Sharing', capacity: 1, icon: '👤', price: 15000 },
@@ -117,6 +120,7 @@ export default function OwnerDashboard() {
     }
     loadData()
     loadSettings()
+    checkMembershipStatus()
   }, [])
 
   const loadSettings = async () => {
@@ -132,8 +136,20 @@ export default function OwnerDashboard() {
         setSettings({
           joining_fee: data.joining_fee || 0,
           advance_months: data.advance_months || 1,
-          due_day: data.due_day || 5
+          due_day: data.due_day || 5,
+          upi_id: data.upi_id || ''
         })
+      }
+      // Also fetch property's UPI ID separately
+      if (property) {
+        const { data: propData } = await supabase
+          .from('properties')
+          .select('owner_upi_id')
+          .eq('id', property.id)
+          .single()
+        if (propData?.owner_upi_id) {
+          setSettings(prev => ({ ...prev, upi_id: propData.owner_upi_id }))
+        }
       }
     } catch (error) {
       console.error('Error loading settings:', error)
@@ -144,17 +160,27 @@ export default function OwnerDashboard() {
     setIsSubmitting(true)
     try {
       const userId = localStorage.getItem('userId')
-      const { error } = await supabase
+      // Save to owner_settings table
+      const { error: settingsError } = await supabase
         .from('owner_settings')
         .upsert({
           owner_id: userId,
           joining_fee: settings.joining_fee,
           advance_months: settings.advance_months,
           due_day: settings.due_day,
+          upi_id: settings.upi_id,
           updated_at: new Date()
         })
+      if (settingsError) throw settingsError
       
-      if (error) throw error
+      // Also save UPI ID to properties table for direct access by tenants
+      if (property) {
+        const { error: propError } = await supabase
+          .from('properties')
+          .update({ owner_upi_id: settings.upi_id })
+          .eq('id', property.id)
+        if (propError) throw propError
+      }
       
       toast.success('Settings saved!', { duration: 2000 })
       setShowSettingsModal(false)
@@ -163,6 +189,55 @@ export default function OwnerDashboard() {
       toast.error('Failed to save settings')
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const checkMembershipStatus = async () => {
+    const userId = localStorage.getItem('userId')
+    const { data } = await supabase
+      .from('owner_memberships')
+      .select('status, end_date')
+      .eq('owner_id', userId)
+      .maybeSingle()
+    if (data && data.status === 'active' && new Date(data.end_date) > new Date()) {
+      setMembershipActive(true)
+    } else {
+      setMembershipActive(false)
+    }
+  }
+
+  const initiateMembershipPayment = async (planId, amount, planName) => {
+    setMembershipLoading(true)
+    try {
+      const response = await fetch('/api/payment/create-membership-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ownerId: localStorage.getItem('userId'),
+          planId,
+          amount,
+          ownerName: localStorage.getItem('userName'),
+          ownerEmail: localStorage.getItem('userEmail'),
+        }),
+      })
+      const data = await response.json()
+      if (data.success) {
+        window.open(data.paymentLink, '_blank')
+        toast.success('Redirecting to payment gateway...')
+        // Poll for membership status update after 10 seconds
+        setTimeout(() => {
+          checkMembershipStatus()
+          loadData()
+        }, 10000)
+      } else {
+        toast.error(data.error || 'Payment initiation failed')
+      }
+    } catch (error) {
+      console.error('Membership payment error:', error)
+      toast.error('Failed to initiate payment')
+    } finally {
+      setMembershipLoading(false)
+      setShowMembershipModal(false)
     }
   }
 
@@ -191,13 +266,11 @@ export default function OwnerDashboard() {
         const occupied = roomsData?.filter(r => r.current_occupants >= r.capacity).length || 0
         const vacant = total - occupied
         
-        // Get tenants with room details
         const { data: tenantsData } = await supabase
           .from('tenants')
           .select('*')
           .eq('property_id', propertyData.id)
         
-        // Enrich tenants with room numbers
         const tenantsWithRoomNumber = (tenantsData || []).map(tenant => {
           const room = roomsData?.find(r => r.id === tenant.room_id)
           return {
@@ -404,6 +477,7 @@ export default function OwnerDashboard() {
     setIsSubmitting(false)
   }
 
+  // UPDATED addTenant function with Supabase Auth creation and password set email
   const addTenant = async () => {
     if (!formData.name || !formData.phone || !formData.rent_amount || !formData.room_id) {
       toast.error('Please fill all fields')
@@ -430,35 +504,43 @@ export default function OwnerDashboard() {
     setIsSubmitting(true)
     
     try {
-      let userId = null
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('*')
-        .eq('phone', cleanPhone)
-        .maybeSingle()
-      
-      if (existingUser) {
-        userId = existingUser.id
-        if (existingUser.role !== 'tenant') {
-          await supabase.from('users').update({ role: 'tenant' }).eq('id', userId)
-        }
-      } else {
-        const { data: newUser, error: createError } = await supabase
-          .from('users')
-          .insert({ 
-            phone: cleanPhone,
-            email: formData.email || null, 
-            full_name: formData.name, 
-            role: 'tenant',
-            is_active: true
-          })
-          .select()
-          .single()
-        
-        if (createError) throw createError
-        userId = newUser.id
-      }
+      // Determine email for auth: use provided email OR phone@hostelset.com
+      const tenantEmail = formData.email && formData.email.includes('@') 
+        ? formData.email 
+        : `${cleanPhone}@hostelset.com`
 
+      // Step 1: Create auth user in Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: tenantEmail,
+        password: Math.random().toString(36).slice(-8), // temporary random password
+        options: {
+          data: {
+            full_name: formData.name,
+            role: 'tenant',
+            phone: cleanPhone
+          }
+        }
+      })
+
+      if (authError) throw authError
+
+      const userId = authData.user.id
+
+      // Step 2: Create user record in custom users table
+      const { error: userError } = await supabase
+        .from('users')
+        .insert({
+          id: userId,
+          email: tenantEmail,
+          full_name: formData.name,
+          phone: cleanPhone,
+          role: 'tenant',
+          is_active: true
+        })
+
+      if (userError) throw userError
+
+      // Step 3: Add tenant to the room
       const joiningFee = parseInt(formData.joining_fee) || settings.joining_fee
       const advanceMonths = parseInt(formData.advance_amount) || settings.advance_months
       const monthlyRent = parseInt(formData.rent_amount)
@@ -472,7 +554,7 @@ export default function OwnerDashboard() {
           room_id: selectedRoom.id,
           name: formData.name,
           phone: cleanPhone,
-          email: formData.email || null,
+          email: tenantEmail,
           rent_amount: monthlyRent,
           pending_amount: monthlyRent,
           total_paid: totalJoiningAmount,
@@ -483,18 +565,23 @@ export default function OwnerDashboard() {
 
       if (tenantError) throw tenantError
 
+      // Step 4: Update room occupancy
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
-      
       await supabase
         .from('rooms')
-        .update({ 
-          current_occupants: newOccupants, 
-          status: newStatus 
-        })
+        .update({ current_occupants: newOccupants, status: newStatus })
         .eq('id', selectedRoom.id)
 
+      // Step 5: Send password reset email so tenant can set their own password
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(tenantEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+      if (resetError) console.warn('Reset email could not be sent:', resetError.message)
+
       toast.success(`Tenant "${formData.name}" added!`, { duration: 2000 })
+      toast.success(`📧 Login email: ${tenantEmail}`, { duration: 3000 })
+      toast.success(`🔐 A password set link has been sent to ${tenantEmail}`, { duration: 4000 })
       toast.success(`💰 Collected: ₹${totalJoiningAmount.toLocaleString()} (Advance + Joining Fee)`)
       
       setShowAddModal(false)
@@ -856,6 +943,9 @@ export default function OwnerDashboard() {
             <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full">Owner</span>
           </div>
           <div className="flex items-center gap-4">
+            <button onClick={() => setShowMembershipModal(true)} className={`px-3 py-1 rounded-lg text-sm font-semibold transition ${membershipActive ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+              {membershipActive ? '✅ Active' : '⭐ Buy Membership'}
+            </button>
             <button onClick={() => setShowSettingsModal(true)} className="text-gray-500 hover:text-slate-800 transition px-3 py-1 rounded-lg hover:bg-gray-100">⚙️ Settings</button>
             <span className="text-sm hidden md:inline text-gray-500">{property.name}</span>
             <button onClick={handleLogout} className="text-red-500 hover:text-red-600 transition">Logout</button>
@@ -1029,16 +1119,16 @@ export default function OwnerDashboard() {
                         {dueStatus.status === 'due_soon' && <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs">📢 {dueStatus.message}</span>}
                         {dueStatus.status === 'pending' && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs">💰 {dueStatus.message}</span>}
                         {dueStatus.status === 'paid' && <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">✅ {dueStatus.message}</span>}
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
                         <button onClick={() => { setTenantToDelete(t); setShowConfirmDeleteModal(true) }} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition">Delete</button>
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
                   )
                 })}
                 {tenants.length === 0 && (
-                  <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants added yet</td></tr>
+                   <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants added yet</td></tr>
                 )}
               </tbody>
             </table>
@@ -1107,6 +1197,7 @@ export default function OwnerDashboard() {
         )}
       </div>
 
+      {/* All Modals - same as original but with UPI field added in settings */}
       <AnimatePresence>{showConfirmDeleteModal && tenantToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
@@ -1139,11 +1230,35 @@ export default function OwnerDashboard() {
 
       <AnimatePresence>{showNoticeModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowNoticeModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Post Notice</h2><div className="space-y-4"><input type="text" placeholder="Title *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.title} onChange={(e) => setNoticeForm({...noticeForm, title: e.target.value})} /><textarea placeholder="Content *" rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.content} onChange={(e) => setNoticeForm({...noticeForm, content: e.target.value})} /><select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.type} onChange={(e) => setNoticeForm({...noticeForm, type: e.target.value})}><option value="general">General</option><option value="maintenance">Maintenance</option><option value="payment">Payment</option><option value="event">Event</option><option value="emergency">Emergency</option></select><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={noticeForm.is_urgent} onChange={(e) => setNoticeForm({...noticeForm, is_urgent: e.target.checked})} className="w-4 h-4" /><span className="text-sm">Mark as Urgent</span></label><div className="flex gap-3 mt-6"><button onClick={postNotice} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Posting...' : 'Post Notice'}</button><button onClick={() => setShowNoticeModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
-      <AnimatePresence>{showSettingsModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSettingsModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">⚙️ Property Settings</h2><div className="space-y-4"><div><label className="block text-sm font-semibold text-gray-700 mb-2">Joining Fee (₹)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.joining_fee} onChange={(e) => setSettings({...settings, joining_fee: parseInt(e.target.value) || 0})} /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Advance Months Required</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.advance_months} onChange={(e) => setSettings({...settings, advance_months: parseInt(e.target.value) || 1})} min="1" max="6" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Alert Threshold (days before due)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.due_day} onChange={(e) => setSettings({...settings, due_day: parseInt(e.target.value) || 5})} min="1" max="30" /></div><div className="flex gap-3 mt-6"><button onClick={saveSettings} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Save Settings'}</button><button onClick={() => setShowSettingsModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
+      <AnimatePresence>{showSettingsModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSettingsModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">⚙️ Property Settings</h2><div className="space-y-4"><div><label className="block text-sm font-semibold text-gray-700 mb-2">Joining Fee (₹)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.joining_fee} onChange={(e) => setSettings({...settings, joining_fee: parseInt(e.target.value) || 0})} /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Advance Months Required</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.advance_months} onChange={(e) => setSettings({...settings, advance_months: parseInt(e.target.value) || 1})} min="1" max="6" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Alert Threshold (days before due)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.due_day} onChange={(e) => setSettings({...settings, due_day: parseInt(e.target.value) || 5})} min="1" max="30" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Your UPI ID (for rent payments)</label><input type="text" className="w-full px-4 py-3 border border-gray-200 rounded-xl" placeholder="yourname@okhdfcbank" value={settings.upi_id} onChange={(e) => setSettings({...settings, upi_id: e.target.value})} /><p className="text-xs text-gray-400 mt-1">Tenants will pay rent directly to this UPI ID using UPI Intent (zero fee).</p></div><div className="flex gap-3 mt-6"><button onClick={saveSettings} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Save Settings'}</button><button onClick={() => setShowSettingsModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
       <AnimatePresence>{showComplaintResponseModal && selectedComplaint && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComplaintResponseModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Respond to Complaint</h2><p className="text-sm text-gray-500 mb-2">From: {selectedComplaint.tenant_name}</p><p className="text-sm text-gray-600 mb-4">"{selectedComplaint.title}"</p><textarea placeholder="Your response..." rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={complaintResponse} onChange={(e) => setComplaintResponse(e.target.value)} /><div className="flex gap-3"><button onClick={respondToComplaint} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Send Response</button><button onClick={() => setShowComplaintResponseModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div>)}</AnimatePresence>
 
       <AnimatePresence>{showRoomDetailsModal && selectedRoom && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomDetailsModal(false)}><div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}><div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold text-slate-800">Room {selectedRoom.room_number} Details</h2><button onClick={() => setShowRoomDetailsModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button></div><div className="grid md:grid-cols-2 gap-6"><div><h3 className="font-semibold text-slate-800 mb-3">Room Information</h3><div className="space-y-2 text-sm"><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Room Number:</span><span className="font-semibold text-slate-700">{selectedRoom.room_number}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Sharing Type:</span><span className="font-semibold text-slate-700">{getSharingDetails(selectedRoom.sharing_type)?.label}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Monthly Rent:</span><span className="font-semibold text-slate-700">{formatCurrency(selectedRoom.monthly_rent)}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Capacity:</span><span className="font-semibold text-slate-700">{selectedRoom.capacity} persons</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Current Occupants:</span><span className="font-semibold text-slate-700">{selectedRoom.current_occupants}</span></div></div></div><div><h3 className="font-semibold text-slate-800 mb-3">Current Residents</h3><div className="space-y-3">{getTenantsInRoom(selectedRoom.id).map(tenant => (<div key={tenant.id} className="bg-gray-50 rounded-lg p-3"><div className="flex justify-between items-start"><div><p className="font-semibold text-slate-800">{tenant.name}</p><p className="text-xs text-gray-500">📞 {tenant.phone}</p><p className="text-xs text-gray-500 mt-1">Move-in: {formatDate(tenant.move_in_date)}</p></div><div className="text-right"><p className="text-sm font-semibold text-slate-700">{formatCurrency(tenant.rent_amount)}/month</p><p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>{tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}</p></div></div></div>))}{getTenantsInRoom(selectedRoom.id).length === 0 && <p className="text-gray-400 text-center py-4">No residents currently</p>}</div></div></div></div></div>)}</AnimatePresence>
+
+      <AnimatePresence>{showMembershipModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowMembershipModal(false)}>
+          <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-2xl font-bold mb-4">✨ Choose Membership Plan</h2>
+            <div className="space-y-3">
+              <button onClick={() => initiateMembershipPayment('monthly', 499, 'Monthly')} disabled={membershipLoading} className="w-full p-4 border rounded-xl text-left hover:bg-gray-50 transition">
+                <div className="font-bold text-lg">Monthly Plan</div>
+                <div className="text-sm text-gray-500">₹499 / month</div>
+                <div className="text-xs text-gray-400 mt-1">✓ Basic support</div>
+                <div className="text-xs text-gray-400">✓ Up to 50 tenants</div>
+              </button>
+              <button onClick={() => initiateMembershipPayment('yearly', 4999, 'Yearly')} disabled={membershipLoading} className="w-full p-4 border rounded-xl text-left hover:bg-gray-50 transition">
+                <div className="font-bold text-lg">Yearly Plan</div>
+                <div className="text-sm text-gray-500">₹4,999 / year</div>
+                <div className="text-xs text-gray-400 mt-1">✓ Priority support</div>
+                <div className="text-xs text-gray-400">✓ Unlimited tenants</div>
+                <div className="text-xs text-gray-400">✓ Analytics dashboard</div>
+              </button>
+            </div>
+            <button onClick={() => setShowMembershipModal(false)} className="w-full mt-4 py-2 text-gray-500">Cancel</button>
+          </div>
+        </div>
+      )}</AnimatePresence>
     </div>
   )
 }
