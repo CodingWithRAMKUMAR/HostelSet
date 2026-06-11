@@ -12,7 +12,7 @@ export default function ResetPassword() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    // Prevent redirect before token extraction
+    // Extract access_token from URL hash (e.g., /reset-password#access_token=xxx)
     const hash = window.location.hash
     if (hash && hash.includes('access_token')) {
       const params = new URLSearchParams(hash.substring(1))
@@ -23,7 +23,7 @@ export default function ResetPassword() {
         setError('Invalid reset link: missing token')
       }
     } else {
-      // Some email clients strip hash, check query params as fallback
+      // Fallback: check query parameters (some email clients strip hash)
       const query = new URLSearchParams(window.location.search)
       const tokenFromQuery = query.get('access_token')
       if (tokenFromQuery) {
@@ -66,7 +66,9 @@ export default function ResetPassword() {
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md text-center">
           <p className="text-red-600 mb-4">{error}</p>
-          <button onClick={() => router.push('/login')} className="bg-slate-800 text-white px-6 py-2 rounded-xl">Back to Login</button>
+          <button onClick={() => router.push('/login')} className="bg-slate-800 text-white px-6 py-2 rounded-xl">
+            Back to Login
+          </button>
         </div>
       </div>
     )
@@ -76,7 +78,8 @@ export default function ResetPassword() {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md text-center">
-          <p>Loading reset token...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-800 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading reset token...</p>
         </div>
       </div>
     )
