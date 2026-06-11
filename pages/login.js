@@ -2,31 +2,60 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { signInWithEmail, resetPassword } from '../lib/supabase'
+import { supabase, signInWithEmail, resetPassword } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
 export default function Login() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('') // email or phone
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [showReset, setShowReset] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+
+  // Helper: check if input is email or phone
+  const isEmail = (input) => input.includes('@')
+  const isPhone = (input) => /^\d{10}$/.test(input)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!email || !password) {
-      toast.error('Please enter email and password')
+    if (!identifier || !password) {
+      toast.error('Please enter email/phone and password')
       return
     }
     setLoading(true)
+
     try {
-      const result = await signInWithEmail(email, password)
+      let emailToUse = identifier
+      let userRecord = null
+
+      // If input is phone number, find the associated email from users table
+      if (isPhone(identifier)) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('email')
+          .eq('phone', identifier)
+          .maybeSingle()
+        if (error || !data) {
+          toast.error('No account found with this phone number. Please register.')
+          setLoading(false)
+          return
+        }
+        emailToUse = data.email
+        userRecord = data
+      } else if (!isEmail(identifier)) {
+        toast.error('Enter a valid email or 10-digit mobile number')
+        setLoading(false)
+        return
+      }
+
+      // Attempt sign in with email and password
+      const result = await signInWithEmail(emailToUse, password)
       if (result.success) {
         toast.success(`Welcome back, ${result.userData.full_name}!`)
         // Redirect based on role
         if (result.role === 'owner') {
-          // Check if property exists
           const { data: property } = await supabase
             .from('properties')
             .select('id')
@@ -44,6 +73,7 @@ export default function Login() {
         toast.error(result.error || 'Invalid email or password')
       }
     } catch (error) {
+      console.error('Login error:', error)
       toast.error('Login failed. Please try again.')
     } finally {
       setLoading(false)
@@ -83,33 +113,43 @@ export default function Login() {
             <span className="text-3xl">🏠</span>
           </div>
           <h1 className="text-2xl font-bold text-slate-800">HOSTELSET</h1>
-          <p className="text-gray-500 mt-1">Login with your email & password</p>
+          <p className="text-gray-500 mt-1">Login with email or mobile number</p>
         </div>
 
         {!showReset ? (
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-gray-700 font-semibold mb-2">Email Address</label>
+              <label className="block text-gray-700 font-semibold mb-2">Email or Mobile Number</label>
               <input
-                type="email"
-                placeholder="you@example.com"
+                type="text"
+                placeholder="you@example.com or 9876543210"
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 required
               />
             </div>
             <div>
               <label className="block text-gray-700 font-semibold mb-2">Password</label>
-              <input
-                type="password"
-                placeholder="••••••••"
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 pr-12"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-slate-800"
+                >
+                  {showPassword ? '👁️' : '👁️‍🗨️'}
+                </button>
+              </div>
             </div>
+
             <button
               type="submit"
               disabled={loading}
@@ -117,6 +157,7 @@ export default function Login() {
             >
               {loading ? 'Logging in...' : 'Login →'}
             </button>
+
             <div className="text-center">
               <button
                 type="button"
@@ -130,7 +171,7 @@ export default function Login() {
         ) : (
           <div className="space-y-6">
             <div>
-              <label className="block text-gray-700 font-semibold mb-2">Email Address</label>
+              <label className="block text-gray-700 font-semibold mb-2">Your Email Address</label>
               <input
                 type="email"
                 placeholder="you@example.com"
@@ -138,6 +179,7 @@ export default function Login() {
                 value={resetEmail}
                 onChange={(e) => setResetEmail(e.target.value)}
               />
+              <p className="text-xs text-gray-400 mt-1">We'll send a password reset link to this email</p>
             </div>
             <button
               onClick={handleResetPassword}
@@ -162,7 +204,8 @@ export default function Login() {
         </div>
         <div className="mt-4 text-center">
           <p className="text-xs text-gray-400">
-            Don't have an account? <Link href="/register" className="text-slate-600">Register as Owner</Link>
+            Don't have an account?{' '}
+            <Link href="/register" className="text-slate-600">Register as Owner</Link>
           </p>
         </div>
       </motion.div>
