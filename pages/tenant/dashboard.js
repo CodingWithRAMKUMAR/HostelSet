@@ -11,6 +11,7 @@ export default function TenantDashboard() {
   const [tenant, setTenant] = useState(null)
   const [room, setRoom] = useState(null)
   const [property, setProperty] = useState(null)
+  const [owner, setOwner] = useState(null)
   const [roommates, setRoommates] = useState([])
   const [notices, setNotices] = useState([])
   const [complaints, setComplaints] = useState([])
@@ -21,14 +22,16 @@ export default function TenantDashboard() {
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showVacateModal, setShowVacateModal] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const [showRatingModal, setShowRatingModal] = useState(false)
   const [complaintForm, setComplaintForm] = useState({ title: '', description: '', priority: 'medium' })
-  const [vacateForm, setVacateForm] = useState({ expected_date: '', reason: '' })
+  const [vacateForm, setVacateForm] = useState({ expected_date: '', reason: '', rating: 0, review: '' })
   const [paymentAmount, setPaymentAmount] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [paymentLoading, setPaymentLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
   const [editProfile, setEditProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', email: '' })
+  const [ratingHover, setRatingHover] = useState(0)
 
   // Calculate next due date based on join date
   const calculateNextDueDate = () => {
@@ -46,7 +49,7 @@ export default function TenantDashboard() {
 
   // Calculate rent due status (respects advance payments)
   const getRentStatus = () => {
-    if (!tenant) return { status: 'loading', message: '', daysUntilDue: null }
+    if (!tenant) return { status: 'loading', message: '', daysUntilDue: null, dueDate: null }
     const nextDueDate = calculateNextDueDate()
     const today = new Date()
     const daysUntilDue = Math.ceil((nextDueDate - today) / (1000 * 60 * 60 * 24))
@@ -55,16 +58,21 @@ export default function TenantDashboard() {
 
     if ((tenant.pending_amount > 0 && tenant.pending_amount >= tenant.rent_amount) || (!isPaidThisMonth && tenant.pending_amount > 0)) {
       if (daysUntilDue < 0) {
-        return { status: 'overdue', message: `Overdue by ${Math.abs(daysUntilDue)} days`, daysUntilDue }
+        return { status: 'overdue', message: `Overdue by ${Math.abs(daysUntilDue)} days`, daysUntilDue, dueDate: nextDueDate }
       } else if (daysUntilDue <= 5) {
-        return { status: 'due_soon', message: `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}`, daysUntilDue }
+        return { status: 'due_soon', message: `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}`, daysUntilDue, dueDate: nextDueDate }
       } else {
-        return { status: 'pending', message: `Due on ${formatDate(nextDueDate)}`, daysUntilDue }
+        return { status: 'pending', message: `Due on ${formatDate(nextDueDate)}`, daysUntilDue, dueDate: nextDueDate }
       }
     } else if (tenant.pending_amount > 0 && tenant.pending_amount < tenant.rent_amount) {
-      return { status: 'partial', message: `Partial paid. Due: ${formatCurrency(tenant.pending_amount)}`, daysUntilDue }
+      return { status: 'partial', message: `Partial paid. Due: ${formatCurrency(tenant.pending_amount)}`, daysUntilDue: null, dueDate: null }
     }
-    return { status: 'paid', message: `Next due on ${formatDate(nextDueDate)}`, daysUntilDue }
+    return { status: 'paid', message: `Next due on ${formatDate(nextDueDate)}`, daysUntilDue, dueDate: nextDueDate }
+  }
+
+  // Reload data with refresh flag
+  const refreshData = () => {
+    loadTenantData(localStorage.getItem('userId'))
   }
 
   useEffect(() => {
@@ -102,6 +110,16 @@ export default function TenantDashboard() {
         phone: tenantData.phone || '',
         email: tenantData.email || ''
       })
+
+      // Fetch owner details (from users table using property.owner_id)
+      if (tenantData.property?.owner_id) {
+        const { data: ownerData } = await supabase
+          .from('users')
+          .select('full_name, phone, email')
+          .eq('id', tenantData.property.owner_id)
+          .single()
+        setOwner(ownerData)
+      }
 
       // Get roommates (other tenants in same room)
       let roommatesList = []
@@ -209,7 +227,7 @@ export default function TenantDashboard() {
       if (error) throw error
       toast.success('Profile updated successfully!')
       setEditProfile(false)
-      await loadTenantData(localStorage.getItem('userId'))
+      await refreshData()
     } catch (error) {
       toast.error('Failed to update profile')
     } finally {
@@ -242,7 +260,7 @@ export default function TenantDashboard() {
       toast.success('Complaint submitted successfully!')
       setShowComplaintModal(false)
       setComplaintForm({ title: '', description: '', priority: 'medium' })
-      await loadTenantData(localStorage.getItem('userId'))
+      await refreshData()
     } catch (error) {
       console.error('Submit complaint error:', error)
       toast.error('Failed to submit complaint: ' + error.message)
@@ -275,8 +293,8 @@ export default function TenantDashboard() {
       window.open(data.paymentLink, '_blank')
       toast.success('Redirecting to payment gateway...')
       setTimeout(() => {
-        loadTenantData(localStorage.getItem('userId'))
-        toast('Payment status updated. Refresh if needed.', { icon: '🔄' })
+        refreshData()
+        toast('Payment status updated.', { icon: '🔄' })
       }, 10000)
     } catch (error) {
       console.error('Payment error:', error)
@@ -287,9 +305,14 @@ export default function TenantDashboard() {
     }
   }
 
+  // Submit vacate request with mandatory rating
   const requestVacate = async () => {
     if (!vacateForm.expected_date) {
       toast.error('Please select expected check-out date')
+      return
+    }
+    if (vacateForm.rating === 0) {
+      toast.error('Please rate your experience (1-5 stars) before submitting vacate request')
       return
     }
     setIsSubmitting(true)
@@ -311,13 +334,54 @@ export default function TenantDashboard() {
       }
       const { error } = await supabase.from('check_out_requests').insert(vacateData)
       if (error) throw new Error(error.message)
+
+      // Submit rating
+      const { error: ratingError } = await supabase
+        .from('ratings')
+        .insert({
+          tenant_id: tenant.id,
+          property_id: tenant.property_id,
+          rating: vacateForm.rating,
+          review: vacateForm.review || null,
+          created_at: new Date().toISOString()
+        })
+      if (ratingError) console.error('Rating submit error:', ratingError)
+
       toast.success('Vacate request submitted! Owner will review it.')
       setShowVacateModal(false)
-      setVacateForm({ expected_date: '', reason: '' })
-      await loadTenantData(localStorage.getItem('userId'))
+      setVacateForm({ expected_date: '', reason: '', rating: 0, review: '' })
+      setShowRatingModal(false)
+      await refreshData()
     } catch (error) {
       console.error('Vacate request error:', error)
       toast.error('Failed to submit vacate request: ' + error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Cancel vacate request (if within 3 days of expected date)
+  const cancelVacateRequest = async () => {
+    if (!existingVacateRequest) return
+    const expectedDate = new Date(existingVacateRequest.expected_check_out)
+    const today = new Date()
+    const daysLeft = Math.ceil((expectedDate - today) / (1000 * 60 * 60 * 24))
+    if (daysLeft < 3) {
+      toast.error('Cannot cancel within 3 days of vacate date. Please contact owner.')
+      return
+    }
+    if (!confirm('Cancel your vacate request? You will continue as a tenant.')) return
+    setIsSubmitting(true)
+    try {
+      const { error } = await supabase
+        .from('check_out_requests')
+        .delete()
+        .eq('id', existingVacateRequest.id)
+      if (error) throw error
+      toast.success('Vacate request cancelled.')
+      await refreshData()
+    } catch (error) {
+      toast.error('Failed to cancel request')
     } finally {
       setIsSubmitting(false)
     }
@@ -330,6 +394,7 @@ export default function TenantDashboard() {
   }
 
   const rentStatus = getRentStatus()
+  const isDueSoon = rentStatus.status === 'due_soon' || rentStatus.status === 'overdue'
 
   if (loading) {
     return (
@@ -378,8 +443,15 @@ export default function TenantDashboard() {
               <p className="text-white/80">Room {room?.room_number} • {getSharingDetails(room?.sharing_type)?.label}</p>
               <p className="text-white/70 text-sm mt-1">{property?.name}</p>
             </div>
-            <div className="px-4 py-2 rounded-full text-sm font-semibold bg-white/20">{rentStatus.message}</div>
+            <div className={`px-4 py-2 rounded-full text-sm font-semibold ${isDueSoon ? 'bg-red-500 animate-pulse' : 'bg-white/20'}`}>
+              {rentStatus.message}
+            </div>
           </div>
+          {rentStatus.dueDate && isDueSoon && (
+            <div className="mt-3 text-sm bg-black/20 rounded-lg p-2 inline-block">
+              📅 Next due date: {formatDate(rentStatus.dueDate)}
+            </div>
+          )}
         </div>
 
         {/* Roommate Vacate Alert */}
@@ -426,9 +498,15 @@ export default function TenantDashboard() {
         <div className="flex flex-wrap gap-3 mb-8">
           <button onClick={() => setShowPaymentModal(true)} className="bg-green-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-green-700 transition shadow-sm flex items-center gap-2">💳 Pay Rent (UPI)</button>
           <button onClick={() => setShowComplaintModal(true)} className="border-2 border-orange-300 text-orange-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition flex items-center gap-2">📝 Raise Complaint</button>
-          <button onClick={() => setShowVacateModal(true)} disabled={existingVacateRequest !== null} className={`px-6 py-2.5 rounded-full text-sm font-semibold transition flex items-center gap-2 ${existingVacateRequest ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'border-2 border-red-300 text-red-700 hover:bg-red-50'}`}>
-            {existingVacateRequest ? '⏳ Vacate Request Pending' : '🚪 Request Vacate'}
-          </button>
+          {existingVacateRequest ? (
+            <button onClick={cancelVacateRequest} className="border-2 border-yellow-500 text-yellow-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition flex items-center gap-2">
+              ❌ Cancel Vacate Request
+            </button>
+          ) : (
+            <button onClick={() => setShowVacateModal(true)} className="border-2 border-red-300 text-red-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition flex items-center gap-2">
+              🚪 Request Vacate
+            </button>
+          )}
         </div>
 
         {/* Tabs */}
@@ -462,7 +540,8 @@ export default function TenantDashboard() {
               <div className="space-y-3">
                 <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Property Name:</span><span className="font-semibold text-slate-800">{property?.name}</span></div>
                 <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Address:</span><span className="text-slate-700 text-right">{property?.address}, {property?.city}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Owner Contact:</span><span className="text-slate-700 font-medium">{property?.contact_number || 'Not provided'}</span></div>
+                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Owner Name:</span><span className="text-slate-700">{owner?.full_name || 'Not provided'}</span></div>
+                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Owner Contact:</span><span className="text-slate-700 font-medium">{property?.contact_number || owner?.phone || 'Not provided'}</span></div>
               </div>
             </div>
           </div>
@@ -603,18 +682,62 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Vacate Request Modal */}
+      {/* Vacate Request Modal with mandatory rating */}
       <AnimatePresence>
         {showVacateModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowVacateModal(false)}>
-            <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">🚪 Request Vacate</h2>
               <div className="space-y-4">
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Expected Check-out Date *</label><input type="date" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={vacateForm.expected_date} onChange={(e) => setVacateForm({...vacateForm, expected_date: e.target.value})} min={new Date().toISOString().split('T')[0]} /></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Reason for vacating (optional)</label><textarea placeholder="e.g., Moving to another city, Found a better place, etc." rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={vacateForm.reason} onChange={(e) => setVacateForm({...vacateForm, reason: e.target.value})} /></div>
-                <div className="bg-yellow-50 p-3 rounded-lg"><p className="text-xs text-yellow-700">⚠️ Please clear all pending dues before vacating</p>{tenant?.pending_amount > 0 && (<p className="text-xs text-red-600 mt-1">⚠️ You have pending dues: {formatCurrency(tenant.pending_amount)}</p>)}</div>
-                <div className="bg-red-50 p-3 rounded-lg"><p className="text-xs text-red-600">⚠️ Once approved, you must vacate within 30 days</p></div>
-                <div className="flex gap-3 mt-6"><button onClick={requestVacate} disabled={isSubmitting || !vacateForm.expected_date} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Submitting...' : 'Submit Request'}</button><button onClick={() => setShowVacateModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Expected Check-out Date *</label>
+                  <input type="date" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={vacateForm.expected_date} onChange={(e) => setVacateForm({...vacateForm, expected_date: e.target.value})} min={new Date().toISOString().split('T')[0]} />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Reason for vacating (optional)</label>
+                  <textarea placeholder="e.g., Moving to another city, Found a better place, etc." rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={vacateForm.reason} onChange={(e) => setVacateForm({...vacateForm, reason: e.target.value})} />
+                </div>
+                <div className="bg-yellow-50 p-3 rounded-lg">
+                  <p className="text-xs text-yellow-700">⚠️ Please clear all pending dues before vacating</p>
+                  {tenant?.pending_amount > 0 && (<p className="text-xs text-red-600 mt-1">⚠️ You have pending dues: {formatCurrency(tenant.pending_amount)}</p>)}
+                </div>
+                <div className="bg-red-50 p-3 rounded-lg">
+                  <p className="text-xs text-red-600">⚠️ Once approved, you must vacate within 30 days</p>
+                </div>
+
+                {/* Star Rating Section (mandatory) */}
+                <div className="border-t pt-4">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Rate your experience * (required)</label>
+                  <div className="flex gap-1 mb-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setVacateForm({...vacateForm, rating: star})}
+                        onMouseEnter={() => setRatingHover(star)}
+                        onMouseLeave={() => setRatingHover(0)}
+                        className="text-3xl focus:outline-none transition-transform hover:scale-110"
+                      >
+                        <span className={star <= (vacateForm.rating || ratingHover) ? 'text-yellow-500' : 'text-gray-300'}>★</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mb-2">Your rating helps other tenants find good PGs.</p>
+                  <textarea
+                    placeholder="Optional review (e.g., Cleanliness, owner behavior, amenities)"
+                    rows="2"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl"
+                    value={vacateForm.review}
+                    onChange={(e) => setVacateForm({...vacateForm, review: e.target.value})}
+                  />
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                  <button onClick={requestVacate} disabled={isSubmitting || !vacateForm.expected_date || vacateForm.rating === 0} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
+                    {isSubmitting ? 'Submitting...' : 'Submit Request & Rating'}
+                  </button>
+                  <button onClick={() => setShowVacateModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
+                </div>
               </div>
             </div>
           </div>
