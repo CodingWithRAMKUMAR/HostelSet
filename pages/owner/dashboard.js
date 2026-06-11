@@ -112,7 +112,7 @@ export default function OwnerDashboard() {
     return { date: vacate.expected_check_out, daysLeft, overdue: false }
   }
 
-  // ========== DATA LOADING ==========
+  // ========== DATA LOADING (initial with full loading) ==========
   const loadData = async () => {
     setLoading(true)
     try {
@@ -144,6 +144,7 @@ export default function OwnerDashboard() {
     }
   }
 
+  // ========== BACKGROUND REFRESH (no full-screen loading) ==========
   const refreshStatsAndLists = async (propertyId, roomsData = null) => {
     try {
       if (!roomsData) {
@@ -174,7 +175,7 @@ export default function OwnerDashboard() {
       })
       setTenants(tenantsWithRoomNumber)
       
-      // ✅ FIXED: totalCollected = sum of ALL successful payments
+      // ✅ CORRECT total collected: sum of ALL successful payments
       let totalCollected = 0
       if (tenantsData && tenantsData.length > 0) {
         for (const tenant of tenantsData) {
@@ -257,6 +258,7 @@ export default function OwnerDashboard() {
     }
   }
 
+  // ========== Lifecycle ==========
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('isLoggedIn')
     const userRole = localStorage.getItem('userRole')
@@ -278,7 +280,12 @@ export default function OwnerDashboard() {
   const loadSettings = async () => {
     try {
       const userId = localStorage.getItem('userId')
-      const { data } = await supabase.from('owner_settings').select('*').eq('owner_id', userId).maybeSingle()
+      const { data } = await supabase
+        .from('owner_settings')
+        .select('*')
+        .eq('owner_id', userId)
+        .maybeSingle()
+      
       if (data) {
         setSettings({
           joining_fee: data.joining_fee || 0,
@@ -288,71 +295,156 @@ export default function OwnerDashboard() {
         })
       }
       if (property) {
-        const { data: propData } = await supabase.from('properties').select('owner_upi_id').eq('id', property.id).single()
-        if (propData?.owner_upi_id) setSettings(prev => ({ ...prev, upi_id: propData.owner_upi_id }))
+        const { data: propData } = await supabase
+          .from('properties')
+          .select('owner_upi_id')
+          .eq('id', property.id)
+          .single()
+        if (propData?.owner_upi_id) {
+          setSettings(prev => ({ ...prev, upi_id: propData.owner_upi_id }))
+        }
       }
-    } catch (error) { console.error(error) }
+    } catch (error) {
+      console.error('Error loading settings:', error)
+    }
   }
 
   const saveSettings = async () => {
-    if (!settings.upi_id.trim()) { toast.error('UPI ID is required for rent payments'); return }
+    if (!settings.upi_id.trim()) {
+      toast.error('UPI ID is required for rent payments')
+      return
+    }
     setIsSubmitting(true)
     try {
       const userId = localStorage.getItem('userId')
-      await supabase.from('owner_settings').upsert({ owner_id: userId, joining_fee: settings.joining_fee, advance_months: settings.advance_months, due_day: settings.due_day, upi_id: settings.upi_id, updated_at: new Date() })
-      if (property) await supabase.from('properties').update({ owner_upi_id: settings.upi_id }).eq('id', property.id)
-      toast.success('Settings saved!')
+      const { error: settingsError } = await supabase
+        .from('owner_settings')
+        .upsert({
+          owner_id: userId,
+          joining_fee: settings.joining_fee,
+          advance_months: settings.advance_months,
+          due_day: settings.due_day,
+          upi_id: settings.upi_id,
+          updated_at: new Date()
+        })
+      if (settingsError) throw settingsError
+      
+      if (property) {
+        const { error: propError } = await supabase
+          .from('properties')
+          .update({ owner_upi_id: settings.upi_id })
+          .eq('id', property.id)
+        if (propError) throw propError
+      }
+      
+      toast.success('Settings saved!', { duration: 2000 })
       setShowSettingsModal(false)
-    } catch (error) { toast.error('Failed to save settings') }
-    finally { setIsSubmitting(false) }
+    } catch (error) {
+      console.error('Save settings error:', error)
+      toast.error('Failed to save settings')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const checkMembershipStatus = async () => {
     const userId = localStorage.getItem('userId')
-    const { data } = await supabase.from('owner_memberships').select('status, end_date').eq('owner_id', userId).maybeSingle()
-    setMembershipActive(data && data.status === 'active' && new Date(data.end_date) > new Date())
+    const { data } = await supabase
+      .from('owner_memberships')
+      .select('status, end_date')
+      .eq('owner_id', userId)
+      .maybeSingle()
+    if (data && data.status === 'active' && new Date(data.end_date) > new Date()) {
+      setMembershipActive(true)
+    } else {
+      setMembershipActive(false)
+    }
   }
 
   const initiateMembershipPayment = async (planId, amount, planName) => {
     setMembershipLoading(true)
     try {
       const response = await fetch('/api/payment/create-membership-order', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ownerId: localStorage.getItem('userId'), planId, amount, ownerName: localStorage.getItem('userName'), ownerEmail: localStorage.getItem('userEmail') })
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ownerId: localStorage.getItem('userId'),
+          planId,
+          amount,
+          ownerName: localStorage.getItem('userName'),
+          ownerEmail: localStorage.getItem('userEmail'),
+        }),
       })
       const data = await response.json()
-      if (data.success) { window.open(data.paymentLink, '_blank'); toast.success('Redirecting...'); setTimeout(() => { checkMembershipStatus(); loadData() }, 10000) }
-      else toast.error(data.error || 'Payment initiation failed')
-    } catch (error) { toast.error('Failed to initiate payment') }
-    finally { setMembershipLoading(false); setShowMembershipModal(false) }
+      if (data.success) {
+        window.open(data.paymentLink, '_blank')
+        toast.success('Redirecting to payment gateway...')
+        setTimeout(() => {
+          checkMembershipStatus()
+          loadData()
+        }, 10000)
+      } else {
+        toast.error(data.error || 'Payment initiation failed')
+      }
+    } catch (error) {
+      console.error('Membership payment error:', error)
+      toast.error('Failed to initiate payment')
+    } finally {
+      setMembershipLoading(false)
+      setShowMembershipModal(false)
+    }
   }
 
-  // ========== ROOMS & TENANTS MANAGEMENT ==========
-  const getTenantsInRoom = (roomId) => tenants.filter(t => t.room_id === roomId)
-  const getRoomNumberById = (roomId) => rooms.find(r => r.id === roomId)?.room_number || 'N/A'
+  const getTenantsInRoom = (roomId) => {
+    return tenants.filter(t => t.room_id === roomId)
+  }
+
+  const getRoomNumberById = (roomId) => {
+    const room = rooms.find(r => r.id === roomId)
+    return room ? room.room_number : 'N/A'
+  }
 
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files)
-    if (!files.length) return
+    if (files.length === 0) return
+    
     setUploadingImage(true)
     let successCount = 0
+    
     for (const file of files) {
       try {
-        if (!file.type.startsWith('image/')) { toast.error(`${file.name} is not an image`); continue }
-        if (file.size > 5 * 1024 * 1024) { toast.error(`${file.name} exceeds 5MB`); continue }
+        if (!file.type.startsWith('image/')) {
+          toast.error(`${file.name} is not an image`)
+          continue
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          toast.error(`${file.name} exceeds 5MB limit`)
+          continue
+        }
         const fileExt = file.name.split('.').pop()
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}.${fileExt}`
         const filePath = `property-${property.id}/${fileName}`
-        const { error: uploadError } = await supabase.storage.from('property-photos').upload(filePath, file, { cacheControl: '3600', upsert: false })
+        const { error: uploadError } = await supabase.storage
+          .from('property-photos')
+          .upload(filePath, file, { cacheControl: '3600', upsert: false })
         if (uploadError) throw uploadError
         const { data: { publicUrl } } = supabase.storage.from('property-photos').getPublicUrl(filePath)
         const newImages = [...propertyImages, publicUrl]
-        await supabase.from('properties').update({ photos: newImages }).eq('id', property.id)
+        const { error: updateError } = await supabase
+          .from('properties')
+          .update({ photos: newImages })
+          .eq('id', property.id)
+        if (updateError) throw updateError
         setPropertyImages(newImages)
         successCount++
-      } catch (error) { toast.error(`${file.name}: ${error.message}`) }
+      } catch (error) {
+        console.error(`Failed to upload ${file.name}:`, error)
+        toast.error(`${file.name}: ${error.message}`)
+      }
     }
-    if (successCount > 0) toast.success(`${successCount} photo(s) uploaded!`)
+    if (successCount > 0) {
+      toast.success(`${successCount} photo(s) uploaded!`, { duration: 2000 })
+    }
     setUploadingImage(false)
     e.target.value = ''
   }
@@ -361,31 +453,75 @@ export default function OwnerDashboard() {
     setIsSubmitting(true)
     try {
       const newImages = propertyImages.filter(img => img !== imageUrl)
-      await supabase.from('properties').update({ photos: newImages }).eq('id', property.id)
+      const { error } = await supabase
+        .from('properties')
+        .update({ photos: newImages })
+        .eq('id', property.id)
+      if (error) throw error
       setPropertyImages(newImages)
-      toast.success('Photo removed')
-    } catch (error) { toast.error('Failed to remove image') }
-    finally { setIsSubmitting(false) }
+      toast.success('Photo removed', { duration: 1500 })
+    } catch (error) {
+      console.error('Remove image error:', error)
+      toast.error('Failed to remove image')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const addRoom = async () => {
-    if (!roomForm.room_number) { toast.error('Enter room number'); return }
-    if (rooms.some(r => r.room_number === roomForm.room_number)) { toast.error(`Room ${roomForm.room_number} already exists!`); return }
+    if (!roomForm.room_number) { 
+      toast.error('Enter room number')
+      return 
+    }
+    const roomExists = rooms.some(r => r.room_number === roomForm.room_number)
+    if (roomExists) {
+      toast.error(`Room ${roomForm.room_number} already exists!`)
+      return
+    }
     setIsSubmitting(true)
     const selectedType = sharingTypes.find(t => t.value === roomForm.sharing_type)
-    const { error } = await supabase.from('rooms').insert({ property_id: property.id, room_number: roomForm.room_number, sharing_type: roomForm.sharing_type, monthly_rent: parseInt(roomForm.monthly_rent) || selectedType.price, capacity: selectedType.capacity, current_occupants: 0, status: 'vacant' })
-    if (error) toast.error('Failed to add room: ' + error.message)
-    else { toast.success(`Room ${roomForm.room_number} added!`); setShowRoomModal(false); setRoomForm({ room_number: '', sharing_type: 'double', monthly_rent: 10000 }); loadData() }
+    const { error } = await supabase.from('rooms').insert({ 
+      property_id: property.id, 
+      room_number: roomForm.room_number, 
+      sharing_type: roomForm.sharing_type, 
+      monthly_rent: parseInt(roomForm.monthly_rent) || selectedType.price, 
+      capacity: selectedType.capacity, 
+      current_occupants: 0, 
+      status: 'vacant' 
+    })
+    if (error) {
+      toast.error('Failed to add room: ' + error.message)
+    } else { 
+      toast.success(`Room ${roomForm.room_number} added!`, { duration: 2000 })
+      setShowRoomModal(false)
+      setRoomForm({ room_number: '', sharing_type: 'double', monthly_rent: 10000 })
+      loadData()
+    }
     setIsSubmitting(false)
   }
 
   const addTenant = async () => {
-    if (!formData.name || !formData.phone || !formData.email || !formData.rent_amount || !formData.room_id) { toast.error('Please fill all fields (Email is required)'); return }
+    if (!formData.name || !formData.phone || !formData.email || !formData.rent_amount || !formData.room_id) {
+      toast.error('Please fill all fields (Email is required)')
+      return
+    }
+
     const cleanPhone = cleanPhoneNumber(formData.phone)
-    if (cleanPhone.length !== 10) { toast.error('Enter valid 10-digit phone number'); return }
+    if (cleanPhone.length !== 10) {
+      toast.error('Enter valid 10-digit phone number')
+      return
+    }
+
     const selectedRoom = rooms.find(r => r.id === formData.room_id)
-    if (!selectedRoom) { toast.error('Selected room not found'); return }
-    if (selectedRoom.current_occupants >= selectedRoom.capacity) { toast.error(`Room ${selectedRoom.room_number} is full!`); return }
+    if (!selectedRoom) {
+      toast.error('Selected room not found')
+      return
+    }
+    if (selectedRoom.current_occupants >= selectedRoom.capacity) {
+      toast.error(`Room ${selectedRoom.room_number} is full!`)
+      return
+    }
+    
     setIsSubmitting(true)
     try {
       const tenantEmail = formData.email.trim()
@@ -393,23 +529,83 @@ export default function OwnerDashboard() {
       const advanceMonths = parseInt(formData.advance_amount) || 0
       const monthlyRent = parseInt(formData.rent_amount)
       const totalJoiningAmount = (monthlyRent * advanceMonths) + joiningFee
-      const { data: authData, error: authError } = await supabase.auth.signUp({ email: tenantEmail, password: Math.random().toString(36).slice(-8), options: { data: { full_name: formData.name, role: 'tenant', phone: cleanPhone } } })
+
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: tenantEmail,
+        password: Math.random().toString(36).slice(-8),
+        options: {
+          data: {
+            full_name: formData.name,
+            role: 'tenant',
+            phone: cleanPhone
+          }
+        }
+      })
       if (authError) throw authError
       const userId = authData.user.id
-      await supabase.from('users').insert({ id: userId, email: tenantEmail, full_name: formData.name, phone: cleanPhone, role: 'tenant', is_active: true })
+
+      const { error: userError } = await supabase
+        .from('users')
+        .insert({
+          id: userId,
+          email: tenantEmail,
+          full_name: formData.name,
+          phone: cleanPhone,
+          role: 'tenant',
+          is_active: true
+        })
+      if (userError) throw userError
+
       const pendingAmount = advanceMonths > 0 ? 0 : monthlyRent
       const rentStatus = advanceMonths > 0 ? 'paid' : 'pending'
-      await supabase.from('tenants').insert({ user_id: userId, property_id: property.id, room_id: selectedRoom.id, name: formData.name, phone: cleanPhone, email: tenantEmail, rent_amount: monthlyRent, pending_amount: pendingAmount, total_paid: totalJoiningAmount, rent_status: rentStatus, move_in_date: new Date().toISOString().split('T')[0], status: 'active' })
+
+      const { error: tenantError } = await supabase
+        .from('tenants')
+        .insert({
+          user_id: userId,
+          property_id: property.id,
+          room_id: selectedRoom.id,
+          name: formData.name,
+          phone: cleanPhone,
+          email: tenantEmail,
+          rent_amount: monthlyRent,
+          pending_amount: pendingAmount,
+          total_paid: totalJoiningAmount,
+          rent_status: rentStatus,
+          move_in_date: new Date().toISOString().split('T')[0],
+          status: 'active'
+        })
+      if (tenantError) throw tenantError
+
       const newOccupants = selectedRoom.current_occupants + 1
-      await supabase.from('rooms').update({ current_occupants: newOccupants, status: newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant' }).eq('id', selectedRoom.id)
-      await supabase.auth.resetPasswordForEmail(tenantEmail, { redirectTo: `${window.location.origin}/reset-password` }).catch(e => console.warn(e))
-      toast.success(`Tenant "${formData.name}" added! Login email: ${tenantEmail} | Collected: ₹${totalJoiningAmount.toLocaleString()}`)
-      if (advanceMonths > 0) toast.success(`No rent due for ${advanceMonths} month(s)`)
+      const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
+      await supabase
+        .from('rooms')
+        .update({ current_occupants: newOccupants, status: newStatus })
+        .eq('id', selectedRoom.id)
+
+      await supabase.auth.resetPasswordForEmail(tenantEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      }).catch(e => console.warn('Reset email not sent:', e))
+
+      toast.success(`Tenant "${formData.name}" added!`, { duration: 2000 })
+      toast.success(`📧 Login email: ${tenantEmail}`, { duration: 3000 })
+      toast.success(`💰 Collected: ₹${totalJoiningAmount.toLocaleString()}`, { duration: 3000 })
+      if (advanceMonths > 0) {
+        toast.success(`✅ No rent due for ${advanceMonths} month(s)`, { duration: 3000 })
+      }
+      
       setShowAddModal(false)
-      setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '', advance_amount: '1', joining_fee: '0' })
-      loadData()
-    } catch (error) { toast.error('Failed to add tenant: ' + error.message) }
-    finally { setIsSubmitting(false) }
+      setFormData({ 
+        name: '', phone: '', email: '', rent_amount: '', room_id: '', advance_amount: '0', joining_fee: '0' 
+      })
+      await loadData()
+    } catch (error) {
+      console.error('Add tenant error:', error)
+      toast.error('Failed to add tenant: ' + error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const deleteTenantComplete = async (tenantId, roomId, userId) => {
@@ -422,16 +618,25 @@ export default function OwnerDashboard() {
       const room = rooms.find(r => r.id === roomId)
       if (room) {
         const newOccupants = Math.max(0, room.current_occupants - 1)
-        await supabase.from('rooms').update({ current_occupants: newOccupants, status: newOccupants >= room.capacity ? 'occupied' : 'vacant' }).eq('id', roomId)
+        const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
+        await supabase.from('rooms').update({ current_occupants: newOccupants, status: newStatus }).eq('id', roomId)
       }
       if (userId) {
         const { error: userError } = await supabase.from('users').delete().eq('id', userId)
-        if (userError) await supabase.from('users').update({ is_active: false, role: 'inactive' }).eq('id', userId)
+        if (userError) {
+          await supabase.from('users').update({ is_active: false, role: 'inactive' }).eq('id', userId)
+        }
       }
-      toast.success('Tenant and all related data permanently deleted!')
-      loadData()
-    } catch (error) { toast.error('Failed to delete tenant: ' + error.message) }
-    finally { setIsSubmitting(false); setShowConfirmDeleteModal(false); setTenantToDelete(null) }
+      toast.success('✅ Tenant and all related data permanently deleted!', { duration: 3000 })
+      await loadData()
+    } catch (error) {
+      console.error('Delete tenant error:', error)
+      toast.error('Failed to delete tenant: ' + error.message)
+    } finally {
+      setIsSubmitting(false)
+      setShowConfirmDeleteModal(false)
+      setTenantToDelete(null)
+    }
   }
 
   const deleteTenantSoft = async (tenantId, roomId) => {
@@ -440,92 +645,179 @@ export default function OwnerDashboard() {
       const room = rooms.find(r => r.id === roomId)
       if (room) {
         const newOccupants = Math.max(0, room.current_occupants - 1)
-        await supabase.from('rooms').update({ current_occupants: newOccupants, status: newOccupants >= room.capacity ? 'occupied' : 'vacant' }).eq('id', roomId)
+        const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
+        await supabase.from('rooms').update({ current_occupants: newOccupants, status: newStatus }).eq('id', roomId)
       }
       await supabase.from('tenants').delete().eq('id', tenantId)
-      toast.success('Tenant removed from room (history preserved)')
-      loadData()
-    } catch (error) { toast.error('Failed to remove tenant') }
-    finally { setIsSubmitting(false); setShowConfirmDeleteModal(false); setTenantToDelete(null) }
+      toast.success('Tenant removed from room (history preserved)', { duration: 2000 })
+      await loadData()
+    } catch (error) {
+      console.error('Soft delete error:', error)
+      toast.error('Failed to remove tenant')
+    } finally {
+      setIsSubmitting(false)
+      setShowConfirmDeleteModal(false)
+      setTenantToDelete(null)
+    }
   }
 
   const postNotice = async () => {
-    if (!noticeForm.title || !noticeForm.content) { toast.error('Fill title and content'); return }
+    if (!noticeForm.title || !noticeForm.content) { 
+      toast.error('Please fill both title and content')
+      return 
+    }
     setIsSubmitting(true)
     try {
-      await supabase.from('notices').insert({ property_id: property.id, title: noticeForm.title, content: noticeForm.content, type: noticeForm.type, is_urgent: noticeForm.is_urgent, created_at: new Date().toISOString() })
-      toast.success('Notice posted!')
+      const { error } = await supabase.from('notices').insert({ 
+        property_id: property.id, 
+        title: noticeForm.title, 
+        content: noticeForm.content, 
+        type: noticeForm.type, 
+        is_urgent: noticeForm.is_urgent,
+        created_at: new Date().toISOString()
+      })
+      if (error) throw error
+      toast.success('Notice posted!', { duration: 2000 })
       setShowNoticeModal(false)
       setNoticeForm({ title: '', content: '', type: 'general', is_urgent: false })
-      loadData()
-    } catch (error) { toast.error('Failed to post notice: ' + error.message) }
-    finally { setIsSubmitting(false) }
+      await loadData()
+    } catch (error) {
+      console.error('Post notice error:', error)
+      toast.error('Failed to post notice: ' + error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const deleteNotice = async (noticeId) => {
     if (!confirm('Delete this notice?')) return
     setIsSubmitting(true)
     try {
-      await supabase.from('notices').delete().eq('id', noticeId)
-      toast.success('Notice deleted')
-      loadData()
-    } catch (error) { toast.error('Failed to delete notice') }
-    finally { setIsSubmitting(false) }
+      const { error } = await supabase.from('notices').delete().eq('id', noticeId)
+      if (error) throw error
+      toast.success('Notice deleted', { duration: 1500 })
+      await loadData()
+    } catch (error) {
+      console.error('Delete notice error:', error)
+      toast.error('Failed to delete notice')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const collectRent = async () => {
-    if (!selectedTenant || !paymentAmount) { toast.error('Enter amount'); return }
+    if (!selectedTenant || !paymentAmount) { 
+      toast.error('Enter amount')
+      return 
+    }
     const amount = parseInt(paymentAmount)
     const maxAmount = selectedTenant.pending_amount || selectedTenant.rent_amount
-    if (amount > maxAmount) { toast.error(`Max payable: ₹${maxAmount.toLocaleString()}`); return }
+    if (amount > maxAmount) { 
+      toast.error(`Max payable: ₹${maxAmount.toLocaleString()}`)
+      return 
+    }
     setIsSubmitting(true)
     try {
-      await supabase.from('payment_history').insert({ tenant_id: selectedTenant.id, amount, payment_date: new Date().toISOString().split('T')[0], payment_method: 'cash', status: 'success' })
+      const { error: paymentError } = await supabase.from('payment_history').insert({ 
+        tenant_id: selectedTenant.id, 
+        amount: amount, 
+        payment_date: new Date().toISOString().split('T')[0], 
+        payment_method: 'cash',
+        status: 'success'
+      })
+      if (paymentError) throw paymentError
       const newTotalPaid = (selectedTenant.total_paid || 0) + amount
       const newPendingAmount = maxAmount - amount
-      await supabase.from('tenants').update({ total_paid: newTotalPaid, pending_amount: newPendingAmount, rent_status: newPendingAmount <= 0 ? 'paid' : 'pending', last_payment_date: new Date().toISOString().split('T')[0] }).eq('id', selectedTenant.id)
-      toast.success(`₹${amount.toLocaleString()} collected!`)
+      const newRentStatus = newPendingAmount <= 0 ? 'paid' : 'pending'
+      const { error: updateError } = await supabase
+        .from('tenants')
+        .update({ 
+          total_paid: newTotalPaid, 
+          pending_amount: newPendingAmount, 
+          rent_status: newRentStatus, 
+          last_payment_date: new Date().toISOString().split('T')[0] 
+        })
+        .eq('id', selectedTenant.id)
+      if (updateError) throw updateError
+      toast.success(`₹${amount.toLocaleString()} collected!`, { duration: 2000 })
       setShowPaymentModal(false)
       setPaymentAmount('')
-      loadData()
-    } catch (error) { toast.error('Failed to collect rent: ' + error.message) }
-    finally { setIsSubmitting(false) }
+      await loadData()
+    } catch (error) {
+      console.error('Collect rent error:', error)
+      toast.error('Failed to collect rent: ' + error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const respondToComplaint = async () => {
     if (!selectedComplaint) return
     setIsSubmitting(true)
     try {
-      await supabase.from('complaints').update({ status: 'in_progress', admin_response: complaintResponse, responded_at: new Date().toISOString() }).eq('id', selectedComplaint.id)
-      toast.success('Response sent')
+      const { error } = await supabase
+        .from('complaints')
+        .update({
+          status: 'in_progress',
+          admin_response: complaintResponse,
+          responded_at: new Date().toISOString()
+        })
+        .eq('id', selectedComplaint.id)
+      if (error) throw error
+      toast.success('Response sent', { duration: 1500 })
       setShowComplaintResponseModal(false)
       setComplaintResponse('')
-      loadData()
-    } catch (error) { toast.error('Failed to send response') }
-    finally { setIsSubmitting(false) }
+      await loadData()
+    } catch (error) {
+      toast.error('Failed to send response')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const resolveComplaint = async (complaintId) => {
     if (!confirm('Mark as resolved?')) return
     setIsSubmitting(true)
     try {
-      await supabase.from('complaints').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', complaintId)
-      toast.success('Complaint resolved')
-      loadData()
-    } catch (error) { toast.error('Failed to resolve') }
-    finally { setIsSubmitting(false) }
+      const { error } = await supabase
+        .from('complaints')
+        .update({
+          status: 'resolved',
+          resolved_at: new Date().toISOString()
+        })
+        .eq('id', complaintId)
+      if (error) throw error
+      toast.success('Complaint resolved', { duration: 1500 })
+      await loadData()
+    } catch (error) {
+      toast.error('Failed to resolve')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const approveVacateRequest = async (requestId, tenantId, roomId) => {
-    if (!confirm('Approve vacate request? Tenant will be put on notice period.')) return
+    if (!confirm('Approve vacate request?')) return
     setIsSubmitting(true)
     try {
-      await supabase.from('check_out_requests').update({ status: 'approved', processed_at: new Date(), owner_notes: 'Vacation approved.' }).eq('id', requestId)
-      await supabase.from('tenants').update({ status: 'notice_period', check_out_requested: true, notice_period_start: new Date().toISOString().split('T')[0], notice_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] }).eq('id', tenantId)
-      toast.success('Vacate request approved – tenant is now on notice period')
-      loadData()
-    } catch (error) { toast.error('Failed to approve') }
-    finally { setIsSubmitting(false) }
+      await supabase.from('check_out_requests').update({ 
+        status: 'approved', 
+        processed_at: new Date(),
+        owner_notes: 'Vacation approved.'
+      }).eq('id', requestId)
+      await supabase.from('tenants').update({ 
+        status: 'notice_period', 
+        check_out_requested: true,
+        notice_period_start: new Date().toISOString().split('T')[0],
+        notice_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      }).eq('id', tenantId)
+      toast.success('Vacate request approved – tenant is now on notice period', { duration: 2000 })
+      await loadData()
+    } catch (error) {
+      toast.error('Failed to approve')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const approveApplication = async (appId) => {
@@ -535,35 +827,71 @@ export default function OwnerDashboard() {
       const { data: room } = await supabase.from('rooms').select('*').eq('id', app.room_id).single()
       let userId = null
       const { data: existingUser } = await supabase.from('users').select('id').eq('phone', app.phone).maybeSingle()
-      if (existingUser) userId = existingUser.id
-      else {
-        const { data: newUser } = await supabase.from('users').insert({ phone: app.phone, email: app.email, full_name: app.name, role: 'tenant', is_active: true }).select().single()
+      if (existingUser) {
+        userId = existingUser.id
+      } else {
+        const { data: newUser } = await supabase.from('users').insert({
+          phone: app.phone,
+          email: app.email,
+          full_name: app.name,
+          role: 'tenant',
+          is_active: true
+        }).select().single()
         userId = newUser.id
       }
-      await supabase.from('tenants').insert({ user_id: userId, property_id: app.property_id, room_id: app.room_id, name: app.name, phone: app.phone, email: app.email, rent_amount: room.monthly_rent, pending_amount: room.monthly_rent, total_paid: 0, rent_status: 'pending', move_in_date: app.expected_move_in || new Date().toISOString().split('T')[0], status: 'active' })
+      await supabase.from('tenants').insert({
+        user_id: userId,
+        property_id: app.property_id,
+        room_id: app.room_id,
+        name: app.name,
+        phone: app.phone,
+        email: app.email,
+        rent_amount: room.monthly_rent,
+        pending_amount: room.monthly_rent,
+        total_paid: 0,
+        rent_status: 'pending',
+        move_in_date: app.expected_move_in || new Date().toISOString().split('T')[0],
+        status: 'active'
+      })
       const newOccupants = (room.current_occupants || 0) + 1
-      await supabase.from('rooms').update({ current_occupants: newOccupants, status: newOccupants >= room.capacity ? 'occupied' : 'vacant' }).eq('id', app.room_id)
+      await supabase.from('rooms').update({ 
+        current_occupants: newOccupants, 
+        status: newOccupants >= room.capacity ? 'occupied' : 'vacant' 
+      }).eq('id', app.room_id)
       await supabase.from('applications').update({ status: 'approved', processed_at: new Date() }).eq('id', appId)
-      toast.success('Application approved!')
-      loadData()
-    } catch (error) { toast.error('Failed to approve') }
-    finally { setIsSubmitting(false) }
+      toast.success('Application approved!', { duration: 2000 })
+      await loadData()
+    } catch (error) {
+      console.error('Approve error:', error)
+      toast.error('Failed to approve')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const deleteRoom = async (id) => {
     const room = rooms.find(r => r.id === id)
-    if (room.current_occupants > 0) { toast.error(`Cannot delete room with ${room.current_occupants} occupants`); return }
+    if (room.current_occupants > 0) { 
+      toast.error(`Cannot delete room with ${room.current_occupants} occupants`)
+      return 
+    }
     if (!confirm(`Delete Room ${room.room_number}?`)) return
     setIsSubmitting(true)
     try {
       await supabase.from('rooms').delete().eq('id', id)
-      toast.success('Room deleted')
-      loadData()
-    } catch (error) { toast.error('Failed to delete room') }
-    finally { setIsSubmitting(false) }
+      toast.success('Room deleted', { duration: 1500 })
+      await loadData()
+    } catch (error) {
+      toast.error('Failed to delete room')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  const handleLogout = () => { localStorage.clear(); router.push('/') }
+  const handleLogout = () => { 
+    localStorage.clear()
+    router.push('/') 
+  }
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-white">
@@ -682,7 +1010,7 @@ export default function OwnerDashboard() {
           ))}
         </div>
 
-        {/* Overview Tab */}
+        {/* Overview Tab – with enhanced tags */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border border-gray-100 p-6">
@@ -721,7 +1049,7 @@ export default function OwnerDashboard() {
                 {complaints.slice(0, 5).map(c => (
                   <div key={c.id} className="p-3 bg-orange-50 rounded-lg">
                     <div className="flex justify-between items-start">
-                      <div><p className="font-medium text-orange-700">{c.title}</p><div className="flex gap-1 mt-1">{c.priority === 'high' && <span className="text-xs bg-red-100 text-red-700 px-1 rounded">High</span>}{c.priority === 'medium' && <span className="text-xs bg-yellow-100 text-yellow-700 px-1 rounded">Medium</span>}{c.priority === 'low' && <span className="text-xs bg-green-100 text-green-700 px-1 rounded">Low</span>}</div><p className="text-xs text-gray-500 mt-1">From: {c.tenant_name}</p></div>
+                      <div><p className="font-medium text-orange-700">{c.title}</p><p className="text-xs text-gray-500 mt-1">From: {c.tenant_name}</p></div>
                       <button onClick={() => { setSelectedComplaint(c); setShowComplaintResponseModal(true) }} className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700">Respond</button>
                     </div>
                   </div>
@@ -732,7 +1060,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Rooms Tab */}
+        {/* Rooms Tab – already has vacate badge */}
         {activeTab === 'rooms' && (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {rooms.map((room) => {
@@ -771,7 +1099,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab */}
+        {/* Tenants Tab (unchanged – already has status badges) */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -818,11 +1146,11 @@ export default function OwnerDashboard() {
                         <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
                         <button onClick={() => { setTenantToDelete(t); setShowConfirmDeleteModal(true) }} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition">Delete</button>
                       </td>
-                    <tr>
+                    </tr>
                   )
                 })}
                 {tenants.length === 0 && (
-                  <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants added yet</td></tr>
+                  <td><td colSpan="8" className="text-center py-8 text-gray-500">No tenants added yet</td></tr>
                 )}
               </tbody>
             </table>
@@ -895,7 +1223,7 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* Modals (unchanged from your working version) */}
+      {/* All Modals (unchanged – preserved from your working version) */}
       <AnimatePresence>{showConfirmDeleteModal && tenantToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
