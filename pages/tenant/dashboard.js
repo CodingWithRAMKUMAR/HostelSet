@@ -16,6 +16,7 @@ export default function TenantDashboard() {
   const [complaints, setComplaints] = useState([])
   const [paymentHistory, setPaymentHistory] = useState([])
   const [existingVacateRequest, setExistingVacateRequest] = useState(null)
+  const [roommateVacateAlert, setRoommateVacateAlert] = useState(null)
   const [showComplaintModal, setShowComplaintModal] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showVacateModal, setShowVacateModal] = useState(false)
@@ -24,10 +25,10 @@ export default function TenantDashboard() {
   const [vacateForm, setVacateForm] = useState({ expected_date: '', reason: '' })
   const [paymentAmount, setPaymentAmount] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [paymentLoading, setPaymentLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
   const [editProfile, setEditProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', email: '' })
-  const [paymentLoading, setPaymentLoading] = useState(false)
 
   // Calculate next due date based on join date
   const calculateNextDueDate = () => {
@@ -43,14 +44,15 @@ export default function TenantDashboard() {
     return nextDue
   }
 
-  // Calculate rent due status
+  // Calculate rent due status (respects advance payments)
   const getRentStatus = () => {
     if (!tenant) return { status: 'loading', message: '', daysUntilDue: null }
     const nextDueDate = calculateNextDueDate()
     const today = new Date()
     const daysUntilDue = Math.ceil((nextDueDate - today) / (1000 * 60 * 60 * 24))
-    const isPaidThisMonth = tenant.last_payment_date && 
+    const isPaidThisMonth = tenant.last_payment_date &&
       new Date(tenant.last_payment_date) >= new Date(today.getFullYear(), today.getMonth(), 1)
+
     if ((tenant.pending_amount > 0 && tenant.pending_amount >= tenant.rent_amount) || (!isPaidThisMonth && tenant.pending_amount > 0)) {
       if (daysUntilDue < 0) {
         return { status: 'overdue', message: `Overdue by ${Math.abs(daysUntilDue)} days`, daysUntilDue }
@@ -69,9 +71,9 @@ export default function TenantDashboard() {
     const isLoggedIn = localStorage.getItem('isLoggedIn')
     const userRole = localStorage.getItem('userRole')
     const userId = localStorage.getItem('userId')
-    if (!isLoggedIn || userRole !== 'tenant') { 
+    if (!isLoggedIn || userRole !== 'tenant') {
       router.push('/login')
-      return 
+      return
     }
     loadTenantData(userId)
   }, [])
@@ -79,6 +81,7 @@ export default function TenantDashboard() {
   const loadTenantData = async (userId) => {
     setLoading(true)
     try {
+      // Get tenant details with rooms and property
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
         .select('*, rooms:room_id(*), property:property_id(*)')
@@ -99,14 +102,42 @@ export default function TenantDashboard() {
         phone: tenantData.phone || '',
         email: tenantData.email || ''
       })
+
+      // Get roommates (other tenants in same room)
+      let roommatesList = []
       if (tenantData.room_id) {
         const { data: roommatesData } = await supabase
           .from('tenants')
-          .select('name, phone, email, move_in_date')
+          .select('name, phone, email, move_in_date, id')
           .eq('room_id', tenantData.room_id)
           .neq('id', tenantData.id)
-        setRoommates(roommatesData || [])
+        roommatesList = roommatesData || []
+        setRoommates(roommatesList)
+
+        // Check if any roommate has an approved vacate request with future date
+        if (roommatesList.length > 0) {
+          const roommateIds = roommatesList.map(r => r.id)
+          const { data: vacateRequests } = await supabase
+            .from('check_out_requests')
+            .select('tenant_id, tenant_name, expected_check_out')
+            .in('tenant_id', roommateIds)
+            .eq('status', 'approved')
+          if (vacateRequests && vacateRequests.length > 0) {
+            const upcoming = vacateRequests.find(v => new Date(v.expected_check_out) > new Date())
+            if (upcoming) {
+              const roommate = roommatesList.find(r => r.id === upcoming.tenant_id)
+              const daysLeft = Math.ceil((new Date(upcoming.expected_check_out) - new Date()) / (1000 * 60 * 60 * 24))
+              setRoommateVacateAlert({
+                name: roommate?.name || upcoming.tenant_name,
+                daysLeft,
+                date: upcoming.expected_check_out
+              })
+            }
+          }
+        }
       }
+
+      // Check for existing vacate request
       const { data: vacateData } = await supabase
         .from('check_out_requests')
         .select('*')
@@ -114,6 +145,8 @@ export default function TenantDashboard() {
         .eq('status', 'pending')
         .maybeSingle()
       setExistingVacateRequest(vacateData)
+
+      // Get notices for this property
       const { data: noticesData } = await supabase
         .from('notices')
         .select('*')
@@ -121,18 +154,24 @@ export default function TenantDashboard() {
         .order('created_at', { ascending: false })
         .limit(10)
       setNotices(noticesData || [])
+
+      // Get tenant's complaints
       const { data: complaintsData } = await supabase
         .from('complaints')
         .select('*')
         .eq('tenant_id', tenantData.id)
         .order('created_at', { ascending: false })
       setComplaints(complaintsData || [])
+
+      // Get payment history
       const { data: paymentsData } = await supabase
         .from('payment_history')
         .select('*')
         .eq('tenant_id', tenantData.id)
         .order('payment_date', { ascending: false })
       setPaymentHistory(paymentsData || [])
+
+      // Check for due alerts
       const rentStatus = getRentStatus()
       const lastAlertDate = localStorage.getItem('lastTenantAlertDate')
       const today = new Date().toDateString()
@@ -205,13 +244,14 @@ export default function TenantDashboard() {
       setComplaintForm({ title: '', description: '', priority: 'medium' })
       await loadTenantData(localStorage.getItem('userId'))
     } catch (error) {
+      console.error('Submit complaint error:', error)
       toast.error('Failed to submit complaint: ' + error.message)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  // 🔁 REPLACED OTP DEMO WITH DODO PAYMENT
+  // Dodo UPI rent payment (replaces demo OTP)
   const initiateDodoPayment = async () => {
     const amount = tenant.pending_amount || tenant.rent_amount
     if (amount <= 0) {
@@ -239,6 +279,7 @@ export default function TenantDashboard() {
         toast('Payment status updated. Refresh if needed.', { icon: '🔄' })
       }, 10000)
     } catch (error) {
+      console.error('Payment error:', error)
       toast.error(error.message)
     } finally {
       setPaymentLoading(false)
@@ -253,6 +294,9 @@ export default function TenantDashboard() {
     }
     setIsSubmitting(true)
     try {
+      if (!tenant) throw new Error('Tenant data not loaded')
+      if (!tenant.property_id) throw new Error('Property ID not found')
+      if (!tenant.room_id) throw new Error('Room ID not found')
       const vacateData = {
         tenant_id: tenant.id,
         tenant_name: tenant.name,
@@ -272,6 +316,7 @@ export default function TenantDashboard() {
       setVacateForm({ expected_date: '', reason: '' })
       await loadTenantData(localStorage.getItem('userId'))
     } catch (error) {
+      console.error('Vacate request error:', error)
       toast.error('Failed to submit vacate request: ' + error.message)
     } finally {
       setIsSubmitting(false)
@@ -285,6 +330,7 @@ export default function TenantDashboard() {
   }
 
   const rentStatus = getRentStatus()
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-white">
@@ -298,6 +344,7 @@ export default function TenantDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white">
+      {/* Navbar */}
       <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50 px-6 py-4">
         <div className="container mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -317,6 +364,7 @@ export default function TenantDashboard() {
       </nav>
 
       <div className="container mx-auto px-4 py-8">
+        {/* Welcome Section with Rent Status */}
         <div className={`bg-gradient-to-r rounded-2xl p-6 mb-8 text-white ${
           rentStatus.status === 'overdue' ? 'from-red-600 to-red-500' :
           rentStatus.status === 'due_soon' ? 'from-orange-600 to-orange-500' :
@@ -334,6 +382,19 @@ export default function TenantDashboard() {
           </div>
         </div>
 
+        {/* Roommate Vacate Alert */}
+        {roommateVacateAlert && (
+          <div className="bg-orange-100 border-l-4 border-orange-500 text-orange-700 p-4 mb-6 rounded-lg shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🚪</span>
+              <div>
+                <strong>Vacate Notice:</strong> {roommateVacateAlert.name} will vacate in <strong>{roommateVacateAlert.daysLeft}</strong> days (by {formatDate(roommateVacateAlert.date)}).
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
             <div className="flex items-center gap-3">
@@ -361,6 +422,7 @@ export default function TenantDashboard() {
           </div>
         </div>
 
+        {/* Action Buttons */}
         <div className="flex flex-wrap gap-3 mb-8">
           <button onClick={() => setShowPaymentModal(true)} className="bg-green-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-green-700 transition shadow-sm flex items-center gap-2">💳 Pay Rent (UPI)</button>
           <button onClick={() => setShowComplaintModal(true)} className="border-2 border-orange-300 text-orange-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition flex items-center gap-2">📝 Raise Complaint</button>
@@ -369,6 +431,7 @@ export default function TenantDashboard() {
           </button>
         </div>
 
+        {/* Tabs */}
         <div className="flex flex-wrap border-b border-gray-200 mb-6 gap-2">
           {['overview', 'roommates', 'notices', 'complaints', 'payments'].map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 text-sm font-semibold capitalize transition-all rounded-t-lg ${activeTab === tab ? 'bg-slate-800 text-white' : 'text-gray-500 hover:text-slate-700 hover:bg-gray-50'}`}>
@@ -381,6 +444,7 @@ export default function TenantDashboard() {
           ))}
         </div>
 
+        {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition">
@@ -398,12 +462,13 @@ export default function TenantDashboard() {
               <div className="space-y-3">
                 <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Property Name:</span><span className="font-semibold text-slate-800">{property?.name}</span></div>
                 <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Address:</span><span className="text-slate-700 text-right">{property?.address}, {property?.city}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Contact Number:</span><span className="text-slate-700">{property?.contact_number}</span></div>
+                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Owner Contact:</span><span className="text-slate-700 font-medium">{property?.contact_number || 'Not provided'}</span></div>
               </div>
             </div>
           </div>
         )}
 
+        {/* Roommates Tab */}
         {activeTab === 'roommates' && (
           <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
             <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2"><span className="text-xl">👥</span> Your Roommates <span className="text-xs text-gray-400 ml-2">(Same Room Only)</span></h3>
@@ -422,6 +487,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
+        {/* Notices Tab */}
         {activeTab === 'notices' && (
           <div className="space-y-4">
             {notices.map((notice) => (
@@ -435,6 +501,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
+        {/* Complaints Tab */}
         {activeTab === 'complaints' && (
           <div className="space-y-4">
             {complaints.map((complaint) => (
@@ -450,6 +517,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
+        {/* Payment History Tab */}
         {activeTab === 'payments' && (
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
@@ -483,6 +551,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
+      {/* Payment Modal – Dodo UPI */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -510,6 +579,7 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
+      {/* Complaint Modal */}
       <AnimatePresence>
         {showComplaintModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComplaintModal(false)}>
@@ -533,6 +603,7 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
+      {/* Vacate Request Modal */}
       <AnimatePresence>
         {showVacateModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowVacateModal(false)}>
@@ -550,6 +621,7 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
+      {/* Profile Modal */}
       <AnimatePresence>
         {showProfileModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
