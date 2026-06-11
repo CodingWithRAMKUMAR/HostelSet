@@ -7,14 +7,13 @@ import toast from 'react-hot-toast'
 
 export default function Login() {
   const router = useRouter()
-  const [identifier, setIdentifier] = useState('') // email or phone
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [showReset, setShowReset] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [showPassword, setShowPassword] = useState(false)
 
-  // Helper: check if input is email or phone
   const isEmail = (input) => input.includes('@')
   const isPhone = (input) => /^\d{10}$/.test(input)
 
@@ -28,9 +27,8 @@ export default function Login() {
 
     try {
       let emailToUse = identifier
-      let userRecord = null
 
-      // If input is phone number, find the associated email from users table
+      // If phone number, look up email from users table
       if (isPhone(identifier)) {
         const { data, error } = await supabase
           .from('users')
@@ -43,29 +41,22 @@ export default function Login() {
           return
         }
         emailToUse = data.email
-        userRecord = data
       } else if (!isEmail(identifier)) {
         toast.error('Enter a valid email or 10-digit mobile number')
         setLoading(false)
         return
       }
 
-      // Attempt sign in with email and password
       const result = await signInWithEmail(emailToUse, password)
       if (result.success) {
         toast.success(`Welcome back, ${result.userData.full_name}!`)
-        // Redirect based on role
         if (result.role === 'owner') {
           const { data: property } = await supabase
             .from('properties')
             .select('id')
             .eq('owner_id', result.userData.id)
             .maybeSingle()
-          if (property) {
-            router.push('/owner/dashboard')
-          } else {
-            router.push('/owner/register-property')
-          }
+          router.push(property ? '/owner/dashboard' : '/owner/register-property')
         } else {
           router.push('/tenant/dashboard')
         }
@@ -73,7 +64,6 @@ export default function Login() {
         toast.error(result.error || 'Invalid email or password')
       }
     } catch (error) {
-      console.error('Login error:', error)
       toast.error('Login failed. Please try again.')
     } finally {
       setLoading(false)
@@ -86,28 +76,19 @@ export default function Login() {
       return
     }
     setLoading(true)
-    try {
-      const result = await resetPassword(resetEmail)
-      if (result.success) {
-        toast.success('Password reset email sent! Check your inbox.')
-        setShowReset(false)
-      } else {
-        toast.error(result.error)
-      }
-    } catch (error) {
-      toast.error('Failed to send reset email')
-    } finally {
-      setLoading(false)
+    const result = await resetPassword(resetEmail)
+    if (result.success) {
+      toast.success('Password reset email sent! Check your inbox.')
+      setShowReset(false)
+    } else {
+      toast.error(result.error)
     }
+    setLoading(false)
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 to-white">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full border border-gray-100"
-      >
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full border border-gray-100">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-gradient-to-r from-slate-700 to-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <span className="text-3xl">🏠</span>
@@ -120,93 +101,37 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-gray-700 font-semibold mb-2">Email or Mobile Number</label>
-              <input
-                type="text"
-                placeholder="you@example.com or 9876543210"
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                required
-              />
+              <input type="text" placeholder="you@example.com or 9876543210" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" value={identifier} onChange={(e) => setIdentifier(e.target.value)} required />
             </div>
             <div>
               <label className="block text-gray-700 font-semibold mb-2">Password</label>
               <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="••••••••"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 pr-12"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-slate-800"
-                >
-                  {showPassword ? '👁️' : '👁️‍🗨️'}
-                </button>
+                <input type={showPassword ? 'text' : 'password'} placeholder="••••••••" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 pr-12" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-slate-800">{showPassword ? '👁️' : '👁️‍🗨️'}</button>
               </div>
             </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50"
-            >
-              {loading ? 'Logging in...' : 'Login →'}
-            </button>
-
+            <button type="submit" disabled={loading} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50">{loading ? 'Logging in...' : 'Login →'}</button>
             <div className="text-center">
-              <button
-                type="button"
-                onClick={() => setShowReset(true)}
-                className="text-sm text-slate-600 hover:text-slate-800"
-              >
-                Forgot password?
-              </button>
+              <button type="button" onClick={() => setShowReset(true)} className="text-sm text-slate-600 hover:text-slate-800">Forgot password?</button>
             </div>
           </form>
         ) : (
           <div className="space-y-6">
             <div>
               <label className="block text-gray-700 font-semibold mb-2">Your Email Address</label>
-              <input
-                type="email"
-                placeholder="you@example.com"
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl"
-                value={resetEmail}
-                onChange={(e) => setResetEmail(e.target.value)}
-              />
+              <input type="email" placeholder="you@example.com" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} />
               <p className="text-xs text-gray-400 mt-1">We'll send a password reset link to this email</p>
             </div>
-            <button
-              onClick={handleResetPassword}
-              disabled={loading}
-              className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50"
-            >
-              {loading ? 'Sending...' : 'Send Reset Email'}
-            </button>
-            <button
-              onClick={() => setShowReset(false)}
-              className="w-full text-slate-600 hover:text-slate-800 text-sm"
-            >
-              ← Back to login
-            </button>
+            <button onClick={handleResetPassword} disabled={loading} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{loading ? 'Sending...' : 'Send Reset Email'}</button>
+            <button onClick={() => setShowReset(false)} className="w-full text-slate-600 hover:text-slate-800 text-sm">← Back to login</button>
           </div>
         )}
 
         <div className="mt-6 text-center">
-          <Link href="/owner/register-property" className="text-slate-600 hover:text-slate-800 text-sm">
-            📝 List Your Property →
-          </Link>
+          <Link href="/owner/register-property" className="text-slate-600 hover:text-slate-800 text-sm">📝 List Your Property →</Link>
         </div>
         <div className="mt-4 text-center">
-          <p className="text-xs text-gray-400">
-            Don't have an account?{' '}
-            <Link href="/register" className="text-slate-600">Register as Owner</Link>
-          </p>
+          <p className="text-xs text-gray-400">Don't have an account? <Link href="/register" className="text-slate-600">Register as Owner</Link></p>
         </div>
       </motion.div>
     </div>
