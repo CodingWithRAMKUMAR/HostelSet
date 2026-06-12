@@ -49,6 +49,7 @@ export default function PropertyDetail() {
         .order('room_number')
       setRooms(roomsData || [])
 
+      // Load owner settings (UPI, advance, joining fee)
       if (propertyData) {
         const { data: settingsData } = await supabase
           .from('owner_settings')
@@ -103,6 +104,29 @@ export default function PropertyDetail() {
     if (error) throw error
     const { data: { publicUrl } } = supabase.storage.from('tenant-documents').getPublicUrl(fileName)
     return publicUrl
+  }
+
+  // Helper to find an existing user by phone or email
+  const findExistingUser = async (phone, email) => {
+    // Try by phone first (unique per system)
+    if (phone) {
+      const { data: userByPhone } = await supabase
+        .from('users')
+        .select('id, email')
+        .eq('phone', phone)
+        .limit(1)
+      if (userByPhone && userByPhone.length > 0) return userByPhone[0]
+    }
+    // Try by email
+    if (email) {
+      const { data: userByEmail } = await supabase
+        .from('users')
+        .select('id, email')
+        .eq('email', email)
+        .limit(1)
+      if (userByEmail && userByEmail.length > 0) return userByEmail[0]
+    }
+    return null
   }
 
   const submitApplication = async () => {
@@ -172,21 +196,19 @@ export default function PropertyDetail() {
       const screenshotUrl = await uploadFile(paymentScreenshot, 'pay')
       const cleanPhone = cleanPhoneNumber(applyForm.phone)
 
-      // ---------- USER HANDLING ----------
+      // ---------- USER HANDLING (phone-first, then email) ----------
       let userId
-      const { data: existingUsers } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', applyForm.email)
-        .limit(1)
+      const existingUser = await findExistingUser(cleanPhone, applyForm.email)
 
-      if (existingUsers && existingUsers.length > 0) {
-        userId = existingUsers[0].id
+      if (existingUser) {
+        // Reuse existing user account – update name/email if necessary
+        userId = existingUser.id
         await supabase.from('users').update({
           full_name: applyForm.name,
-          phone: cleanPhone,
+          email: applyForm.email, // allow email update if phone matches
         }).eq('id', userId)
       } else {
+        // No existing user – create new Auth account
         const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).charAt(0).toUpperCase()
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: applyForm.email,
@@ -195,26 +217,24 @@ export default function PropertyDetail() {
         })
         if (authError) throw authError
 
-        await supabase.auth.resetPasswordForEmail(applyForm.email, {
-          redirectTo: `${window.location.origin}/reset-password`,
-        }).catch(e => console.warn('Reset email not sent:', e))
-
+        // Check again if a users row was auto-created by a trigger (phone might exist now)
         const { data: newUserRows } = await supabase
           .from('users')
           .select('id')
-          .eq('email', applyForm.email)
+          .eq('phone', cleanPhone)
           .limit(1)
 
         if (newUserRows && newUserRows.length > 0) {
           userId = newUserRows[0].id
           await supabase.from('users').update({
             full_name: applyForm.name,
-            phone: cleanPhone,
+            email: applyForm.email,
             role: 'tenant',
             is_active: true,
           }).eq('id', userId)
         } else {
           userId = authData.user.id
+          // Insert manually – can fail if race condition; handle gracefully
           const { error: insertError } = await supabase.from('users').insert({
             id: userId,
             email: applyForm.email,
@@ -223,13 +243,41 @@ export default function PropertyDetail() {
             role: 'tenant',
             is_active: true,
           })
-          if (insertError) throw insertError
+          if (insertError) {
+            if (insertError.message.includes('duplicate key value') || insertError.code === '23505') {
+              // Race condition – fetch the conflicting user and use that
+              const { data: conflictingUser } = await supabase
+                .from('users')
+                .select('id')
+                .eq('phone', cleanPhone)
+                .limit(1)
+              if (conflictingUser && conflictingUser.length > 0) {
+                userId = conflictingUser[0].id
+                await supabase.from('users').update({
+                  full_name: applyForm.name,
+                  email: applyForm.email,
+                  role: 'tenant',
+                  is_active: true,
+                }).eq('id', userId)
+              } else {
+                throw insertError
+              }
+            } else {
+              throw insertError
+            }
+          }
         }
+
+        // ✅ Only now, after successful user creation, send the password‑set email
+        await supabase.auth.resetPasswordForEmail(applyForm.email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        }).catch(e => console.warn('Reset email not sent:', e))
       }
 
       const totalAmount = calculateTotalAmount()
       const room = rooms.find(r => r.id === selectedRoom)
 
+      // Create tenant record (payment_pending)
       const { error: tenantError } = await supabase.from('tenants').insert({
         user_id: userId,
         property_id: id,
