@@ -61,8 +61,17 @@ export default function Home() {
               </span>
             </Link>
             
-            {/* DESKTOP NAVIGATION - FIXED LINKS */}
+            {/* DESKTOP NAVIGATION - UPDATED WITH BROWSE PROPERTIES */}
             <div className="hidden md:flex items-center gap-4">
+              {/* Browse Properties Link */}
+              <Link 
+                href="/properties" 
+                className="px-5 py-2.5 rounded-full border-2 border-slate-300 text-slate-700 font-semibold hover:border-slate-800 hover:bg-slate-50 transition-all duration-300 flex items-center gap-2"
+              >
+                <span>🔍</span>
+                Browse Properties
+              </Link>
+              
               {/* Login Button - Outline Style */}
               <Link 
                 href="/login" 
@@ -93,7 +102,7 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* MOBILE MENU - FIXED LINKS */}
+      {/* MOBILE MENU - UPDATED WITH BROWSE PROPERTIES */}
       {mobileMenuOpen && (
         <motion.div 
           initial={{ opacity: 0, y: -20 }}
@@ -102,6 +111,16 @@ export default function Home() {
           className="fixed top-20 left-4 right-4 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl z-40 md:hidden border border-gray-100"
         >
           <div className="p-4">
+            {/* Browse Properties */}
+            <Link 
+              href="/properties" 
+              className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-slate-300 text-slate-700 font-semibold hover:bg-gray-50 transition-all duration-300 mb-3"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <span>🔍</span>
+              Browse Properties
+            </Link>
+            
             <Link 
               href="/login" 
               className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-slate-300 text-slate-700 font-semibold hover:bg-gray-50 transition-all duration-300 mb-3"
@@ -375,6 +394,8 @@ export default function Home() {
                 <li><Link href="/owner/register-property" className="hover:text-slate-800 transition">List Property</Link></li>
                 <li><Link href="/login" className="hover:text-slate-800 transition">Login</Link></li>
                 <li><Link href="/register" className="hover:text-slate-800 transition">Register</Link></li>
+                {/* Added Browse Properties in footer */}
+                <li><Link href="/properties" className="hover:text-slate-800 transition">Browse Properties</Link></li>
               </ul>
             </div>
             <div>
