@@ -26,6 +26,7 @@ export default function AdminDashboard() {
     pendingApplications: 0,
     pendingPayments: 0,
     unresolvedComplaints: 0,
+    pendingMemberships: 0,   // owners with membership_active = false
   })
   const [revenueData, setRevenueData] = useState([])
   const [occupancyData, setOccupancyData] = useState([])
@@ -42,26 +43,32 @@ export default function AdminDashboard() {
       router.push('/login')
       return
     }
-    loadAllData()
-    // Start background refresh
-    autoRefreshRef.current = setInterval(loadAllData, 30000)
+    loadAllData() // initial load with loading spinner
+    // Start silent background refresh every 30 seconds
+    autoRefreshRef.current = setInterval(() => loadAllData(true), 30000)
     return () => clearInterval(autoRefreshRef.current)
   }, [])
 
-  const loadAllData = async () => {
-    setLoading(true)
+  // isSilent = true → don't show loading spinner (background refresh)
+  const loadAllData = async (isSilent = false) => {
+    if (!isSilent) setLoading(true)
     try {
-      // Fetch all properties with owner info
-      const { data: props } = await supabase
-        .from('properties')
-        .select('*, users!properties_owner_id_fkey(full_name, email, phone)')
-
-      // Fetch tenants, payments, complaints, applications, vacate requests
-      const { data: tnts } = await supabase.from('tenants').select('*, rooms(room_number, sharing_type), properties(name)')
-      const { data: pms } = await supabase.from('payment_history').select('*, tenants(name)').order('payment_date', { ascending: false }).limit(100)
-      const { data: cmps } = await supabase.from('complaints').select('*, tenants(name)').order('created_at', { ascending: false }).limit(100)
-      const { data: vacates } = await supabase.from('check_out_requests').select('*, tenants(name), rooms(room_number)').order('created_at', { ascending: false }).limit(100)
-      const { data: apps } = await supabase.from('applications').select('*').eq('status', 'pending').order('created_at', { ascending: false })
+      // Fetch all data in parallel
+      const [
+        { data: props },
+        { data: tnts },
+        { data: pms },
+        { data: cmps },
+        { data: vacates },
+        { data: apps }
+      ] = await Promise.all([
+        supabase.from('properties').select('*, users!properties_owner_id_fkey(full_name, email, phone)'),
+        supabase.from('tenants').select('*, rooms(room_number, sharing_type), properties(name)'),
+        supabase.from('payment_history').select('*, tenants(name)').order('payment_date', { ascending: false }).limit(100),
+        supabase.from('complaints').select('*, tenants(name)').order('created_at', { ascending: false }).limit(100),
+        supabase.from('check_out_requests').select('*, tenants(name), rooms(room_number)').order('created_at', { ascending: false }).limit(100),
+        supabase.from('applications').select('*').eq('status', 'pending').order('created_at', { ascending: false })
+      ])
 
       setProperties(props || [])
       setTenants(tnts || [])
@@ -74,20 +81,35 @@ export default function AdminDashboard() {
       const totalProperties = props?.length || 0
       const totalTenants = tnts?.length || 0
       const totalRevenue = pms?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0
-      const { count: occupiedRooms } = await supabase.from('rooms').select('*', { count: 'exact' }).gt('current_occupants', 0)
-      const { count: totalRooms } = await supabase.from('rooms').select('*', { count: 'exact' })
+
+      // Occupancy
+      const { count: occupiedRooms, error: occErr } = await supabase.from('rooms').select('*', { count: 'exact', head: true }).gt('current_occupants', 0)
+      const { count: totalRooms, error: totalErr } = await supabase.from('rooms').select('*', { count: 'exact', head: true })
       const occupancyRate = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0
+
       const pendingApplications = apps?.length || 0
       const pendingPayments = tnts?.filter(t => t.status === 'payment_pending').length || 0
       const unresolvedComplaints = cmps?.filter(c => c.status === 'open').length || 0
+      const pendingMemberships = props?.filter(p => !p.membership_active).length || 0
 
-      setStats({ totalProperties, totalTenants, totalRevenue, occupancyRate, pendingApplications, pendingPayments, unresolvedComplaints })
+      setStats({
+        totalProperties,
+        totalTenants,
+        totalRevenue,
+        occupancyRate,
+        pendingApplications,
+        pendingPayments,
+        unresolvedComplaints,
+        pendingMemberships,
+      })
+
+      // Occupancy pie chart data
       setOccupancyData([
         { name: 'Occupied', value: occupiedRooms },
         { name: 'Vacant', value: totalRooms - occupiedRooms },
       ])
 
-      // Monthly revenue for chart
+      // Monthly revenue for chart (last 6 months)
       const monthlyRevenue = {}
       const today = new Date()
       for (let i = 5; i >= 0; i--) {
@@ -101,14 +123,16 @@ export default function AdminDashboard() {
         if (key in monthlyRevenue) monthlyRevenue[key] += p.amount
       })
       setRevenueData(Object.entries(monthlyRevenue).map(([month, revenue]) => ({ month, revenue })))
+
     } catch (error) {
       console.error('Admin load error:', error)
       toast.error('Failed to load data')
     } finally {
-      setLoading(false)
+      if (!isSilent) setLoading(false)
     }
   }
 
+  // Grant or revoke membership via API
   const handleMembershipAction = async (ownerId, action, durationDays = null) => {
     setGrantSubmitting(true)
     const token = (await supabase.auth.getSession()).data.session?.access_token
@@ -120,7 +144,7 @@ export default function AdminDashboard() {
     const data = await res.json()
     if (data.success) {
       toast.success(data.message)
-      loadAllData()
+      loadAllData(true) // silent refresh
     } else {
       toast.error(data.error || 'Action failed')
     }
@@ -134,7 +158,7 @@ export default function AdminDashboard() {
     if (error) toast.error('Failed to delete')
     else {
       toast.success('Complaint deleted')
-      loadAllData()
+      loadAllData(true)
     }
   }
 
@@ -143,6 +167,7 @@ export default function AdminDashboard() {
     router.push('/')
   }
 
+  // Initial loading spinner
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -167,50 +192,55 @@ export default function AdminDashboard() {
       </nav>
 
       <div className="container mx-auto px-4 py-8">
+        {/* Quick Alerts Banner */}
+        {(stats.pendingMemberships > 0 || stats.pendingPayments > 0 || stats.pendingApplications > 0 || stats.unresolvedComplaints > 0) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {stats.pendingMemberships > 0 && (
+              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-yellow-800">
+                ⭐ {stats.pendingMemberships} owner(s) without membership
+              </motion.div>
+            )}
+            {stats.pendingPayments > 0 && (
+              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-800">
+                💰 {stats.pendingPayments} tenant(s) awaiting payment confirmation
+              </motion.div>
+            )}
+            {stats.pendingApplications > 0 && (
+              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-blue-800">
+                📋 {stats.pendingApplications} new application(s)
+              </motion.div>
+            )}
+            {stats.unresolvedComplaints > 0 && (
+              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-orange-800">
+                🔧 {stats.unresolvedComplaints} unresolved complaint(s)
+              </motion.div>
+            )}
+          </div>
+        )}
+
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-xl p-5 shadow-sm">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-xl p-5 shadow-sm hover:shadow-md transition">
             <p className="text-gray-500 text-sm">Properties</p>
             <p className="text-2xl font-bold text-slate-800">{stats.totalProperties}</p>
           </motion.div>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-white rounded-xl p-5 shadow-sm">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-white rounded-xl p-5 shadow-sm hover:shadow-md transition">
             <p className="text-gray-500 text-sm">Tenants</p>
             <p className="text-2xl font-bold text-slate-800">{stats.totalTenants}</p>
           </motion.div>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-white rounded-xl p-5 shadow-sm">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-white rounded-xl p-5 shadow-sm hover:shadow-md transition">
             <p className="text-gray-500 text-sm">Revenue (₹)</p>
             <p className="text-2xl font-bold text-green-600">{formatCurrency(stats.totalRevenue)}</p>
           </motion.div>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="bg-white rounded-xl p-5 shadow-sm">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="bg-white rounded-xl p-5 shadow-sm hover:shadow-md transition">
             <p className="text-gray-500 text-sm">Occupancy</p>
             <p className="text-2xl font-bold text-blue-600">{stats.occupancyRate}%</p>
           </motion.div>
         </div>
 
-        {/* Quick Alerts */}
-        {(stats.pendingPayments > 0 || stats.pendingApplications > 0 || stats.unresolvedComplaints > 0) && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            {stats.pendingPayments > 0 && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-800">
-                ⚠️ {stats.pendingPayments} tenant(s) awaiting payment confirmation
-              </div>
-            )}
-            {stats.pendingApplications > 0 && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-blue-800">
-                📋 {stats.pendingApplications} new application(s)
-              </div>
-            )}
-            {stats.unresolvedComplaints > 0 && (
-              <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-orange-800">
-                🔧 {stats.unresolvedComplaints} unresolved complaint(s)
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Charts */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white rounded-xl p-6 shadow-sm">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="bg-white rounded-xl p-6 shadow-sm">
             <h2 className="font-semibold text-slate-800 mb-4">Monthly Revenue</h2>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={revenueData}>
@@ -221,8 +251,8 @@ export default function AdminDashboard() {
                 <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
-          </div>
-          <div className="bg-white rounded-xl p-6 shadow-sm">
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="bg-white rounded-xl p-6 shadow-sm">
             <h2 className="font-semibold text-slate-800 mb-4">Occupancy</h2>
             <ResponsiveContainer width="100%" height={250}>
               <PieChart>
@@ -234,17 +264,17 @@ export default function AdminDashboard() {
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
-          </div>
+          </motion.div>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-3 mb-6">
+        <div className="flex flex-wrap gap-3 mb-6">
           {['overview', 'properties', 'tenants', 'payments', 'complaints', 'applications', 'vacate'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition ${
-                activeTab === tab ? 'bg-slate-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
+                activeTab === tab ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-gray-100'
               }`}
             >
               {tab}
@@ -254,9 +284,26 @@ export default function AdminDashboard() {
 
         {/* Tab Content */}
         {activeTab === 'overview' && (
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h2 className="font-semibold text-slate-800 mb-4">Recent Activity</h2>
-            <p className="text-gray-500">Use the tabs to manage properties, tenants, complaints, and memberships.</p>
+          <div className="grid md:grid-cols-2 gap-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-xl p-6 shadow-sm">
+              <h2 className="font-semibold text-slate-800 mb-4">Recent Activity</h2>
+              <div className="space-y-3">
+                {stats.pendingMemberships > 0 && <p className="text-yellow-700">⭐ {stats.pendingMemberships} owners need membership</p>}
+                {stats.pendingPayments > 0 && <p className="text-red-700">💰 {stats.pendingPayments} pending payment confirmations</p>}
+                {stats.pendingApplications > 0 && <p className="text-blue-700">📋 {stats.pendingApplications} new applications</p>}
+                {stats.unresolvedComplaints > 0 && <p className="text-orange-700">🔧 {stats.unresolvedComplaints} open complaints</p>}
+                {stats.totalProperties === 0 && <p className="text-gray-500">No properties yet. Invite owners to register!</p>}
+              </div>
+            </motion.div>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="bg-white rounded-xl p-6 shadow-sm">
+              <h2 className="font-semibold text-slate-800 mb-4">Quick Actions</h2>
+              <div className="space-y-2 text-sm text-gray-600">
+                <p>• Use the <strong>Properties</strong> tab to grant/revoke memberships.</p>
+                <p>• Review <strong>Applications</strong> to approve new tenants.</p>
+                <p>• Monitor <strong>Payments</strong> for revenue tracking.</p>
+                <p>• Manage <strong>Complaints</strong> – you can delete any complaint directly.</p>
+              </div>
+            </motion.div>
           </div>
         )}
 
@@ -274,7 +321,7 @@ export default function AdminDashboard() {
               </thead>
               <tbody>
                 {properties.map(p => (
-                  <tr key={p.id} className="border-b hover:bg-gray-50">
+                  <motion.tr key={p.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium">{p.name}</td>
                     <td className="px-4 py-3 text-gray-500">
                       {p.users?.full_name || 'N/A'}<br />
@@ -307,7 +354,7 @@ export default function AdminDashboard() {
                         </button>
                       )}
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
               </tbody>
             </table>
@@ -328,13 +375,13 @@ export default function AdminDashboard() {
               </thead>
               <tbody>
                 {tenants.map(t => (
-                  <tr key={t.id} className="border-b hover:bg-gray-50">
+                  <motion.tr key={t.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium">{t.name}</td>
                     <td className="px-4 py-3 text-gray-500">{t.phone}</td>
                     <td className="px-4 py-3">{t.rooms?.room_number || 'N/A'}</td>
                     <td className="px-4 py-3 text-gray-500">{t.properties?.name || 'N/A'}</td>
                     <td className="px-4 py-3">{t.status}</td>
-                  </tr>
+                  </motion.tr>
                 ))}
               </tbody>
             </table>
@@ -355,13 +402,13 @@ export default function AdminDashboard() {
               </thead>
               <tbody>
                 {payments.map(p => (
-                  <tr key={p.id} className="border-b hover:bg-gray-50">
+                  <motion.tr key={p.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3 text-gray-500">{formatDate(p.payment_date)}</td>
                     <td className="px-4 py-3 font-medium">{p.tenants?.name || 'N/A'}</td>
                     <td className="px-4 py-3 text-green-600 font-semibold">{formatCurrency(p.amount)}</td>
                     <td className="px-4 py-3 text-gray-500 capitalize">{p.payment_method}</td>
                     <td className="px-4 py-3"><span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">{p.status}</span></td>
-                  </tr>
+                  </motion.tr>
                 ))}
               </tbody>
             </table>
@@ -369,9 +416,9 @@ export default function AdminDashboard() {
         )}
 
         {activeTab === 'complaints' && (
-          <div className="bg-white rounded-xl shadow-sm space-y-4 p-4">
+          <div className="space-y-4">
             {complaints.map(c => (
-              <motion.div key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="border rounded-lg p-3 flex justify-between items-start">
+              <motion.div key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-xl border p-4 flex justify-between items-start">
                 <div>
                   <p className="font-semibold">{c.title}</p>
                   <p className="text-sm text-gray-500">From: {c.tenants?.name || c.tenant_name}</p>
@@ -385,36 +432,39 @@ export default function AdminDashboard() {
                 <button onClick={() => deleteComplaint(c.id)} className="text-red-500 hover:text-red-700 text-sm">Delete</button>
               </motion.div>
             ))}
+            {complaints.length === 0 && <p className="text-center text-gray-500 py-8">No complaints</p>}
           </div>
         )}
 
         {activeTab === 'applications' && (
-          <div className="bg-white rounded-xl shadow-sm space-y-4 p-4">
+          <div className="space-y-4">
             {applications.map(app => (
-              <div key={app.id} className="border rounded-lg p-3 flex justify-between items-center">
+              <motion.div key={app.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-xl border p-4 flex justify-between items-center">
                 <div>
                   <p className="font-semibold">{app.name}</p>
                   <p className="text-sm text-gray-500">📞 {app.phone}</p>
                   {app.message && <p className="text-sm text-gray-600">💬 {app.message}</p>}
                   <p className="text-xs text-gray-400">Applied: {formatDate(app.created_at)}</p>
                 </div>
-              </div>
+              </motion.div>
             ))}
+            {applications.length === 0 && <p className="text-center text-gray-500 py-8">No pending applications</p>}
           </div>
         )}
 
         {activeTab === 'vacate' && (
-          <div className="bg-white rounded-xl shadow-sm space-y-4 p-4">
+          <div className="space-y-4">
             {vacateRequests.map(v => (
-              <div key={v.id} className="border rounded-lg p-3 flex justify-between items-center">
+              <motion.div key={v.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-xl border p-4 flex justify-between items-center">
                 <div>
                   <p className="font-semibold">{v.tenants?.name || v.tenant_name}</p>
                   <p className="text-sm text-gray-500">Room {v.rooms?.room_number || v.room_number}</p>
                   <p className="text-sm">Expected: {formatDate(v.expected_check_out)}</p>
                 </div>
                 <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs">{v.status}</span>
-              </div>
+              </motion.div>
             ))}
+            {vacateRequests.length === 0 && <p className="text-center text-gray-500 py-8">No vacate requests</p>}
           </div>
         )}
       </div>
