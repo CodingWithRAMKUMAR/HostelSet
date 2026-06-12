@@ -40,21 +40,25 @@ export default function OwnerDashboard() {
   const [settings, setSettings] = useState({ joining_fee: 0, advance_months: 1, due_day: 5, upi_id: '' })
   const [stats, setStats] = useState({
     totalRooms: 0, occupied: 0, vacant: 0, totalCollected: 0, pendingAmount: 0,
-    totalComplaints: 0, pendingVacate: 0, overdueCount: 0, noticePeriodCount: 0, pendingPaymentCount: 0
+    totalComplaints: 0, pendingVacate: 0, overdueCount: 0, noticePeriodCount: 0,
+    pendingPaymentCount: 0, pendingRentConfirmations: 0
   })
   const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false)
   const [tenantToDelete, setTenantToDelete] = useState(null)
   const [showMembershipModal, setShowMembershipModal] = useState(false)
   const [membershipActive, setMembershipActive] = useState(false)
   const [membershipLoading, setMembershipLoading] = useState(false)
-  const [membershipStatus, setMembershipStatus] = useState('loading') // 'active', 'expired', 'none'
+  const [membershipStatus, setMembershipStatus] = useState('loading')
   const autoRefreshRef = useRef(null)
 
-  // Payment confirmation states
+  // Payment confirmation (self check‑in tenants)
   const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false)
   const [confirmingTenant, setConfirmingTenant] = useState(null)
 
-  // Application detail modal state
+  // Pending rent payment proofs
+  const [pendingRentPayments, setPendingRentPayments] = useState([])
+
+  // Application detail modal
   const [selectedApplication, setSelectedApplication] = useState(null)
   const [showApplicationDetailModal, setShowApplicationDetailModal] = useState(false)
 
@@ -124,7 +128,6 @@ export default function OwnerDashboard() {
     return { date: vacate.expected_check_out, daysLeft, overdue: false }
   }
 
-  // ✅ Updated membership check – uses property data directly
   const updateMembershipFromProperty = (propertyData) => {
     if (!propertyData) {
       setMembershipActive(false)
@@ -139,7 +142,7 @@ export default function OwnerDashboard() {
   const startAutoRefresh = () => {
     if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
     autoRefreshRef.current = setInterval(() => {
-      loadData(true) // silent refresh
+      loadData(true)
     }, 30000)
   }
 
@@ -224,12 +227,23 @@ export default function OwnerDashboard() {
         })
         setTenants(tenantsWithRoomNumber)
 
-        // ✅ Fix: totalCollected now sums total_paid from tenants
         const totalCollected = tenantsData?.reduce((sum, t) => sum + (t.total_paid || 0), 0) || 0
         const pendingAmount = tenantsData?.reduce((sum, t) => sum + (t.pending_amount || 0), 0) || 0
         const overdueCount = tenantsWithRoomNumber.filter(t => t.dueStatus.status === 'overdue').length
         const noticePeriodCount = tenantsWithRoomNumber.filter(t => t.status === 'notice_period').length
         const pendingPaymentCount = tenantsWithRoomNumber.filter(t => t.status === 'payment_pending').length
+
+        // Pending rent payment proofs (from tenant UPI submissions)
+        const tenantIds = tenantsData?.map(t => t.id) || []
+        const { data: pendingPayments } = await supabase
+          .from('payment_history')
+          .select('*, tenants(name, phone, room_id, rooms(room_number))')
+          .eq('status', 'payment_pending')
+          .in('tenant_id', tenantIds)
+          .order('payment_date', { ascending: false })
+
+        setPendingRentPayments(pendingPayments || [])
+        const pendingRentConfirmations = pendingPayments?.length || 0
 
         setStats({
           totalRooms: total,
@@ -241,8 +255,12 @@ export default function OwnerDashboard() {
           pendingVacate: 0,
           overdueCount,
           noticePeriodCount,
-          pendingPaymentCount
+          pendingPaymentCount,
+          pendingRentConfirmations
         })
+
+        // Auto‑delete complaints older than 24 hours
+        await supabase.from('complaints').delete().lt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
 
         const { data: appsData } = await supabase
           .from('applications')
@@ -373,7 +391,7 @@ export default function OwnerDashboard() {
         window.open(data.paymentLink, '_blank')
         toast.success('Redirecting to payment gateway...')
         setTimeout(async () => {
-          await loadData() // reload property & membership
+          await loadData()
           if (membershipActive) {
             setMembershipStatus('active')
             startAutoRefresh()
@@ -428,6 +446,57 @@ export default function OwnerDashboard() {
       await loadData()
     } catch (error) {
       toast.error('Failed to confirm payment: ' + error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // ✅ Confirm a regular rent UPI payment
+  const confirmRentPayment = async (paymentId, tenantId, amount) => {
+    setIsSubmitting(true)
+    try {
+      const { error: updatePayError } = await supabase
+        .from('payment_history')
+        .update({ status: 'success' })
+        .eq('id', paymentId)
+      if (updatePayError) throw updatePayError
+
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select('total_paid, pending_amount, rent_amount')
+        .eq('id', tenantId)
+        .single()
+      if (tenant) {
+        const newTotalPaid = (tenant.total_paid || 0) + amount
+        const newPending = Math.max(0, (tenant.pending_amount || 0) - amount)
+        const newStatus = newPending <= 0 ? 'paid' : 'pending'
+        await supabase.from('tenants').update({
+          total_paid: newTotalPaid,
+          pending_amount: newPending,
+          rent_status: newStatus,
+          last_payment_date: new Date().toISOString().split('T')[0]
+        }).eq('id', tenantId)
+      }
+
+      toast.success('✅ Rent payment confirmed!')
+      await loadData()
+    } catch (error) {
+      toast.error('Failed to confirm: ' + error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const rejectRentPayment = async (paymentId) => {
+    if (!confirm('Reject this payment? The record will be deleted.')) return
+    setIsSubmitting(true)
+    try {
+      const { error } = await supabase.from('payment_history').delete().eq('id', paymentId)
+      if (error) throw error
+      toast.success('Payment rejected and removed.')
+      await loadData()
+    } catch (error) {
+      toast.error('Failed to reject: ' + error.message)
     } finally {
       setIsSubmitting(false)
     }
@@ -1033,33 +1102,46 @@ export default function OwnerDashboard() {
           </div>
         </div>
 
-        {/* Quick pending payment tag in overview */}
-        {stats.pendingPaymentCount > 0 && activeTab === 'overview' && (
-          <div className="bg-red-50 rounded-xl p-4 mb-6 border border-red-100">
-            <p className="font-semibold text-red-800">⚠️ {stats.pendingPaymentCount} tenant(s) awaiting payment confirmation. <button onClick={() => setActiveTab('tenants')} className="underline">Review</button></p>
+        {/* Overview Alerts */}
+        {activeTab === 'overview' && (
+          <div>
+            {stats.pendingRentConfirmations > 0 && (
+              <div className="bg-red-50 rounded-xl p-4 mb-6 border border-red-100">
+                <p className="font-semibold text-red-800">💸 {stats.pendingRentConfirmations} rent payment(s) awaiting confirmation. <button onClick={() => setActiveTab('rent-payments')} className="underline">Review</button></p>
+              </div>
+            )}
+            {stats.pendingPaymentCount > 0 && (
+              <div className="bg-red-50 rounded-xl p-4 mb-6 border border-red-100">
+                <p className="font-semibold text-red-800">⚠️ {stats.pendingPaymentCount} tenant(s) awaiting payment confirmation. <button onClick={() => setActiveTab('tenants')} className="underline">Review</button></p>
+              </div>
+            )}
+            {/* Due Today Section */}
+            <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
+              <h3 className="font-semibold text-slate-800 mb-4">📅 Due Today</h3>
+              {tenants.filter(t => {
+                const due = calculateRentDueStatus(t)
+                return due.daysUntilDue !== null && due.daysUntilDue === 0
+              }).length === 0 ? (
+                <p className="text-gray-500">No tenants due today.</p>
+              ) : (
+                <div className="space-y-3">
+                  {tenants.filter(t => {
+                    const due = calculateRentDueStatus(t)
+                    return due.daysUntilDue !== null && due.daysUntilDue === 0
+                  }).map(t => (
+                    <div key={t.id} className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
+                      <div>
+                        <p className="font-medium text-slate-700">{t.name}</p>
+                        <p className="text-xs text-gray-400">Room {t.room_number || getRoomNumberById(t.room_id)}</p>
+                      </div>
+                      <p className="text-sm font-semibold text-red-600">Due: {formatCurrency(t.pending_amount || t.rent_amount)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
-
-        {/* Property Photos */}
-        <div className="bg-white rounded-xl border border-gray-100 p-6 mb-8">
-          <h2 className="text-lg font-semibold text-slate-800 mb-4">📸 Property Photos</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {propertyImages && propertyImages.length > 0 ? (
-              propertyImages.map((img, i) => (
-                <div key={i} className="relative group">
-                  <img src={img} alt={`Property ${i + 1}`} className="w-full h-24 object-cover rounded-lg" onError={(e) => { e.target.src = 'https://via.placeholder.com/150?text=Error' }} />
-                  <button onClick={() => removeImage(img)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-sm opacity-0 group-hover:opacity-100 transition flex items-center justify-center">✕</button>
-                </div>
-              ))
-            ) : (
-              <div className="col-span-full text-center py-4 text-gray-400 text-sm">No photos yet. Click "Add Photo" to upload property images.</div>
-            )}
-            <label className={`border-2 border-dashed border-gray-300 rounded-lg h-24 flex flex-col items-center justify-center cursor-pointer hover:border-slate-400 transition ${uploadingImage ? 'opacity-50 cursor-wait' : ''}`}>
-              <div className="text-center"><div className="text-2xl mb-1">{uploadingImage ? '⏳' : '📷'}</div><div className="text-xs text-gray-400">{uploadingImage ? 'Uploading...' : 'Add Photo'}</div><div className="text-xs text-gray-300 mt-1">JPEG, PNG up to 5MB</div></div>
-              <input type="file" accept="image/jpeg,image/jpg,image/png,image/webp" multiple className="hidden" onChange={handleImageUpload} disabled={uploadingImage} />
-            </label>
-          </div>
-        </div>
 
         {/* Action Buttons (disabled when not active) */}
         <div className="flex flex-wrap gap-3 mb-8">
@@ -1111,10 +1193,10 @@ export default function OwnerDashboard() {
 
         {/* Tabs */}
         <div className="flex flex-wrap border-b border-gray-200 mb-6 gap-2">
-          {['overview', 'rooms', 'tenants', 'complaints', 'vacate', 'applications', 'notices'].map((tab) => (
+          {['overview', 'rooms', 'tenants', 'rent-payments', 'complaints', 'vacate', 'applications', 'notices'].map((tab) => (
             <button 
               key={tab} 
-              onClick={() => membershipActive && setActiveTab(tab)} 
+              onClick={() => setActiveTab(tab)} 
               disabled={!membershipActive}
               className={`px-5 py-2 text-sm font-semibold capitalize transition-all rounded-t-lg ${
                 activeTab === tab 
@@ -1124,6 +1206,7 @@ export default function OwnerDashboard() {
                     : 'text-gray-400 cursor-not-allowed'
               }`}
             >
+              {tab === 'rent-payments' && `💸 Rent Payments (${stats.pendingRentConfirmations})`}
               {tab === 'overview' && '📊 Overview'}
               {tab === 'rooms' && `🏠 Rooms (${rooms.length})`}
               {tab === 'tenants' && `👥 Tenants (${tenants.length})`}
@@ -1136,6 +1219,8 @@ export default function OwnerDashboard() {
         </div>
 
         {/* Tab Content */}
+
+        {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border border-gray-100 p-6">
@@ -1170,6 +1255,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
+        {/* Rooms Tab */}
         {activeTab === 'rooms' && (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {rooms.map((room) => {
@@ -1208,6 +1294,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
+        {/* Tenants Tab */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1282,6 +1369,48 @@ export default function OwnerDashboard() {
           </div>
         )}
 
+        {/* Rent Payments Tab */}
+        {activeTab === 'rent-payments' && (
+          <div className="space-y-4">
+            {pendingRentPayments.length === 0 && (
+              <div className="text-center py-12 bg-gray-50 rounded-xl">No pending rent payments.</div>
+            )}
+            {pendingRentPayments.map(p => (
+              <div key={p.id} className="bg-white rounded-xl border p-4 flex flex-col sm:flex-row justify-between items-start gap-4">
+                <div>
+                  <p className="font-semibold">{p.tenants?.name || 'N/A'}</p>
+                  <p className="text-sm text-gray-500">Room {p.tenants?.rooms?.room_number || 'N/A'}</p>
+                  <p className="text-sm">Amount: {formatCurrency(p.amount)}</p>
+                  <p className="text-sm">Date: {formatDate(p.payment_date)}</p>
+                  {p.upi_transaction_id && <p className="text-xs text-gray-500">UTR: {p.upi_transaction_id}</p>}
+                  {p.payment_screenshot && (
+                    <div className="mt-2">
+                      <img src={p.payment_screenshot} alt="Payment proof" className="max-h-32 rounded-lg border" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => confirmRentPayment(p.id, p.tenant_id, p.amount)}
+                    disabled={isSubmitting}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition"
+                  >
+                    Received
+                  </button>
+                  <button 
+                    onClick={() => rejectRentPayment(p.id)}
+                    disabled={isSubmitting}
+                    className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition"
+                  >
+                    Not Received
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Complaints Tab */}
         {activeTab === 'complaints' && (
           <div className="space-y-4">
             {complaints.map(c => (
@@ -1297,6 +1426,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
+        {/* Vacate Tab */}
         {activeTab === 'vacate' && (
           <div className="space-y-4">
             {vacateRequests.map(req => {
@@ -1316,6 +1446,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
+        {/* Applications Tab */}
         {activeTab === 'applications' && (
           <div className="space-y-4">
             {applications.map(app => (
@@ -1338,6 +1469,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
+        {/* Notices Tab */}
         {activeTab === 'notices' && (
           <div className="space-y-4">
             <button onClick={() => setShowNoticeModal(true)} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold mb-4 hover:bg-slate-700 transition">+ Post New Notice</button>
@@ -1354,7 +1486,7 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* Modals */}
+      {/* Confirm Delete Modal */}
       <AnimatePresence>{showConfirmDeleteModal && tenantToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
@@ -1454,7 +1586,7 @@ export default function OwnerDashboard() {
         </div>
       )}</AnimatePresence>
 
-      {/* Payment Confirmation Modal */}
+      {/* Payment Confirmation Modal (self check‑in tenants) */}
       <AnimatePresence>
         {showPaymentConfirmModal && confirmingTenant && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentConfirmModal(false)}>
