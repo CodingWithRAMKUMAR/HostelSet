@@ -29,8 +29,8 @@ export default function OwnerDashboard() {
   const [selectedComplaint, setSelectedComplaint] = useState(null)
   const [showComplaintResponseModal, setShowComplaintResponseModal] = useState(false)
   const [complaintResponse, setComplaintResponse] = useState('')
-  const [formData, setFormData] = useState({ 
-    name: '', phone: '', email: '', rent_amount: '', room_id: '', advance_amount: '1', joining_fee: '0' 
+  const [formData, setFormData] = useState({
+    name: '', phone: '', email: '', rent_amount: '', room_id: '', advance_amount: '1', joining_fee: '0'
   })
   const [roomForm, setRoomForm] = useState({ room_number: '', sharing_type: 'double', monthly_rent: 10000 })
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false })
@@ -38,18 +38,21 @@ export default function OwnerDashboard() {
   const [activeTab, setActiveTab] = useState('overview')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [settings, setSettings] = useState({ joining_fee: 0, advance_months: 1, due_day: 5, upi_id: '' })
-  const [stats, setStats] = useState({ 
-    totalRooms: 0, occupied: 0, vacant: 0, totalCollected: 0, pendingAmount: 0, 
-    totalComplaints: 0, pendingVacate: 0, overdueCount: 0, noticePeriodCount: 0 
+  const [stats, setStats] = useState({
+    totalRooms: 0, occupied: 0, vacant: 0, totalCollected: 0, pendingAmount: 0,
+    totalComplaints: 0, pendingVacate: 0, overdueCount: 0, noticePeriodCount: 0, pendingPaymentCount: 0
   })
   const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false)
   const [tenantToDelete, setTenantToDelete] = useState(null)
   const [showMembershipModal, setShowMembershipModal] = useState(false)
   const [membershipActive, setMembershipActive] = useState(false)
   const [membershipLoading, setMembershipLoading] = useState(false)
-  // New: membership status for gating (active, expired, none)
-  const [membershipStatus, setMembershipStatus] = useState('loading')
+  const [membershipStatus, setMembershipStatus] = useState('loading') // 'active', 'expired', 'none'
   const autoRefreshRef = useRef(null)
+
+  // Payment confirmation states
+  const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false)
+  const [confirmingTenant, setConfirmingTenant] = useState(null)
 
   const sharingTypes = [
     { value: 'single', label: 'Single Sharing', capacity: 1, icon: '👤', price: 15000 },
@@ -157,9 +160,9 @@ export default function OwnerDashboard() {
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('isLoggedIn')
     const userRole = localStorage.getItem('userRole')
-    if (!isLoggedIn || userRole !== 'owner') { 
+    if (!isLoggedIn || userRole !== 'owner') {
       router.push('/login')
-      return 
+      return
     }
 
     const initDashboard = async () => {
@@ -212,27 +215,27 @@ export default function OwnerDashboard() {
         .select('*')
         .eq('owner_id', userId)
         .maybeSingle()
-      
+
       if (propertyData) {
         setProperty(propertyData)
         setPropertyImages(propertyData.photos || [])
-        
+
         const { data: roomsData } = await supabase
           .from('rooms')
           .select('*')
           .eq('property_id', propertyData.id)
           .order('room_number')
         setRooms(roomsData || [])
-        
+
         const total = roomsData?.length || 0
         const occupied = roomsData?.filter(r => r.current_occupants >= r.capacity).length || 0
         const vacant = total - occupied
-        
+
         const { data: tenantsData } = await supabase
           .from('tenants')
           .select('*')
           .eq('property_id', propertyData.id)
-        
+
         const tenantsWithRoomNumber = (tenantsData || []).map(tenant => {
           const room = roomsData?.find(r => r.id === tenant.room_id)
           return {
@@ -242,7 +245,7 @@ export default function OwnerDashboard() {
           }
         })
         setTenants(tenantsWithRoomNumber)
-        
+
         let totalCollected = 0
         if (tenantsData && tenantsData.length > 0) {
           for (const tenant of tenantsData) {
@@ -256,30 +259,32 @@ export default function OwnerDashboard() {
             }
           }
         }
-        
+
         const pendingAmount = tenantsData?.reduce((sum, t) => sum + (t.pending_amount || 0), 0) || 0
         const overdueCount = tenantsWithRoomNumber.filter(t => t.dueStatus.status === 'overdue').length
         const noticePeriodCount = tenantsWithRoomNumber.filter(t => t.status === 'notice_period').length
-        
-        setStats({ 
-          totalRooms: total, 
-          occupied, 
-          vacant, 
-          totalCollected, 
+        const pendingPaymentCount = tenantsWithRoomNumber.filter(t => t.status === 'payment_pending').length
+
+        setStats({
+          totalRooms: total,
+          occupied,
+          vacant,
+          totalCollected,
           pendingAmount,
           totalComplaints: 0,
           pendingVacate: 0,
           overdueCount,
-          noticePeriodCount
+          noticePeriodCount,
+          pendingPaymentCount
         })
-        
+
         const { data: appsData } = await supabase
           .from('applications')
           .select('*')
           .eq('property_id', propertyData.id)
           .eq('status', 'pending')
         setApplications(appsData || [])
-        
+
         const { data: vacateData } = await supabase
           .from('check_out_requests')
           .select('*')
@@ -288,7 +293,7 @@ export default function OwnerDashboard() {
           .order('created_at', { ascending: false })
         setVacateRequests(vacateData || [])
         setStats(prev => ({ ...prev, pendingVacate: vacateData?.filter(v => v.status === 'pending').length || 0 }))
-        
+
         const { data: complaintsData } = await supabase
           .from('complaints')
           .select('*')
@@ -297,7 +302,7 @@ export default function OwnerDashboard() {
           .order('created_at', { ascending: false })
         setComplaints(complaintsData || [])
         setStats(prev => ({ ...prev, totalComplaints: complaintsData?.length || 0 }))
-        
+
         const { data: noticesData } = await supabase
           .from('notices')
           .select('*')
@@ -305,10 +310,10 @@ export default function OwnerDashboard() {
           .order('created_at', { ascending: false })
         setNotices(noticesData || [])
       }
-    } catch (error) { 
+    } catch (error) {
       console.error('Load error:', error)
       toast.error('Failed to load data: ' + error.message, { duration: 3000 })
-    } finally { 
+    } finally {
       if (!isBackgroundRefresh) setLoading(false)
     }
   }
@@ -321,7 +326,7 @@ export default function OwnerDashboard() {
         .select('*')
         .eq('owner_id', userId)
         .maybeSingle()
-      
+
       if (data) {
         setSettings({
           joining_fee: data.joining_fee || 0,
@@ -365,7 +370,7 @@ export default function OwnerDashboard() {
           updated_at: new Date()
         })
       if (settingsError) throw settingsError
-      
+
       if (property) {
         const { error: propError } = await supabase
           .from('properties')
@@ -373,7 +378,7 @@ export default function OwnerDashboard() {
           .eq('id', property.id)
         if (propError) throw propError
       }
-      
+
       toast.success('Settings saved!', { duration: 2000 })
       setShowSettingsModal(false)
     } catch (error) {
@@ -445,6 +450,26 @@ export default function OwnerDashboard() {
     })
   }
 
+  // ✅ New: Confirm payment for a self-checkin tenant
+  const confirmPayment = async (tenantId) => {
+    setIsSubmitting(true)
+    try {
+      const { error } = await supabase
+        .from('tenants')
+        .update({ status: 'active' })
+        .eq('id', tenantId)
+      if (error) throw error
+      toast.success('✅ Payment confirmed! Tenant now active.')
+      setShowPaymentConfirmModal(false)
+      setConfirmingTenant(null)
+      await loadData()
+    } catch (error) {
+      toast.error('Failed to confirm payment: ' + error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const getTenantsInRoom = (roomId) => {
     return tenants.filter(t => t.room_id === roomId)
   }
@@ -457,10 +482,10 @@ export default function OwnerDashboard() {
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files)
     if (files.length === 0) return
-    
+
     setUploadingImage(true)
     let successCount = 0
-    
+
     for (const file of files) {
       try {
         if (!file.type.startsWith('image/')) {
@@ -519,9 +544,9 @@ export default function OwnerDashboard() {
   }
 
   const addRoom = async () => {
-    if (!roomForm.room_number) { 
+    if (!roomForm.room_number) {
       toast.error('Enter room number')
-      return 
+      return
     }
     const roomExists = rooms.some(r => r.room_number === roomForm.room_number)
     if (roomExists) {
@@ -530,18 +555,18 @@ export default function OwnerDashboard() {
     }
     setIsSubmitting(true)
     const selectedType = sharingTypes.find(t => t.value === roomForm.sharing_type)
-    const { error } = await supabase.from('rooms').insert({ 
-      property_id: property.id, 
-      room_number: roomForm.room_number, 
-      sharing_type: roomForm.sharing_type, 
-      monthly_rent: parseInt(roomForm.monthly_rent) || selectedType.price, 
-      capacity: selectedType.capacity, 
-      current_occupants: 0, 
-      status: 'vacant' 
+    const { error } = await supabase.from('rooms').insert({
+      property_id: property.id,
+      room_number: roomForm.room_number,
+      sharing_type: roomForm.sharing_type,
+      monthly_rent: parseInt(roomForm.monthly_rent) || selectedType.price,
+      capacity: selectedType.capacity,
+      current_occupants: 0,
+      status: 'vacant'
     })
     if (error) {
       toast.error('Failed to add room: ' + error.message)
-    } else { 
+    } else {
       toast.success(`Room ${roomForm.room_number} added!`, { duration: 2000 })
       setShowRoomModal(false)
       setRoomForm({ room_number: '', sharing_type: 'double', monthly_rent: 10000 })
@@ -573,7 +598,7 @@ export default function OwnerDashboard() {
       toast.error(`Room ${selectedRoom.room_number} is full!`)
       return
     }
-    
+
     setIsSubmitting(true)
     try {
       const tenantEmail = formData.email.trim()
@@ -651,10 +676,10 @@ export default function OwnerDashboard() {
       if (advanceMonths > 0) {
         toast.success(`✅ No rent due for ${advanceMonths} month(s)`, { duration: 3000 })
       }
-      
+
       setShowAddModal(false)
-      setFormData({ 
-        name: '', phone: '', email: '', rent_amount: '', room_id: '', advance_amount: '0', joining_fee: '0' 
+      setFormData({
+        name: '', phone: '', email: '', rent_amount: '', room_id: '', advance_amount: '0', joining_fee: '0'
       })
       await loadData()
     } catch (error) {
@@ -668,22 +693,20 @@ export default function OwnerDashboard() {
   const deleteTenantComplete = async (tenantId, roomId, userId) => {
     setIsSubmitting(true)
     try {
-      await supabase.from('payment_history').delete().eq('tenant_id', tenantId)
-      await supabase.from('complaints').delete().eq('tenant_id', tenantId)
-      await supabase.from('check_out_requests').delete().eq('tenant_id', tenantId)
-      await supabase.from('tenants').delete().eq('id', tenantId)
-      const room = rooms.find(r => r.id === roomId)
-      if (room) {
-        const newOccupants = Math.max(0, room.current_occupants - 1)
-        const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
-        await supabase.from('rooms').update({ current_occupants: newOccupants, status: newStatus }).eq('id', roomId)
-      }
+      // The database trigger now handles all cascading deletes.
+      // We just need to delete the tenant row; the trigger does the rest.
+      const { error } = await supabase.from('tenants').delete().eq('id', tenantId)
+      if (error) throw error
+
+      // Optionally delete the user – trigger on users will also clean up
       if (userId) {
         const { error: userError } = await supabase.from('users').delete().eq('id', userId)
         if (userError) {
+          // Fallback: mark user inactive
           await supabase.from('users').update({ is_active: false, role: 'inactive' }).eq('id', userId)
         }
       }
+
       toast.success('✅ Tenant and all related data permanently deleted!', { duration: 3000 })
       await loadData()
     } catch (error) {
@@ -699,12 +722,7 @@ export default function OwnerDashboard() {
   const deleteTenantSoft = async (tenantId, roomId) => {
     setIsSubmitting(true)
     try {
-      const room = rooms.find(r => r.id === roomId)
-      if (room) {
-        const newOccupants = Math.max(0, room.current_occupants - 1)
-        const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
-        await supabase.from('rooms').update({ current_occupants: newOccupants, status: newStatus }).eq('id', roomId)
-      }
+      // Soft delete: just delete the tenant record (trigger handles rest)
       await supabase.from('tenants').delete().eq('id', tenantId)
       toast.success('Tenant removed from room (history preserved)', { duration: 2000 })
       await loadData()
@@ -719,17 +737,17 @@ export default function OwnerDashboard() {
   }
 
   const postNotice = async () => {
-    if (!noticeForm.title || !noticeForm.content) { 
+    if (!noticeForm.title || !noticeForm.content) {
       toast.error('Please fill both title and content')
-      return 
+      return
     }
     setIsSubmitting(true)
     try {
-      const { error } = await supabase.from('notices').insert({ 
-        property_id: property.id, 
-        title: noticeForm.title, 
-        content: noticeForm.content, 
-        type: noticeForm.type, 
+      const { error } = await supabase.from('notices').insert({
+        property_id: property.id,
+        title: noticeForm.title,
+        content: noticeForm.content,
+        type: noticeForm.type,
         is_urgent: noticeForm.is_urgent,
         created_at: new Date().toISOString()
       })
@@ -763,22 +781,22 @@ export default function OwnerDashboard() {
   }
 
   const collectRent = async () => {
-    if (!selectedTenant || !paymentAmount) { 
+    if (!selectedTenant || !paymentAmount) {
       toast.error('Enter amount')
-      return 
+      return
     }
     const amount = parseInt(paymentAmount)
     const maxAmount = selectedTenant.pending_amount || selectedTenant.rent_amount
-    if (amount > maxAmount) { 
+    if (amount > maxAmount) {
       toast.error(`Max payable: ₹${maxAmount.toLocaleString()}`)
-      return 
+      return
     }
     setIsSubmitting(true)
     try {
-      const { error: paymentError } = await supabase.from('payment_history').insert({ 
-        tenant_id: selectedTenant.id, 
-        amount: amount, 
-        payment_date: new Date().toISOString().split('T')[0], 
+      const { error: paymentError } = await supabase.from('payment_history').insert({
+        tenant_id: selectedTenant.id,
+        amount: amount,
+        payment_date: new Date().toISOString().split('T')[0],
         payment_method: 'cash',
         status: 'success'
       })
@@ -788,11 +806,11 @@ export default function OwnerDashboard() {
       const newRentStatus = newPendingAmount <= 0 ? 'paid' : 'pending'
       const { error: updateError } = await supabase
         .from('tenants')
-        .update({ 
-          total_paid: newTotalPaid, 
-          pending_amount: newPendingAmount, 
-          rent_status: newRentStatus, 
-          last_payment_date: new Date().toISOString().split('T')[0] 
+        .update({
+          total_paid: newTotalPaid,
+          pending_amount: newPendingAmount,
+          rent_status: newRentStatus,
+          last_payment_date: new Date().toISOString().split('T')[0]
         })
         .eq('id', selectedTenant.id)
       if (updateError) throw updateError
@@ -857,13 +875,13 @@ export default function OwnerDashboard() {
     if (!confirm('Approve vacate request? Tenant will be put on notice period.')) return
     setIsSubmitting(true)
     try {
-      await supabase.from('check_out_requests').update({ 
-        status: 'approved', 
+      await supabase.from('check_out_requests').update({
+        status: 'approved',
         processed_at: new Date(),
         owner_notes: 'Vacation approved.'
       }).eq('id', requestId)
-      await supabase.from('tenants').update({ 
-        status: 'notice_period', 
+      await supabase.from('tenants').update({
+        status: 'notice_period',
         check_out_requested: true,
         notice_period_start: new Date().toISOString().split('T')[0],
         notice_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
@@ -912,9 +930,9 @@ export default function OwnerDashboard() {
         status: 'active'
       })
       const newOccupants = (room.current_occupants || 0) + 1
-      await supabase.from('rooms').update({ 
-        current_occupants: newOccupants, 
-        status: newOccupants >= room.capacity ? 'occupied' : 'vacant' 
+      await supabase.from('rooms').update({
+        current_occupants: newOccupants,
+        status: newOccupants >= room.capacity ? 'occupied' : 'vacant'
       }).eq('id', app.room_id)
       await supabase.from('applications').update({ status: 'approved', processed_at: new Date() }).eq('id', appId)
       toast.success('Application approved!', { duration: 2000 })
@@ -929,9 +947,9 @@ export default function OwnerDashboard() {
 
   const deleteRoom = async (id) => {
     const room = rooms.find(r => r.id === id)
-    if (room.current_occupants > 0) { 
+    if (room.current_occupants > 0) {
       toast.error(`Cannot delete room with ${room.current_occupants} occupants`)
-      return 
+      return
     }
     if (!confirm(`Delete Room ${room.room_number}?`)) return
     setIsSubmitting(true)
@@ -946,9 +964,9 @@ export default function OwnerDashboard() {
     }
   }
 
-  const handleLogout = () => { 
+  const handleLogout = () => {
     localStorage.clear()
-    router.push('/') 
+    router.push('/')
   }
 
   if (loading) return (
@@ -959,7 +977,7 @@ export default function OwnerDashboard() {
       </div>
     </div>
   )
-  
+
   if (!property) return (
     <div className="min-h-screen bg-white">
       <nav className="bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center">
@@ -993,6 +1011,21 @@ export default function OwnerDashboard() {
         </div>
       )}
 
+      {/* Pending payment alert */}
+      {stats.pendingPaymentCount > 0 && (
+        <div className="bg-red-100 border-b border-red-300 px-4 py-3 text-center">
+          <p className="text-red-800 font-semibold">
+            ⚠️ You have {stats.pendingPaymentCount} pending payment{stats.pendingPaymentCount > 1 ? 's' : ''}. 
+            <button 
+              onClick={() => setActiveTab('tenants')} 
+              className="ml-2 underline text-red-900 font-bold"
+            >
+              Review now
+            </button>
+          </p>
+        </div>
+      )}
+
       {/* ==================== NAVIGATION ==================== */}
       <nav className="bg-white border-b border-gray-100 sticky top-0 z-40 px-6 py-4">
         <div className="container mx-auto flex justify-between items-center">
@@ -1020,7 +1053,7 @@ export default function OwnerDashboard() {
           </div>
         </div>
       </nav>
-      
+
       <div className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
           <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
@@ -1048,7 +1081,14 @@ export default function OwnerDashboard() {
             <div className="text-xs text-gray-500">Notice Period</div>
           </div>
         </div>
-        
+
+        {/* Quick pending payment tag in overview */}
+        {stats.pendingPaymentCount > 0 && activeTab === 'overview' && (
+          <div className="bg-red-50 rounded-xl p-4 mb-6 border border-red-100">
+            <p className="font-semibold text-red-800">⚠️ {stats.pendingPaymentCount} tenant(s) awaiting payment confirmation. <button onClick={() => setActiveTab('tenants')} className="underline">Review</button></p>
+          </div>
+        )}
+
         <div className="bg-white rounded-xl border border-gray-100 p-6 mb-8">
           <h2 className="text-lg font-semibold text-slate-800 mb-4">📸 Property Photos</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1068,7 +1108,7 @@ export default function OwnerDashboard() {
             </label>
           </div>
         </div>
-        
+
         {/* ==================== ACTION BUTTONS (disabled when not active) ==================== */}
         <div className="flex flex-wrap gap-3 mb-8">
           <button 
@@ -1116,7 +1156,7 @@ export default function OwnerDashboard() {
             ⚙️ Settings
           </button>
         </div>
-        
+
         {/* ==================== TABS (disabled when not active) ==================== */}
         <div className="flex flex-wrap border-b border-gray-200 mb-6 gap-2">
           {['overview', 'rooms', 'tenants', 'complaints', 'vacate', 'applications', 'notices'].map((tab) => (
@@ -1235,12 +1275,17 @@ export default function OwnerDashboard() {
                 {tenants.map(t => {
                   const dueStatus = calculateRentDueStatus(t)
                   const isNoticePeriod = t.status === 'notice_period'
+                  const isPaymentPending = t.status === 'payment_pending'
                   const vacateRequest = vacateRequests.find(v => v.tenant_id === t.id && v.status === 'approved')
                   const vacateDate = vacateRequest ? new Date(vacateRequest.expected_check_out) : null
                   const daysToVacate = vacateDate ? Math.ceil((vacateDate - new Date()) / (1000 * 60 * 60 * 24)) : null
                   return (
-                    <tr key={t.id} className={`border-b hover:bg-gray-50 ${dueStatus.status === 'overdue' ? 'bg-red-50' : dueStatus.status === 'due_soon' ? 'bg-orange-50' : ''} ${isNoticePeriod ? 'bg-purple-50' : ''}`}>
-                      <td className="px-4 py-3 font-medium text-slate-700">{t.name} {isNoticePeriod && <span className="ml-2 text-xs bg-purple-200 text-purple-800 px-1 rounded">Notice</span>}</td>
+                    <tr key={t.id} className={`border-b hover:bg-gray-50 ${dueStatus.status === 'overdue' ? 'bg-red-50' : dueStatus.status === 'due_soon' ? 'bg-orange-50' : ''} ${isNoticePeriod ? 'bg-purple-50' : ''} ${isPaymentPending ? 'bg-yellow-50' : ''}`}>
+                      <td className="px-4 py-3 font-medium text-slate-700">
+                        {t.name}
+                        {isNoticePeriod && <span className="ml-2 text-xs bg-purple-200 text-purple-800 px-1 rounded">Notice</span>}
+                        {isPaymentPending && <span className="ml-2 text-xs bg-yellow-200 text-yellow-800 px-1 rounded">Payment Pending</span>}
+                      </td>
                       <td className="px-4 py-3 text-gray-500">{t.phone}</td>
                       <td className="px-4 py-3 font-medium text-slate-700">Room {t.room_number || getRoomNumberById(t.room_id)}</td>
                       <td className="px-4 py-3 font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</td>
@@ -1257,11 +1302,23 @@ export default function OwnerDashboard() {
                         {isNoticePeriod && daysToVacate !== null && daysToVacate <= 0 && (
                           <span className="ml-1 px-2 py-1 bg-red-200 text-red-800 rounded-full text-xs">⚠️ Vacate overdue</span>
                         )}
-                       </td>
+                        {isPaymentPending && (
+                          <span className="ml-1 px-2 py-1 bg-yellow-200 text-yellow-800 rounded-full text-xs">⏳ Awaiting approval</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
-                        <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
+                        {isPaymentPending ? (
+                          <button 
+                            onClick={() => { setConfirmingTenant(t); setShowPaymentConfirmModal(true) }}
+                            className="bg-yellow-600 text-white px-3 py-1 rounded text-xs mr-2"
+                          >
+                            Confirm Payment
+                          </button>
+                        ) : (
+                          <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
+                        )}
                         <button onClick={() => { setTenantToDelete(t); setShowConfirmDeleteModal(true) }} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition">Delete</button>
-                       </td>
+                      </td>
                     </tr>
                   )
                 })}
@@ -1336,6 +1393,7 @@ export default function OwnerDashboard() {
       </div>
 
       {/* ==================== MODALS ==================== */}
+      {/* Confirm Delete Modal */}
       <AnimatePresence>{showConfirmDeleteModal && tenantToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
@@ -1434,6 +1492,43 @@ export default function OwnerDashboard() {
           </div>
         </div>
       )}</AnimatePresence>
+
+      {/* Payment Confirmation Modal */}
+      <AnimatePresence>
+        {showPaymentConfirmModal && confirmingTenant && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentConfirmModal(false)}>
+            <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+              <h2 className="text-2xl font-bold mb-4">Confirm Payment</h2>
+              <div className="bg-gray-50 rounded-xl p-4 mb-4">
+                <p className="font-semibold">{confirmingTenant.name}</p>
+                <p className="text-sm text-gray-500">Room {confirmingTenant.room_number || getRoomNumberById(confirmingTenant.room_id)}</p>
+                <p className="text-sm text-gray-500 mt-2">UPI Transaction ID: {confirmingTenant.upi_transaction_id || 'N/A'}</p>
+                {confirmingTenant.payment_screenshot && (
+                  <div className="mt-2">
+                    <p className="text-xs text-gray-500 mb-1">Payment Screenshot:</p>
+                    <img src={confirmingTenant.payment_screenshot} alt="Payment proof" className="w-full rounded-lg max-h-48 object-cover" />
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => confirmPayment(confirmingTenant.id)} 
+                  disabled={isSubmitting}
+                  className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Confirming...' : '✅ Confirm Payment'}
+                </button>
+                <button 
+                  onClick={() => setShowPaymentConfirmModal(false)} 
+                  className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
