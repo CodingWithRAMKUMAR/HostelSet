@@ -33,6 +33,8 @@ export default function TenantDashboard() {
   const [ratingHover, setRatingHover] = useState(0)
   // UPI payment states
   const [ownerUpiId, setOwnerUpiId] = useState('')
+  const [paymentScreenshot, setPaymentScreenshot] = useState(null)
+  const [paymentTransactionId, setPaymentTransactionId] = useState('')
 
   // Calculate next due date
   const calculateNextDueDate = () => {
@@ -275,58 +277,46 @@ export default function TenantDashboard() {
     }
   }
 
-  // ✅ NEW: Direct UPI payment (no Dodo)
-  const handleUpiPayment = async () => {
-    if (!ownerUpiId) {
-      toast.error('Owner UPI ID not set. Please contact your owner.')
-      return
-    }
-    const amount = tenant.pending_amount || tenant.rent_amount
-    if (amount <= 0) {
-      toast.error('No pending amount to pay')
-      return
-    }
-    // Open UPI app
-    const upiLink = `upi://pay?pa=${ownerUpiId}&pn=HostelSet&am=${amount}&cu=INR`
-    window.open(upiLink, '_blank')
-    // Show a confirmation toast
-    toast.success('UPI app opened. Pay the exact amount, then come back and click "I Have Paid".', { duration: 6000 })
+  // Direct UPI payment with proof
+  const uploadFile = async (file, prefix) => {
+    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${file.name.split('.').pop()}`
+    const { data, error } = await supabase.storage
+      .from('tenant-documents')
+      .upload(fileName, file, { cacheControl: '3600' })
+    if (error) throw error
+    const { data: { publicUrl } } = supabase.storage.from('tenant-documents').getPublicUrl(fileName)
+    return publicUrl
   }
 
-  const confirmUpiPayment = async () => {
-    const amount = tenant.pending_amount || tenant.rent_amount
+  const submitPaymentWithProof = async () => {
+    if (!paymentScreenshot) {
+      toast.error('Please upload payment screenshot')
+      return
+    }
     setPaymentLoading(true)
     try {
-      // Record payment as successful UPI payment
+      const screenshotUrl = await uploadFile(paymentScreenshot, 'rent')
+      const amount = tenant.pending_amount || tenant.rent_amount
+      // Insert payment record with pending status
       const { error: paymentError } = await supabase.from('payment_history').insert({
         tenant_id: tenant.id,
         amount: amount,
         payment_date: new Date().toISOString().split('T')[0],
         payment_method: 'upi',
-        status: 'success'
+        status: 'payment_pending',
+        payment_screenshot: screenshotUrl,
+        upi_transaction_id: paymentTransactionId
       })
       if (paymentError) throw paymentError
 
-      const newTotalPaid = (tenant.total_paid || 0) + amount
-      const newPendingAmount = Math.max(0, (tenant.pending_amount || 0) - amount)
-      const newRentStatus = newPendingAmount <= 0 ? 'paid' : 'pending'
-      const { error: updateError } = await supabase
-        .from('tenants')
-        .update({
-          total_paid: newTotalPaid,
-          pending_amount: newPendingAmount,
-          rent_status: newRentStatus,
-          last_payment_date: new Date().toISOString().split('T')[0]
-        })
-        .eq('id', tenant.id)
-      if (updateError) throw updateError
-
-      toast.success('Payment recorded! Your rent is updated.')
+      toast.success('Payment proof submitted! Waiting for owner confirmation.')
       setShowPaymentModal(false)
+      setPaymentScreenshot(null)
+      setPaymentTransactionId('')
       await refreshData()
     } catch (error) {
       console.error('Payment error:', error)
-      toast.error('Failed to record payment: ' + error.message)
+      toast.error('Failed to submit payment: ' + error.message)
     } finally {
       setPaymentLoading(false)
     }
@@ -452,7 +442,7 @@ export default function TenantDashboard() {
       </nav>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Welcome Section with Rent Status - HIGHLIGHTED DUE DATE */}
+        {/* Welcome Section with Rent Status */}
         <div className={`rounded-2xl p-6 mb-8 text-white ${rentStatus.status === 'overdue' ? 'bg-gradient-to-r from-red-600 to-red-500 animate-pulse' : rentStatus.status === 'due_soon' ? 'bg-gradient-to-r from-orange-500 to-orange-600 animate-pulse' : 'bg-gradient-to-r from-slate-800 to-slate-700'}`}>
           <div className="flex justify-between items-start flex-wrap gap-4">
             <div>
@@ -634,7 +624,15 @@ export default function TenantDashboard() {
                       <td className="px-4 py-3 text-sm text-gray-600">{formatDate(payment.payment_date)}</td>
                       <td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(payment.amount)}</td>
                       <td className="px-4 py-3 text-sm text-gray-500 capitalize">{payment.payment_method}</td>
-                      <td className="px-4 py-3"><span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">Success</span></td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 rounded-full text-xs ${
+                          payment.status === 'success' ? 'bg-green-100 text-green-700' : 
+                          payment.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' : 
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {payment.status === 'success' ? 'Success' : payment.status === 'payment_pending' ? 'Pending' : payment.status}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                   {paymentHistory.length === 0 && (
@@ -649,7 +647,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal – UPI Direct */}
+      {/* Payment Modal – Direct UPI + Screenshot */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -665,25 +663,37 @@ export default function TenantDashboard() {
                 <>
                   <div className="bg-blue-50 p-3 rounded-lg mb-4">
                     <p className="text-sm font-semibold">Owner UPI ID: {ownerUpiId}</p>
-                    <button
-                      onClick={handleUpiPayment}
+                    <a
+                      href={`upi://pay?pa=${ownerUpiId}&pn=HostelSet&am=${tenant?.pending_amount || tenant?.rent_amount}&cu=INR`}
                       className="mt-2 inline-block bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition"
+                      target="_blank"
                     >
                       Pay with UPI App
-                    </button>
+                    </a>
                   </div>
-                  <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800 mb-4">
-                    After payment, click "I Have Paid" to update your rent status.
-                  </div>
-                  <div className="flex gap-3">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label>
+                      <input type="text" className="w-full px-4 py-3 border rounded-xl" value={paymentTransactionId} onChange={e => setPaymentTransactionId(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Payment Screenshot *</label>
+                      <input type="file" accept="image/*" onChange={e => {
+                        const file = e.target.files[0]
+                        if (file) setPaymentScreenshot(file)
+                      }} className="w-full" />
+                    </div>
+                    <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
+                      After payment, upload the screenshot and submit. Owner will verify.
+                    </div>
                     <button
-                      onClick={confirmUpiPayment}
+                      onClick={submitPaymentWithProof}
                       disabled={paymentLoading}
-                      className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50"
+                      className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50"
                     >
-                      {paymentLoading ? 'Processing...' : `I Have Paid ₹${(tenant?.pending_amount || tenant?.rent_amount).toLocaleString()}`}
+                      {paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}
                     </button>
-                    <button onClick={() => setShowPaymentModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
+                    <button onClick={() => setShowPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>
                   </div>
                 </>
               ) : (
