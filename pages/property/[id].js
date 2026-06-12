@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../../lib/supabase'
-import { formatCurrency, getSharingDetails, getPropertyTypeLabel, cleanPhoneNumber } from '../../lib/utils'
+import { formatCurrency, getSharingDetails, getPropertyTypeLabel, cleanPhoneNumber, formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
 
 export default function PropertyDetail() {
@@ -15,8 +15,18 @@ export default function PropertyDetail() {
   const [selectedRoom, setSelectedRoom] = useState(null)
   const [showApplyModal, setShowApplyModal] = useState(false)
   const [applyForm, setApplyForm] = useState({ name: '', phone: '', email: '', message: '' })
+  const [idProof, setIdProof] = useState(null)
+  const [photo, setPhoto] = useState(null)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [activeTab, setActiveTab] = useState('rooms')
+  const [ownerSettings, setOwnerSettings] = useState({ upi_id: '', advance_months: 1, joining_fee: 0 })
+  const [applySubmitting, setApplySubmitting] = useState(false)
+
+  // Payment modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [paymentScreenshot, setPaymentScreenshot] = useState(null)
+  const [transactionId, setTransactionId] = useState('')
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false)
 
   useEffect(() => {
     if (id) loadData()
@@ -38,6 +48,28 @@ export default function PropertyDetail() {
         .eq('property_id', id)
         .order('room_number')
       setRooms(roomsData || [])
+
+      // Load owner settings for UPI and advance months
+      if (propertyData) {
+        const { data: settingsData } = await supabase
+          .from('owner_settings')
+          .select('*')
+          .eq('owner_id', propertyData.owner_id)
+          .maybeSingle()
+        if (settingsData) {
+          setOwnerSettings({
+            upi_id: settingsData.upi_id || propertyData.owner_upi_id || '',
+            advance_months: settingsData.advance_months || 1,
+            joining_fee: settingsData.joining_fee || 0,
+          })
+        } else if (propertyData.owner_upi_id) {
+          setOwnerSettings({
+            upi_id: propertyData.owner_upi_id,
+            advance_months: 1,
+            joining_fee: 0,
+          })
+        }
+      }
     } catch (error) {
       console.error('Error:', error)
     } finally {
@@ -45,34 +77,157 @@ export default function PropertyDetail() {
     }
   }
 
-  const handleApply = async () => {
+  const calculateTotalAmount = () => {
+    if (!selectedRoom) return 0
+    const room = rooms.find(r => r.id === selectedRoom)
+    if (!room) return 0
+    const rent = room.monthly_rent
+    const advance = rent * ownerSettings.advance_months
+    return rent + advance + ownerSettings.joining_fee
+  }
+
+  const handleFileChange = (e, setter) => {
+    const file = e.target.files[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File must be less than 5MB')
+      return
+    }
+    setter(file)
+  }
+
+  const uploadFile = async (file, prefix) => {
+    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${file.name.split('.').pop()}`
+    const { data, error } = await supabase.storage
+      .from('tenant-documents')
+      .upload(fileName, file, { cacheControl: '3600' })
+    if (error) throw error
+    const { data: { publicUrl } } = supabase.storage.from('tenant-documents').getPublicUrl(fileName)
+    return publicUrl
+  }
+
+  const submitApplication = async () => {
     if (!applyForm.name || !applyForm.phone) {
       toast.error('Please fill name and phone number')
       return
     }
-
     const cleanPhone = cleanPhoneNumber(applyForm.phone)
     if (cleanPhone.length !== 10) {
       toast.error('Enter valid 10-digit phone number')
       return
     }
+    if (!idProof || !photo) {
+      toast.error('Please upload ID proof and photo')
+      return
+    }
 
+    setApplySubmitting(true)
     try {
-      const { error } = await supabase.from('applications').insert({
+      // Upload documents
+      const idUrl = await uploadFile(idProof, 'id')
+      const photoUrl = await uploadFile(photo, 'photo')
+
+      // Insert application (status remains 'pending' but we proceed to payment anyway)
+      await supabase.from('applications').insert({
         property_id: id,
         room_id: selectedRoom,
         name: applyForm.name,
         phone: cleanPhone,
         email: applyForm.email,
         message: applyForm.message,
-        status: 'pending'
+        status: 'pending',
+        id_proof: idUrl,
+        photo: photoUrl,
+        created_at: new Date(),
       })
-      if (error) throw error
-      toast.success('Application submitted! Owner will contact you.')
+
+      // Close apply modal and open payment modal
       setShowApplyModal(false)
-      setApplyForm({ name: '', phone: '', email: '', message: '' })
+      setPaymentScreenshot(null)
+      setTransactionId('')
+      setShowPaymentModal(true)
     } catch (error) {
-      toast.error('Failed to submit application')
+      console.error('Application error:', error)
+      toast.error('Failed to submit application: ' + error.message)
+    } finally {
+      setApplySubmitting(false)
+    }
+  }
+
+  const submitPayment = async () => {
+    if (!paymentScreenshot) {
+      toast.error('Please upload payment screenshot')
+      return
+    }
+    setPaymentSubmitting(true)
+    try {
+      // Upload payment screenshot
+      const screenshotUrl = await uploadFile(paymentScreenshot, 'pay')
+
+      // Create auth user
+      const tempPassword = Math.random().toString(36).slice(-8)
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: applyForm.email,
+        password: tempPassword,
+        options: { data: { full_name: applyForm.name, role: 'tenant', phone: cleanPhoneNumber(applyForm.phone) } }
+      })
+      if (authError) throw authError
+      const userId = authData.user.id
+
+      // Create user record
+      const { error: userError } = await supabase.from('users').insert({
+        id: userId,
+        email: applyForm.email,
+        full_name: applyForm.name,
+        phone: cleanPhoneNumber(applyForm.phone),
+        role: 'tenant',
+        is_active: true,
+      })
+      if (userError) throw userError
+
+      const totalAmount = calculateTotalAmount()
+      const room = rooms.find(r => r.id === selectedRoom)
+
+      // Create tenant record with payment_pending status
+      const { error: tenantError } = await supabase.from('tenants').insert({
+        user_id: userId,
+        property_id: id,
+        room_id: selectedRoom,
+        name: applyForm.name,
+        phone: cleanPhoneNumber(applyForm.phone),
+        email: applyForm.email,
+        rent_amount: room.monthly_rent,
+        pending_amount: 0,
+        total_paid: totalAmount,
+        rent_status: 'paid',
+        move_in_date: new Date().toISOString().split('T')[0],
+        status: 'payment_pending',
+        payment_screenshot: screenshotUrl,
+        upi_transaction_id: transactionId,
+      })
+      if (tenantError) throw tenantError
+
+      // Update room occupancy
+      const newOccupants = room.current_occupants + 1
+      const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
+      await supabase.from('rooms').update({
+        current_occupants: newOccupants,
+        status: newStatus,
+      }).eq('id', selectedRoom)
+
+      // Send password set email
+      await supabase.auth.resetPasswordForEmail(applyForm.email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      }).catch(e => console.warn('Reset email not sent:', e))
+
+      toast.success('🎉 You\'re all set! Check your email to set your password and log in.')
+      setShowPaymentModal(false)
+      setTimeout(() => router.push('/login'), 5000)
+    } catch (error) {
+      console.error('Payment submission error:', error)
+      toast.error('Something went wrong: ' + error.message)
+    } finally {
+      setPaymentSubmitting(false)
     }
   }
 
@@ -269,24 +424,84 @@ export default function PropertyDetail() {
         )}
       </div>
 
-      {/* Application Modal */}
+      {/* Apply Modal – Now with document uploads */}
       <AnimatePresence>
         {showApplyModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowApplyModal(false)}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold text-slate-800">Apply for Room</h2>
                 <button onClick={() => setShowApplyModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
               </div>
               <div className="space-y-4">
-                <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" value={applyForm.name} onChange={(e) => setApplyForm({...applyForm, name: e.target.value})} />
+                <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={applyForm.name} onChange={(e) => setApplyForm({...applyForm, name: e.target.value})} />
                 <div className="flex gap-2">
                   <span className="bg-gray-100 px-4 py-3 rounded-xl border border-gray-200 text-gray-600">+91</span>
-                  <input type="tel" placeholder="Phone Number *" className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" value={applyForm.phone} onChange={(e) => setApplyForm({...applyForm, phone: e.target.value})} maxLength={10} />
+                  <input type="tel" placeholder="Phone Number *" className="flex-1 px-4 py-3 border border-gray-200 rounded-xl" value={applyForm.phone} onChange={(e) => setApplyForm({...applyForm, phone: e.target.value})} maxLength={10} />
                 </div>
-                <input type="email" placeholder="Email (optional)" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" value={applyForm.email} onChange={(e) => setApplyForm({...applyForm, email: e.target.value})} />
-                <textarea placeholder="Any message for the owner?" rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 resize-none" value={applyForm.message} onChange={(e) => setApplyForm({...applyForm, message: e.target.value})} />
-                <button onClick={handleApply} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition">Submit Application</button>
+                <input type="email" placeholder="Email (will be used for login)" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={applyForm.email} onChange={(e) => setApplyForm({...applyForm, email: e.target.value})} />
+                <textarea placeholder="Any message for the owner?" rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl resize-none" value={applyForm.message} onChange={(e) => setApplyForm({...applyForm, message: e.target.value})} />
+                <div>
+                  <label className="block text-sm font-semibold mb-1">ID Proof (Aadhaar/PAN) *</label>
+                  <input type="file" accept="image/*,.pdf" onChange={e => handleFileChange(e, setIdProof)} className="w-full" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Passport Size Photo *</label>
+                  <input type="file" accept="image/*" onChange={e => handleFileChange(e, setPhoto)} className="w-full" />
+                </div>
+                <button onClick={submitApplication} disabled={applySubmitting} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50">
+                  {applySubmitting ? 'Submitting...' : 'Continue to Payment'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Payment Modal – UPI + Screenshot */}
+      <AnimatePresence>
+        {showPaymentModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 className="text-2xl font-bold mb-4">Complete Payment</h2>
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <p className="text-sm text-gray-600">Room {rooms.find(r => r.id === selectedRoom)?.room_number} – {getSharingDetails(rooms.find(r => r.id === selectedRoom)?.sharing_type)?.label}</p>
+                <p className="text-lg font-bold mt-1">Total Amount: {formatCurrency(calculateTotalAmount())}</p>
+              </div>
+
+              {ownerSettings.upi_id && (
+                <div className="bg-blue-50 p-3 rounded-lg mb-4">
+                  <p className="text-sm font-semibold">Owner UPI ID: {ownerSettings.upi_id}</p>
+                  <a
+                    href={`upi://pay?pa=${ownerSettings.upi_id}&pn=HostelSet&am=${calculateTotalAmount()}&cu=INR`}
+                    className="mt-2 inline-block bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition"
+                    target="_blank"
+                  >
+                    Pay with UPI App
+                  </a>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label>
+                  <input type="text" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={transactionId} onChange={e => setTransactionId(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Payment Screenshot *</label>
+                  <input type="file" accept="image/*" onChange={e => handleFileChange(e, setPaymentScreenshot)} className="w-full" />
+                </div>
+                <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
+                  After payment, your account will be created instantly and you can log in.
+                </div>
+                <button
+                  onClick={submitPayment}
+                  disabled={paymentSubmitting}
+                  className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50"
+                >
+                  {paymentSubmitting ? 'Processing...' : 'I Have Paid – Submit'}
+                </button>
+                <button onClick={() => setShowPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>
               </div>
             </motion.div>
           </div>
