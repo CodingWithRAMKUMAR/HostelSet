@@ -123,30 +123,16 @@ export default function OwnerDashboard() {
     return { date: vacate.expected_check_out, daysLeft, overdue: false }
   }
 
-  // Enhanced membership check with status detection
-  const checkMembershipStatus = async () => {
-    try {
-      const userId = localStorage.getItem('userId')
-      const { data } = await supabase
-        .from('owner_memberships')
-        .select('status, end_date')
-        .eq('owner_id', userId)
-        .maybeSingle()
-
-      if (data && data.status === 'active' && new Date(data.end_date) > new Date()) {
-        setMembershipActive(true)
-        return 'active'
-      } else if (data && (data.status === 'expired' || new Date(data.end_date) <= new Date())) {
-        setMembershipActive(false)
-        return 'expired'
-      } else {
-        setMembershipActive(false)
-        return 'none'
-      }
-    } catch (error) {
-      console.error('Membership check error:', error)
-      return 'none'
+  // ✅ NEW: Update membership status directly from property data (no RLS issues)
+  const updateMembershipFromProperty = (propertyData) => {
+    if (!propertyData) {
+      setMembershipActive(false)
+      setMembershipStatus('none')
+      return
     }
+    const active = propertyData.membership_active && new Date(propertyData.membership_expiry) > new Date()
+    setMembershipActive(active)
+    setMembershipStatus(active ? 'active' : (propertyData.membership_active ? 'expired' : 'none'))
   }
 
   // Background data refresh without blinking (if membership active)
@@ -172,32 +158,28 @@ export default function OwnerDashboard() {
         router.push('/login')
         return
       }
-      // Explicitly set session for RLS
       await supabase.auth.setSession(session)
 
-      // Check membership status first
-      const status = await checkMembershipStatus()
-      setMembershipStatus(status)
-
-      // If expired, redirect to subscribe page
-      if (status === 'expired') {
-        router.push('/owner/subscribe?reason=expired')
-        return
-      }
-
-      // Load data (initial, full loading)
+      // Load property data first (includes membership info)
       await loadData()
       await loadSettings()
       await checkVacateAlerts()
 
-      // Start auto-refresh only if membership is active
-      if (status === 'active') {
-        startAutoRefresh()
+      // After property loaded, membership is determined
+      if (property) {
+        if (!membershipActive) {
+          // If expired, redirect to subscribe
+          if (membershipStatus === 'expired') {
+            router.push('/owner/subscribe?reason=expired')
+            return
+          }
+        } else {
+          startAutoRefresh()
+        }
       }
     }
     initDashboard()
 
-    // Cleanup interval on unmount
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
     }
@@ -219,6 +201,8 @@ export default function OwnerDashboard() {
       if (propertyData) {
         setProperty(propertyData)
         setPropertyImages(propertyData.photos || [])
+        // Update membership state from property
+        updateMembershipFromProperty(propertyData)
 
         const { data: roomsData } = await supabase
           .from('rooms')
@@ -409,8 +393,8 @@ export default function OwnerDashboard() {
         toast.success('Redirecting to payment gateway...')
         // Refresh membership status after payment
         setTimeout(async () => {
-          const newStatus = await checkMembershipStatus()
-          if (newStatus === 'active') {
+          await loadData() // reload property & membership
+          if (membershipActive) {
             setMembershipStatus('active')
             startAutoRefresh()
             toast.success('✅ Membership activated! Reloading...')
