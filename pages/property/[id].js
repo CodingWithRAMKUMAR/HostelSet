@@ -28,6 +28,9 @@ export default function PropertyDetail() {
   const [transactionId, setTransactionId] = useState('')
   const [paymentSubmitting, setPaymentSubmitting] = useState(false)
 
+  // New: store temp password to display after success
+  const [tempPassword, setTempPassword] = useState('')
+
   useEffect(() => {
     if (id) loadData()
   }, [id])
@@ -164,7 +167,7 @@ export default function PropertyDetail() {
       const screenshotUrl = await uploadFile(paymentScreenshot, 'pay')
       const cleanPhone = cleanPhoneNumber(applyForm.phone)
 
-      // 1. Check if user already exists (by email) – safely, avoiding maybeSingle's error on multiple rows
+      // 1. Check if user already exists (by email) – safely
       let userId
       const { data: existingUsers } = await supabase
         .from('users')
@@ -181,10 +184,11 @@ export default function PropertyDetail() {
         }).eq('id', userId)
       } else {
         // 2. Create a new Auth user
-        const tempPassword = Math.random().toString(36).slice(-8)
+        const generatedPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).charAt(0).toUpperCase()
+        setTempPassword(generatedPassword) // store to display later
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: applyForm.email,
-          password: tempPassword,
+          password: generatedPassword,
           options: { data: { full_name: applyForm.name, role: 'tenant', phone: cleanPhone } }
         })
         if (authError) throw authError
@@ -197,7 +201,6 @@ export default function PropertyDetail() {
           .limit(1)
 
         if (newUserRows && newUserRows.length > 0) {
-          // Trigger already created the row – update it with our details
           userId = newUserRows[0].id
           await supabase.from('users').update({
             full_name: applyForm.name,
@@ -206,7 +209,6 @@ export default function PropertyDetail() {
             is_active: true,
           }).eq('id', userId)
         } else {
-          // No trigger – insert manually
           userId = authData.user.id
           const { error: insertError } = await supabase.from('users').insert({
             id: userId,
@@ -218,11 +220,6 @@ export default function PropertyDetail() {
           })
           if (insertError) throw insertError
         }
-
-        // Send password-set email (only for newly created auth users)
-        await supabase.auth.resetPasswordForEmail(applyForm.email, {
-          redirectTo: `${window.location.origin}/reset-password`,
-        }).catch(e => console.warn('Reset email not sent:', e))
       }
 
       const totalAmount = calculateTotalAmount()
@@ -255,9 +252,12 @@ export default function PropertyDetail() {
         status: newStatus,
       }).eq('id', selectedRoom)
 
-      toast.success('🎉 You\'re all set! Check your email to set your password and log in.')
-      setShowPaymentModal(false)
-      setTimeout(() => router.push('/login'), 5000)
+      // ✅ Show credentials on screen (no email dependency)
+      toast.success(
+        `🎉 Account created! Email: ${applyForm.email} | Password: ${tempPassword || 'same as before'}`,
+        { duration: 12000 }
+      )
+      setTimeout(() => router.push('/login'), 12000)
     } catch (error) {
       console.error('Payment submission error:', error)
       toast.error('Something went wrong: ' + error.message)
