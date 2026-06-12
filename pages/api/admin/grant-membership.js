@@ -8,48 +8,75 @@ const supabaseAdmin = createClient(
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  // Verify admin from session
+  // Extract token from Authorization header
   const token = req.headers.authorization?.split('Bearer ')[1]
-  const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
-  if (authError || !user) return res.status(401).json({ error: 'Unauthorized' })
+  if (!token) return res.status(401).json({ error: 'Missing token' })
 
-  // Check if user is admin
-  const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single()
+  // Verify the calling user is an admin
+  const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+  if (authError || !user) return res.status(401).json({ error: 'Invalid token' })
+
+  const { data: profile } = await supabaseAdmin
+    .from('users')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
   if (profile?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' })
 
-  const { ownerId } = req.body
-  if (!ownerId) return res.status(400).json({ error: 'Missing ownerId' })
+  const { ownerId, action, planId, durationDays } = req.body
 
-  // Grant 12 months free membership (plan = 'monthly'? we'll use 'yearly' for 12 months)
-  const planId = 'yearly' // you can also use 'monthly' and set duration=12 later, but yearly plan is 12 months
-  const startDate = new Date()
-  const endDate = new Date()
-  endDate.setFullYear(endDate.getFullYear() + 1) // 12 months
+  if (!ownerId || !action) return res.status(400).json({ error: 'Missing ownerId or action' })
 
-  const { error: upsertError } = await supabaseAdmin
-    .from('owner_memberships')
-    .upsert({
-      owner_id: ownerId,
-      plan_id: planId,
-      status: 'active',
-      start_date: startDate.toISOString().split('T')[0],
-      end_date: endDate.toISOString().split('T')[0],
-      payment_transaction_id: 'admin_grant',
-    })
+  try {
+    if (action === 'grant') {
+      // Default to 30 days if no duration specified
+      const days = durationDays || 30
+      const plan = planId || 'monthly' // default plan
+      const startDate = new Date()
+      const endDate = new Date()
+      endDate.setDate(endDate.getDate() + days)
 
-  if (upsertError) {
-    console.error('Grant membership error:', upsertError)
-    return res.status(500).json({ error: 'Database error' })
+      await supabaseAdmin.from('owner_memberships').upsert({
+        owner_id: ownerId,
+        plan_id: plan,
+        status: 'active',
+        start_date: startDate.toISOString().split('T')[0],
+        end_date: endDate.toISOString().split('T')[0],
+        payment_transaction_id: 'admin_grant',
+      })
+
+      await supabaseAdmin
+        .from('properties')
+        .update({
+          membership_active: true,
+          membership_expiry: endDate.toISOString().split('T')[0],
+        })
+        .eq('owner_id', ownerId)
+
+      return res.status(200).json({ success: true, message: `Membership granted until ${endDate.toDateString()}` })
+    }
+
+    if (action === 'revoke') {
+      await supabaseAdmin
+        .from('owner_memberships')
+        .delete()
+        .eq('owner_id', ownerId)
+
+      await supabaseAdmin
+        .from('properties')
+        .update({
+          membership_active: false,
+          membership_expiry: null,
+        })
+        .eq('owner_id', ownerId)
+
+      return res.status(200).json({ success: true, message: 'Membership revoked' })
+    }
+
+    return res.status(400).json({ error: 'Invalid action. Use grant or revoke.' })
+  } catch (error) {
+    console.error('Admin membership error:', error)
+    return res.status(500).json({ error: 'Internal server error' })
   }
-
-  // Also update the property record
-  await supabaseAdmin
-    .from('properties')
-    .update({
-      membership_active: true,
-      membership_expiry: endDate.toISOString().split('T')[0],
-    })
-    .eq('owner_id', ownerId)
-
-  return res.status(200).json({ success: true })
 }
