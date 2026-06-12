@@ -118,30 +118,33 @@ export default function OwnerDashboard() {
   }
 
   // ✅ FIXED: Wait for Supabase session before fetching data (required for RLS)
-  useEffect(() => {
-    const isLoggedIn = localStorage.getItem('isLoggedIn')
-    const userRole = localStorage.getItem('userRole')
-    if (!isLoggedIn || userRole !== 'owner') { 
-      router.push('/login')
-      return 
-    }
+ useEffect(() => {
+  const isLoggedIn = localStorage.getItem('isLoggedIn')
+  const userRole = localStorage.getItem('userRole')
+  if (!isLoggedIn || userRole !== 'owner') { 
+    router.push('/login')
+    return 
+  }
 
-    const initDashboard = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession()
-      if (error || !session) {
-        // No valid session – redirect to login
-        localStorage.clear()
-        router.push('/login')
-        return
-      }
-      // Session is ready; now load all dashboard data
-      await loadData()
-      await loadSettings()
-      await checkMembershipStatus()
-      await checkVacateAlerts()
+  const initDashboard = async () => {
+    const { data: { session }, error } = await supabase.auth.getSession()
+    if (error || !session) {
+      localStorage.clear()
+      router.push('/login')
+      return
     }
-    initDashboard()
-  }, [])
+    // ✅ Explicitly set the session – this ensures the token is attached to every request
+    await supabase.auth.setSession(session)
+
+    // Now load everything (RLS will correctly see auth.uid())
+    await loadData()
+    await loadSettings()
+    await checkMembershipStatus()
+    await checkVacateAlerts()
+  }
+  initDashboard()
+}, [])
+      
 
   const loadSettings = async () => {
     try {
