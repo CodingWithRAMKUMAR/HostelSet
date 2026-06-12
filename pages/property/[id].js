@@ -49,7 +49,6 @@ export default function PropertyDetail() {
         .order('room_number')
       setRooms(roomsData || [])
 
-      // Load owner settings (UPI, advance, joining fee)
       if (propertyData) {
         const { data: settingsData } = await supabase
           .from('owner_settings')
@@ -123,12 +122,11 @@ export default function PropertyDetail() {
 
     setApplySubmitting(true)
     try {
-      // Upload documents
       const idUrl = await uploadFile(idProof, 'id')
       const photoUrl = await uploadFile(photo, 'photo')
 
-      // Insert application record
-      await supabase.from('applications').insert({
+      // Insert application – database will reject duplicates automatically
+      const { error } = await supabase.from('applications').insert({
         property_id: id,
         room_id: selectedRoom,
         name: applyForm.name,
@@ -141,7 +139,17 @@ export default function PropertyDetail() {
         created_at: new Date(),
       })
 
-      // Close apply modal and open payment modal
+      if (error) {
+        // Unique violation – show friendly message
+        if (error.message.includes('duplicate key value') || error.code === '23505') {
+          toast.error('You already have a pending application or active tenancy in this property.')
+        } else {
+          throw error
+        }
+        setApplySubmitting(false)
+        return
+      }
+
       setShowApplyModal(false)
       setPaymentScreenshot(null)
       setTransactionId('')
@@ -164,25 +172,8 @@ export default function PropertyDetail() {
       const screenshotUrl = await uploadFile(paymentScreenshot, 'pay')
       const cleanPhone = cleanPhoneNumber(applyForm.phone)
 
-      // ---------- DUPLICATE CHECK ----------
-      const { data: duplicateTenants, error: dupError } = await supabase
-        .from('tenants')
-        .select('id, status')
-        .eq('property_id', id)
-        .or(`email.eq.${applyForm.email},phone.eq.${cleanPhone}`)
-        .in('status', ['active', 'payment_pending', 'notice_period'])
-
-      if (dupError) throw dupError
-      if (duplicateTenants && duplicateTenants.length > 0) {
-        toast.error('You already have an active or pending application for this property.')
-        setPaymentSubmitting(false)
-        return
-      }
-
       // ---------- USER HANDLING ----------
       let userId
-
-      // 1. Check if user already exists (by email)
       const { data: existingUsers } = await supabase
         .from('users')
         .select('id')
@@ -190,14 +181,12 @@ export default function PropertyDetail() {
         .limit(1)
 
       if (existingUsers && existingUsers.length > 0) {
-        // Existing user – reuse
         userId = existingUsers[0].id
         await supabase.from('users').update({
           full_name: applyForm.name,
           phone: cleanPhone,
         }).eq('id', userId)
       } else {
-        // Create new auth user
         const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).charAt(0).toUpperCase()
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: applyForm.email,
@@ -206,12 +195,10 @@ export default function PropertyDetail() {
         })
         if (authError) throw authError
 
-        // Send password‑set email (restored)
         await supabase.auth.resetPasswordForEmail(applyForm.email, {
           redirectTo: `${window.location.origin}/reset-password`,
         }).catch(e => console.warn('Reset email not sent:', e))
 
-        // Check if a users row was auto-created by a trigger
         const { data: newUserRows } = await supabase
           .from('users')
           .select('id')
@@ -243,7 +230,6 @@ export default function PropertyDetail() {
       const totalAmount = calculateTotalAmount()
       const room = rooms.find(r => r.id === selectedRoom)
 
-      // Create tenant record (payment_pending)
       const { error: tenantError } = await supabase.from('tenants').insert({
         user_id: userId,
         property_id: id,
@@ -260,9 +246,16 @@ export default function PropertyDetail() {
         payment_screenshot: screenshotUrl,
         upi_transaction_id: transactionId,
       })
-      if (tenantError) throw tenantError
+      if (tenantError) {
+        if (tenantError.message.includes('duplicate key value') || tenantError.code === '23505') {
+          toast.error('You already have an active or pending tenancy in this property.')
+        } else {
+          throw tenantError
+        }
+        setPaymentSubmitting(false)
+        return
+      }
 
-      // Update room occupancy
       const newOccupants = room.current_occupants + 1
       const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
       await supabase.from('rooms').update({
@@ -270,7 +263,6 @@ export default function PropertyDetail() {
         status: newStatus,
       }).eq('id', selectedRoom)
 
-      // Success message – tell them to check email
       toast.success(
         `🎉 Account created! Check your email (${applyForm.email}) to set your password.`,
         { duration: 10000 }
