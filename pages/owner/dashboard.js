@@ -54,6 +54,10 @@ export default function OwnerDashboard() {
   const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false)
   const [confirmingTenant, setConfirmingTenant] = useState(null)
 
+  // Application detail modal state
+  const [selectedApplication, setSelectedApplication] = useState(null)
+  const [showApplicationDetailModal, setShowApplicationDetailModal] = useState(false)
+
   const sharingTypes = [
     { value: 'single', label: 'Single Sharing', capacity: 1, icon: '👤', price: 15000 },
     { value: 'double', label: 'Double Sharing', capacity: 2, icon: '👥', price: 10000 },
@@ -68,9 +72,7 @@ export default function OwnerDashboard() {
 
     const joinDate = new Date(tenant.move_in_date)
     const today = new Date()
-    // Calculate months since join
     const monthsSinceJoin = (today.getFullYear() - joinDate.getFullYear()) * 12 + (today.getMonth() - joinDate.getMonth())
-    // Months paid = total_paid / rent_amount (total_paid includes advance + later payments)
     const monthsPaid = Math.floor((tenant.total_paid || 0) / tenant.rent_amount)
     const isCurrentMonthPaid = monthsPaid > monthsSinceJoin
 
@@ -112,7 +114,6 @@ export default function OwnerDashboard() {
     }
   }
 
-  // Helper to get upcoming vacate dates for a room
   const getUpcomingVacateForRoom = (roomId) => {
     const vacate = vacateRequests.find(v => v.room_id === roomId && v.status === 'approved')
     if (!vacate) return null
@@ -123,7 +124,7 @@ export default function OwnerDashboard() {
     return { date: vacate.expected_check_out, daysLeft, overdue: false }
   }
 
-  // ✅ NEW: Update membership status directly from property data (no RLS issues)
+  // ✅ Updated membership check – uses property data directly
   const updateMembershipFromProperty = (propertyData) => {
     if (!propertyData) {
       setMembershipActive(false)
@@ -135,12 +136,11 @@ export default function OwnerDashboard() {
     setMembershipStatus(active ? 'active' : (propertyData.membership_active ? 'expired' : 'none'))
   }
 
-  // Background data refresh without blinking (if membership active)
   const startAutoRefresh = () => {
     if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
     autoRefreshRef.current = setInterval(() => {
       loadData(true) // silent refresh
-    }, 30000) // every 30 seconds
+    }, 30000)
   }
 
   useEffect(() => {
@@ -160,15 +160,12 @@ export default function OwnerDashboard() {
       }
       await supabase.auth.setSession(session)
 
-      // Load property data first (includes membership info)
       await loadData()
       await loadSettings()
       await checkVacateAlerts()
 
-      // After property loaded, membership is determined
       if (property) {
         if (!membershipActive) {
-          // If expired, redirect to subscribe
           if (membershipStatus === 'expired') {
             router.push('/owner/subscribe?reason=expired')
             return
@@ -185,9 +182,7 @@ export default function OwnerDashboard() {
     }
   }, [])
 
-  // Modified loadData to support silent background refresh
   const loadData = async (isBackgroundRefresh = false) => {
-    // Only show loading spinner on initial load
     if (!isBackgroundRefresh) setLoading(true)
 
     try {
@@ -201,7 +196,6 @@ export default function OwnerDashboard() {
       if (propertyData) {
         setProperty(propertyData)
         setPropertyImages(propertyData.photos || [])
-        // Update membership state from property
         updateMembershipFromProperty(propertyData)
 
         const { data: roomsData } = await supabase
@@ -230,20 +224,8 @@ export default function OwnerDashboard() {
         })
         setTenants(tenantsWithRoomNumber)
 
-        let totalCollected = 0
-        if (tenantsData && tenantsData.length > 0) {
-          for (const tenant of tenantsData) {
-            const { data: payments } = await supabase
-              .from('payment_history')
-              .select('amount')
-              .eq('tenant_id', tenant.id)
-              .eq('status', 'success')
-            if (payments) {
-              totalCollected += payments.reduce((sum, p) => sum + p.amount, 0)
-            }
-          }
-        }
-
+        // ✅ Fix: totalCollected now sums total_paid from tenants
+        const totalCollected = tenantsData?.reduce((sum, t) => sum + (t.total_paid || 0), 0) || 0
         const pendingAmount = tenantsData?.reduce((sum, t) => sum + (t.pending_amount || 0), 0) || 0
         const overdueCount = tenantsWithRoomNumber.filter(t => t.dueStatus.status === 'overdue').length
         const noticePeriodCount = tenantsWithRoomNumber.filter(t => t.status === 'notice_period').length
@@ -319,7 +301,6 @@ export default function OwnerDashboard() {
           upi_id: data.upi_id || ''
         })
       }
-      // Also load from property (for UPI ID)
       if (property) {
         const { data: propData } = await supabase
           .from('properties')
@@ -391,14 +372,13 @@ export default function OwnerDashboard() {
       if (data.success) {
         window.open(data.paymentLink, '_blank')
         toast.success('Redirecting to payment gateway...')
-        // Refresh membership status after payment
         setTimeout(async () => {
           await loadData() // reload property & membership
           if (membershipActive) {
             setMembershipStatus('active')
             startAutoRefresh()
             toast.success('✅ Membership activated! Reloading...')
-            window.location.reload() // full reload to re-initialize everything
+            window.location.reload()
           } else {
             toast('Payment processing – please wait a few moments.', { icon: '⏳' })
           }
@@ -434,7 +414,6 @@ export default function OwnerDashboard() {
     })
   }
 
-  // ✅ New: Confirm payment for a self-checkin tenant
   const confirmPayment = async (tenantId) => {
     setIsSubmitting(true)
     try {
@@ -559,9 +538,7 @@ export default function OwnerDashboard() {
     setIsSubmitting(false)
   }
 
-  // ✅ FIXED addTenant: email required, advance months can be 0, pending_amount = 0 if advance paid
   const addTenant = async () => {
-    // Validation
     if (!formData.name || !formData.phone || !formData.email || !formData.rent_amount || !formData.room_id) {
       toast.error('Please fill all fields (Email is required)')
       return
@@ -591,7 +568,6 @@ export default function OwnerDashboard() {
       const monthlyRent = parseInt(formData.rent_amount)
       const totalJoiningAmount = (monthlyRent * advanceMonths) + joiningFee
 
-      // Create Supabase Auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: tenantEmail,
         password: Math.random().toString(36).slice(-8),
@@ -606,7 +582,6 @@ export default function OwnerDashboard() {
       if (authError) throw authError
       const userId = authData.user.id
 
-      // Create user record
       const { error: userError } = await supabase
         .from('users')
         .insert({
@@ -619,7 +594,6 @@ export default function OwnerDashboard() {
         })
       if (userError) throw userError
 
-      // Insert tenant – pending_amount = 0 if advance paid, otherwise monthlyRent
       const pendingAmount = advanceMonths > 0 ? 0 : monthlyRent
       const rentStatus = advanceMonths > 0 ? 'paid' : 'pending'
 
@@ -641,7 +615,6 @@ export default function OwnerDashboard() {
         })
       if (tenantError) throw tenantError
 
-      // Update room occupancy
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
       await supabase
@@ -649,7 +622,6 @@ export default function OwnerDashboard() {
         .update({ current_occupants: newOccupants, status: newStatus })
         .eq('id', selectedRoom.id)
 
-      // Send password set email
       await supabase.auth.resetPasswordForEmail(tenantEmail, {
         redirectTo: `${window.location.origin}/reset-password`,
       }).catch(e => console.warn('Reset email not sent:', e))
@@ -677,16 +649,12 @@ export default function OwnerDashboard() {
   const deleteTenantComplete = async (tenantId, roomId, userId) => {
     setIsSubmitting(true)
     try {
-      // The database trigger now handles all cascading deletes.
-      // We just need to delete the tenant row; the trigger does the rest.
       const { error } = await supabase.from('tenants').delete().eq('id', tenantId)
       if (error) throw error
 
-      // Optionally delete the user – trigger on users will also clean up
       if (userId) {
         const { error: userError } = await supabase.from('users').delete().eq('id', userId)
         if (userError) {
-          // Fallback: mark user inactive
           await supabase.from('users').update({ is_active: false, role: 'inactive' }).eq('id', userId)
         }
       }
@@ -706,7 +674,6 @@ export default function OwnerDashboard() {
   const deleteTenantSoft = async (tenantId, roomId) => {
     setIsSubmitting(true)
     try {
-      // Soft delete: just delete the tenant record (trigger handles rest)
       await supabase.from('tenants').delete().eq('id', tenantId)
       toast.success('Tenant removed from room (history preserved)', { duration: 2000 })
       await loadData()
@@ -898,7 +865,6 @@ export default function OwnerDashboard() {
         }).select().single()
         userId = newUser.id
       }
-      // For applications, we assume no advance payment, so pending_amount = monthly rent
       await supabase.from('tenants').insert({
         user_id: userId,
         property_id: app.property_id,
@@ -980,7 +946,7 @@ export default function OwnerDashboard() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* ==================== SUBSCRIPTION BANNER (when not active) ==================== */}
+      {/* Subscription Banner */}
       {!membershipActive && (
         <div className="bg-yellow-100 border-b border-yellow-300 px-4 py-3 text-center sticky top-0 z-50">
           <p className="text-yellow-800 font-semibold">
@@ -1010,7 +976,7 @@ export default function OwnerDashboard() {
         </div>
       )}
 
-      {/* ==================== NAVIGATION ==================== */}
+      {/* Navigation */}
       <nav className="bg-white border-b border-gray-100 sticky top-0 z-40 px-6 py-4">
         <div className="container mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -1039,6 +1005,7 @@ export default function OwnerDashboard() {
       </nav>
 
       <div className="container mx-auto px-4 py-8">
+        {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
           <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
             <div className="text-2xl font-bold text-slate-800">{stats.totalRooms}</div>
@@ -1073,6 +1040,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
+        {/* Property Photos */}
         <div className="bg-white rounded-xl border border-gray-100 p-6 mb-8">
           <h2 className="text-lg font-semibold text-slate-800 mb-4">📸 Property Photos</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1093,7 +1061,7 @@ export default function OwnerDashboard() {
           </div>
         </div>
 
-        {/* ==================== ACTION BUTTONS (disabled when not active) ==================== */}
+        {/* Action Buttons (disabled when not active) */}
         <div className="flex flex-wrap gap-3 mb-8">
           <button 
             onClick={() => membershipActive && setShowAddModal(true)} 
@@ -1141,7 +1109,7 @@ export default function OwnerDashboard() {
           </button>
         </div>
 
-        {/* ==================== TABS (disabled when not active) ==================== */}
+        {/* Tabs */}
         <div className="flex flex-wrap border-b border-gray-200 mb-6 gap-2">
           {['overview', 'rooms', 'tenants', 'complaints', 'vacate', 'applications', 'notices'].map((tab) => (
             <button 
@@ -1167,7 +1135,7 @@ export default function OwnerDashboard() {
           ))}
         </div>
 
-        {/* ==================== TAB CONTENT ==================== */}
+        {/* Tab Content */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border border-gray-100 p-6">
@@ -1351,9 +1319,19 @@ export default function OwnerDashboard() {
         {activeTab === 'applications' && (
           <div className="space-y-4">
             {applications.map(app => (
-              <div key={app.id} className="bg-white rounded-xl border border-gray-100 p-4 flex justify-between items-center">
-                <div><h3 className="font-semibold text-slate-800">{app.name}</h3><p className="text-sm text-gray-500">📞 {app.phone}</p>{app.message && <p className="text-sm text-gray-600 mt-1">💬 {app.message}</p>}<p className="text-xs text-gray-400 mt-1">Applied: {formatDate(app.created_at)}</p></div>
-                <button onClick={() => approveApplication(app.id)} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition">Approve →</button>
+              <div key={app.id} className="bg-white rounded-xl border border-gray-100 p-4 flex justify-between items-center hover:shadow-md transition cursor-pointer" onClick={() => { setSelectedApplication(app); setShowApplicationDetailModal(true) }}>
+                <div>
+                  <h3 className="font-semibold text-slate-800">{app.name}</h3>
+                  <p className="text-sm text-gray-500">📞 {app.phone}</p>
+                  {app.message && <p className="text-sm text-gray-600 mt-1">💬 {app.message}</p>}
+                  <p className="text-xs text-gray-400 mt-1">Applied: {formatDate(app.created_at)}</p>
+                </div>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); approveApplication(app.id) }} 
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition"
+                >
+                  Approve →
+                </button>
               </div>
             ))}
             {applications.length === 0 && <div className="text-center py-12 bg-gray-50 rounded-xl"><div className="text-5xl mb-3">📋</div><p className="text-gray-500">No pending applications</p></div>}
@@ -1376,8 +1354,7 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* ==================== MODALS ==================== */}
-      {/* Confirm Delete Modal */}
+      {/* Modals */}
       <AnimatePresence>{showConfirmDeleteModal && tenantToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
@@ -1510,6 +1487,50 @@ export default function OwnerDashboard() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Application Detail Modal */}
+      <AnimatePresence>
+        {showApplicationDetailModal && selectedApplication && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowApplicationDetailModal(false)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 className="text-2xl font-bold mb-4">Application Details</h2>
+              <div className="space-y-2 text-sm">
+                <p><strong>Name:</strong> {selectedApplication.name}</p>
+                <p><strong>Phone:</strong> {selectedApplication.phone}</p>
+                <p><strong>Email:</strong> {selectedApplication.email || 'N/A'}</p>
+                <p><strong>Message:</strong> {selectedApplication.message || 'None'}</p>
+                <p><strong>Applied:</strong> {formatDate(selectedApplication.created_at)}</p>
+                {selectedApplication.id_proof && (
+                  <div className="mt-3">
+                    <p className="font-semibold mb-1">ID Proof:</p>
+                    <img src={selectedApplication.id_proof} alt="ID Proof" className="w-full rounded-lg max-h-48 object-cover border" />
+                  </div>
+                )}
+                {selectedApplication.photo && (
+                  <div className="mt-3">
+                    <p className="font-semibold mb-1">Photo:</p>
+                    <img src={selectedApplication.photo} alt="Applicant Photo" className="w-full rounded-lg max-h-48 object-cover border" />
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button 
+                  onClick={() => { setShowApplicationDetailModal(false); approveApplication(selectedApplication.id) }} 
+                  className="flex-1 bg-green-600 text-white py-2 rounded-lg font-semibold hover:bg-green-700"
+                >
+                  Approve
+                </button>
+                <button 
+                  onClick={() => setShowApplicationDetailModal(false)} 
+                  className="flex-1 border-2 border-gray-300 text-gray-700 py-2 rounded-lg font-semibold"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>
