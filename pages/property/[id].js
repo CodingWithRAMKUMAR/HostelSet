@@ -28,9 +28,6 @@ export default function PropertyDetail() {
   const [transactionId, setTransactionId] = useState('')
   const [paymentSubmitting, setPaymentSubmitting] = useState(false)
 
-  // New: store temp password to display after success
-  const [tempPassword, setTempPassword] = useState('')
-
   useEffect(() => {
     if (id) loadData()
   }, [id])
@@ -167,8 +164,27 @@ export default function PropertyDetail() {
       const screenshotUrl = await uploadFile(paymentScreenshot, 'pay')
       const cleanPhone = cleanPhoneNumber(applyForm.phone)
 
-      // 1. Check if user already exists (by email) – safely
+      // ---------- DUPLICATE CHECK ----------
+      // Check for any existing tenant (active, payment_pending, notice_period) with same email OR phone in this property
+      const { data: duplicateTenants, error: dupError } = await supabase
+        .from('tenants')
+        .select('id, status')
+        .eq('property_id', id)
+        .or(`email.eq.${applyForm.email},phone.eq.${cleanPhone}`)
+        .in('status', ['active', 'payment_pending', 'notice_period'])
+
+      if (dupError) throw dupError
+      if (duplicateTenants && duplicateTenants.length > 0) {
+        toast.error('You already have an active or pending application for this property.')
+        setPaymentSubmitting(false)
+        return
+      }
+
+      // ---------- USER HANDLING ----------
       let userId
+      let generatedPassword = '' // will be shown to new users
+
+      // 1. Check if user already exists (by email)
       const { data: existingUsers } = await supabase
         .from('users')
         .select('id')
@@ -176,16 +192,15 @@ export default function PropertyDetail() {
         .limit(1)
 
       if (existingUsers && existingUsers.length > 0) {
+        // Existing user – reuse
         userId = existingUsers[0].id
-        // Update profile
         await supabase.from('users').update({
           full_name: applyForm.name,
           phone: cleanPhone,
         }).eq('id', userId)
       } else {
-        // 2. Create a new Auth user
-        const generatedPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).charAt(0).toUpperCase()
-        setTempPassword(generatedPassword) // store to display later
+        // Create new auth user
+        generatedPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).charAt(0).toUpperCase()
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: applyForm.email,
           password: generatedPassword,
@@ -193,7 +208,7 @@ export default function PropertyDetail() {
         })
         if (authError) throw authError
 
-        // 3. Check if a users row was auto-created by a trigger
+        // Check if a users row was auto-created by a trigger
         const { data: newUserRows } = await supabase
           .from('users')
           .select('id')
@@ -225,7 +240,7 @@ export default function PropertyDetail() {
       const totalAmount = calculateTotalAmount()
       const room = rooms.find(r => r.id === selectedRoom)
 
-      // 4. Insert tenant record with payment_pending status
+      // Create tenant record (payment_pending)
       const { error: tenantError } = await supabase.from('tenants').insert({
         user_id: userId,
         property_id: id,
@@ -244,7 +259,7 @@ export default function PropertyDetail() {
       })
       if (tenantError) throw tenantError
 
-      // 5. Update room occupancy
+      // Update room occupancy
       const newOccupants = room.current_occupants + 1
       const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
       await supabase.from('rooms').update({
@@ -252,12 +267,23 @@ export default function PropertyDetail() {
         status: newStatus,
       }).eq('id', selectedRoom)
 
-      // ✅ Show credentials on screen (no email dependency)
-      toast.success(
-        `🎉 Account created! Email: ${applyForm.email} | Password: ${tempPassword || 'same as before'}`,
-        { duration: 12000 }
-      )
-      setTimeout(() => router.push('/login'), 12000)
+      // ---- Show credentials (fix: use generatedPassword directly) ----
+      if (generatedPassword) {
+        // New user – show their password
+        toast.success(
+          `🎉 Account created! Email: ${applyForm.email} | Password: ${generatedPassword}`,
+          { duration: 15000 }
+        )
+      } else {
+        // Existing user – just remind them to log in
+        toast.success(
+          `🎉 Application submitted! Log in with your existing credentials.`,
+          { duration: 10000 }
+        )
+      }
+
+      setShowPaymentModal(false)
+      setTimeout(() => router.push('/login'), 15000)
     } catch (error) {
       console.error('Payment submission error:', error)
       toast.error('Something went wrong: ' + error.message)
