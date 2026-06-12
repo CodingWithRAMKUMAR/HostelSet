@@ -76,8 +76,8 @@ export default function AdminDashboard() {
       setVacateRequests(vacates || [])
       setApplications(apps || [])
 
-      // Calculate revenue from all successful payments
-      const totalRevenue = pms?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0
+      // ✅ Revenue = total paid by tenants (advances + rent collections)
+      const totalRevenue = tnts?.reduce((sum, t) => sum + (t.total_paid || 0), 0) || 0
       const totalProperties = props?.length || 0
       const totalTenants = tnts?.length || 0
 
@@ -107,7 +107,7 @@ export default function AdminDashboard() {
         { name: 'Vacant', value: totalRooms - occupiedRooms },
       ])
 
-      // Monthly revenue for the chart (last 6 months from all payments)
+      // Monthly revenue from payment_history (for chart only)
       const monthlyRevenue = {}
       const today = new Date()
       for (let i = 5; i >= 0; i--) {
