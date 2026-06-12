@@ -49,7 +49,7 @@ export default function PropertyDetail() {
         .order('room_number')
       setRooms(roomsData || [])
 
-      // Load owner settings for UPI and advance months
+      // Load owner settings (UPI, advance, joining fee)
       if (propertyData) {
         const { data: settingsData } = await supabase
           .from('owner_settings')
@@ -127,7 +127,7 @@ export default function PropertyDetail() {
       const idUrl = await uploadFile(idProof, 'id')
       const photoUrl = await uploadFile(photo, 'photo')
 
-      // Insert application (status remains 'pending' but we proceed to payment anyway)
+      // Insert application record
       await supabase.from('applications').insert({
         property_id: id,
         room_id: selectedRoom,
@@ -161,40 +161,61 @@ export default function PropertyDetail() {
     }
     setPaymentSubmitting(true)
     try {
-      // Upload payment screenshot
       const screenshotUrl = await uploadFile(paymentScreenshot, 'pay')
+      const cleanPhone = cleanPhoneNumber(applyForm.phone)
 
-      // Create auth user
-      const tempPassword = Math.random().toString(36).slice(-8)
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: applyForm.email,
-        password: tempPassword,
-        options: { data: { full_name: applyForm.name, role: 'tenant', phone: cleanPhoneNumber(applyForm.phone) } }
-      })
-      if (authError) throw authError
-      const userId = authData.user.id
+      // 1. Check if user already exists (by email)
+      let userId
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', applyForm.email)
+        .maybeSingle()
 
-      // Create user record
-      const { error: userError } = await supabase.from('users').insert({
-        id: userId,
-        email: applyForm.email,
-        full_name: applyForm.name,
-        phone: cleanPhoneNumber(applyForm.phone),
-        role: 'tenant',
-        is_active: true,
-      })
-      if (userError) throw userError
+      if (existingUser) {
+        userId = existingUser.id
+        // Update the existing user’s name/phone if needed
+        await supabase.from('users').update({
+          full_name: applyForm.name,
+          phone: cleanPhone,
+        }).eq('id', userId)
+      } else {
+        // 2. Create a new Auth user + user record
+        const tempPassword = Math.random().toString(36).slice(-8)
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: applyForm.email,
+          password: tempPassword,
+          options: { data: { full_name: applyForm.name, role: 'tenant', phone: cleanPhone } }
+        })
+        if (authError) throw authError
+        userId = authData.user.id
+
+        const { error: userError } = await supabase.from('users').insert({
+          id: userId,
+          email: applyForm.email,
+          full_name: applyForm.name,
+          phone: cleanPhone,
+          role: 'tenant',
+          is_active: true,
+        })
+        if (userError) throw userError
+
+        // Send password set email only for new users
+        await supabase.auth.resetPasswordForEmail(applyForm.email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        }).catch(e => console.warn('Reset email not sent:', e))
+      }
 
       const totalAmount = calculateTotalAmount()
       const room = rooms.find(r => r.id === selectedRoom)
 
-      // Create tenant record with payment_pending status
+      // 3. Insert tenant record with payment_pending
       const { error: tenantError } = await supabase.from('tenants').insert({
         user_id: userId,
         property_id: id,
         room_id: selectedRoom,
         name: applyForm.name,
-        phone: cleanPhoneNumber(applyForm.phone),
+        phone: cleanPhone,
         email: applyForm.email,
         rent_amount: room.monthly_rent,
         pending_amount: 0,
@@ -207,18 +228,13 @@ export default function PropertyDetail() {
       })
       if (tenantError) throw tenantError
 
-      // Update room occupancy
+      // 4. Update room occupancy
       const newOccupants = room.current_occupants + 1
       const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
       await supabase.from('rooms').update({
         current_occupants: newOccupants,
         status: newStatus,
       }).eq('id', selectedRoom)
-
-      // Send password set email
-      await supabase.auth.resetPasswordForEmail(applyForm.email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      }).catch(e => console.warn('Reset email not sent:', e))
 
       toast.success('🎉 You\'re all set! Check your email to set your password and log in.')
       setShowPaymentModal(false)
@@ -424,7 +440,7 @@ export default function PropertyDetail() {
         )}
       </div>
 
-      {/* Apply Modal – Now with document uploads */}
+      {/* Apply Modal – with document uploads */}
       <AnimatePresence>
         {showApplyModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowApplyModal(false)}>
