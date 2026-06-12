@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -47,6 +47,9 @@ export default function OwnerDashboard() {
   const [showMembershipModal, setShowMembershipModal] = useState(false)
   const [membershipActive, setMembershipActive] = useState(false)
   const [membershipLoading, setMembershipLoading] = useState(false)
+  // New: membership status for gating (active, expired, none)
+  const [membershipStatus, setMembershipStatus] = useState('loading')
+  const autoRefreshRef = useRef(null)
 
   const sharingTypes = [
     { value: 'single', label: 'Single Sharing', capacity: 1, icon: '👤', price: 15000 },
@@ -117,175 +120,91 @@ export default function OwnerDashboard() {
     return { date: vacate.expected_check_out, daysLeft, overdue: false }
   }
 
-  // ✅ FIXED: Wait for Supabase session before fetching data (required for RLS)
- useEffect(() => {
-  const isLoggedIn = localStorage.getItem('isLoggedIn')
-  const userRole = localStorage.getItem('userRole')
-  if (!isLoggedIn || userRole !== 'owner') { 
-    router.push('/login')
-    return 
-  }
-
-  const initDashboard = async () => {
-    const { data: { session }, error } = await supabase.auth.getSession()
-    if (error || !session) {
-      localStorage.clear()
-      router.push('/login')
-      return
-    }
-    // ✅ Explicitly set the session – this ensures the token is attached to every request
-    await supabase.auth.setSession(session)
-
-    // Now load everything (RLS will correctly see auth.uid())
-    await loadData()
-    await loadSettings()
-    await checkMembershipStatus()
-    await checkVacateAlerts()
-  }
-  initDashboard()
-}, [])
-      
-
-  const loadSettings = async () => {
+  // Enhanced membership check with status detection
+  const checkMembershipStatus = async () => {
     try {
       const userId = localStorage.getItem('userId')
       const { data } = await supabase
-        .from('owner_settings')
-        .select('*')
+        .from('owner_memberships')
+        .select('status, end_date')
         .eq('owner_id', userId)
         .maybeSingle()
-      
-      if (data) {
-        setSettings({
-          joining_fee: data.joining_fee || 0,
-          advance_months: data.advance_months || 1,
-          due_day: data.due_day || 5,
-          upi_id: data.upi_id || ''
-        })
-      }
-      // Also load from property (for UPI ID)
-      if (property) {
-        const { data: propData } = await supabase
-          .from('properties')
-          .select('owner_upi_id')
-          .eq('id', property.id)
-          .single()
-        if (propData?.owner_upi_id) {
-          setSettings(prev => ({ ...prev, upi_id: propData.owner_upi_id }))
-        }
-      }
-    } catch (error) {
-      console.error('Error loading settings:', error)
-    }
-  }
 
-  const saveSettings = async () => {
-    if (!settings.upi_id.trim()) {
-      toast.error('UPI ID is required for rent payments')
-      return
-    }
-    setIsSubmitting(true)
-    try {
-      const userId = localStorage.getItem('userId')
-      const { error: settingsError } = await supabase
-        .from('owner_settings')
-        .upsert({
-          owner_id: userId,
-          joining_fee: settings.joining_fee,
-          advance_months: settings.advance_months,
-          due_day: settings.due_day,
-          upi_id: settings.upi_id,
-          updated_at: new Date()
-        })
-      if (settingsError) throw settingsError
-      
-      if (property) {
-        const { error: propError } = await supabase
-          .from('properties')
-          .update({ owner_upi_id: settings.upi_id })
-          .eq('id', property.id)
-        if (propError) throw propError
-      }
-      
-      toast.success('Settings saved!', { duration: 2000 })
-      setShowSettingsModal(false)
-    } catch (error) {
-      console.error('Save settings error:', error)
-      toast.error('Failed to save settings')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const checkMembershipStatus = async () => {
-    const userId = localStorage.getItem('userId')
-    const { data } = await supabase
-      .from('owner_memberships')
-      .select('status, end_date')
-      .eq('owner_id', userId)
-      .maybeSingle()
-    if (data && data.status === 'active' && new Date(data.end_date) > new Date()) {
-      setMembershipActive(true)
-    } else {
-      setMembershipActive(false)
-    }
-  }
-
-  const initiateMembershipPayment = async (planId, amount, planName) => {
-    setMembershipLoading(true)
-    try {
-      const response = await fetch('/api/payment/create-membership-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ownerId: localStorage.getItem('userId'),
-          planId,
-          amount,
-          ownerName: localStorage.getItem('userName'),
-          ownerEmail: localStorage.getItem('userEmail'),
-        }),
-      })
-      const data = await response.json()
-      if (data.success) {
-        window.open(data.paymentLink, '_blank')
-        toast.success('Redirecting to payment gateway...')
-        setTimeout(() => {
-          checkMembershipStatus()
-          loadData()
-        }, 10000)
+      if (data && data.status === 'active' && new Date(data.end_date) > new Date()) {
+        setMembershipActive(true)
+        return 'active'
+      } else if (data && (data.status === 'expired' || new Date(data.end_date) <= new Date())) {
+        setMembershipActive(false)
+        return 'expired'
       } else {
-        toast.error(data.error || 'Payment initiation failed')
+        setMembershipActive(false)
+        return 'none'
       }
     } catch (error) {
-      console.error('Membership payment error:', error)
-      toast.error('Failed to initiate payment')
-    } finally {
-      setMembershipLoading(false)
-      setShowMembershipModal(false)
+      console.error('Membership check error:', error)
+      return 'none'
     }
   }
 
-  const checkVacateAlerts = () => {
-    const today = new Date()
-    vacateRequests.forEach(req => {
-      if (req.status === 'approved') {
-        const vacateDate = new Date(req.expected_check_out)
-        const daysLeft = Math.ceil((vacateDate - today) / (1000 * 60 * 60 * 24))
-        if (daysLeft === 7) {
-          toast(`🚪 ${req.tenant_name} vacates in 7 days!`, { duration: 5000, icon: '⚠️' })
-        } else if (daysLeft === 3) {
-          toast(`🚪 ${req.tenant_name} vacates in 3 days!`, { duration: 5000, icon: '⚠️' })
-        } else if (daysLeft === 1) {
-          toast.error(`🚪 ${req.tenant_name} vacates TOMORROW!`, { duration: 5000 })
-        } else if (daysLeft < 0) {
-          toast.error(`🚪 ${req.tenant_name} vacate date passed!`, { duration: 5000 })
-        }
-      }
-    })
+  // Background data refresh without blinking (if membership active)
+  const startAutoRefresh = () => {
+    if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
+    autoRefreshRef.current = setInterval(() => {
+      loadData(true) // silent refresh
+    }, 30000) // every 30 seconds
   }
 
-  const loadData = async () => {
-    setLoading(true)
+  useEffect(() => {
+    const isLoggedIn = localStorage.getItem('isLoggedIn')
+    const userRole = localStorage.getItem('userRole')
+    if (!isLoggedIn || userRole !== 'owner') { 
+      router.push('/login')
+      return 
+    }
+
+    const initDashboard = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession()
+      if (error || !session) {
+        localStorage.clear()
+        router.push('/login')
+        return
+      }
+      // Explicitly set session for RLS
+      await supabase.auth.setSession(session)
+
+      // Check membership status first
+      const status = await checkMembershipStatus()
+      setMembershipStatus(status)
+
+      // If expired, redirect to subscribe page
+      if (status === 'expired') {
+        router.push('/owner/subscribe?reason=expired')
+        return
+      }
+
+      // Load data (initial, full loading)
+      await loadData()
+      await loadSettings()
+      await checkVacateAlerts()
+
+      // Start auto-refresh only if membership is active
+      if (status === 'active') {
+        startAutoRefresh()
+      }
+    }
+    initDashboard()
+
+    // Cleanup interval on unmount
+    return () => {
+      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
+    }
+  }, [])
+
+  // Modified loadData to support silent background refresh
+  const loadData = async (isBackgroundRefresh = false) => {
+    // Only show loading spinner on initial load
+    if (!isBackgroundRefresh) setLoading(true)
+
     try {
       const userId = localStorage.getItem('userId')
       const { data: propertyData } = await supabase
@@ -390,8 +309,140 @@ export default function OwnerDashboard() {
       console.error('Load error:', error)
       toast.error('Failed to load data: ' + error.message, { duration: 3000 })
     } finally { 
-      setLoading(false) 
+      if (!isBackgroundRefresh) setLoading(false)
     }
+  }
+
+  const loadSettings = async () => {
+    try {
+      const userId = localStorage.getItem('userId')
+      const { data } = await supabase
+        .from('owner_settings')
+        .select('*')
+        .eq('owner_id', userId)
+        .maybeSingle()
+      
+      if (data) {
+        setSettings({
+          joining_fee: data.joining_fee || 0,
+          advance_months: data.advance_months || 1,
+          due_day: data.due_day || 5,
+          upi_id: data.upi_id || ''
+        })
+      }
+      // Also load from property (for UPI ID)
+      if (property) {
+        const { data: propData } = await supabase
+          .from('properties')
+          .select('owner_upi_id')
+          .eq('id', property.id)
+          .single()
+        if (propData?.owner_upi_id) {
+          setSettings(prev => ({ ...prev, upi_id: propData.owner_upi_id }))
+        }
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error)
+    }
+  }
+
+  const saveSettings = async () => {
+    if (!settings.upi_id.trim()) {
+      toast.error('UPI ID is required for rent payments')
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      const userId = localStorage.getItem('userId')
+      const { error: settingsError } = await supabase
+        .from('owner_settings')
+        .upsert({
+          owner_id: userId,
+          joining_fee: settings.joining_fee,
+          advance_months: settings.advance_months,
+          due_day: settings.due_day,
+          upi_id: settings.upi_id,
+          updated_at: new Date()
+        })
+      if (settingsError) throw settingsError
+      
+      if (property) {
+        const { error: propError } = await supabase
+          .from('properties')
+          .update({ owner_upi_id: settings.upi_id })
+          .eq('id', property.id)
+        if (propError) throw propError
+      }
+      
+      toast.success('Settings saved!', { duration: 2000 })
+      setShowSettingsModal(false)
+    } catch (error) {
+      console.error('Save settings error:', error)
+      toast.error('Failed to save settings')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const initiateMembershipPayment = async (planId, amount, planName) => {
+    setMembershipLoading(true)
+    try {
+      const response = await fetch('/api/payment/create-membership-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ownerId: localStorage.getItem('userId'),
+          planId,
+          amount,
+          ownerName: localStorage.getItem('userName'),
+          ownerEmail: localStorage.getItem('userEmail'),
+        }),
+      })
+      const data = await response.json()
+      if (data.success) {
+        window.open(data.paymentLink, '_blank')
+        toast.success('Redirecting to payment gateway...')
+        // Refresh membership status after payment
+        setTimeout(async () => {
+          const newStatus = await checkMembershipStatus()
+          if (newStatus === 'active') {
+            setMembershipStatus('active')
+            startAutoRefresh()
+            toast.success('✅ Membership activated! Reloading...')
+            window.location.reload() // full reload to re-initialize everything
+          } else {
+            toast('Payment processing – please wait a few moments.', { icon: '⏳' })
+          }
+        }, 15000)
+      } else {
+        toast.error(data.error || 'Payment initiation failed')
+      }
+    } catch (error) {
+      console.error('Membership payment error:', error)
+      toast.error('Failed to initiate payment')
+    } finally {
+      setMembershipLoading(false)
+      setShowMembershipModal(false)
+    }
+  }
+
+  const checkVacateAlerts = () => {
+    const today = new Date()
+    vacateRequests.forEach(req => {
+      if (req.status === 'approved') {
+        const vacateDate = new Date(req.expected_check_out)
+        const daysLeft = Math.ceil((vacateDate - today) / (1000 * 60 * 60 * 24))
+        if (daysLeft === 7) {
+          toast(`🚪 ${req.tenant_name} vacates in 7 days!`, { duration: 5000, icon: '⚠️' })
+        } else if (daysLeft === 3) {
+          toast(`🚪 ${req.tenant_name} vacates in 3 days!`, { duration: 5000, icon: '⚠️' })
+        } else if (daysLeft === 1) {
+          toast.error(`🚪 ${req.tenant_name} vacates TOMORROW!`, { duration: 5000 })
+        } else if (daysLeft < 0) {
+          toast.error(`🚪 ${req.tenant_name} vacate date passed!`, { duration: 5000 })
+        }
+      }
+    })
   }
 
   const getTenantsInRoom = (roomId) => {
@@ -927,17 +978,43 @@ export default function OwnerDashboard() {
 
   return (
     <div className="min-h-screen bg-white">
-      <nav className="bg-white border-b border-gray-100 sticky top-0 z-50 px-6 py-4">
+      {/* ==================== SUBSCRIPTION BANNER (when not active) ==================== */}
+      {!membershipActive && (
+        <div className="bg-yellow-100 border-b border-yellow-300 px-4 py-3 text-center sticky top-0 z-50">
+          <p className="text-yellow-800 font-semibold">
+            ⭐ You're exploring the dashboard with limited access. 
+            <button 
+              onClick={() => setShowMembershipModal(true)} 
+              className="ml-2 underline text-yellow-900 font-bold hover:text-yellow-950"
+            >
+              Subscribe now
+            </button> to unlock all features.
+          </p>
+        </div>
+      )}
+
+      {/* ==================== NAVIGATION ==================== */}
+      <nav className="bg-white border-b border-gray-100 sticky top-0 z-40 px-6 py-4">
         <div className="container mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-slate-800">🏠 HOSTELSET</h1>
             <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full">Owner</span>
           </div>
           <div className="flex items-center gap-4">
-            <button onClick={() => setShowMembershipModal(true)} className={`px-3 py-1 rounded-lg text-sm font-semibold transition ${membershipActive ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+            <button 
+              onClick={() => setShowMembershipModal(true)} 
+              className={`px-3 py-1 rounded-lg text-sm font-semibold transition ${
+                membershipActive ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+              }`}
+            >
               {membershipActive ? '✅ Active' : '⭐ Buy Membership'}
             </button>
-            <button onClick={() => setShowSettingsModal(true)} className="text-gray-500 hover:text-slate-800 transition px-3 py-1 rounded-lg hover:bg-gray-100">⚙️ Settings</button>
+            <button 
+              onClick={() => setShowSettingsModal(true)} 
+              className="text-gray-500 hover:text-slate-800 transition px-3 py-1 rounded-lg hover:bg-gray-100"
+            >
+              ⚙️ Settings
+            </button>
             <span className="text-sm hidden md:inline text-gray-500">{property.name}</span>
             <button onClick={handleLogout} className="text-red-500 hover:text-red-600 transition">Logout</button>
           </div>
@@ -992,16 +1069,69 @@ export default function OwnerDashboard() {
           </div>
         </div>
         
+        {/* ==================== ACTION BUTTONS (disabled when not active) ==================== */}
         <div className="flex flex-wrap gap-3 mb-8">
-          <button onClick={() => setShowAddModal(true)} className="bg-slate-800 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-slate-700 transition">+ Add Tenant</button>
-          <button onClick={() => setShowRoomModal(true)} className="border-2 border-slate-300 text-slate-700 px-5 py-2 rounded-full text-sm font-semibold hover:bg-slate-50 transition">+ Add Room</button>
-          <button onClick={() => setShowNoticeModal(true)} className="border-2 border-slate-300 text-slate-700 px-5 py-2 rounded-full text-sm font-semibold hover:bg-slate-50 transition">📢 Post Notice</button>
-          <button onClick={() => setShowSettingsModal(true)} className="border-2 border-blue-300 text-blue-700 px-5 py-2 rounded-full text-sm font-semibold hover:bg-blue-50 transition">⚙️ Settings</button>
+          <button 
+            onClick={() => membershipActive && setShowAddModal(true)} 
+            disabled={!membershipActive}
+            className={`px-5 py-2 rounded-full text-sm font-semibold transition ${
+              membershipActive 
+                ? 'bg-slate-800 text-white hover:bg-slate-700' 
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            + Add Tenant
+          </button>
+          <button 
+            onClick={() => membershipActive && setShowRoomModal(true)} 
+            disabled={!membershipActive}
+            className={`border-2 px-5 py-2 rounded-full text-sm font-semibold transition ${
+              membershipActive 
+                ? 'border-slate-300 text-slate-700 hover:bg-slate-50' 
+                : 'border-gray-200 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            + Add Room
+          </button>
+          <button 
+            onClick={() => membershipActive && setShowNoticeModal(true)} 
+            disabled={!membershipActive}
+            className={`border-2 px-5 py-2 rounded-full text-sm font-semibold transition ${
+              membershipActive 
+                ? 'border-slate-300 text-slate-700 hover:bg-slate-50' 
+                : 'border-gray-200 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            📢 Post Notice
+          </button>
+          <button 
+            onClick={() => membershipActive && setShowSettingsModal(true)} 
+            disabled={!membershipActive}
+            className={`border-2 px-5 py-2 rounded-full text-sm font-semibold transition ${
+              membershipActive 
+                ? 'border-blue-300 text-blue-700 hover:bg-blue-50' 
+                : 'border-gray-200 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            ⚙️ Settings
+          </button>
         </div>
         
+        {/* ==================== TABS (disabled when not active) ==================== */}
         <div className="flex flex-wrap border-b border-gray-200 mb-6 gap-2">
           {['overview', 'rooms', 'tenants', 'complaints', 'vacate', 'applications', 'notices'].map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 text-sm font-semibold capitalize transition-all rounded-t-lg ${activeTab === tab ? 'bg-slate-800 text-white' : 'text-gray-500 hover:text-slate-700 hover:bg-gray-50'}`}>
+            <button 
+              key={tab} 
+              onClick={() => membershipActive && setActiveTab(tab)} 
+              disabled={!membershipActive}
+              className={`px-5 py-2 text-sm font-semibold capitalize transition-all rounded-t-lg ${
+                activeTab === tab 
+                  ? 'bg-slate-800 text-white' 
+                  : membershipActive 
+                    ? 'text-gray-500 hover:text-slate-700 hover:bg-gray-50' 
+                    : 'text-gray-400 cursor-not-allowed'
+              }`}
+            >
               {tab === 'overview' && '📊 Overview'}
               {tab === 'rooms' && `🏠 Rooms (${rooms.length})`}
               {tab === 'tenants' && `👥 Tenants (${tenants.length})`}
@@ -1013,6 +1143,7 @@ export default function OwnerDashboard() {
           ))}
         </div>
 
+        {/* ==================== TAB CONTENT ==================== */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border border-gray-100 p-6">
@@ -1204,7 +1335,7 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* All Modals (unchanged but with updated Add Tenant fields) */}
+      {/* ==================== MODALS ==================== */}
       <AnimatePresence>{showConfirmDeleteModal && tenantToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
@@ -1229,7 +1360,7 @@ export default function OwnerDashboard() {
         </div>
       )}</AnimatePresence>
 
-      {/* Add Tenant Modal – with email required, clear labels */}
+      {/* Add Tenant Modal */}
       <AnimatePresence>{showAddModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowAddModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Add New Tenant</h2><div className="space-y-4">
         <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
         <input type="tel" placeholder="Phone Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} />
@@ -1270,7 +1401,7 @@ export default function OwnerDashboard() {
       {/* Post Notice Modal */}
       <AnimatePresence>{showNoticeModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowNoticeModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Post Notice</h2><div className="space-y-4"><input type="text" placeholder="Title *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.title} onChange={(e) => setNoticeForm({...noticeForm, title: e.target.value})} /><textarea placeholder="Content *" rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.content} onChange={(e) => setNoticeForm({...noticeForm, content: e.target.value})} /><select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.type} onChange={(e) => setNoticeForm({...noticeForm, type: e.target.value})}><option value="general">General</option><option value="maintenance">Maintenance</option><option value="payment">Payment</option><option value="event">Event</option><option value="emergency">Emergency</option></select><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={noticeForm.is_urgent} onChange={(e) => setNoticeForm({...noticeForm, is_urgent: e.target.checked})} className="w-4 h-4" /><span className="text-sm">Mark as Urgent</span></label><div className="flex gap-3 mt-6"><button onClick={postNotice} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Posting...' : 'Post Notice'}</button><button onClick={() => setShowNoticeModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
-      {/* Settings Modal – with UPI ID field */}
+      {/* Settings Modal */}
       <AnimatePresence>{showSettingsModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSettingsModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">⚙️ Property Settings</h2><div className="space-y-4"><div><label className="block text-sm font-semibold text-gray-700 mb-2">Joining Fee (₹)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.joining_fee} onChange={(e) => setSettings({...settings, joining_fee: parseInt(e.target.value) || 0})} min="0" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Advance Months Required (default for new tenants)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.advance_months} onChange={(e) => setSettings({...settings, advance_months: parseInt(e.target.value) || 0})} min="0" max="12" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Alert Threshold (days before due)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.due_day} onChange={(e) => setSettings({...settings, due_day: parseInt(e.target.value) || 5})} min="1" max="30" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Your UPI ID (for rent payments)</label><input type="text" className="w-full px-4 py-3 border border-gray-200 rounded-xl" placeholder="yourname@okhdfcbank" value={settings.upi_id} onChange={(e) => setSettings({...settings, upi_id: e.target.value})} /><p className="text-xs text-gray-400 mt-1">Tenants will pay rent directly to this UPI ID using UPI Intent (zero fee).</p></div><div className="flex gap-3 mt-6"><button onClick={saveSettings} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Save Settings'}</button><button onClick={() => setShowSettingsModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
       {/* Respond to Complaint Modal */}
