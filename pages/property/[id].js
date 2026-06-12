@@ -164,7 +164,7 @@ export default function PropertyDetail() {
       const screenshotUrl = await uploadFile(paymentScreenshot, 'pay')
       const cleanPhone = cleanPhoneNumber(applyForm.phone)
 
-      // 1. Check if user already exists (by email)
+      // 1. Check if user already exists (by email) in public.users
       let userId
       const { data: existingUser } = await supabase
         .from('users')
@@ -173,14 +173,14 @@ export default function PropertyDetail() {
         .maybeSingle()
 
       if (existingUser) {
+        // User already exists – just update profile
         userId = existingUser.id
-        // Update the existing user’s name/phone if needed
         await supabase.from('users').update({
           full_name: applyForm.name,
           phone: cleanPhone,
         }).eq('id', userId)
       } else {
-        // 2. Create a new Auth user + user record
+        // 2. Create a new Auth user
         const tempPassword = Math.random().toString(36).slice(-8)
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: applyForm.email,
@@ -188,19 +188,40 @@ export default function PropertyDetail() {
           options: { data: { full_name: applyForm.name, role: 'tenant', phone: cleanPhone } }
         })
         if (authError) throw authError
-        userId = authData.user.id
 
-        const { error: userError } = await supabase.from('users').insert({
-          id: userId,
-          email: applyForm.email,
-          full_name: applyForm.name,
-          phone: cleanPhone,
-          role: 'tenant',
-          is_active: true,
-        })
-        if (userError) throw userError
+        // 3. Immediately check if a users row was created by a trigger
+        const { data: newUserRow, error: fetchError } = await supabase
+          .from('users')
+          .select('id')
+          .eq('email', applyForm.email)
+          .maybeSingle()
 
-        // Send password set email only for new users
+        if (fetchError) throw fetchError
+
+        if (newUserRow) {
+          // Trigger already created the row – update it with our details
+          userId = newUserRow.id
+          await supabase.from('users').update({
+            full_name: applyForm.name,
+            phone: cleanPhone,
+            role: 'tenant',
+            is_active: true,
+          }).eq('id', userId)
+        } else {
+          // No trigger – insert manually
+          userId = authData.user.id
+          const { error: insertError } = await supabase.from('users').insert({
+            id: userId,
+            email: applyForm.email,
+            full_name: applyForm.name,
+            phone: cleanPhone,
+            role: 'tenant',
+            is_active: true,
+          })
+          if (insertError) throw insertError
+        }
+
+        // Send password-set email (only for newly created auth users)
         await supabase.auth.resetPasswordForEmail(applyForm.email, {
           redirectTo: `${window.location.origin}/reset-password`,
         }).catch(e => console.warn('Reset email not sent:', e))
@@ -209,7 +230,7 @@ export default function PropertyDetail() {
       const totalAmount = calculateTotalAmount()
       const room = rooms.find(r => r.id === selectedRoom)
 
-      // 3. Insert tenant record with payment_pending
+      // 4. Insert tenant record with payment_pending status
       const { error: tenantError } = await supabase.from('tenants').insert({
         user_id: userId,
         property_id: id,
@@ -228,7 +249,7 @@ export default function PropertyDetail() {
       })
       if (tenantError) throw tenantError
 
-      // 4. Update room occupancy
+      // 5. Update room occupancy
       const newOccupants = room.current_occupants + 1
       const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
       await supabase.from('rooms').update({
