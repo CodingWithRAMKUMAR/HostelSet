@@ -50,8 +50,10 @@ export default function Login() {
       const result = await signInWithEmail(emailToUse, password)
       if (result.success) {
         toast.success(`Welcome back, ${result.userData.full_name}!`)
-        // Redirect based on role
-        if (result.role === 'owner') {
+        // ✅ Redirect based on role (now includes admin)
+        if (result.role === 'admin') {
+          router.push('/admin/dashboard')
+        } else if (result.role === 'owner') {
           const { data: property } = await supabase
             .from('properties')
             .select('id')
