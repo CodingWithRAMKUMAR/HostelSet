@@ -57,6 +57,8 @@ export default function OwnerDashboard() {
 
   // Pending rent payment proofs
   const [pendingRentPayments, setPendingRentPayments] = useState([])
+  // Full payment history
+  const [allPayments, setAllPayments] = useState([])
 
   // Application detail modal
   const [selectedApplication, setSelectedApplication] = useState(null)
@@ -233,15 +235,23 @@ export default function OwnerDashboard() {
         const noticePeriodCount = tenantsWithRoomNumber.filter(t => t.status === 'notice_period').length
         const pendingPaymentCount = tenantsWithRoomNumber.filter(t => t.status === 'payment_pending').length
 
-        // Pending rent payment proofs (from tenant UPI submissions)
+        // Fetch all payment history for this property (latest 100)
         const tenantIds = tenantsData?.map(t => t.id) || []
+        const { data: allPmts } = await supabase
+          .from('payment_history')
+          .select('*, tenants(name, room_id, rooms(room_number))')
+          .in('tenant_id', tenantIds)
+          .order('payment_date', { ascending: false })
+          .limit(100)
+        setAllPayments(allPmts || [])
+
+        // Pending rent payment proofs
         const { data: pendingPayments } = await supabase
           .from('payment_history')
           .select('*, tenants(name, phone, room_id, rooms(room_number))')
           .eq('status', 'payment_pending')
           .in('tenant_id', tenantIds)
           .order('payment_date', { ascending: false })
-
         setPendingRentPayments(pendingPayments || [])
         const pendingRentConfirmations = pendingPayments?.length || 0
 
@@ -451,7 +461,7 @@ export default function OwnerDashboard() {
     }
   }
 
-  // ✅ Confirm a regular rent UPI payment
+  // Confirm a regular rent UPI payment
   const confirmRentPayment = async (paymentId, tenantId, amount) => {
     setIsSubmitting(true)
     try {
@@ -683,6 +693,18 @@ export default function OwnerDashboard() {
           status: 'active'
         })
       if (tenantError) throw tenantError
+
+      // Record advance payment in payment_history
+      if (totalJoiningAmount > 0) {
+        const { error: paymentError } = await supabase.from('payment_history').insert({
+          tenant_id: authData.user.id, // we don't have the tenant.id yet, but we can use the newly inserted tenant by fetching it
+          amount: totalJoiningAmount,
+          payment_date: new Date().toISOString().split('T')[0],
+          payment_method: 'advance',
+          status: 'success'
+        })
+        if (paymentError) console.warn('Failed to record advance payment:', paymentError)
+      }
 
       const newOccupants = selectedRoom.current_occupants + 1
       const newStatus = newOccupants >= selectedRoom.capacity ? 'occupied' : 'vacant'
@@ -1193,7 +1215,7 @@ export default function OwnerDashboard() {
 
         {/* Tabs */}
         <div className="flex flex-wrap border-b border-gray-200 mb-6 gap-2">
-          {['overview', 'rooms', 'tenants', 'rent-payments', 'complaints', 'vacate', 'applications', 'notices'].map((tab) => (
+          {['overview', 'rooms', 'tenants', 'rent-payments', 'payment-history', 'complaints', 'vacate', 'applications', 'notices'].map((tab) => (
             <button 
               key={tab} 
               onClick={() => setActiveTab(tab)} 
@@ -1207,6 +1229,7 @@ export default function OwnerDashboard() {
               }`}
             >
               {tab === 'rent-payments' && `💸 Rent Payments (${stats.pendingRentConfirmations})`}
+              {tab === 'payment-history' && '💳 Payment History'}
               {tab === 'overview' && '📊 Overview'}
               {tab === 'rooms' && `🏠 Rooms (${rooms.length})`}
               {tab === 'tenants' && `👥 Tenants (${tenants.length})`}
@@ -1219,8 +1242,6 @@ export default function OwnerDashboard() {
         </div>
 
         {/* Tab Content */}
-
-        {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border border-gray-100 p-6">
@@ -1255,7 +1276,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Rooms Tab */}
         {activeTab === 'rooms' && (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {rooms.map((room) => {
@@ -1294,7 +1314,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1369,7 +1388,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Rent Payments Tab */}
         {activeTab === 'rent-payments' && (
           <div className="space-y-4">
             {pendingRentPayments.length === 0 && (
@@ -1410,7 +1428,46 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Complaints Tab */}
+        {activeTab === 'payment-history' && (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Tenant</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Room</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Amount</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Method</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allPayments.map(p => (
+                  <tr key={p.id} className="border-b hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm text-gray-500">{formatDate(p.payment_date)}</td>
+                    <td className="px-4 py-3 font-medium">{p.tenants?.name || 'N/A'}</td>
+                    <td className="px-4 py-3 text-gray-600">{p.tenants?.rooms?.room_number || getRoomNumberById(p.tenants?.room_id)}</td>
+                    <td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(p.amount)}</td>
+                    <td className="px-4 py-3 capitalize text-gray-500">{p.payment_method}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 rounded-full text-xs ${
+                        p.status === 'success' ? 'bg-green-100 text-green-700' : 
+                        p.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' : 
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {p.status === 'success' ? 'Success' : p.status === 'payment_pending' ? 'Pending' : p.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {allPayments.length === 0 && (
+                  <tr><td colSpan="6" className="text-center py-8 text-gray-500">No payment history yet</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         {activeTab === 'complaints' && (
           <div className="space-y-4">
             {complaints.map(c => (
@@ -1426,7 +1483,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Vacate Tab */}
         {activeTab === 'vacate' && (
           <div className="space-y-4">
             {vacateRequests.map(req => {
@@ -1446,7 +1502,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Applications Tab */}
         {activeTab === 'applications' && (
           <div className="space-y-4">
             {applications.map(app => (
@@ -1469,7 +1524,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Notices Tab */}
         {activeTab === 'notices' && (
           <div className="space-y-4">
             <button onClick={() => setShowNoticeModal(true)} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold mb-4 hover:bg-slate-700 transition">+ Post New Notice</button>
@@ -1486,7 +1540,7 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* Confirm Delete Modal */}
+      {/* Modals */}
       <AnimatePresence>{showConfirmDeleteModal && tenantToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
@@ -1586,7 +1640,7 @@ export default function OwnerDashboard() {
         </div>
       )}</AnimatePresence>
 
-      {/* Payment Confirmation Modal (self check‑in tenants) */}
+      {/* Payment Confirmation Modal (self check‑in) */}
       <AnimatePresence>
         {showPaymentConfirmModal && confirmingTenant && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentConfirmModal(false)}>
