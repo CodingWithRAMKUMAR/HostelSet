@@ -164,17 +164,17 @@ export default function PropertyDetail() {
       const screenshotUrl = await uploadFile(paymentScreenshot, 'pay')
       const cleanPhone = cleanPhoneNumber(applyForm.phone)
 
-      // 1. Check if user already exists (by email) in public.users
+      // 1. Check if user already exists (by email) – safely, avoiding maybeSingle's error on multiple rows
       let userId
-      const { data: existingUser } = await supabase
+      const { data: existingUsers } = await supabase
         .from('users')
         .select('id')
         .eq('email', applyForm.email)
-        .maybeSingle()
+        .limit(1)
 
-      if (existingUser) {
-        // User already exists – just update profile
-        userId = existingUser.id
+      if (existingUsers && existingUsers.length > 0) {
+        userId = existingUsers[0].id
+        // Update profile
         await supabase.from('users').update({
           full_name: applyForm.name,
           phone: cleanPhone,
@@ -189,18 +189,16 @@ export default function PropertyDetail() {
         })
         if (authError) throw authError
 
-        // 3. Immediately check if a users row was created by a trigger
-        const { data: newUserRow, error: fetchError } = await supabase
+        // 3. Check if a users row was auto-created by a trigger
+        const { data: newUserRows } = await supabase
           .from('users')
           .select('id')
           .eq('email', applyForm.email)
-          .maybeSingle()
+          .limit(1)
 
-        if (fetchError) throw fetchError
-
-        if (newUserRow) {
+        if (newUserRows && newUserRows.length > 0) {
           // Trigger already created the row – update it with our details
-          userId = newUserRow.id
+          userId = newUserRows[0].id
           await supabase.from('users').update({
             full_name: applyForm.name,
             phone: cleanPhone,
