@@ -31,6 +31,8 @@ export default function TenantDashboard() {
   const [editProfile, setEditProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', email: '' })
   const [ratingHover, setRatingHover] = useState(0)
+  // UPI payment states
+  const [ownerUpiId, setOwnerUpiId] = useState('')
 
   // Calculate next due date
   const calculateNextDueDate = () => {
@@ -107,6 +109,20 @@ export default function TenantDashboard() {
         phone: tenantData.phone || '',
         email: tenantData.email || ''
       })
+      // Owner UPI from property
+      if (tenantData.property?.owner_upi_id) {
+        setOwnerUpiId(tenantData.property.owner_upi_id)
+      } else {
+        // Fallback: try owner_settings
+        const { data: settings } = await supabase
+          .from('owner_settings')
+          .select('upi_id')
+          .eq('owner_id', tenantData.property?.owner_id)
+          .maybeSingle()
+        if (settings?.upi_id) {
+          setOwnerUpiId(settings.upi_id)
+        }
+      }
 
       if (tenantData.property?.owner_id) {
         const { data: ownerData } = await supabase
@@ -237,7 +253,7 @@ export default function TenantDashboard() {
         .insert({
           tenant_id: tenant.id,
           property_id: tenant.property_id,
-          room_id: tenant.room_id,  // ✅ FIXED: added room_id
+          room_id: tenant.room_id,
           tenant_name: tenant.name,
           room_number: room?.room_number,
           title: complaintForm.title,
@@ -259,38 +275,60 @@ export default function TenantDashboard() {
     }
   }
 
-  const initiateDodoPayment = async () => {
+  // ✅ NEW: Direct UPI payment (no Dodo)
+  const handleUpiPayment = async () => {
+    if (!ownerUpiId) {
+      toast.error('Owner UPI ID not set. Please contact your owner.')
+      return
+    }
     const amount = tenant.pending_amount || tenant.rent_amount
     if (amount <= 0) {
       toast.error('No pending amount to pay')
       return
     }
+    // Open UPI app
+    const upiLink = `upi://pay?pa=${ownerUpiId}&pn=HostelSet&am=${amount}&cu=INR`
+    window.open(upiLink, '_blank')
+    // Show a confirmation toast
+    toast.success('UPI app opened. Pay the exact amount, then come back and click "I Have Paid".', { duration: 6000 })
+  }
+
+  const confirmUpiPayment = async () => {
+    const amount = tenant.pending_amount || tenant.rent_amount
     setPaymentLoading(true)
     try {
-      const response = await fetch('/api/payment/create-rent-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantId: tenant.id,
-          amount: amount,
-          tenantName: tenant.name,
-          tenantEmail: tenant.email,
-        }),
+      // Record payment as successful UPI payment
+      const { error: paymentError } = await supabase.from('payment_history').insert({
+        tenant_id: tenant.id,
+        amount: amount,
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: 'upi',
+        status: 'success'
       })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Payment initiation failed')
-      window.open(data.paymentLink, '_blank')
-      toast.success('Redirecting to payment gateway...')
-      setTimeout(() => {
-        refreshData()
-        toast('Payment status updated.', { icon: '🔄' })
-      }, 10000)
+      if (paymentError) throw paymentError
+
+      const newTotalPaid = (tenant.total_paid || 0) + amount
+      const newPendingAmount = Math.max(0, (tenant.pending_amount || 0) - amount)
+      const newRentStatus = newPendingAmount <= 0 ? 'paid' : 'pending'
+      const { error: updateError } = await supabase
+        .from('tenants')
+        .update({
+          total_paid: newTotalPaid,
+          pending_amount: newPendingAmount,
+          rent_status: newRentStatus,
+          last_payment_date: new Date().toISOString().split('T')[0]
+        })
+        .eq('id', tenant.id)
+      if (updateError) throw updateError
+
+      toast.success('Payment recorded! Your rent is updated.')
+      setShowPaymentModal(false)
+      await refreshData()
     } catch (error) {
       console.error('Payment error:', error)
-      toast.error(error.message)
+      toast.error('Failed to record payment: ' + error.message)
     } finally {
       setPaymentLoading(false)
-      setShowPaymentModal(false)
     }
   }
 
@@ -528,7 +566,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
-        {/* Roommates Tab (unchanged) */}
+        {/* Roommates Tab */}
         {activeTab === 'roommates' && (
           <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
             <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2"><span className="text-xl">👥</span> Your Roommates <span className="text-xs text-gray-400 ml-2">(Same Room Only)</span></h3>
@@ -547,7 +585,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
-        {/* Notices Tab (unchanged) */}
+        {/* Notices Tab */}
         {activeTab === 'notices' && (
           <div className="space-y-4">
             {notices.map((notice) => (
@@ -561,7 +599,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
-        {/* Complaints Tab (unchanged) */}
+        {/* Complaints Tab */}
         {activeTab === 'complaints' && (
           <div className="space-y-4">
             {complaints.map((complaint) => (
@@ -577,7 +615,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
-        {/* Payment History Tab (unchanged) */}
+        {/* Payment History Tab */}
         {activeTab === 'payments' && (
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
@@ -611,11 +649,11 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal (unchanged) */}
+      {/* Payment Modal – UPI Direct */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
-            <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">💳 Pay Rent via UPI</h2>
               <div className="bg-gray-50 rounded-xl p-4 mb-4">
                 <p className="font-semibold">{tenant?.name}</p>
@@ -623,27 +661,44 @@ export default function TenantDashboard() {
                 <p>Monthly Rent: {formatCurrency(tenant?.rent_amount)}</p>
                 <p className="text-red-500">Pending: {formatCurrency(tenant?.pending_amount || tenant?.rent_amount)}</p>
               </div>
-              <div className="bg-blue-50 p-3 rounded-lg mb-4">
-                <p className="text-sm text-blue-800">🔐 You will be redirected to Dodo Payments secure checkout.</p>
-                <p className="text-xs text-blue-600 mt-1">Payment methods: UPI, Cards, NetBanking</p>
-                <p className="text-xs text-green-600 mt-1">✅ UPI payments have zero transaction fees (owner receives full amount).</p>
-              </div>
-              <div className="flex gap-3 mt-6">
-                <button onClick={initiateDodoPayment} disabled={paymentLoading} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
-                  {paymentLoading ? 'Processing...' : `Pay ₹${(tenant?.pending_amount || tenant?.rent_amount).toLocaleString()}`}
-                </button>
-                <button onClick={() => setShowPaymentModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
-              </div>
-            </div>
+              {ownerUpiId ? (
+                <>
+                  <div className="bg-blue-50 p-3 rounded-lg mb-4">
+                    <p className="text-sm font-semibold">Owner UPI ID: {ownerUpiId}</p>
+                    <button
+                      onClick={handleUpiPayment}
+                      className="mt-2 inline-block bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition"
+                    >
+                      Pay with UPI App
+                    </button>
+                  </div>
+                  <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800 mb-4">
+                    After payment, click "I Have Paid" to update your rent status.
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={confirmUpiPayment}
+                      disabled={paymentLoading}
+                      className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50"
+                    >
+                      {paymentLoading ? 'Processing...' : `I Have Paid ₹${(tenant?.pending_amount || tenant?.rent_amount).toLocaleString()}`}
+                    </button>
+                    <button onClick={() => setShowPaymentModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-red-500">Owner UPI ID not set. Please contact your owner.</p>
+              )}
+            </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Complaint Modal (unchanged) */}
+      {/* Complaint Modal */}
       <AnimatePresence>
         {showComplaintModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComplaintModal(false)}>
-            <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">📝 Raise Complaint</h2>
               <div className="space-y-4">
                 <input type="text" placeholder="Title" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={complaintForm.title} onChange={(e) => setComplaintForm({...complaintForm, title: e.target.value})} />
@@ -658,12 +713,12 @@ export default function TenantDashboard() {
                   <button onClick={() => setShowComplaintModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
                 </div>
               </div>
-            </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Vacate Request Modal (unchanged) */}
+      {/* Vacate Request Modal */}
       <AnimatePresence>
         {showVacateModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowVacateModal(false)}>
@@ -701,7 +756,7 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Profile Modal (unchanged) */}
+      {/* Profile Modal */}
       <AnimatePresence>
         {showProfileModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
