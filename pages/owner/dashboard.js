@@ -117,6 +117,7 @@ export default function OwnerDashboard() {
     return { date: vacate.expected_check_out, daysLeft, overdue: false }
   }
 
+  // ✅ FIXED: Wait for Supabase session before fetching data (required for RLS)
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('isLoggedIn')
     const userRole = localStorage.getItem('userRole')
@@ -124,10 +125,22 @@ export default function OwnerDashboard() {
       router.push('/login')
       return 
     }
-    loadData()
-    loadSettings()
-    checkMembershipStatus()
-    checkVacateAlerts()
+
+    const initDashboard = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession()
+      if (error || !session) {
+        // No valid session – redirect to login
+        localStorage.clear()
+        router.push('/login')
+        return
+      }
+      // Session is ready; now load all dashboard data
+      await loadData()
+      await loadSettings()
+      await checkMembershipStatus()
+      await checkVacateAlerts()
+    }
+    initDashboard()
   }, [])
 
   const loadSettings = async () => {
