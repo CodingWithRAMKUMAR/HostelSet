@@ -40,7 +40,7 @@ export default function TenantDashboard() {
   const [showScreenshotModal, setShowScreenshotModal] = useState(false)
   const [screenshotUrl, setScreenshotUrl] = useState('')
 
-  // ========== UPI intent functions (already fixed) ==========
+  // ========== UPI intent functions ==========
   const openGooglePay = (upiId, amount) => {
     const payee = encodeURIComponent(upiId)
     const name = encodeURIComponent('HostelSet')
@@ -199,7 +199,6 @@ export default function TenantDashboard() {
           setOwnerUpiId(settings.upi_id || '')
           setOwnerUpiPhone(settings.upi_phone || '')
         } else {
-          // Fallback to property's owner_upi_id
           setOwnerUpiId(tenantData.property?.owner_upi_id || '')
           setOwnerUpiPhone('')
         }
@@ -581,7 +580,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
-        {/* Payment History Tab – with UTR and Screenshot Preview */}
+        {/* Payment History Tab – with UTR and Screenshot Preview (Fixed JSX) */}
         {activeTab === 'payments' && (
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
@@ -624,7 +623,7 @@ export default function TenantDashboard() {
                           <span className="text-gray-400 text-xs">—</span>
                         )}
                       </td>
-                    </table>
+                    </tr>
                   ))}
                   {paymentHistory.length === 0 && (
                     <tr>
@@ -638,7 +637,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal – with UPI ID + UPI Phone Number */}
+      {/* Payment Modal */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -652,7 +651,6 @@ export default function TenantDashboard() {
               </div>
               {(ownerUpiId || ownerUpiPhone) ? (
                 <div className="space-y-4">
-                  {/* UPI ID Option */}
                   {ownerUpiId && (
                     <div className="bg-blue-50 p-3 rounded-lg">
                       <p className="text-sm font-semibold mb-2">Pay to UPI ID</p>
@@ -664,7 +662,6 @@ export default function TenantDashboard() {
                       </div>
                     </div>
                   )}
-                  {/* UPI Phone Number Option */}
                   {ownerUpiPhone && (
                     <div className="bg-green-50 p-3 rounded-lg">
                       <p className="text-sm font-semibold mb-2">Pay to UPI Phone Number</p>
@@ -692,7 +689,7 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Complaint Modal (unchanged) */}
+      {/* Complaint Modal */}
       <AnimatePresence>
         {showComplaintModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComplaintModal(false)}>
@@ -711,7 +708,7 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Vacate Request Modal (unchanged) */}
+      {/* Vacate Modal */}
       <AnimatePresence>
         {showVacateModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowVacateModal(false)}>
@@ -733,7 +730,7 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Profile Modal (unchanged) */}
+      {/* Profile Modal */}
       <AnimatePresence>
         {showProfileModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
@@ -758,7 +755,7 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Screenshot Preview Modal (New) */}
+      {/* Screenshot Preview Modal */}
       <AnimatePresence>
         {showScreenshotModal && screenshotUrl && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4" onClick={() => setShowScreenshotModal(false)}>
