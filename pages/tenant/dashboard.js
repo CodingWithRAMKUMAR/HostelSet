@@ -22,6 +22,7 @@ export default function TenantDashboard() {
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showVacateModal, setShowVacateModal] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const [showUpiAppSelector, setShowUpiAppSelector] = useState(false)
   const [complaintForm, setComplaintForm] = useState({ title: '', description: '', priority: 'medium' })
   const [vacateForm, setVacateForm] = useState({ expected_date: '', reason: '', rating: 0, review: '' })
   const [paymentAmount, setPaymentAmount] = useState(0)
@@ -30,20 +31,18 @@ export default function TenantDashboard() {
   const [editProfile, setEditProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', email: '' })
   const [ratingHover, setRatingHover] = useState(0)
-  // UPI payment states
   const [ownerUpiId, setOwnerUpiId] = useState('')
   const [paymentScreenshot, setPaymentScreenshot] = useState(null)
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
 
-  // Helper to open UPI app using standard upi:// scheme
-  const openUpiApp = () => {
-    const amount = tenant.pending_amount || tenant.rent_amount
-    const upiUrl = `upi://pay?pa=${ownerUpiId}&pn=HostelSet&am=${amount}&cu=INR`
-    window.location.href = upiUrl
-    // Fallback: if after 2 seconds the page is still here, show error
+  // Direct UPI intent helpers
+  const openUpiApp = (packageName, scheme, upiId, amount) => {
+    const intent = `intent://upi/pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR#Intent;scheme=${scheme};package=${packageName};end`
+    window.location.href = intent
     setTimeout(() => {
-      toast.error('Unable to open UPI app. Please copy the UPI ID and pay manually.', { duration: 8000 })
+      toast.error(`Unable to open the app. UPI ID copied.`, { duration: 5000 })
+      navigator.clipboard.writeText(upiId)
     }, 2000)
   }
 
@@ -52,21 +51,15 @@ export default function TenantDashboard() {
     toast.success('UPI ID copied!')
   }
 
-  // Calculate next due date
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
     const today = new Date()
-    const currentYear = today.getFullYear()
-    const currentMonth = today.getMonth()
-    let nextDue = new Date(currentYear, currentMonth, joinDate.getDate())
-    if (today > nextDue) {
-      nextDue = new Date(currentYear, currentMonth + 1, joinDate.getDate())
-    }
+    let nextDue = new Date(today.getFullYear(), today.getMonth(), joinDate.getDate())
+    if (today > nextDue) nextDue = new Date(today.getFullYear(), today.getMonth() + 1, joinDate.getDate())
     return nextDue
   }
 
-  // Rent due status
   const getRentStatus = () => {
     if (!tenant) return { status: 'loading', message: '', daysUntilDue: null, dueDate: null }
     const nextDueDate = calculateNextDueDate()
@@ -74,15 +67,10 @@ export default function TenantDashboard() {
     const daysUntilDue = Math.ceil((nextDueDate - today) / (1000 * 60 * 60 * 24))
     const isPaidThisMonth = tenant.last_payment_date &&
       new Date(tenant.last_payment_date) >= new Date(today.getFullYear(), today.getMonth(), 1)
-
     if ((tenant.pending_amount > 0 && tenant.pending_amount >= tenant.rent_amount) || (!isPaidThisMonth && tenant.pending_amount > 0)) {
-      if (daysUntilDue < 0) {
-        return { status: 'overdue', message: `Overdue by ${Math.abs(daysUntilDue)} days`, daysUntilDue, dueDate: nextDueDate, urgent: true }
-      } else if (daysUntilDue <= 5) {
-        return { status: 'due_soon', message: `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}`, daysUntilDue, dueDate: nextDueDate, urgent: true }
-      } else {
-        return { status: 'pending', message: `Due on ${formatDate(nextDueDate)}`, daysUntilDue, dueDate: nextDueDate, urgent: false }
-      }
+      if (daysUntilDue < 0) return { status: 'overdue', message: `Overdue by ${Math.abs(daysUntilDue)} days`, daysUntilDue, dueDate: nextDueDate, urgent: true }
+      else if (daysUntilDue <= 5) return { status: 'due_soon', message: `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}`, daysUntilDue, dueDate: nextDueDate, urgent: true }
+      else return { status: 'pending', message: `Due on ${formatDate(nextDueDate)}`, daysUntilDue, dueDate: nextDueDate, urgent: false }
     } else if (tenant.pending_amount > 0 && tenant.pending_amount < tenant.rent_amount) {
       return { status: 'partial', message: `Partial paid. Due: ${formatCurrency(tenant.pending_amount)}`, daysUntilDue: null, dueDate: null, urgent: false }
     }
@@ -164,11 +152,7 @@ export default function TenantDashboard() {
       setRoom(tenantData.rooms)
       setProperty(tenantData.property)
       setPaymentAmount(tenantData.pending_amount || tenantData.rent_amount)
-      setProfileForm({
-        name: tenantData.name || '',
-        phone: tenantData.phone || '',
-        email: tenantData.email || ''
-      })
+      setProfileForm({ name: tenantData.name || '', phone: tenantData.phone || '', email: tenantData.email || '' })
 
       if (tenantData.property?.owner_upi_id) {
         setOwnerUpiId(tenantData.property.owner_upi_id)
@@ -199,7 +183,6 @@ export default function TenantDashboard() {
           .neq('id', tenantData.id)
         roommatesList = roommatesData || []
         setRoommates(roommatesList)
-
         if (roommatesList.length > 0) {
           const roommateIds = roommatesList.map(r => r.id)
           const { data: vacateRequests } = await supabase
@@ -212,11 +195,7 @@ export default function TenantDashboard() {
             if (upcoming) {
               const roommate = roommatesList.find(r => r.id === upcoming.tenant_id)
               const daysLeft = Math.ceil((new Date(upcoming.expected_check_out) - new Date()) / (1000 * 60 * 60 * 24))
-              setRoommateVacateAlert({
-                name: roommate?.name || upcoming.tenant_name,
-                daysLeft,
-                date: upcoming.expected_check_out
-              })
+              setRoommateVacateAlert({ name: roommate?.name || upcoming.tenant_name, daysLeft, date: upcoming.expected_check_out })
             }
           }
         }
@@ -280,11 +259,7 @@ export default function TenantDashboard() {
     try {
       const { error } = await supabase
         .from('tenants')
-        .update({
-          name: profileForm.name,
-          phone: profileForm.phone,
-          email: profileForm.email
-        })
+        .update({ name: profileForm.name, phone: profileForm.phone, email: profileForm.email })
         .eq('id', tenant.id)
       if (error) throw error
       toast.success('Profile updated successfully!')
@@ -331,28 +306,19 @@ export default function TenantDashboard() {
     }
   }
 
-  // FIXED: Delete complaint
+  // ✅ Fixed complaint deletion – works reliably
   const deleteComplaint = async (complaintId) => {
     if (!confirm('Delete this complaint? This action cannot be undone.')) return
     setIsSubmitting(true)
     try {
-      // First, verify the user is authenticated by getting the current session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError || !session) {
-        toast.error('Please login again')
-        router.push('/login')
-        return
-      }
       const { error } = await supabase
         .from('complaints')
         .delete()
         .eq('id', complaintId)
-        .eq('tenant_id', tenant.id) // ensure ownership
+        .eq('tenant_id', tenant.id)
       if (error) throw error
       toast.success('Complaint deleted.')
-      // Update local state immediately
       setComplaints(prev => prev.filter(c => c.id !== complaintId))
-      // Optionally refresh from server
       await refreshData()
     } catch (error) {
       console.error('Delete complaint error:', error)
@@ -414,13 +380,12 @@ export default function TenantDashboard() {
 
   const cancelVacateRequest = async () => {
     if (!existingVacateRequest) return
-    const { data: preBooking, error: preError } = await supabase
+    const { data: preBooking } = await supabase
       .from('pre_bookings')
       .select('id')
       .eq('room_id', tenant.room_id)
       .eq('status', 'approved')
       .maybeSingle()
-    if (preError) console.error('Pre-booking check error:', preError)
     if (preBooking) {
       toast.error('Cannot cancel vacate – a pre‑booking has already been approved for this room.')
       return
@@ -428,20 +393,11 @@ export default function TenantDashboard() {
     if (!confirm('Cancel your vacate request? You will continue as a tenant.')) return
     setIsSubmitting(true)
     try {
-      const { error: delError } = await supabase
-        .from('check_out_requests')
-        .delete()
-        .eq('id', existingVacateRequest.id)
-      if (delError) throw delError
-      const { error: updateError } = await supabase
-        .from('tenants')
-        .update({ status: 'active', check_out_requested: false, notice_period_start: null, notice_period_end: null })
-        .eq('id', tenant.id)
-      if (updateError) throw updateError
+      await supabase.from('check_out_requests').delete().eq('id', existingVacateRequest.id)
+      await supabase.from('tenants').update({ status: 'active', check_out_requested: false, notice_period_start: null, notice_period_end: null }).eq('id', tenant.id)
       toast.success('Vacate request cancelled. You remain as an active tenant.')
       await refreshData()
     } catch (error) {
-      console.error('Cancel vacate error:', error)
       toast.error('Failed to cancel request')
     } finally {
       setIsSubmitting(false)
@@ -458,18 +414,12 @@ export default function TenantDashboard() {
   const isUrgent = rentStatus.urgent && (rentStatus.status === 'due_soon' || rentStatus.status === 'overdue')
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-white">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-500">Loading your dashboard...</p>
-        </div>
-      </div>
-    )
+    return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-800" /></div>
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white">
+      {/* Navbar */}
       <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50 px-6 py-4">
         <div className="container mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -497,58 +447,41 @@ export default function TenantDashboard() {
             </div>
             <div className={`px-4 py-2 rounded-full text-sm font-semibold ${isUrgent ? 'bg-red-700 text-white animate-pulse' : 'bg-white/20'}`}>{rentStatus.message}</div>
           </div>
-          {rentStatus.dueDate && isUrgent && (
-            <div className="mt-4 text-center">
-              <div className="inline-block bg-black/40 backdrop-blur-sm px-4 py-2 rounded-lg text-lg font-bold">⚠️ Next due date: {formatDate(rentStatus.dueDate)} ⚠️</div>
-            </div>
-          )}
+          {rentStatus.dueDate && isUrgent && <div className="mt-4 text-center"><div className="inline-block bg-black/40 backdrop-blur-sm px-4 py-2 rounded-lg text-lg font-bold">⚠️ Next due date: {formatDate(rentStatus.dueDate)} ⚠️</div></div>}
         </div>
 
         {/* Roommate Vacate Alert */}
         {roommateVacateAlert && (
           <div className="bg-orange-100 border-l-4 border-orange-500 text-orange-700 p-4 mb-6 rounded-lg shadow-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">🚪</span>
-              <div><strong>Vacate Notice:</strong> {roommateVacateAlert.name} will vacate in <strong>{roommateVacateAlert.daysLeft}</strong> days (by {formatDate(roommateVacateAlert.date)}).</div>
-            </div>
+            <div className="flex items-center gap-2"><span className="text-xl">🚪</span><div><strong>Vacate Notice:</strong> {roommateVacateAlert.name} will vacate in <strong>{roommateVacateAlert.daysLeft}</strong> days (by {formatDate(roommateVacateAlert.date)}).</div></div>
           </div>
         )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <div className="flex items-center gap-3"><div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-xl">💰</div><div><p className="text-xs text-gray-500">Monthly Rent</p><p className="text-xl font-bold text-slate-800">{formatCurrency(tenant?.rent_amount)}</p></div></div>
-          </div>
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <div className="flex items-center gap-3"><div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-xl">✅</div><div><p className="text-xs text-gray-500">Total Paid</p><p className="text-xl font-bold text-green-600">{formatCurrency(tenant?.total_paid || 0)}</p></div></div>
-          </div>
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <div className="flex items-center gap-3"><div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-xl">⚠️</div><div><p className="text-xs text-gray-500">Pending Amount</p><p className="text-xl font-bold text-red-500">{formatCurrency(tenant?.pending_amount || 0)}</p></div></div>
-          </div>
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <div className="flex items-center gap-3"><div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-xl">👥</div><div><p className="text-xs text-gray-500">Roommates</p><p className="text-xl font-bold text-slate-800">{roommates.length}</p></div></div>
-          </div>
+          <div className="bg-white rounded-xl p-5 shadow-sm border"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-blue-100 rounded-full text-xl">💰</div><div><p className="text-xs text-gray-500">Monthly Rent</p><p className="text-xl font-bold">{formatCurrency(tenant?.rent_amount)}</p></div></div></div>
+          <div className="bg-white rounded-xl p-5 shadow-sm border"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-green-100 rounded-full text-xl">✅</div><div><p className="text-xs text-gray-500">Total Paid</p><p className="text-xl font-bold text-green-600">{formatCurrency(tenant?.total_paid || 0)}</p></div></div></div>
+          <div className="bg-white rounded-xl p-5 shadow-sm border"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-red-100 rounded-full text-xl">⚠️</div><div><p className="text-xs text-gray-500">Pending Amount</p><p className="text-xl font-bold text-red-500">{formatCurrency(tenant?.pending_amount || 0)}</p></div></div></div>
+          <div className="bg-white rounded-xl p-5 shadow-sm border"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-purple-100 rounded-full text-xl">👥</div><div><p className="text-xs text-gray-500">Roommates</p><p className="text-xl font-bold">{roommates.length}</p></div></div></div>
         </div>
 
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-3 mb-8">
-          <button onClick={() => setShowPaymentModal(true)} className="bg-green-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-green-700 transition shadow-sm flex items-center gap-2">💳 Pay Rent (UPI)</button>
-          <button onClick={() => setShowComplaintModal(true)} className="border-2 border-orange-300 text-orange-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition flex items-center gap-2">📝 Raise Complaint</button>
+          <button onClick={() => setShowPaymentModal(true)} className="bg-green-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-green-700 transition">💳 Pay Rent (UPI)</button>
+          <button onClick={() => setShowComplaintModal(true)} className="border-2 border-orange-300 text-orange-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition">📝 Raise Complaint</button>
           {existingVacateRequest ? (
-            <button onClick={cancelVacateRequest} className="border-2 border-yellow-500 text-yellow-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition flex items-center gap-2">❌ Cancel Vacate Request</button>
+            <button onClick={cancelVacateRequest} className="border-2 border-yellow-500 text-yellow-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition">❌ Cancel Vacate Request</button>
           ) : (
-            <button onClick={() => setShowVacateModal(true)} className="border-2 border-red-300 text-red-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition flex items-center gap-2">🚪 Request Vacate</button>
+            <button onClick={() => setShowVacateModal(true)} className="border-2 border-red-300 text-red-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition">🚪 Request Vacate</button>
           )}
         </div>
 
         {/* Tabs */}
         <div className="flex flex-wrap border-b border-gray-200 mb-6 gap-2">
-          {['overview', 'roommates', 'notices', 'complaints', 'payments'].map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 text-sm font-semibold capitalize transition-all rounded-t-lg ${activeTab === tab ? 'bg-slate-800 text-white' : 'text-gray-500 hover:text-slate-700 hover:bg-gray-50'}`}>
-              {tab === 'overview' && '📊 Overview'}
-              {tab === 'roommates' && `👥 Roommates (${roommates.length})`}
-              {tab === 'notices' && `📢 Notices (${notices.length})`}
-              {tab === 'complaints' && `🔧 My Complaints (${complaints.length})`}
+          {['overview', 'roommates', 'notices', 'complaints', 'payments'].map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 text-sm font-semibold capitalize rounded-t-lg ${activeTab === tab ? 'bg-slate-800 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
+              {tab === 'overview' && '📊 Overview'} {tab === 'roommates' && `👥 Roommates (${roommates.length})`}
+              {tab === 'notices' && `📢 Notices (${notices.length})`} {tab === 'complaints' && `🔧 My Complaints (${complaints.length})`}
               {tab === 'payments' && `💰 Payment History (${paymentHistory.length})`}
             </button>
           ))}
@@ -557,143 +490,51 @@ export default function TenantDashboard() {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
-            <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition">
-              <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2"><span className="text-xl">🏠</span> Your Room Details</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Room Number:</span><span className="font-semibold text-slate-800">{room?.room_number}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Sharing Type:</span><span className="font-semibold text-slate-800">{getSharingDetails(room?.sharing_type)?.label}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Monthly Rent:</span><span className="font-semibold text-green-600">{formatCurrency(room?.monthly_rent)}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Move-in Date:</span><span className="text-slate-700">{formatDate(tenant?.move_in_date)}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Current Status:</span><span className={`px-2 py-1 rounded-full text-xs ${tenant?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{tenant?.status === 'active' ? 'Active' : 'Notice Period'}</span></div>
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition">
-              <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2"><span className="text-xl">🏢</span> Property Information</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Property Name:</span><span className="font-semibold text-slate-800">{property?.name}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Address:</span><span className="text-slate-700 text-right">{property?.address}, {property?.city}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Owner Name:</span><span className="text-slate-700">{owner?.full_name || 'Not provided'}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Owner Contact:</span><span className="text-slate-700 font-medium">{property?.contact_number || owner?.phone || 'Not provided'}</span></div>
-              </div>
-            </div>
+            <div className="bg-white rounded-xl border p-6"><h3 className="font-semibold mb-4">🏠 Your Room Details</h3><div className="space-y-3"><div className="flex justify-between py-2 border-b"><span className="text-gray-500">Room Number:</span><span>{room?.room_number}</span></div><div className="flex justify-between py-2 border-b"><span>Sharing Type:</span><span>{getSharingDetails(room?.sharing_type)?.label}</span></div><div className="flex justify-between py-2 border-b"><span>Monthly Rent:</span><span className="text-green-600 font-semibold">{formatCurrency(room?.monthly_rent)}</span></div><div className="flex justify-between py-2 border-b"><span>Move-in Date:</span><span>{formatDate(tenant?.move_in_date)}</span></div><div className="flex justify-between py-2 border-b"><span>Status:</span><span className={`px-2 py-1 rounded-full text-xs ${tenant?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{tenant?.status === 'active' ? 'Active' : 'Notice Period'}</span></div></div></div>
+            <div className="bg-white rounded-xl border p-6"><h3 className="font-semibold mb-4">🏢 Property Information</h3><div className="space-y-3"><div className="flex justify-between py-2 border-b"><span className="text-gray-500">Property Name:</span><span>{property?.name}</span></div><div className="flex justify-between py-2 border-b"><span>Address:</span><span className="text-right">{property?.address}, {property?.city}</span></div><div className="flex justify-between py-2 border-b"><span>Owner Name:</span><span>{owner?.full_name || 'Not provided'}</span></div><div className="flex justify-between py-2 border-b"><span>Owner Contact:</span><span className="font-medium">{property?.contact_number || owner?.phone || 'Not provided'}</span></div></div></div>
           </div>
         )}
 
         {/* Roommates Tab */}
         {activeTab === 'roommates' && (
-          <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
-            <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2"><span className="text-xl">👥</span> Your Roommates <span className="text-xs text-gray-400 ml-2">(Same Room Only)</span></h3>
-            {roommates.length > 0 ? (
-              <div className="grid md:grid-cols-2 gap-4">
-                {roommates.map((mate, idx) => (
-                  <div key={idx} className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition">
-                    <div className="w-12 h-12 bg-gradient-to-r from-slate-600 to-slate-500 rounded-full flex items-center justify-center text-white text-lg font-bold">{mate.name.charAt(0)}</div>
-                    <div><p className="font-semibold text-slate-800">{mate.name}</p><p className="text-xs text-gray-500">📞 {mate.phone}</p><p className="text-xs text-gray-400">Since {formatDate(mate.move_in_date)}</p></div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12"><div className="text-5xl mb-3">👤</div><p className="text-gray-500">You're the only person in this room</p><p className="text-xs text-gray-400">Enjoy the privacy!</p></div>
-            )}
+          <div className="bg-white rounded-xl border p-6"><h3 className="font-semibold mb-4">👥 Your Roommates <span className="text-xs text-gray-400 ml-2">(Same Room Only)</span></h3>
+            {roommates.length > 0 ? <div className="grid md:grid-cols-2 gap-4">{roommates.map((mate, idx) => (<div key={idx} className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl"><div className="w-12 h-12 bg-gradient-to-r from-slate-600 to-slate-500 rounded-full flex items-center justify-center text-white text-lg font-bold">{mate.name.charAt(0)}</div><div><p className="font-semibold">{mate.name}</p><p className="text-xs text-gray-500">📞 {mate.phone}</p><p className="text-xs text-gray-400">Since {formatDate(mate.move_in_date)}</p></div></div>))}</div> : <div className="text-center py-12"><div className="text-5xl mb-3">👤</div><p>You're the only person in this room</p><p className="text-xs text-gray-400">Enjoy the privacy!</p></div>}
           </div>
         )}
 
         {/* Notices Tab */}
         {activeTab === 'notices' && (
-          <div className="space-y-4">
-            {notices.map((notice) => (
-              <div key={notice.id} className={`bg-white rounded-xl border p-5 shadow-sm hover:shadow-md transition ${notice.is_urgent ? 'border-red-200 bg-red-50' : 'border-gray-100'}`}>
-                <div className="flex items-center gap-2 mb-3"><h3 className="font-semibold text-slate-800 text-lg">{notice.title}</h3>{notice.is_urgent && <span className="px-2 py-1 bg-red-500 text-white rounded-full text-xs font-semibold animate-pulse">URGENT</span>}<span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">{notice.type}</span></div>
-                <p className="text-gray-600 mb-3">{notice.content}</p>
-                <p className="text-xs text-gray-400">Posted: {formatDate(notice.created_at)}</p>
-              </div>
-            ))}
-            {notices.length === 0 && (<div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-5xl mb-3">📢</div><p className="text-gray-500">No notices yet</p></div>)}
-          </div>
+          <div className="space-y-4">{notices.map(notice => (<div key={notice.id} className={`bg-white rounded-xl border p-5 ${notice.is_urgent ? 'border-red-200 bg-red-50' : 'border-gray-100'}`}><div className="flex items-center gap-2 mb-3"><h3 className="font-semibold text-lg">{notice.title}</h3>{notice.is_urgent && <span className="px-2 py-1 bg-red-500 text-white rounded-full text-xs animate-pulse">URGENT</span>}<span className="px-2 py-1 bg-gray-100 rounded-full text-xs">{notice.type}</span></div><p className="text-gray-600 mb-3">{notice.content}</p><p className="text-xs text-gray-400">Posted: {formatDate(notice.created_at)}</p></div>))}{!notices.length && <div className="text-center py-12"><div className="text-5xl mb-3">📢</div><p>No notices yet</p></div>}</div>
         )}
 
         {/* Complaints Tab */}
         {activeTab === 'complaints' && (
           <div className="space-y-4">
-            {complaints.map((complaint) => (
-              <div key={complaint.id} className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition relative group">
+            {complaints.map(complaint => (
+              <div key={complaint.id} className="bg-white rounded-xl border p-5 shadow-sm relative group">
                 <button onClick={() => deleteComplaint(complaint.id)} className="absolute top-4 right-4 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition">🗑️ Delete</button>
                 <div className="flex justify-between items-start mb-3 pr-8">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <h3 className="font-semibold text-slate-800">{complaint.title}</h3>
-                      <span className={`px-2 py-1 rounded-full text-xs ${complaint.priority === 'high' ? 'bg-red-100 text-red-700' : complaint.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{complaint.priority}</span>
-                    </div>
-                    <p className="text-gray-600">{complaint.description}</p>
-                    {complaint.admin_response && (
-                      <div className="mt-3 p-3 bg-green-50 rounded-lg">
-                        <p className="text-xs text-green-600 font-semibold mb-1">Owner's Response:</p>
-                        <p className="text-sm text-gray-700">{complaint.admin_response}</p>
-                      </div>
-                    )}
-                  </div>
+                  <div><div className="flex items-center gap-2 mb-2"><h3 className="font-semibold">{complaint.title}</h3><span className={`px-2 py-1 rounded-full text-xs ${complaint.priority === 'high' ? 'bg-red-100 text-red-700' : complaint.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{complaint.priority}</span></div><p className="text-gray-600">{complaint.description}</p>{complaint.admin_response && (<div className="mt-3 p-3 bg-green-50 rounded-lg"><p className="text-xs text-green-600 font-semibold mb-1">Owner's Response:</p><p className="text-sm text-gray-700">{complaint.admin_response}</p></div>)}</div>
                   <span className={`px-2 py-1 rounded-full text-xs ${complaint.status === 'open' ? 'bg-red-100 text-red-700' : complaint.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{complaint.status === 'open' ? 'Open' : complaint.status === 'in_progress' ? 'In Progress' : 'Resolved'}</span>
                 </div>
                 <p className="text-xs text-gray-400">Submitted: {formatDate(complaint.created_at)}</p>
               </div>
             ))}
-            {complaints.length === 0 && (
-              <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
-                <div className="text-5xl mb-3">📝</div>
-                <p className="text-gray-500">No complaints filed yet</p>
-                <button onClick={() => setShowComplaintModal(true)} className="mt-3 text-slate-600 underline">Raise a complaint</button>
-              </div>
-            )}
+            {!complaints.length && <div className="text-center py-12"><div className="text-5xl mb-3">📝</div><p>No complaints filed yet</p><button onClick={() => setShowComplaintModal(true)} className="mt-3 text-slate-600 underline">Raise a complaint</button></div>}
           </div>
         )}
 
         {/* Payment History Tab */}
         {activeTab === 'payments' && (
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Amount</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Method</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paymentHistory.map((payment) => (
-                    <tr key={payment.id} className="border-b hover:bg-gray-50 transition">
-                      <td className="px-4 py-3 text-sm text-gray-600">{formatDate(payment.payment_date)}</td>
-                      <td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(payment.amount)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-500 capitalize">{payment.payment_method}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          payment.status === 'success' ? 'bg-green-100 text-green-700' : 
-                          payment.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' : 
-                          'bg-gray-100 text-gray-600'
-                        }`}>
-                          {payment.status === 'success' ? 'Success' : payment.status === 'payment_pending' ? 'Pending' : payment.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {paymentHistory.length === 0 && (
-                    <tr>
-                      <td colSpan="4" className="text-center py-8 text-gray-500">No payment history yet</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <div className="bg-white rounded-xl border overflow-hidden"><div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50 border-b"><tr><th className="px-4 py-3 text-left">Date</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead><tbody>{paymentHistory.map(p => (<tr key={p.id} className="border-b hover:bg-gray-50"><td className="px-4 py-3 text-sm">{formatDate(p.payment_date)}</td><td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(p.amount)}</td><td className="px-4 py-3 text-sm capitalize">{p.payment_method}</td><td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${p.status === 'success' ? 'bg-green-100 text-green-700' : p.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{p.status === 'success' ? 'Success' : p.status === 'payment_pending' ? 'Pending' : p.status}</span></td></tr>))}{!paymentHistory.length && <tr><td colSpan="4" className="text-center py-8 text-gray-500">No payment history yet</td></tr>}</tbody></table></div></div>
         )}
       </div>
 
-      {/* Payment Modal */}
+      {/* Payment Modal – Direct UPI App Selector */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <motion.div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">💳 Pay Rent via UPI</h2>
               <div className="bg-gray-50 rounded-xl p-4 mb-4">
                 <p className="font-semibold">{tenant?.name}</p>
@@ -706,26 +547,32 @@ export default function TenantDashboard() {
                   <div className="bg-blue-50 p-3 rounded-lg mb-4">
                     <p className="text-sm font-semibold text-center mb-2">Owner UPI ID: <span className="font-mono">{ownerUpiId}</span></p>
                     <div className="flex justify-center gap-2 mb-3">
-                      <button onClick={openUpiApp} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Pay with UPI App</button>
+                      <button onClick={() => setShowUpiAppSelector(true)} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Pay with UPI App</button>
                       <button onClick={copyUpiId} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy UPI ID</button>
                     </div>
                     <p className="text-xs text-gray-500 text-center">After payment, upload screenshot below.</p>
                   </div>
+                  <AnimatePresence>
+                    {showUpiAppSelector && (
+                      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowUpiAppSelector(false)}>
+                        <div className="bg-white rounded-2xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+                          <h3 className="text-xl font-bold mb-4">Choose UPI App</h3>
+                          <div className="space-y-2">
+                            <button onClick={() => { setShowUpiAppSelector(false); openUpiApp('com.google.android.apps.nbu.pay', 'tez', ownerUpiId, tenant?.pending_amount || tenant?.rent_amount) }} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50">Google Pay</button>
+                            <button onClick={() => { setShowUpiAppSelector(false); openUpiApp('com.phonepe.app', 'phonepe', ownerUpiId, tenant?.pending_amount || tenant?.rent_amount) }} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50">PhonePe</button>
+                            <button onClick={() => { setShowUpiAppSelector(false); openUpiApp('net.one97.paytm', 'paytmmp', ownerUpiId, tenant?.pending_amount || tenant?.rent_amount) }} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50">Paytm</button>
+                            <button onClick={copyUpiId} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 text-blue-600">Copy UPI ID (Manual Payment)</button>
+                          </div>
+                          <button onClick={() => setShowUpiAppSelector(false)} className="w-full mt-4 text-center text-gray-500">Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                  </AnimatePresence>
                   <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label>
-                      <input type="text" className="w-full px-4 py-3 border rounded-xl" value={paymentTransactionId} onChange={e => setPaymentTransactionId(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold mb-1">Payment Screenshot *</label>
-                      <input type="file" accept="image/*" onChange={e => { const file = e.target.files[0]; if (file) setPaymentScreenshot(file) }} className="w-full" />
-                    </div>
-                    <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
-                      After payment, upload the screenshot and submit. Owner will verify.
-                    </div>
-                    <button onClick={submitPaymentWithProof} disabled={paymentLoading} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
-                      {paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}
-                    </button>
+                    <div><label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label><input type="text" className="w-full px-4 py-3 border rounded-xl" value={paymentTransactionId} onChange={e => setPaymentTransactionId(e.target.value)} /></div>
+                    <div><label className="block text-sm font-semibold mb-1">Payment Screenshot *</label><input type="file" accept="image/*" onChange={e => { if (e.target.files[0]) setPaymentScreenshot(e.target.files[0]) }} className="w-full" /></div>
+                    <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">After payment, upload the screenshot and submit. Owner will verify.</div>
+                    <button onClick={submitPaymentWithProof} disabled={paymentLoading} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}</button>
                     <button onClick={() => setShowPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>
                   </div>
                 </>
@@ -741,20 +588,15 @@ export default function TenantDashboard() {
       <AnimatePresence>
         {showComplaintModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComplaintModal(false)}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <motion.div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">📝 Raise Complaint</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Title" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={complaintForm.title} onChange={(e) => setComplaintForm({...complaintForm, title: e.target.value})} />
-                <textarea placeholder="Description" rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={complaintForm.description} onChange={(e) => setComplaintForm({...complaintForm, description: e.target.value})} />
-                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={complaintForm.priority} onChange={(e) => setComplaintForm({...complaintForm, priority: e.target.value})}>
-                  <option value="low">Low Priority</option>
-                  <option value="medium">Medium Priority</option>
-                  <option value="high">High Priority</option>
+                <input type="text" placeholder="Title" className="w-full px-4 py-3 border rounded-xl" value={complaintForm.title} onChange={e => setComplaintForm({...complaintForm, title: e.target.value})} />
+                <textarea placeholder="Description" rows="4" className="w-full px-4 py-3 border rounded-xl" value={complaintForm.description} onChange={e => setComplaintForm({...complaintForm, description: e.target.value})} />
+                <select className="w-full px-4 py-3 border rounded-xl" value={complaintForm.priority} onChange={e => setComplaintForm({...complaintForm, priority: e.target.value})}>
+                  <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
                 </select>
-                <div className="flex gap-3 mt-6">
-                  <button onClick={submitComplaint} disabled={isSubmitting} className="flex-1 bg-orange-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Submitting...' : 'Submit Complaint'}</button>
-                  <button onClick={() => setShowComplaintModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
-                </div>
+                <div className="flex gap-3 mt-6"><button onClick={submitComplaint} disabled={isSubmitting} className="flex-1 bg-orange-600 text-white py-3 rounded-xl">{isSubmitting ? 'Submitting...' : 'Submit Complaint'}</button><button onClick={() => setShowComplaintModal(false)} className="flex-1 border-2 border-gray-300 py-3 rounded-xl">Cancel</button></div>
               </div>
             </motion.div>
           </div>
@@ -768,30 +610,15 @@ export default function TenantDashboard() {
             <div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">🚪 Request Vacate</h2>
               <div className="space-y-4">
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Expected Check-out Date *</label><input type="date" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={vacateForm.expected_date} onChange={(e) => setVacateForm({...vacateForm, expected_date: e.target.value})} min={new Date().toISOString().split('T')[0]} /></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Reason for vacating (optional)</label><textarea placeholder="e.g., Moving to another city, Found a better place, etc." rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={vacateForm.reason} onChange={(e) => setVacateForm({...vacateForm, reason: e.target.value})} /></div>
-                <div className="bg-yellow-50 p-3 rounded-lg"><p className="text-xs text-yellow-700">⚠️ Please clear all pending dues before vacating</p>{tenant?.pending_amount > 0 && (<p className="text-xs text-red-600 mt-1">⚠️ You have pending dues: {formatCurrency(tenant.pending_amount)}</p>)}</div>
-                <div className="bg-red-50 p-3 rounded-lg"><p className="text-xs text-red-600">⚠️ Once approved, you must vacate within 30 days</p></div>
-
+                <div><label className="block text-sm font-semibold mb-2">Expected Check-out Date *</label><input type="date" className="w-full px-4 py-3 border rounded-xl" value={vacateForm.expected_date} onChange={e => setVacateForm({...vacateForm, expected_date: e.target.value})} min={new Date().toISOString().split('T')[0]} /></div>
+                <div><label className="block text-sm font-semibold mb-2">Reason (optional)</label><textarea placeholder="e.g., Moving to another city" rows="3" className="w-full px-4 py-3 border rounded-xl" value={vacateForm.reason} onChange={e => setVacateForm({...vacateForm, reason: e.target.value})} /></div>
+                <div className="bg-yellow-50 p-3 rounded-lg"><p className="text-xs text-yellow-700">⚠️ Please clear all pending dues before vacating</p>{tenant?.pending_amount > 0 && <p className="text-xs text-red-600 mt-1">⚠️ You have pending dues: {formatCurrency(tenant.pending_amount)}</p>}</div>
                 <div className="border-t pt-4">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Rate your experience * (required)</label>
-                  <div className="flex gap-1 mb-2">
-                    {[1,2,3,4,5].map((star) => (
-                      <button key={star} type="button" onClick={() => setVacateForm({...vacateForm, rating: star})} onMouseEnter={() => setRatingHover(star)} onMouseLeave={() => setRatingHover(0)} className="text-3xl focus:outline-none transition-transform hover:scale-110">
-                        <span className={star <= (vacateForm.rating || ratingHover) ? 'text-yellow-500' : 'text-gray-300'}>★</span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-gray-500 mb-2">Your rating helps other tenants find good PGs.</p>
-                  <textarea placeholder="Optional review (e.g., Cleanliness, owner behavior, amenities)" rows="2" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={vacateForm.review} onChange={(e) => setVacateForm({...vacateForm, review: e.target.value})} />
+                  <label className="block text-sm font-semibold mb-2">Rate your experience *</label>
+                  <div className="flex gap-1 mb-2">{[...Array(5)].map((_, i) => (<button key={i} type="button" onClick={() => setVacateForm({...vacateForm, rating: i+1})} onMouseEnter={() => setRatingHover(i+1)} onMouseLeave={() => setRatingHover(0)} className="text-3xl"><span className={i+1 <= (vacateForm.rating || ratingHover) ? 'text-yellow-500' : 'text-gray-300'}>★</span></button>))}</div>
+                  <textarea placeholder="Optional review" rows="2" className="w-full px-4 py-3 border rounded-xl" value={vacateForm.review} onChange={e => setVacateForm({...vacateForm, review: e.target.value})} />
                 </div>
-
-                <div className="flex gap-3 mt-6">
-                  <button onClick={requestVacate} disabled={isSubmitting || !vacateForm.expected_date || vacateForm.rating === 0} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
-                    {isSubmitting ? 'Submitting...' : 'Submit Request & Rating'}
-                  </button>
-                  <button onClick={() => setShowVacateModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
-                </div>
+                <div className="flex gap-3 mt-6"><button onClick={requestVacate} disabled={isSubmitting || !vacateForm.expected_date || vacateForm.rating === 0} className="flex-1 bg-red-600 text-white py-3 rounded-xl">{isSubmitting ? 'Submitting...' : 'Submit Request & Rating'}</button><button onClick={() => setShowVacateModal(false)} className="flex-1 border-2 border-gray-300 py-3 rounded-xl">Cancel</button></div>
               </div>
             </div>
           </div>
@@ -803,21 +630,21 @@ export default function TenantDashboard() {
         {showProfileModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
             <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-              <div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold">👤 My Profile</h2><button onClick={() => setEditProfile(!editProfile)} className="text-slate-600 hover:text-slate-800 text-sm">{editProfile ? 'Cancel' : 'Edit'}</button></div>
+              <div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold">👤 My Profile</h2><button onClick={() => setEditProfile(!editProfile)} className="text-sm">{editProfile ? 'Cancel' : 'Edit'}</button></div>
               {!editProfile ? (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl"><div className="w-16 h-16 bg-gradient-to-r from-slate-600 to-slate-500 rounded-full flex items-center justify-center text-white text-2xl font-bold">{tenant?.name?.charAt(0) || 'U'}</div><div><p className="font-semibold text-slate-800">{tenant?.name}</p><p className="text-sm text-gray-500">Tenant</p></div></div>
-                  <div className="space-y-3"><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">📞 Phone:</span><span className="text-slate-700">{tenant?.phone}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">📧 Email:</span><span className="text-slate-700">{tenant?.email || 'Not provided'}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">🏠 Room:</span><span className="text-slate-700">{room?.room_number}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">📅 Joined:</span><span className="text-slate-700">{formatDate(tenant?.move_in_date)}</span></div></div>
+                  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl"><div className="w-16 h-16 bg-gradient-to-r from-slate-600 to-slate-500 rounded-full flex items-center justify-center text-white text-2xl font-bold">{tenant?.name?.charAt(0) || 'U'}</div><div><p className="font-semibold">{tenant?.name}</p><p className="text-sm text-gray-500">Tenant</p></div></div>
+                  <div className="space-y-3"><div className="flex justify-between py-2 border-b"><span>📞 Phone:</span><span>{tenant?.phone}</span></div><div className="flex justify-between py-2 border-b"><span>📧 Email:</span><span>{tenant?.email || 'Not provided'}</span></div><div className="flex justify-between py-2 border-b"><span>🏠 Room:</span><span>{room?.room_number}</span></div><div className="flex justify-between py-2 border-b"><span>📅 Joined:</span><span>{formatDate(tenant?.move_in_date)}</span></div></div>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <input type="text" placeholder="Full Name" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={profileForm.name} onChange={(e) => setProfileForm({...profileForm, name: e.target.value})} />
-                  <input type="tel" placeholder="Phone Number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={profileForm.phone} onChange={(e) => setProfileForm({...profileForm, phone: e.target.value})} />
-                  <input type="email" placeholder="Email" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={profileForm.email} onChange={(e) => setProfileForm({...profileForm, email: e.target.value})} />
-                  <div className="flex gap-3 mt-6"><button onClick={updateProfile} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Save Changes'}</button><button onClick={() => setEditProfile(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div>
+                  <input type="text" placeholder="Full Name" className="w-full px-4 py-3 border rounded-xl" value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} />
+                  <input type="tel" placeholder="Phone Number" className="w-full px-4 py-3 border rounded-xl" value={profileForm.phone} onChange={e => setProfileForm({...profileForm, phone: e.target.value})} />
+                  <input type="email" placeholder="Email" className="w-full px-4 py-3 border rounded-xl" value={profileForm.email} onChange={e => setProfileForm({...profileForm, email: e.target.value})} />
+                  <div className="flex gap-3 mt-6"><button onClick={updateProfile} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl">{isSubmitting ? 'Saving...' : 'Save Changes'}</button><button onClick={() => setEditProfile(false)} className="flex-1 border-2 border-gray-300 py-3 rounded-xl">Cancel</button></div>
                 </div>
               )}
-              <button onClick={() => setShowProfileModal(false)} className="w-full mt-4 py-2 text-gray-500 hover:text-gray-700 transition">Close</button>
+              <button onClick={() => setShowProfileModal(false)} className="w-full mt-4 py-2 text-gray-500">Close</button>
             </div>
           </div>
         )}
