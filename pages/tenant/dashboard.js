@@ -35,31 +35,31 @@ export default function TenantDashboard() {
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
 
-  // ========== UPI intent functions ==========
+  // ========== UPI intent functions (fixed: directly open specific apps) ==========
   const openGooglePay = (upiId, amount) => {
-    const upiUrl = `upi://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR`
-    const gpayIntent = `intent://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR#Intent;scheme=upi;package=com.google.android.apps.nbu.pay;end`
-    window.location.href = gpayIntent
+    const payee = encodeURIComponent(upiId)
+    const name = encodeURIComponent('HostelSet')
+    const amt = encodeURIComponent(amount)
+    const cu = encodeURIComponent('INR')
+    const upiUrl = `upi://pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}&pkg=com.google.android.apps.nbu.pay`
+    window.location.href = upiUrl
     setTimeout(() => {
-      window.location.href = upiUrl
-      setTimeout(() => {
-        toast.error('Could not open Google Pay. UPI ID copied.', { duration: 5000 })
-        navigator.clipboard.writeText(upiId)
-      }, 1500)
-    }, 1500)
+      toast.error('Google Pay not installed or failed to open. UPI ID copied.', { duration: 5000 })
+      navigator.clipboard.writeText(upiId)
+    }, 2000)
   }
 
   const openPhonePe = (upiId, amount) => {
-    const upiUrl = `upi://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR`
-    const phonepeIntent = `intent://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR#Intent;scheme=upi;package=com.phonepe.app;end`
-    window.location.href = phonepeIntent
+    const payee = encodeURIComponent(upiId)
+    const name = encodeURIComponent('HostelSet')
+    const amt = encodeURIComponent(amount)
+    const cu = encodeURIComponent('INR')
+    const upiUrl = `upi://pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}&pkg=com.phonepe.app`
+    window.location.href = upiUrl
     setTimeout(() => {
-      window.location.href = upiUrl
-      setTimeout(() => {
-        toast.error('Could not open PhonePe. UPI ID copied.', { duration: 5000 })
-        navigator.clipboard.writeText(upiId)
-      }, 1500)
-    }, 1500)
+      toast.error('PhonePe not installed or failed to open. UPI ID copied.', { duration: 5000 })
+      navigator.clipboard.writeText(upiId)
+    }, 2000)
   }
 
   const copyUpiId = () => {
@@ -67,7 +67,7 @@ export default function TenantDashboard() {
     toast.success('UPI ID copied!')
   }
 
-  // ========== Helper functions ==========
+  // ========== Helper functions (unchanged) ==========
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -556,7 +556,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
-        {/* Payment History Tab – CORRECTED JSX */}
+        {/* Payment History Tab */}
         {activeTab === 'payments' && (
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
@@ -598,7 +598,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal */}
+      {/* Payment Modal – with fixed UPI intents */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
