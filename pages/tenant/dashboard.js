@@ -35,22 +35,30 @@ export default function TenantDashboard() {
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
 
-  // App‑specific UPI intent functions
+  // ========== UPI intent functions (fixed) ==========
   const openGooglePay = (upiId, amount) => {
-    const intent = `intent://upi/pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR#Intent;scheme=tez;package=com.google.android.apps.nbu.pay;end`
-    window.location.href = intent
+    const upiUrl = `upi://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR`
+    const gpayIntent = `intent://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR#Intent;scheme=upi;package=com.google.android.apps.nbu.pay;end`
+    window.location.href = gpayIntent
     setTimeout(() => {
-      toast.error('Google Pay not installed. Trying PhonePe...', { duration: 3000 })
-      openPhonePe(upiId, amount)
+      window.location.href = upiUrl
+      setTimeout(() => {
+        toast.error('Could not open Google Pay. UPI ID copied.', { duration: 5000 })
+        navigator.clipboard.writeText(upiId)
+      }, 1500)
     }, 1500)
   }
 
   const openPhonePe = (upiId, amount) => {
-    const intent = `intent://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR#Intent;scheme=phonepe;package=com.phonepe.app;end`
-    window.location.href = intent
+    const upiUrl = `upi://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR`
+    const phonepeIntent = `intent://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR#Intent;scheme=upi;package=com.phonepe.app;end`
+    window.location.href = phonepeIntent
     setTimeout(() => {
-      toast.error('PhonePe not installed. UPI ID copied to clipboard.', { duration: 5000 })
-      navigator.clipboard.writeText(upiId)
+      window.location.href = upiUrl
+      setTimeout(() => {
+        toast.error('Could not open PhonePe. UPI ID copied.', { duration: 5000 })
+        navigator.clipboard.writeText(upiId)
+      }, 1500)
     }, 1500)
   }
 
@@ -59,7 +67,7 @@ export default function TenantDashboard() {
     toast.success('UPI ID copied!')
   }
 
-  // ========== All existing helper functions (unchanged) ==========
+  // ========== Existing helper functions (unchanged) ==========
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -550,11 +558,11 @@ export default function TenantDashboard() {
 
         {/* Payment History Tab */}
         {activeTab === 'payments' && (
-          <div className="bg-white rounded-xl border overflow-hidden"><div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50 border-b"><tr><th className="px-4 py-3 text-left">Date</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead><tbody>{paymentHistory.map(p => (<tr key={p.id} className="border-b hover:bg-gray-50"><td className="px-4 py-3 text-sm">{formatDate(p.payment_date)}</td><td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(p.amount)}</td><td className="px-4 py-3 text-sm capitalize">{p.payment_method}</td><td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${p.status === 'success' ? 'bg-green-100 text-green-700' : p.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{p.status === 'success' ? 'Success' : p.status === 'payment_pending' ? 'Pending' : p.status}</span></td></tr>))}{!paymentHistory.length && <tr><td colSpan="4" className="text-center py-8 text-gray-500">No payment history yet</td></tr>}</tbody></table></div></div>
+          <div className="bg-white rounded-xl border overflow-hidden"><div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50 border-b"><tr><th className="px-4 py-3 text-left">Date</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead><tbody>{paymentHistory.map(p => (<tr key={p.id} className="border-b hover:bg-gray-50"><td className="px-4 py-3 text-sm">{formatDate(p.payment_date)}</td><td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(p.amount)}</td><td className="px-4 py-3 text-sm capitalize">{p.payment_method}</td><td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${p.status === 'success' ? 'bg-green-100 text-green-700' : p.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{p.status === 'success' ? 'Success' : p.status === 'payment_pending' ? 'Pending' : p.status}</span></td></tr>))}{!paymentHistory.length && <tr><td colSpan="4" className="text-center py-8 text-gray-500">No payment history yet</td></td>}</tbody></table></div></div>
         )}
       </div>
 
-      {/* Payment Modal – Direct app selection (Google Pay / PhonePe) */}
+      {/* Payment Modal – Direct UPI app buttons */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
