@@ -351,7 +351,56 @@ export default function OwnerDashboard() {
     }
   }
 
-  // ✅ FIXED saveSettings – no ON CONFLICT, uses separate check/insert/update
+  // ✅ Robust saveSettings – handles duplicate rows by merging and cleaning
+  const ensureSingleOwnerSettingsRow = async (ownerId) => {
+    // Fetch all rows for this owner_id
+    const { data: rows, error } = await supabase
+      .from('owner_settings')
+      .select('*')
+      .eq('owner_id', ownerId)
+      .order('updated_at', { ascending: false, nullsLast: true })
+      .order('id', { ascending: false })
+    if (error) throw error
+    if (!rows || rows.length <= 1) return rows?.[0] || null
+
+    // Multiple rows – merge them into the first (most recent)
+    const keep = rows[0]
+    const merge = rows.slice(1)
+    const mergedData = {
+      joining_fee: keep.joining_fee,
+      advance_months: keep.advance_months,
+      due_day: keep.due_day,
+      upi_id: keep.upi_id,
+      upi_phone: keep.upi_phone,
+      updated_at: keep.updated_at || new Date().toISOString()
+    }
+    // Take non-null values from others
+    for (const row of merge) {
+      if (row.joining_fee !== null && row.joining_fee !== undefined) mergedData.joining_fee = row.joining_fee
+      if (row.advance_months !== null && row.advance_months !== undefined) mergedData.advance_months = row.advance_months
+      if (row.due_day !== null && row.due_day !== undefined) mergedData.due_day = row.due_day
+      if (row.upi_id) mergedData.upi_id = row.upi_id
+      if (row.upi_phone) mergedData.upi_phone = row.upi_phone
+      if (row.updated_at && (!mergedData.updated_at || new Date(row.updated_at) > new Date(mergedData.updated_at))) {
+        mergedData.updated_at = row.updated_at
+      }
+    }
+    // Update the kept row with merged data
+    const { error: updateError } = await supabase
+      .from('owner_settings')
+      .update(mergedData)
+      .eq('id', keep.id)
+    if (updateError) throw updateError
+    // Delete the other rows
+    const deleteIds = merge.map(r => r.id)
+    const { error: deleteError } = await supabase
+      .from('owner_settings')
+      .delete()
+      .in('id', deleteIds)
+    if (deleteError) throw deleteError
+    return { id: keep.id, ...mergedData }
+  }
+
   const saveSettings = async () => {
     if (!settings.upi_id.trim() && !settings.upi_phone.trim()) {
       toast.error('Please provide at least one UPI ID or UPI Phone Number')
@@ -360,14 +409,27 @@ export default function OwnerDashboard() {
     setIsSubmitting(true)
     try {
       const userId = localStorage.getItem('userId')
+      // First, clean up any duplicate rows for this owner
+      await ensureSingleOwnerSettingsRow(userId)
       
-      // Check if a row exists for this owner
-      const { data: existing, error: fetchError } = await supabase
+      // Now try to get a single row
+      let { data: existing, error: fetchError } = await supabase
         .from('owner_settings')
         .select('id')
         .eq('owner_id', userId)
         .maybeSingle()
       
+      if (fetchError && fetchError.message.includes('multiple')) {
+        // Should not happen after cleanup, but just in case, fetch any one row
+        const { data: anyRow } = await supabase
+          .from('owner_settings')
+          .select('id')
+          .eq('owner_id', userId)
+          .limit(1)
+          .maybeSingle()
+        existing = anyRow
+        fetchError = null
+      }
       if (fetchError) throw fetchError
       
       let error
@@ -1247,7 +1309,7 @@ export default function OwnerDashboard() {
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Pending</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Actions</th>
-                </tr>
+                <tr>
               </thead>
               <tbody>
                 {filteredTenants.map(t => {
@@ -1305,7 +1367,7 @@ export default function OwnerDashboard() {
                   )
                 })}
                 {filteredTenants.length === 0 && (
-                  <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants match your search</td></tr>
+                  <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants match your search</td</tr>
                 )}
               </tbody>
             </table>
@@ -1377,7 +1439,7 @@ export default function OwnerDashboard() {
                   </tr>
                 ))}
                 {filteredPayments.length === 0 && (
-                  <tr><td colSpan="6" className="text-center py-8 text-gray-500">No payment records match your search</td></tr>
+                  <tr><td colSpan="6" className="text-center py-8 text-gray-500">No payment records match your search</td</tr>
                 )}
               </tbody>
             </table>
