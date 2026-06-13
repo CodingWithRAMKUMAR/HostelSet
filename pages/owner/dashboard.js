@@ -74,13 +74,11 @@ export default function OwnerDashboard() {
 
   const [searchTerm, setSearchTerm] = useState('')
 
-  // Tenant profile modal
   const [showTenantProfileModal, setShowTenantProfileModal] = useState(false)
   const [selectedProfileTenant, setSelectedProfileTenant] = useState(null)
   const [tenantApplication, setTenantApplication] = useState(null)
   const [loadingProfile, setLoadingProfile] = useState(false)
 
-  // Reference to previous data for notification comparison
   const previousDataRef = useRef({
     vacateRequests: [],
     pendingRentPayments: [],
@@ -277,7 +275,6 @@ export default function OwnerDashboard() {
           .in('status', ['pending', 'approved'])
           .order('created_at', { ascending: false })
         
-        // Notification check for vacate requests
         showNewEventNotifications(vacateData || [], previousDataRef.current.vacateRequests, 'vacate')
         previousDataRef.current.vacateRequests = vacateData || []
         setVacateRequests(vacateData || [])
@@ -296,13 +293,11 @@ export default function OwnerDashboard() {
           .eq('property_id', propertyData.id)
           .eq('status', 'open')
           .order('created_at', { ascending: false })
-        // Notification check for complaints
         showNewEventNotifications(complaintsData || [], previousDataRef.current.complaints, 'complaint')
         previousDataRef.current.complaints = complaintsData || []
         setComplaints(complaintsData || [])
         setStats(prev => ({ ...prev, totalComplaints: complaintsData?.length || 0 }))
 
-        // Notification check for pending payments
         showNewEventNotifications(pendingPayments || [], previousDataRef.current.pendingRentPayments, 'payment')
         previousDataRef.current.pendingRentPayments = pendingPayments || []
 
@@ -324,11 +319,12 @@ export default function OwnerDashboard() {
   const loadSettings = async () => {
     try {
       const userId = localStorage.getItem('userId')
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('owner_settings')
         .select('*')
         .eq('owner_id', userId)
         .maybeSingle()
+      if (error) throw error
       if (data) {
         setSettings({
           joining_fee: data.joining_fee || 0,
@@ -337,16 +333,24 @@ export default function OwnerDashboard() {
           upi_id: data.upi_id || '',
           upi_phone: data.upi_phone || ''
         })
+      } else {
+        // No settings row yet – set defaults, but don't save until user saves
+        setSettings({
+          joining_fee: 0,
+          advance_months: 1,
+          due_day: 5,
+          upi_id: property?.owner_upi_id || '',
+          upi_phone: ''
+        })
       }
-      if (property) {
-        const { data: propData } = await supabase
-          .from('properties')
-          .select('owner_upi_id')
-          .eq('id', property.id)
-          .single()
-        if (propData?.owner_upi_id) setSettings(prev => ({ ...prev, upi_id: propData.owner_upi_id }))
+      // Also fetch from property as fallback for upi_id
+      if (property && !settings.upi_id && property.owner_upi_id) {
+        setSettings(prev => ({ ...prev, upi_id: property.owner_upi_id }))
       }
-    } catch (error) { console.error('Error loading settings:', error) }
+    } catch (error) {
+      console.error('Error loading settings:', error)
+      toast.error('Failed to load settings')
+    }
   }
 
   const saveSettings = async () => {
@@ -357,6 +361,7 @@ export default function OwnerDashboard() {
     setIsSubmitting(true)
     try {
       const userId = localStorage.getItem('userId')
+      // Use upsert: insert if not exists, update if exists
       const { error: settingsError } = await supabase
         .from('owner_settings')
         .upsert({
@@ -366,21 +371,29 @@ export default function OwnerDashboard() {
           due_day: settings.due_day,
           upi_id: settings.upi_id,
           upi_phone: settings.upi_phone,
-          updated_at: new Date()
-        })
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'owner_id' })
       if (settingsError) throw settingsError
-      if (property) {
+
+      // Also update the property's owner_upi_id for backward compatibility
+      if (property && settings.upi_id) {
         const { error: propError } = await supabase
           .from('properties')
           .update({ owner_upi_id: settings.upi_id })
           .eq('id', property.id)
-        if (propError) throw propError
+        if (propError) console.warn('Property UPI update failed:', propError)
       }
-      toast.success('Settings saved!')
+
+      toast.success('Settings saved successfully!')
       setShowSettingsModal(false)
+      // Reload settings to reflect changes
+      await loadSettings()
     } catch (error) {
-      toast.error('Failed to save settings')
-    } finally { setIsSubmitting(false) }
+      console.error('Save settings error:', error)
+      toast.error('Failed to save settings: ' + error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const initiateMembershipPayment = async (planId, amount, planName) => {
@@ -1228,7 +1241,7 @@ export default function OwnerDashboard() {
                           {isNoticePeriod && <span className="ml-1 text-xs bg-purple-200 text-purple-800 px-1 rounded">Notice</span>}
                           {isPaymentPending && <span className="ml-1 text-xs bg-yellow-200 text-yellow-800 px-1 rounded">Payment Pending</span>}
                         </div>
-                      </td>
+                       </td>
                       <td className="px-4 py-3 text-gray-500">{t.phone}</td>
                       <td className="px-4 py-3 font-medium text-slate-700">Room {t.room_number || getRoomNumberById(t.room_id)}</td>
                       <td className="px-4 py-3 font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</td>
@@ -1675,7 +1688,7 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Room Details Modal (with Payment History and Profile buttons) */}
+      {/* Room Details Modal */}
       <AnimatePresence>
         {showRoomDetailsModal && selectedRoom && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomDetailsModal(false)}>
@@ -1688,26 +1701,11 @@ export default function OwnerDashboard() {
                 <div>
                   <h3 className="font-semibold text-slate-800 mb-3">Room Information</h3>
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Room Number:</span>
-                      <span className="font-semibold text-slate-700">{selectedRoom.room_number}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Sharing Type:</span>
-                      <span className="font-semibold text-slate-700">{getSharingDetails(selectedRoom.sharing_type)?.label}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Monthly Rent:</span>
-                      <span className="font-semibold text-slate-700">{formatCurrency(selectedRoom.monthly_rent)}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Capacity:</span>
-                      <span className="font-semibold text-slate-700">{selectedRoom.capacity} persons</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Current Occupants:</span>
-                      <span className="font-semibold text-slate-700">{selectedRoom.current_occupants}</span>
-                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Room Number:</span><span className="font-semibold text-slate-700">{selectedRoom.room_number}</span></div>
+                    <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Sharing Type:</span><span className="font-semibold text-slate-700">{getSharingDetails(selectedRoom.sharing_type)?.label}</span></div>
+                    <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Monthly Rent:</span><span className="font-semibold text-slate-700">{formatCurrency(selectedRoom.monthly_rent)}</span></div>
+                    <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Capacity:</span><span className="font-semibold text-slate-700">{selectedRoom.capacity} persons</span></div>
+                    <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Current Occupants:</span><span className="font-semibold text-slate-700">{selectedRoom.current_occupants}</span></div>
                   </div>
                 </div>
                 <div>
@@ -1723,9 +1721,7 @@ export default function OwnerDashboard() {
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-semibold text-slate-700">{formatCurrency(tenant.rent_amount)}/month</p>
-                            <p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>
-                              {tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}
-                            </p>
+                            <p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>{tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}</p>
                             <div className="flex gap-1 mt-1">
                               <button onClick={() => fetchTenantPayments(tenant)} className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">📜 History</button>
                               <button onClick={() => fetchTenantApplication(tenant)} className="text-xs bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700">👤 Profile</button>
@@ -1885,7 +1881,6 @@ export default function OwnerDashboard() {
                 <div className="text-center py-8">Loading...</div>
               ) : (
                 <div className="space-y-4">
-                  {/* Profile Photo */}
                   <div className="flex justify-center">
                     {tenantApplication?.photo ? (
                       <img src={tenantApplication.photo} alt="Profile" className="w-32 h-32 rounded-full object-cover border-4 border-slate-200" />
@@ -1895,7 +1890,6 @@ export default function OwnerDashboard() {
                       </div>
                     )}
                   </div>
-                  {/* Basic Info */}
                   <div className="border-t pt-4">
                     <h3 className="font-semibold text-lg mb-2">Personal Information</h3>
                     <div className="space-y-2 text-sm">
@@ -1908,7 +1902,6 @@ export default function OwnerDashboard() {
                       <p><strong>Pending:</strong> {formatCurrency(selectedProfileTenant.pending_amount || 0)}</p>
                     </div>
                   </div>
-                  {/* Documents */}
                   {tenantApplication && (
                     <div className="border-t pt-4">
                       <h3 className="font-semibold text-lg mb-2">Documents (from Application)</h3>
