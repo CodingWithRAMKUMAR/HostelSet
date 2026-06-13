@@ -74,6 +74,19 @@ export default function OwnerDashboard() {
 
   const [searchTerm, setSearchTerm] = useState('')
 
+  // Tenant profile modal
+  const [showTenantProfileModal, setShowTenantProfileModal] = useState(false)
+  const [selectedProfileTenant, setSelectedProfileTenant] = useState(null)
+  const [tenantApplication, setTenantApplication] = useState(null)
+  const [loadingProfile, setLoadingProfile] = useState(false)
+
+  // Reference to previous data for notification comparison
+  const previousDataRef = useRef({
+    vacateRequests: [],
+    pendingRentPayments: [],
+    complaints: []
+  })
+
   const sharingTypes = [
     { value: 'single', label: 'Single Sharing', capacity: 1, icon: '👤', price: 15000 },
     { value: 'double', label: 'Double Sharing', capacity: 2, icon: '👥', price: 10000 },
@@ -133,6 +146,21 @@ export default function OwnerDashboard() {
     } else {
       setMembershipExpiry(null)
       setDaysLeft(null)
+    }
+  }
+
+  const showNewEventNotifications = (newData, oldData, type) => {
+    if (newData.length > oldData.length) {
+      const newItems = newData.filter(n => !oldData.some(o => o.id === n.id))
+      newItems.forEach(item => {
+        if (type === 'vacate') {
+          toast(`🚪 New vacate request from ${item.tenant_name}`, { duration: 8000, icon: '🔔' })
+        } else if (type === 'payment') {
+          toast(`💰 New pending payment from ${item.tenants?.name || 'tenant'}`, { duration: 8000, icon: '💸' })
+        } else if (type === 'complaint') {
+          toast(`🔧 New complaint: ${item.title} from ${item.tenant_name}`, { duration: 8000, icon: '⚠️' })
+        }
+      })
     }
   }
 
@@ -248,22 +276,36 @@ export default function OwnerDashboard() {
           .eq('property_id', propertyData.id)
           .in('status', ['pending', 'approved'])
           .order('created_at', { ascending: false })
+        
+        // Notification check for vacate requests
+        showNewEventNotifications(vacateData || [], previousDataRef.current.vacateRequests, 'vacate')
+        previousDataRef.current.vacateRequests = vacateData || []
         setVacateRequests(vacateData || [])
         setStats(prev => ({ ...prev, pendingVacate: vacateData?.filter(v => v.status === 'pending').length || 0 }))
+
         const { data: preBookingsData } = await supabase
           .from('pre_bookings')
           .select('*, rooms(room_number)')
           .eq('property_id', propertyData.id)
           .order('created_at', { ascending: false })
         setPreBookings(preBookingsData || [])
+
         const { data: complaintsData } = await supabase
           .from('complaints')
           .select('*')
           .eq('property_id', propertyData.id)
           .eq('status', 'open')
           .order('created_at', { ascending: false })
+        // Notification check for complaints
+        showNewEventNotifications(complaintsData || [], previousDataRef.current.complaints, 'complaint')
+        previousDataRef.current.complaints = complaintsData || []
         setComplaints(complaintsData || [])
         setStats(prev => ({ ...prev, totalComplaints: complaintsData?.length || 0 }))
+
+        // Notification check for pending payments
+        showNewEventNotifications(pendingPayments || [], previousDataRef.current.pendingRentPayments, 'payment')
+        previousDataRef.current.pendingRentPayments = pendingPayments || []
+
         const { data: noticesData } = await supabase
           .from('notices')
           .select('*')
@@ -470,6 +512,28 @@ export default function OwnerDashboard() {
       setTenantPayments(data || [])
       setShowTenantPaymentsModal(true)
     } catch (error) { toast.error('Failed to load payment history') }
+  }
+
+  const fetchTenantApplication = async (tenant) => {
+    setLoadingProfile(true)
+    try {
+      const { data, error } = await supabase
+        .from('applications')
+        .select('*')
+        .or(`phone.eq.${tenant.phone},email.eq.${tenant.email}`)
+        .eq('property_id', property.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+      if (error) throw error
+      setTenantApplication(data?.[0] || null)
+      setSelectedProfileTenant(tenant)
+      setShowTenantProfileModal(true)
+    } catch (error) {
+      console.error(error)
+      toast.error('Could not fetch documents')
+    } finally {
+      setLoadingProfile(false)
+    }
   }
 
   const handleImageUpload = async (e) => {
@@ -1156,9 +1220,14 @@ export default function OwnerDashboard() {
                   return (
                     <tr key={t.id} className={`border-b hover:bg-gray-50 ${dueStatus.status === 'overdue' ? 'bg-red-50' : dueStatus.status === 'due_soon' ? 'bg-orange-50' : ''} ${isNoticePeriod ? 'bg-purple-50' : ''} ${isPaymentPending ? 'bg-yellow-50' : ''}`}>
                       <td className="px-4 py-3 font-medium text-slate-700">
-                        {t.name}
-                        {isNoticePeriod && <span className="ml-2 text-xs bg-purple-200 text-purple-800 px-1 rounded">Notice</span>}
-                        {isPaymentPending && <span className="ml-2 text-xs bg-yellow-200 text-yellow-800 px-1 rounded">Payment Pending</span>}
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
+                            {t.name?.charAt(0).toUpperCase()}
+                          </div>
+                          <span>{t.name}</span>
+                          {isNoticePeriod && <span className="ml-1 text-xs bg-purple-200 text-purple-800 px-1 rounded">Notice</span>}
+                          {isPaymentPending && <span className="ml-1 text-xs bg-yellow-200 text-yellow-800 px-1 rounded">Payment Pending</span>}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-gray-500">{t.phone}</td>
                       <td className="px-4 py-3 font-medium text-slate-700">Room {t.room_number || getRoomNumberById(t.room_id)}</td>
@@ -1187,6 +1256,7 @@ export default function OwnerDashboard() {
                           <>
                             <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
                             <button onClick={() => fetchTenantPayments(t)} className="bg-blue-600 text-white px-3 py-1 rounded text-xs mr-2">📜 History</button>
+                            <button onClick={() => fetchTenantApplication(t)} className="bg-purple-600 text-white px-3 py-1 rounded text-xs mr-2">👤 Profile</button>
                           </>
                         )}
                         <button onClick={() => { setTenantToDelete(t); setShowConfirmDeleteModal(true) }} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition">Delete</button>
@@ -1605,7 +1675,7 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Room Details Modal (with Payment History button per tenant) */}
+      {/* Room Details Modal (with Payment History and Profile buttons) */}
       <AnimatePresence>
         {showRoomDetailsModal && selectedRoom && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomDetailsModal(false)}>
@@ -1656,9 +1726,10 @@ export default function OwnerDashboard() {
                             <p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>
                               {tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}
                             </p>
-                            <button onClick={() => fetchTenantPayments(tenant)} className="mt-2 text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">
-                              📜 Payment History
-                            </button>
+                            <div className="flex gap-1 mt-1">
+                              <button onClick={() => fetchTenantPayments(tenant)} className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">📜 History</button>
+                              <button onClick={() => fetchTenantApplication(tenant)} className="text-xs bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700">👤 Profile</button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1794,6 +1865,81 @@ export default function OwnerDashboard() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Tenant Profile Modal */}
+      <AnimatePresence>
+        {showTenantProfileModal && selectedProfileTenant && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowTenantProfileModal(false)}>
+            <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-slate-800">Tenant Profile</h2>
+                <button onClick={() => setShowTenantProfileModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+              </div>
+              {loadingProfile ? (
+                <div className="text-center py-8">Loading...</div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Profile Photo */}
+                  <div className="flex justify-center">
+                    {tenantApplication?.photo ? (
+                      <img src={tenantApplication.photo} alt="Profile" className="w-32 h-32 rounded-full object-cover border-4 border-slate-200" />
+                    ) : (
+                      <div className="w-32 h-32 rounded-full bg-slate-200 flex items-center justify-center text-4xl font-bold text-slate-500">
+                        {selectedProfileTenant.name?.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  {/* Basic Info */}
+                  <div className="border-t pt-4">
+                    <h3 className="font-semibold text-lg mb-2">Personal Information</h3>
+                    <div className="space-y-2 text-sm">
+                      <p><strong>Name:</strong> {selectedProfileTenant.name}</p>
+                      <p><strong>Phone:</strong> {selectedProfileTenant.phone}</p>
+                      <p><strong>Email:</strong> {selectedProfileTenant.email || 'N/A'}</p>
+                      <p><strong>Move-in Date:</strong> {formatDate(selectedProfileTenant.move_in_date)}</p>
+                      <p><strong>Rent Amount:</strong> {formatCurrency(selectedProfileTenant.rent_amount)}</p>
+                      <p><strong>Paid:</strong> {formatCurrency(selectedProfileTenant.total_paid || 0)}</p>
+                      <p><strong>Pending:</strong> {formatCurrency(selectedProfileTenant.pending_amount || 0)}</p>
+                    </div>
+                  </div>
+                  {/* Documents */}
+                  {tenantApplication && (
+                    <div className="border-t pt-4">
+                      <h3 className="font-semibold text-lg mb-2">Documents (from Application)</h3>
+                      <div className="space-y-3">
+                        {tenantApplication.id_proof && (
+                          <div>
+                            <p className="text-sm font-medium">ID Proof:</p>
+                            <button onClick={() => { setScreenshotUrl(tenantApplication.id_proof); setShowScreenshotModal(true); }} className="mt-1">
+                              <img src={tenantApplication.id_proof} alt="ID Proof" className="max-h-40 rounded border cursor-pointer hover:opacity-80" />
+                            </button>
+                          </div>
+                        )}
+                        {tenantApplication.photo && (
+                          <div>
+                            <p className="text-sm font-medium">Passport Photo:</p>
+                            <button onClick={() => { setScreenshotUrl(tenantApplication.photo); setShowScreenshotModal(true); }}>
+                              <img src={tenantApplication.photo} alt="Photo" className="max-h-40 rounded border cursor-pointer hover:opacity-80" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {!tenantApplication && (
+                    <div className="border-t pt-4 text-center text-gray-500">
+                      No application documents found. This tenant was added manually.
+                    </div>
+                  )}
+                  <div className="flex justify-end">
+                    <button onClick={() => setShowTenantProfileModal(false)} className="bg-slate-800 text-white px-4 py-2 rounded-lg">Close</button>
+                  </div>
                 </div>
               )}
             </div>
