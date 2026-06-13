@@ -35,7 +35,7 @@ export default function TenantDashboard() {
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
 
-  // ========== UPI intent functions (fixed) ==========
+  // ========== UPI intent functions ==========
   const openGooglePay = (upiId, amount) => {
     const upiUrl = `upi://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR`
     const gpayIntent = `intent://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR#Intent;scheme=upi;package=com.google.android.apps.nbu.pay;end`
@@ -67,7 +67,7 @@ export default function TenantDashboard() {
     toast.success('UPI ID copied!')
   }
 
-  // ========== Existing helper functions (unchanged) ==========
+  // ========== Helper functions ==========
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -556,13 +556,49 @@ export default function TenantDashboard() {
           </div>
         )}
 
-        {/* Payment History Tab */}
+        {/* Payment History Tab – CORRECTED JSX */}
         {activeTab === 'payments' && (
-          <div className="bg-white rounded-xl border overflow-hidden"><div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50 border-b"><tr><th className="px-4 py-3 text-left">Date</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead><tbody>{paymentHistory.map(p => (<tr key={p.id} className="border-b hover:bg-gray-50"><td className="px-4 py-3 text-sm">{formatDate(p.payment_date)}</td><td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(p.amount)}</td><td className="px-4 py-3 text-sm capitalize">{p.payment_method}</td><td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${p.status === 'success' ? 'bg-green-100 text-green-700' : p.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{p.status === 'success' ? 'Success' : p.status === 'payment_pending' ? 'Pending' : p.status}</span></td></tr>))}{!paymentHistory.length && <tr><td colSpan="4" className="text-center py-8 text-gray-500">No payment history yet</td></td>}</tbody></table></div></div>
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Amount</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Method</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paymentHistory.map((payment) => (
+                    <tr key={payment.id} className="border-b hover:bg-gray-50 transition">
+                      <td className="px-4 py-3 text-sm text-gray-600">{formatDate(payment.payment_date)}</td>
+                      <td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(payment.amount)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-500 capitalize">{payment.payment_method}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 rounded-full text-xs ${
+                          payment.status === 'success' ? 'bg-green-100 text-green-700' :
+                          payment.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {payment.status === 'success' ? 'Success' : payment.status === 'payment_pending' ? 'Pending' : payment.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {paymentHistory.length === 0 && (
+                    <tr>
+                      <td colSpan="4" className="text-center py-8 text-gray-500">No payment history yet</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Payment Modal – Direct UPI app buttons */}
+      {/* Payment Modal */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
