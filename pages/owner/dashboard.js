@@ -37,7 +37,7 @@ export default function OwnerDashboard() {
   const [paymentAmount, setPaymentAmount] = useState('')
   const [activeTab, setActiveTab] = useState('overview')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [settings, setSettings] = useState({ joining_fee: 0, advance_months: 1, due_day: 5, upi_id: '' })
+  const [settings, setSettings] = useState({ joining_fee: 0, advance_months: 1, due_day: 5, upi_id: '', upi_phone: '' })
   const [stats, setStats] = useState({
     totalRooms: 0, occupied: 0, vacant: 0, totalCollected: 0, pendingAmount: 0,
     totalComplaints: 0, pendingVacate: 0, overdueCount: 0, noticePeriodCount: 0,
@@ -70,6 +70,15 @@ export default function OwnerDashboard() {
   // Application detail modal
   const [selectedApplication, setSelectedApplication] = useState(null)
   const [showApplicationDetailModal, setShowApplicationDetailModal] = useState(false)
+
+  // NEW: Tenant payment history modal
+  const [showTenantPaymentsModal, setShowTenantPaymentsModal] = useState(false)
+  const [selectedTenantForPayments, setSelectedTenantForPayments] = useState(null)
+  const [tenantPayments, setTenantPayments] = useState([])
+
+  // NEW: Screenshot preview modal
+  const [showScreenshotModal, setShowScreenshotModal] = useState(false)
+  const [screenshotUrl, setScreenshotUrl] = useState('')
 
   const sharingTypes = [
     { value: 'single', label: 'Single Sharing', capacity: 1, icon: '👤', price: 15000 },
@@ -353,7 +362,8 @@ export default function OwnerDashboard() {
           joining_fee: data.joining_fee || 0,
           advance_months: data.advance_months || 1,
           due_day: data.due_day || 5,
-          upi_id: data.upi_id || ''
+          upi_id: data.upi_id || '',
+          upi_phone: data.upi_phone || ''
         })
       }
       if (property) {
@@ -372,8 +382,8 @@ export default function OwnerDashboard() {
   }
 
   const saveSettings = async () => {
-    if (!settings.upi_id.trim()) {
-      toast.error('UPI ID is required for rent payments')
+    if (!settings.upi_id.trim() && !settings.upi_phone.trim()) {
+      toast.error('Please provide at least one UPI ID or UPI Phone Number')
       return
     }
     setIsSubmitting(true)
@@ -387,6 +397,7 @@ export default function OwnerDashboard() {
           advance_months: settings.advance_months,
           due_day: settings.due_day,
           upi_id: settings.upi_id,
+          upi_phone: settings.upi_phone,
           updated_at: new Date()
         })
       if (settingsError) throw settingsError
@@ -587,6 +598,24 @@ export default function OwnerDashboard() {
     return room ? room.room_number : 'N/A'
   }
 
+  // NEW: Fetch payment history for a specific tenant
+  const fetchTenantPayments = async (tenant) => {
+    setSelectedTenantForPayments(tenant)
+    try {
+      const { data, error } = await supabase
+        .from('payment_history')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .order('payment_date', { ascending: false })
+      if (error) throw error
+      setTenantPayments(data || [])
+      setShowTenantPaymentsModal(true)
+    } catch (error) {
+      console.error(error)
+      toast.error('Failed to load payment history')
+    }
+  }
+
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files)
     if (files.length === 0) return
@@ -742,7 +771,6 @@ export default function OwnerDashboard() {
       const pendingAmount = advanceMonths > 0 ? 0 : monthlyRent
       const rentStatus = advanceMonths > 0 ? 'paid' : 'pending'
 
-      // Insert tenant
       const { data: newTenant, error: tenantError } = await supabase
         .from('tenants')
         .insert({
@@ -763,7 +791,6 @@ export default function OwnerDashboard() {
         .single()
       if (tenantError) throw tenantError
 
-      // ✅ FIX: Record joining fee + advance in payment_history
       if (totalJoiningAmount > 0 && newTenant) {
         const { error: paymentError } = await supabase.from('payment_history').insert({
           tenant_id: newTenant.id,
@@ -773,7 +800,6 @@ export default function OwnerDashboard() {
           status: 'success'
         })
         if (paymentError) console.warn('Failed to record advance payment:', paymentError)
-        else console.log(`Recorded ₹${totalJoiningAmount} advance payment for tenant ${newTenant.id}`)
       }
 
       const newOccupants = selectedRoom.current_occupants + 1
@@ -983,7 +1009,6 @@ export default function OwnerDashboard() {
     }
   }
 
-  // ✅ FIXED: Approve Vacate – only for pending requests; button hidden after approval
   const approveVacateRequest = async (requestId, tenantId, roomId) => {
     if (!confirm('Approve vacate request? Tenant will be put on notice period.')) return
     setIsSubmitting(true)
@@ -1123,7 +1148,7 @@ export default function OwnerDashboard() {
         </div>
       )}
 
-      {/* Membership Expiry Alert – Added */}
+      {/* Membership Expiry Alert */}
       {membershipActive && daysLeft !== null && daysLeft <= 7 && daysLeft > 0 && (
         <div className="bg-yellow-100 border-b border-yellow-300 px-4 py-3 text-center">
           <p className="text-yellow-800 font-semibold">
@@ -1185,7 +1210,7 @@ export default function OwnerDashboard() {
       </nav>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Stats Cards (unchanged) */}
+        {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
           <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
             <div className="text-2xl font-bold text-slate-800">{stats.totalRooms}</div>
@@ -1213,7 +1238,7 @@ export default function OwnerDashboard() {
           </div>
         </div>
 
-        {/* Overview Alerts (unchanged) */}
+        {/* Overview Alerts */}
         {activeTab === 'overview' && (
           <div>
             {stats.pendingRentConfirmations > 0 && (
@@ -1226,7 +1251,6 @@ export default function OwnerDashboard() {
                 <p className="font-semibold text-red-800">⚠️ {stats.pendingPaymentCount} tenant(s) awaiting payment confirmation. <button onClick={() => setActiveTab('tenants')} className="underline">Review</button></p>
               </div>
             )}
-            {/* Due Today Section */}
             <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
               <h3 className="font-semibold text-slate-800 mb-4">📅 Due Today</h3>
               {tenants.filter(t => {
@@ -1254,7 +1278,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Action Buttons (unchanged) */}
+        {/* Action Buttons */}
         <div className="flex flex-wrap gap-3 mb-8">
           <button 
             onClick={() => membershipActive && setShowAddModal(true)} 
@@ -1302,7 +1326,7 @@ export default function OwnerDashboard() {
           </button>
         </div>
 
-        {/* Tabs (unchanged, includes pre-bookings) */}
+        {/* Tabs */}
         <div className="flex flex-wrap border-b border-gray-200 mb-6 gap-2">
           {['overview', 'rooms', 'tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'complaints', 'vacate', 'applications', 'notices'].map((tab) => (
             <button 
@@ -1331,7 +1355,7 @@ export default function OwnerDashboard() {
           ))}
         </div>
 
-        {/* Overview Tab (unchanged) */}
+        {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border border-gray-100 p-6">
@@ -1366,7 +1390,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Rooms Tab (unchanged) */}
+        {/* Rooms Tab (unchanged - omitted for brevity, keep your existing code) */}
         {activeTab === 'rooms' && (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {rooms.map((room) => {
@@ -1405,7 +1429,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab (unchanged) */}
+        {/* Tenants Tab – with "View History" button */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1435,7 +1459,7 @@ export default function OwnerDashboard() {
                         {t.name}
                         {isNoticePeriod && <span className="ml-2 text-xs bg-purple-200 text-purple-800 px-1 rounded">Notice</span>}
                         {isPaymentPending && <span className="ml-2 text-xs bg-yellow-200 text-yellow-800 px-1 rounded">Payment Pending</span>}
-                       </td>
+                      </td>
                       <td className="px-4 py-3 text-gray-500">{t.phone}</td>
                       <td className="px-4 py-3 font-medium text-slate-700">Room {t.room_number || getRoomNumberById(t.room_id)}</td>
                       <td className="px-4 py-3 font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</td>
@@ -1455,7 +1479,7 @@ export default function OwnerDashboard() {
                         {isPaymentPending && (
                           <span className="ml-1 px-2 py-1 bg-yellow-200 text-yellow-800 rounded-full text-xs">⏳ Awaiting approval</span>
                         )}
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         {isPaymentPending ? (
                           <button 
@@ -1465,10 +1489,13 @@ export default function OwnerDashboard() {
                             Confirm Payment
                           </button>
                         ) : (
-                          <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
+                          <>
+                            <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
+                            <button onClick={() => fetchTenantPayments(t)} className="bg-blue-600 text-white px-3 py-1 rounded text-xs mr-2">📜 History</button>
+                          </>
                         )}
                         <button onClick={() => { setTenantToDelete(t); setShowConfirmDeleteModal(true) }} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition">Delete</button>
-                       </td>
+                      </td>
                     </tr>
                   )
                 })}
@@ -1480,7 +1507,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Rent Payments Tab (unchanged) */}
+        {/* Rent Payments Tab – with clickable screenshot */}
         {activeTab === 'rent-payments' && (
           <div className="space-y-4">
             {pendingRentPayments.length === 0 && (
@@ -1496,7 +1523,9 @@ export default function OwnerDashboard() {
                   {p.upi_transaction_id && <p className="text-xs text-gray-500">UTR: {p.upi_transaction_id}</p>}
                   {p.payment_screenshot && (
                     <div className="mt-2">
-                      <img src={p.payment_screenshot} alt="Payment proof" className="max-h-32 rounded-lg border" />
+                      <button onClick={() => { setScreenshotUrl(p.payment_screenshot); setShowScreenshotModal(true); }}>
+                        <img src={p.payment_screenshot} alt="Payment proof" className="max-h-32 rounded-lg border cursor-pointer hover:opacity-80 transition" />
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1551,7 +1580,7 @@ export default function OwnerDashboard() {
                       }`}>
                         {p.status === 'success' ? 'Success' : p.status === 'payment_pending' ? 'Pending' : p.status}
                       </span>
-                     </td>
+                    </td>
                   </tr>
                 ))}
                 {allPayments.length === 0 && (
@@ -1615,7 +1644,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Vacate Tab – FIXED: Approve button only for pending requests (unchanged) */}
+        {/* Vacate Tab */}
         {activeTab === 'vacate' && (
           <div className="space-y-4">
             {vacateRequests.map(req => {
@@ -1694,7 +1723,9 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* All Modals – unchanged (same as before, kept for brevity) */}
+      {/* ========== MODALS ========== */}
+
+      {/* Confirm Delete Modal (unchanged) */}
       <AnimatePresence>{showConfirmDeleteModal && tenantToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
@@ -1719,6 +1750,7 @@ export default function OwnerDashboard() {
         </div>
       )}</AnimatePresence>
 
+      {/* Add Tenant Modal (unchanged) */}
       <AnimatePresence>{showAddModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowAddModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Add New Tenant</h2><div className="space-y-4">
         <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
         <input type="tel" placeholder="Phone Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} />
@@ -1750,18 +1782,25 @@ export default function OwnerDashboard() {
         </div>
       </div></div></div>)}</AnimatePresence>
 
+      {/* Add Room Modal (unchanged) */}
       <AnimatePresence>{showRoomModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Add New Room</h2><div className="space-y-4"><input type="text" placeholder="Room Number *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.room_number} onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})} /><select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.sharing_type} onChange={(e) => { const selected = sharingTypes.find(t => t.value === e.target.value); setRoomForm({...roomForm, sharing_type: e.target.value, monthly_rent: selected.price}) }}>{sharingTypes.map(type => <option key={type.value} value={type.value}>{type.label} {type.icon} - ₹{formatCurrency(type.price)}/month</option>)}</select><input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} /><div className="flex gap-3 mt-6"><button onClick={addRoom} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Add Room</button><button onClick={() => setShowRoomModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
+      {/* Collect Rent Modal (unchanged) */}
       <AnimatePresence>{showPaymentModal && selectedTenant && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Collect Rent</h2><div className="bg-gray-50 rounded-xl p-4 mb-4"><p className="font-semibold">{selectedTenant.name}</p><p className="text-sm text-gray-500">Room {selectedTenant.room_number || getRoomNumberById(selectedTenant.room_id)}</p><p>Monthly Rent: {formatCurrency(selectedTenant.rent_amount)}</p><p className="text-red-500">Pending: {formatCurrency(selectedTenant.pending_amount || selectedTenant.rent_amount)}</p></div><input type="number" placeholder="Enter Amount (₹)" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} /><div className="flex gap-3"><button onClick={collectRent} disabled={isSubmitting} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Processing...' : 'Collect'}</button><button onClick={() => setShowPaymentModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div>)}</AnimatePresence>
 
+      {/* Post Notice Modal (unchanged) */}
       <AnimatePresence>{showNoticeModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowNoticeModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Post Notice</h2><div className="space-y-4"><input type="text" placeholder="Title *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.title} onChange={(e) => setNoticeForm({...noticeForm, title: e.target.value})} /><textarea placeholder="Content *" rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.content} onChange={(e) => setNoticeForm({...noticeForm, content: e.target.value})} /><select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={noticeForm.type} onChange={(e) => setNoticeForm({...noticeForm, type: e.target.value})}><option value="general">General</option><option value="maintenance">Maintenance</option><option value="payment">Payment</option><option value="event">Event</option><option value="emergency">Emergency</option></select><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={noticeForm.is_urgent} onChange={(e) => setNoticeForm({...noticeForm, is_urgent: e.target.checked})} className="w-4 h-4" /><span className="text-sm">Mark as Urgent</span></label><div className="flex gap-3 mt-6"><button onClick={postNotice} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Posting...' : 'Post Notice'}</button><button onClick={() => setShowNoticeModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
-      <AnimatePresence>{showSettingsModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSettingsModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">⚙️ Property Settings</h2><div className="space-y-4"><div><label className="block text-sm font-semibold text-gray-700 mb-2">Joining Fee (₹)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.joining_fee} onChange={(e) => setSettings({...settings, joining_fee: parseInt(e.target.value) || 0})} min="0" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Advance Months Required (default for new tenants)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.advance_months} onChange={(e) => setSettings({...settings, advance_months: parseInt(e.target.value) || 0})} min="0" max="12" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Alert Threshold (days before due)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.due_day} onChange={(e) => setSettings({...settings, due_day: parseInt(e.target.value) || 5})} min="1" max="30" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Your UPI ID (for rent payments)</label><input type="text" className="w-full px-4 py-3 border border-gray-200 rounded-xl" placeholder="yourname@okhdfcbank" value={settings.upi_id} onChange={(e) => setSettings({...settings, upi_id: e.target.value})} /><p className="text-xs text-gray-400 mt-1">Tenants will pay rent directly to this UPI ID using UPI Intent (zero fee).</p></div><div className="flex gap-3 mt-6"><button onClick={saveSettings} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Save Settings'}</button><button onClick={() => setShowSettingsModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
+      {/* Settings Modal – with UPI Phone Number field */}
+      <AnimatePresence>{showSettingsModal && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSettingsModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">⚙️ Property Settings</h2><div className="space-y-4"><div><label className="block text-sm font-semibold text-gray-700 mb-2">Joining Fee (₹)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.joining_fee} onChange={(e) => setSettings({...settings, joining_fee: parseInt(e.target.value) || 0})} min="0" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Advance Months Required (default for new tenants)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.advance_months} onChange={(e) => setSettings({...settings, advance_months: parseInt(e.target.value) || 0})} min="0" max="12" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Alert Threshold (days before due)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.due_day} onChange={(e) => setSettings({...settings, due_day: parseInt(e.target.value) || 5})} min="1" max="30" /></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">Your UPI ID (for rent payments)</label><input type="text" className="w-full px-4 py-3 border border-gray-200 rounded-xl" placeholder="yourname@okhdfcbank" value={settings.upi_id} onChange={(e) => setSettings({...settings, upi_id: e.target.value})} /><p className="text-xs text-gray-400 mt-1">Tenants can pay to this UPI ID.</p></div><div><label className="block text-sm font-semibold text-gray-700 mb-2">UPI Phone Number (optional)</label><input type="tel" className="w-full px-4 py-3 border border-gray-200 rounded-xl" placeholder="9876543210" value={settings.upi_phone} onChange={(e) => setSettings({...settings, upi_phone: e.target.value})} /><p className="text-xs text-gray-400 mt-1">If provided, tenants can also pay using this phone number as UPI ID (e.g., 9876543210@okhdfcbank). You must add the @bankhandle yourself – we'll use phone number only.</p></div><div className="flex gap-3 mt-6"><button onClick={saveSettings} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Save Settings'}</button><button onClick={() => setShowSettingsModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div></div>)}</AnimatePresence>
 
+      {/* Complaint Response Modal (unchanged) */}
       <AnimatePresence>{showComplaintResponseModal && selectedComplaint && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComplaintResponseModal(false)}><div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}><h2 className="text-2xl font-bold mb-4">Respond to Complaint</h2><p className="text-sm text-gray-500 mb-2">From: {selectedComplaint.tenant_name}</p><p className="text-sm text-gray-600 mb-4">"{selectedComplaint.title}"</p><textarea placeholder="Your response..." rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={complaintResponse} onChange={(e) => setComplaintResponse(e.target.value)} /><div className="flex gap-3"><button onClick={respondToComplaint} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Send Response</button><button onClick={() => setShowComplaintResponseModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div></div></div>)}</AnimatePresence>
 
+      {/* Room Details Modal (unchanged) */}
       <AnimatePresence>{showRoomDetailsModal && selectedRoom && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomDetailsModal(false)}><div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}><div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold text-slate-800">Room {selectedRoom.room_number} Details</h2><button onClick={() => setShowRoomDetailsModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button></div><div className="grid md:grid-cols-2 gap-6"><div><h3 className="font-semibold text-slate-800 mb-3">Room Information</h3><div className="space-y-2 text-sm"><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Room Number:</span><span className="font-semibold text-slate-700">{selectedRoom.room_number}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Sharing Type:</span><span className="font-semibold text-slate-700">{getSharingDetails(selectedRoom.sharing_type)?.label}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Monthly Rent:</span><span className="font-semibold text-slate-700">{formatCurrency(selectedRoom.monthly_rent)}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Capacity:</span><span className="font-semibold text-slate-700">{selectedRoom.capacity} persons</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Current Occupants:</span><span className="font-semibold text-slate-700">{selectedRoom.current_occupants}</span></div></div></div><div><h3 className="font-semibold text-slate-800 mb-3">Current Residents</h3><div className="space-y-3">{getTenantsInRoom(selectedRoom.id).map(tenant => (<div key={tenant.id} className="bg-gray-50 rounded-lg p-3"><div className="flex justify-between items-start"><div><p className="font-semibold text-slate-800">{tenant.name}</p><p className="text-xs text-gray-500">📞 {tenant.phone}</p><p className="text-xs text-gray-500 mt-1">Move-in: {formatDate(tenant.move_in_date)}</p></div><div className="text-right"><p className="text-sm font-semibold text-slate-700">{formatCurrency(tenant.rent_amount)}/month</p><p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>{tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}</p></div></div></div>))}{getTenantsInRoom(selectedRoom.id).length === 0 && <p className="text-gray-400 text-center py-4">No residents currently</p>}</div></div></div></div></div>)}</AnimatePresence>
 
+      {/* Membership Modal (unchanged) */}
       <AnimatePresence>{showMembershipModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowMembershipModal(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
@@ -1799,7 +1838,9 @@ export default function OwnerDashboard() {
                 {confirmingTenant.payment_screenshot && (
                   <div className="mt-2">
                     <p className="text-xs text-gray-500 mb-1">Payment Screenshot:</p>
-                    <img src={confirmingTenant.payment_screenshot} alt="Payment proof" className="w-full rounded-lg max-h-48 object-cover" />
+                    <button onClick={() => { setScreenshotUrl(confirmingTenant.payment_screenshot); setShowScreenshotModal(true); }}>
+                      <img src={confirmingTenant.payment_screenshot} alt="Payment proof" className="w-full rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-80" />
+                    </button>
                   </div>
                 )}
               </div>
@@ -1823,7 +1864,7 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Application Detail Modal */}
+      {/* Application Detail Modal (unchanged) */}
       <AnimatePresence>
         {showApplicationDetailModal && selectedApplication && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowApplicationDetailModal(false)}>
@@ -1863,6 +1904,58 @@ export default function OwnerDashboard() {
                 </button>
               </div>
             </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* NEW: Tenant Payment History Modal */}
+      <AnimatePresence>
+        {showTenantPaymentsModal && selectedTenantForPayments && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowTenantPaymentsModal(false)}>
+            <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-slate-800">Payment History – {selectedTenantForPayments.name}</h2>
+                <button onClick={() => setShowTenantPaymentsModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+              </div>
+              {tenantPayments.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">No payment records found.</p>
+              ) : (
+                <div className="space-y-4">
+                  {tenantPayments.map(pay => (
+                    <div key={pay.id} className="border rounded-xl p-4 bg-gray-50">
+                      <div className="flex justify-between items-start flex-wrap gap-2">
+                        <div>
+                          <p className="font-semibold">{formatCurrency(pay.amount)}</p>
+                          <p className="text-sm text-gray-500">Date: {formatDate(pay.payment_date)}</p>
+                          <p className="text-sm text-gray-500">Method: {pay.payment_method}</p>
+                          <p className="text-sm text-gray-500">Status: {pay.status}</p>
+                          {pay.upi_transaction_id && <p className="text-xs text-gray-400">UTR: {pay.upi_transaction_id}</p>}
+                        </div>
+                        {pay.payment_screenshot && (
+                          <div>
+                            <button onClick={() => { setScreenshotUrl(pay.payment_screenshot); setShowScreenshotModal(true); }}>
+                              <img src={pay.payment_screenshot} alt="Screenshot" className="w-24 h-24 object-cover rounded-lg border cursor-pointer hover:opacity-80" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* NEW: Full‑screen Screenshot Modal */}
+      <AnimatePresence>
+        {showScreenshotModal && screenshotUrl && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4" onClick={() => setShowScreenshotModal(false)}>
+            <div className="relative max-w-4xl w-full" onClick={e => e.stopPropagation()}>
+              <button onClick={() => setShowScreenshotModal(false)} className="absolute -top-10 right-0 text-white text-2xl hover:text-gray-300">✕</button>
+              <img src={screenshotUrl} alt="Screenshot" className="w-full rounded-lg shadow-2xl" />
+            </div>
           </div>
         )}
       </AnimatePresence>
