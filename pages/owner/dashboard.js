@@ -334,7 +334,6 @@ export default function OwnerDashboard() {
           upi_phone: data.upi_phone || ''
         })
       } else {
-        // No settings row yet – set defaults, but don't save until user saves
         setSettings({
           joining_fee: 0,
           advance_months: 1,
@@ -343,7 +342,6 @@ export default function OwnerDashboard() {
           upi_phone: ''
         })
       }
-      // Also fetch from property as fallback for upi_id
       if (property && !settings.upi_id && property.owner_upi_id) {
         setSettings(prev => ({ ...prev, upi_id: property.owner_upi_id }))
       }
@@ -353,6 +351,7 @@ export default function OwnerDashboard() {
     }
   }
 
+  // ✅ FIXED saveSettings – no ON CONFLICT, uses separate check/insert/update
   const saveSettings = async () => {
     if (!settings.upi_id.trim() && !settings.upi_phone.trim()) {
       toast.error('Please provide at least one UPI ID or UPI Phone Number')
@@ -361,19 +360,48 @@ export default function OwnerDashboard() {
     setIsSubmitting(true)
     try {
       const userId = localStorage.getItem('userId')
-      // Use upsert: insert if not exists, update if exists
-      const { error: settingsError } = await supabase
+      
+      // Check if a row exists for this owner
+      const { data: existing, error: fetchError } = await supabase
         .from('owner_settings')
-        .upsert({
-          owner_id: userId,
-          joining_fee: settings.joining_fee,
-          advance_months: settings.advance_months,
-          due_day: settings.due_day,
-          upi_id: settings.upi_id,
-          upi_phone: settings.upi_phone,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'owner_id' })
-      if (settingsError) throw settingsError
+        .select('id')
+        .eq('owner_id', userId)
+        .maybeSingle()
+      
+      if (fetchError) throw fetchError
+      
+      let error
+      if (existing) {
+        // Update existing row
+        const { error: updateError } = await supabase
+          .from('owner_settings')
+          .update({
+            joining_fee: settings.joining_fee,
+            advance_months: settings.advance_months,
+            due_day: settings.due_day,
+            upi_id: settings.upi_id,
+            upi_phone: settings.upi_phone,
+            updated_at: new Date().toISOString()
+          })
+          .eq('owner_id', userId)
+        error = updateError
+      } else {
+        // Insert new row
+        const { error: insertError } = await supabase
+          .from('owner_settings')
+          .insert({
+            owner_id: userId,
+            joining_fee: settings.joining_fee,
+            advance_months: settings.advance_months,
+            due_day: settings.due_day,
+            upi_id: settings.upi_id,
+            upi_phone: settings.upi_phone,
+            updated_at: new Date().toISOString()
+          })
+        error = insertError
+      }
+      
+      if (error) throw error
 
       // Also update the property's owner_upi_id for backward compatibility
       if (property && settings.upi_id) {
@@ -386,7 +414,6 @@ export default function OwnerDashboard() {
 
       toast.success('Settings saved successfully!')
       setShowSettingsModal(false)
-      // Reload settings to reflect changes
       await loadSettings()
     } catch (error) {
       console.error('Save settings error:', error)
