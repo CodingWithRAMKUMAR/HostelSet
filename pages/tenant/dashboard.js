@@ -40,37 +40,39 @@ export default function TenantDashboard() {
   const [showScreenshotModal, setShowScreenshotModal] = useState(false)
   const [screenshotUrl, setScreenshotUrl] = useState('')
 
-  // ========== UPI intent functions ==========
+  // ========== FIXED UPI intent functions ==========
+  // Direct payment page for Google Pay (gpay:// scheme)
   const openGooglePay = (upiId, amount) => {
     const payee = encodeURIComponent(upiId)
-    const name = encodeURIComponent('HostelSet')
+    const name = encodeURIComponent('HostelSet Rent')
     const amt = encodeURIComponent(amount)
     const cu = encodeURIComponent('INR')
-    const gpayUrl = `tez://upi/pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}`
+    // Correct Google Pay scheme (gpay://) – opens payment screen directly
+    const gpayUrl = `gpay://upi/pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}`
     window.location.href = gpayUrl
+    // Fallback after 3 seconds: copy UPI ID and show instructions
     setTimeout(() => {
-      window.location.href = `upi://pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}`
-      setTimeout(() => {
-        toast.error('Google Pay not installed. UPI ID copied.', { duration: 5000 })
+      if (document.hasFocus()) {
+        toast.error('Google Pay not installed or failed. UPI ID copied.', { duration: 5000 })
         navigator.clipboard.writeText(upiId)
-      }, 1500)
-    }, 1500)
+      }
+    }, 3000)
   }
 
+  // Direct payment page for PhonePe (phonepe:// scheme)
   const openPhonePe = (upiId, amount) => {
     const payee = encodeURIComponent(upiId)
-    const name = encodeURIComponent('HostelSet')
+    const name = encodeURIComponent('HostelSet Rent')
     const amt = encodeURIComponent(amount)
     const cu = encodeURIComponent('INR')
     const phonepeUrl = `phonepe://pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}`
     window.location.href = phonepeUrl
     setTimeout(() => {
-      window.location.href = `upi://pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}`
-      setTimeout(() => {
-        toast.error('PhonePe not installed. UPI ID copied.', { duration: 5000 })
+      if (document.hasFocus()) {
+        toast.error('PhonePe not installed or failed. UPI ID copied.', { duration: 5000 })
         navigator.clipboard.writeText(upiId)
-      }, 1500)
-    }, 1500)
+      }
+    }, 3000)
   }
 
   const copyUpiId = (upiId) => {
@@ -83,7 +85,7 @@ export default function TenantDashboard() {
     toast.success('UPI Phone Number copied!')
   }
 
-  // ========== Helper functions ==========
+  // ========== Helper functions (unchanged) ==========
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -580,7 +582,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
-        {/* Payment History Tab – with UTR and Screenshot Preview (Fixed JSX) */}
+        {/* Payment History Tab */}
         {activeTab === 'payments' && (
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
@@ -637,7 +639,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal */}
+      {/* Payment Modal – with fixed UPI intents */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -689,7 +691,7 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Complaint Modal */}
+      {/* Complaint Modal (unchanged) */}
       <AnimatePresence>
         {showComplaintModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComplaintModal(false)}>
@@ -708,7 +710,7 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Vacate Modal */}
+      {/* Vacate Modal (unchanged) */}
       <AnimatePresence>
         {showVacateModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowVacateModal(false)}>
@@ -730,7 +732,7 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Profile Modal */}
+      {/* Profile Modal (unchanged) */}
       <AnimatePresence>
         {showProfileModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
