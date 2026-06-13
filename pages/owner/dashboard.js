@@ -351,9 +351,7 @@ export default function OwnerDashboard() {
     }
   }
 
-  // ✅ Robust saveSettings – handles duplicate rows by merging and cleaning
   const ensureSingleOwnerSettingsRow = async (ownerId) => {
-    // Fetch all rows for this owner_id
     const { data: rows, error } = await supabase
       .from('owner_settings')
       .select('*')
@@ -363,7 +361,6 @@ export default function OwnerDashboard() {
     if (error) throw error
     if (!rows || rows.length <= 1) return rows?.[0] || null
 
-    // Multiple rows – merge them into the first (most recent)
     const keep = rows[0]
     const merge = rows.slice(1)
     const mergedData = {
@@ -374,7 +371,6 @@ export default function OwnerDashboard() {
       upi_phone: keep.upi_phone,
       updated_at: keep.updated_at || new Date().toISOString()
     }
-    // Take non-null values from others
     for (const row of merge) {
       if (row.joining_fee !== null && row.joining_fee !== undefined) mergedData.joining_fee = row.joining_fee
       if (row.advance_months !== null && row.advance_months !== undefined) mergedData.advance_months = row.advance_months
@@ -385,13 +381,11 @@ export default function OwnerDashboard() {
         mergedData.updated_at = row.updated_at
       }
     }
-    // Update the kept row with merged data
     const { error: updateError } = await supabase
       .from('owner_settings')
       .update(mergedData)
       .eq('id', keep.id)
     if (updateError) throw updateError
-    // Delete the other rows
     const deleteIds = merge.map(r => r.id)
     const { error: deleteError } = await supabase
       .from('owner_settings')
@@ -409,10 +403,8 @@ export default function OwnerDashboard() {
     setIsSubmitting(true)
     try {
       const userId = localStorage.getItem('userId')
-      // First, clean up any duplicate rows for this owner
       await ensureSingleOwnerSettingsRow(userId)
       
-      // Now try to get a single row
       let { data: existing, error: fetchError } = await supabase
         .from('owner_settings')
         .select('id')
@@ -420,7 +412,6 @@ export default function OwnerDashboard() {
         .maybeSingle()
       
       if (fetchError && fetchError.message.includes('multiple')) {
-        // Should not happen after cleanup, but just in case, fetch any one row
         const { data: anyRow } = await supabase
           .from('owner_settings')
           .select('id')
@@ -434,7 +425,6 @@ export default function OwnerDashboard() {
       
       let error
       if (existing) {
-        // Update existing row
         const { error: updateError } = await supabase
           .from('owner_settings')
           .update({
@@ -448,7 +438,6 @@ export default function OwnerDashboard() {
           .eq('owner_id', userId)
         error = updateError
       } else {
-        // Insert new row
         const { error: insertError } = await supabase
           .from('owner_settings')
           .insert({
@@ -465,7 +454,6 @@ export default function OwnerDashboard() {
       
       if (error) throw error
 
-      // Also update the property's owner_upi_id for backward compatibility
       if (property && settings.upi_id) {
         const { error: propError } = await supabase
           .from('properties')
@@ -1295,7 +1283,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab */}
+        {/* Tenants Tab - FIXED JSX */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1309,7 +1297,7 @@ export default function OwnerDashboard() {
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Pending</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Actions</th>
-                <tr>
+                </tr>
               </thead>
               <tbody>
                 {filteredTenants.map(t => {
@@ -1330,7 +1318,7 @@ export default function OwnerDashboard() {
                           {isNoticePeriod && <span className="ml-1 text-xs bg-purple-200 text-purple-800 px-1 rounded">Notice</span>}
                           {isPaymentPending && <span className="ml-1 text-xs bg-yellow-200 text-yellow-800 px-1 rounded">Payment Pending</span>}
                         </div>
-                       </td>
+                      </td>
                       <td className="px-4 py-3 text-gray-500">{t.phone}</td>
                       <td className="px-4 py-3 font-medium text-slate-700">Room {t.room_number || getRoomNumberById(t.room_id)}</td>
                       <td className="px-4 py-3 font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</td>
@@ -1367,7 +1355,7 @@ export default function OwnerDashboard() {
                   )
                 })}
                 {filteredTenants.length === 0 && (
-                  <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants match your search</td</tr>
+                  <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants match your search</td></tr>
                 )}
               </tbody>
             </table>
@@ -1439,7 +1427,7 @@ export default function OwnerDashboard() {
                   </tr>
                 ))}
                 {filteredPayments.length === 0 && (
-                  <tr><td colSpan="6" className="text-center py-8 text-gray-500">No payment records match your search</td</tr>
+                  <tr><td colSpan="6" className="text-center py-8 text-gray-500">No payment records match your search</td></tr>
                 )}
               </tbody>
             </table>
