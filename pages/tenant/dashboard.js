@@ -26,7 +26,6 @@ export default function TenantDashboard() {
   const [vacateForm, setVacateForm] = useState({ expected_date: '', reason: '', rating: 0, review: '' })
   const [paymentAmount, setPaymentAmount] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [paymentLoading, setPaymentLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
   const [editProfile, setEditProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', email: '' })
@@ -35,6 +34,7 @@ export default function TenantDashboard() {
   const [ownerUpiId, setOwnerUpiId] = useState('')
   const [paymentScreenshot, setPaymentScreenshot] = useState(null)
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
+  const [paymentLoading, setPaymentLoading] = useState(false)
 
   // Calculate next due date
   const calculateNextDueDate = () => {
@@ -88,6 +88,50 @@ export default function TenantDashboard() {
     loadTenantData(userId)
   }, [])
 
+  const uploadFile = async (file, prefix) => {
+    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${file.name.split('.').pop()}`
+    // Ensure bucket exists; create if not (you may need to create 'tenant-documents' bucket in Supabase Storage)
+    const { data, error } = await supabase.storage
+      .from('tenant-documents')
+      .upload(fileName, file, { cacheControl: '3600' })
+    if (error) throw error
+    const { data: { publicUrl } } = supabase.storage.from('tenant-documents').getPublicUrl(fileName)
+    return publicUrl
+  }
+
+  const submitPaymentWithProof = async () => {
+    if (!paymentScreenshot) {
+      toast.error('Please upload payment screenshot')
+      return
+    }
+    setPaymentLoading(true)
+    try {
+      const screenshotUrl = await uploadFile(paymentScreenshot, 'rent')
+      const amount = tenant.pending_amount || tenant.rent_amount
+      const { error: paymentError } = await supabase.from('payment_history').insert({
+        tenant_id: tenant.id,
+        amount: amount,
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: 'upi',
+        status: 'payment_pending',
+        payment_screenshot: screenshotUrl,
+        upi_transaction_id: paymentTransactionId || null
+      })
+      if (paymentError) throw paymentError
+
+      toast.success('Payment proof submitted! Waiting for owner confirmation.')
+      setShowPaymentModal(false)
+      setPaymentScreenshot(null)
+      setPaymentTransactionId('')
+      await refreshData()
+    } catch (error) {
+      console.error('Payment error:', error)
+      toast.error('Failed to submit payment: ' + error.message)
+    } finally {
+      setPaymentLoading(false)
+    }
+  }
+
   const loadTenantData = async (userId) => {
     setLoading(true)
     try {
@@ -111,19 +155,17 @@ export default function TenantDashboard() {
         phone: tenantData.phone || '',
         email: tenantData.email || ''
       })
-      // Owner UPI from property
+
+      // Owner UPI ID
       if (tenantData.property?.owner_upi_id) {
         setOwnerUpiId(tenantData.property.owner_upi_id)
       } else {
-        // Fallback: try owner_settings
         const { data: settings } = await supabase
           .from('owner_settings')
           .select('upi_id')
           .eq('owner_id', tenantData.property?.owner_id)
           .maybeSingle()
-        if (settings?.upi_id) {
-          setOwnerUpiId(settings.upi_id)
-        }
+        if (settings?.upi_id) setOwnerUpiId(settings.upi_id)
       }
 
       if (tenantData.property?.owner_id) {
@@ -171,7 +213,7 @@ export default function TenantDashboard() {
         .from('check_out_requests')
         .select('*')
         .eq('tenant_id', tenantData.id)
-        .eq('status', 'pending')
+        .in('status', ['pending', 'approved'])
         .maybeSingle()
       setExistingVacateRequest(vacateData)
 
@@ -242,7 +284,6 @@ export default function TenantDashboard() {
     }
   }
 
-  // ✅ Fixed: complaint now includes room_id
   const submitComplaint = async () => {
     if (!complaintForm.title || !complaintForm.description) {
       toast.error('Please fill all fields')
@@ -274,51 +315,6 @@ export default function TenantDashboard() {
       toast.error('Failed to submit complaint: ' + error.message)
     } finally {
       setIsSubmitting(false)
-    }
-  }
-
-  // Direct UPI payment with proof
-  const uploadFile = async (file, prefix) => {
-    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${file.name.split('.').pop()}`
-    const { data, error } = await supabase.storage
-      .from('tenant-documents')
-      .upload(fileName, file, { cacheControl: '3600' })
-    if (error) throw error
-    const { data: { publicUrl } } = supabase.storage.from('tenant-documents').getPublicUrl(fileName)
-    return publicUrl
-  }
-
-  const submitPaymentWithProof = async () => {
-    if (!paymentScreenshot) {
-      toast.error('Please upload payment screenshot')
-      return
-    }
-    setPaymentLoading(true)
-    try {
-      const screenshotUrl = await uploadFile(paymentScreenshot, 'rent')
-      const amount = tenant.pending_amount || tenant.rent_amount
-      // Insert payment record with pending status
-      const { error: paymentError } = await supabase.from('payment_history').insert({
-        tenant_id: tenant.id,
-        amount: amount,
-        payment_date: new Date().toISOString().split('T')[0],
-        payment_method: 'upi',
-        status: 'payment_pending',
-        payment_screenshot: screenshotUrl,
-        upi_transaction_id: paymentTransactionId
-      })
-      if (paymentError) throw paymentError
-
-      toast.success('Payment proof submitted! Waiting for owner confirmation.')
-      setShowPaymentModal(false)
-      setPaymentScreenshot(null)
-      setPaymentTransactionId('')
-      await refreshData()
-    } catch (error) {
-      console.error('Payment error:', error)
-      toast.error('Failed to submit payment: ' + error.message)
-    } finally {
-      setPaymentLoading(false)
     }
   }
 
@@ -374,26 +370,57 @@ export default function TenantDashboard() {
     }
   }
 
+  // Enhanced cancel function that works even after approval (if no pre-booking)
   const cancelVacateRequest = async () => {
     if (!existingVacateRequest) return
+
+    // Check if there is an approved pre-booking for this room
+    const { data: preBooking, error: preError } = await supabase
+      .from('pre_bookings')
+      .select('id')
+      .eq('room_id', tenant.room_id)
+      .eq('status', 'approved')
+      .maybeSingle()
+
+    if (preError) console.error('Pre-booking check error:', preError)
+
+    if (preBooking) {
+      toast.error('Cannot cancel vacate – a pre‑booking has already been approved for this room.')
+      return
+    }
+
     const expectedDate = new Date(existingVacateRequest.expected_check_out)
     const today = new Date()
     const daysLeft = Math.ceil((expectedDate - today) / (1000 * 60 * 60 * 24))
+
+    // Allow cancellation only if more than 3 days remaining (owner may have other restrictions)
     if (daysLeft < 3) {
       toast.error('Cannot cancel within 3 days of vacate date. Please contact owner.')
       return
     }
+
     if (!confirm('Cancel your vacate request? You will continue as a tenant.')) return
+
     setIsSubmitting(true)
     try {
-      const { error } = await supabase
+      // Delete the vacate request
+      const { error: delError } = await supabase
         .from('check_out_requests')
         .delete()
         .eq('id', existingVacateRequest.id)
-      if (error) throw error
-      toast.success('Vacate request cancelled.')
+      if (delError) throw delError
+
+      // Update tenant status back to active
+      const { error: updateError } = await supabase
+        .from('tenants')
+        .update({ status: 'active', check_out_requested: false, notice_period_start: null, notice_period_end: null })
+        .eq('id', tenant.id)
+      if (updateError) throw updateError
+
+      toast.success('Vacate request cancelled. You remain as an active tenant.')
       await refreshData()
     } catch (error) {
+      console.error('Cancel vacate error:', error)
       toast.error('Failed to cancel request')
     } finally {
       setIsSubmitting(false)
@@ -647,7 +674,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal – Direct UPI + Screenshot */}
+      {/* Payment Modal – Direct UPI with screenshot */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -670,6 +697,7 @@ export default function TenantDashboard() {
                     >
                       Pay with UPI App
                     </a>
+                    <p className="text-xs text-gray-500 mt-2">After payment, upload screenshot below.</p>
                   </div>
                   <div className="space-y-4">
                     <div>
