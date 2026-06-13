@@ -22,7 +22,6 @@ export default function TenantDashboard() {
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showVacateModal, setShowVacateModal] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
-  const [showUpiAppSelector, setShowUpiAppSelector] = useState(false)
   const [complaintForm, setComplaintForm] = useState({ title: '', description: '', priority: 'medium' })
   const [vacateForm, setVacateForm] = useState({ expected_date: '', reason: '', rating: 0, review: '' })
   const [paymentAmount, setPaymentAmount] = useState(0)
@@ -36,31 +35,23 @@ export default function TenantDashboard() {
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
 
+  // App‑specific UPI intent functions
   const openGooglePay = (upiId, amount) => {
     const intent = `intent://upi/pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR#Intent;scheme=tez;package=com.google.android.apps.nbu.pay;end`
     window.location.href = intent
     setTimeout(() => {
-      toast.error('Google Pay not installed. Please copy UPI ID.', { duration: 5000 })
-      navigator.clipboard.writeText(upiId)
-    }, 2000)
+      toast.error('Google Pay not installed. Trying PhonePe...', { duration: 3000 })
+      openPhonePe(upiId, amount)
+    }, 1500)
   }
 
   const openPhonePe = (upiId, amount) => {
     const intent = `intent://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR#Intent;scheme=phonepe;package=com.phonepe.app;end`
     window.location.href = intent
     setTimeout(() => {
-      toast.error('PhonePe not installed. Please copy UPI ID.', { duration: 5000 })
+      toast.error('PhonePe not installed. UPI ID copied to clipboard.', { duration: 5000 })
       navigator.clipboard.writeText(upiId)
-    }, 2000)
-  }
-
-  const openPaytm = (upiId, amount) => {
-    const intent = `intent://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR#Intent;scheme=paytmmp;package=net.one97.paytm;end`
-    window.location.href = intent
-    setTimeout(() => {
-      toast.error('Paytm not installed. Please copy UPI ID.', { duration: 5000 })
-      navigator.clipboard.writeText(upiId)
-    }, 2000)
+    }, 1500)
   }
 
   const copyUpiId = () => {
@@ -68,6 +59,7 @@ export default function TenantDashboard() {
     toast.success('UPI ID copied!')
   }
 
+  // ========== All existing helper functions (unchanged) ==========
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -84,6 +76,7 @@ export default function TenantDashboard() {
     const daysUntilDue = Math.ceil((nextDueDate - today) / (1000 * 60 * 60 * 24))
     const isPaidThisMonth = tenant.last_payment_date &&
       new Date(tenant.last_payment_date) >= new Date(today.getFullYear(), today.getMonth(), 1)
+
     if ((tenant.pending_amount > 0 && tenant.pending_amount >= tenant.rent_amount) || (!isPaidThisMonth && tenant.pending_amount > 0)) {
       if (daysUntilDue < 0) return { status: 'overdue', message: `Overdue by ${Math.abs(daysUntilDue)} days`, daysUntilDue, dueDate: nextDueDate, urgent: true }
       else if (daysUntilDue <= 5) return { status: 'due_soon', message: `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}`, daysUntilDue, dueDate: nextDueDate, urgent: true }
@@ -451,7 +444,9 @@ export default function TenantDashboard() {
           </div>
           <div className="flex items-center gap-4">
             <button onClick={() => setShowProfileModal(true)} className="flex items-center gap-2 text-gray-600 hover:text-slate-800 transition">
-              <div className="w-8 h-8 bg-gradient-to-r from-slate-600 to-slate-500 rounded-full flex items-center justify-center text-white text-sm font-bold">{tenant?.name?.charAt(0) || 'U'}</div>
+              <div className="w-8 h-8 bg-gradient-to-r from-slate-600 to-slate-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                {tenant?.name?.charAt(0) || 'U'}
+              </div>
               <span className="text-sm hidden md:inline">{tenant?.name}</span>
             </button>
             <button onClick={handleLogout} className="text-red-500 hover:text-red-600 transition">Logout</button>
@@ -486,37 +481,31 @@ export default function TenantDashboard() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <div className="flex items-center gap-3"><div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-xl">💰</div><div><p className="text-xs text-gray-500">Monthly Rent</p><p className="text-xl font-bold text-slate-800">{formatCurrency(tenant?.rent_amount)}</p></div></div>
-          </div>
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <div className="flex items-center gap-3"><div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-xl">✅</div><div><p className="text-xs text-gray-500">Total Paid</p><p className="text-xl font-bold text-green-600">{formatCurrency(tenant?.total_paid || 0)}</p></div></div>
-          </div>
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <div className="flex items-center gap-3"><div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-xl">⚠️</div><div><p className="text-xs text-gray-500">Pending Amount</p><p className="text-xl font-bold text-red-500">{formatCurrency(tenant?.pending_amount || 0)}</p></div></div>
-          </div>
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <div className="flex items-center gap-3"><div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-xl">👥</div><div><p className="text-xs text-gray-500">Roommates</p><p className="text-xl font-bold text-slate-800">{roommates.length}</p></div></div>
-          </div>
+          <div className="bg-white rounded-xl p-5 shadow-sm border hover:shadow-md"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-xl">💰</div><div><p className="text-xs text-gray-500">Monthly Rent</p><p className="text-xl font-bold text-slate-800">{formatCurrency(tenant?.rent_amount)}</p></div></div></div>
+          <div className="bg-white rounded-xl p-5 shadow-sm border hover:shadow-md"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-xl">✅</div><div><p className="text-xs text-gray-500">Total Paid</p><p className="text-xl font-bold text-green-600">{formatCurrency(tenant?.total_paid || 0)}</p></div></div></div>
+          <div className="bg-white rounded-xl p-5 shadow-sm border hover:shadow-md"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-xl">⚠️</div><div><p className="text-xs text-gray-500">Pending Amount</p><p className="text-xl font-bold text-red-500">{formatCurrency(tenant?.pending_amount || 0)}</p></div></div></div>
+          <div className="bg-white rounded-xl p-5 shadow-sm border hover:shadow-md"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-xl">👥</div><div><p className="text-xs text-gray-500">Roommates</p><p className="text-xl font-bold text-slate-800">{roommates.length}</p></div></div></div>
         </div>
 
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-3 mb-8">
-          <button onClick={() => setShowPaymentModal(true)} className="bg-green-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-green-700 transition shadow-sm flex items-center gap-2">💳 Pay Rent (UPI)</button>
-          <button onClick={() => setShowComplaintModal(true)} className="border-2 border-orange-300 text-orange-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition flex items-center gap-2">📝 Raise Complaint</button>
+          <button onClick={() => setShowPaymentModal(true)} className="bg-green-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-green-700 transition">💳 Pay Rent (UPI)</button>
+          <button onClick={() => setShowComplaintModal(true)} className="border-2 border-orange-300 text-orange-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition">📝 Raise Complaint</button>
           {existingVacateRequest ? (
-            <button onClick={cancelVacateRequest} className="border-2 border-yellow-500 text-yellow-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition flex items-center gap-2">❌ Cancel Vacate Request</button>
+            <button onClick={cancelVacateRequest} className="border-2 border-yellow-500 text-yellow-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition">❌ Cancel Vacate Request</button>
           ) : (
-            <button onClick={() => setShowVacateModal(true)} className="border-2 border-red-300 text-red-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition flex items-center gap-2">🚪 Request Vacate</button>
+            <button onClick={() => setShowVacateModal(true)} className="border-2 border-red-300 text-red-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition">🚪 Request Vacate</button>
           )}
         </div>
 
         {/* Tabs */}
         <div className="flex flex-wrap border-b border-gray-200 mb-6 gap-2">
-          {['overview', 'roommates', 'notices', 'complaints', 'payments'].map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 text-sm font-semibold capitalize rounded-t-lg ${activeTab === tab ? 'bg-slate-800 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
-              {tab === 'overview' && '📊 Overview'} {tab === 'roommates' && `👥 Roommates (${roommates.length})`}
-              {tab === 'notices' && `📢 Notices (${notices.length})`} {tab === 'complaints' && `🔧 My Complaints (${complaints.length})`}
+          {['overview', 'roommates', 'notices', 'complaints', 'payments'].map((tab) => (
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 text-sm font-semibold capitalize transition-all rounded-t-lg ${activeTab === tab ? 'bg-slate-800 text-white' : 'text-gray-500 hover:text-slate-700 hover:bg-gray-50'}`}>
+              {tab === 'overview' && '📊 Overview'}
+              {tab === 'roommates' && `👥 Roommates (${roommates.length})`}
+              {tab === 'notices' && `📢 Notices (${notices.length})`}
+              {tab === 'complaints' && `🔧 My Complaints (${complaints.length})`}
               {tab === 'payments' && `💰 Payment History (${paymentHistory.length})`}
             </button>
           ))}
@@ -525,139 +514,47 @@ export default function TenantDashboard() {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
-            <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition">
-              <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2"><span className="text-xl">🏠</span> Your Room Details</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Room Number:</span><span className="font-semibold text-slate-800">{room?.room_number}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Sharing Type:</span><span className="font-semibold text-slate-800">{getSharingDetails(room?.sharing_type)?.label}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Monthly Rent:</span><span className="font-semibold text-green-600">{formatCurrency(room?.monthly_rent)}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Move-in Date:</span><span className="text-slate-700">{formatDate(tenant?.move_in_date)}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Current Status:</span><span className={`px-2 py-1 rounded-full text-xs ${tenant?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{tenant?.status === 'active' ? 'Active' : 'Notice Period'}</span></div>
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition">
-              <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2"><span className="text-xl">🏢</span> Property Information</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Property Name:</span><span className="font-semibold text-slate-800">{property?.name}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Address:</span><span className="text-slate-700 text-right">{property?.address}, {property?.city}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Owner Name:</span><span className="text-slate-700">{owner?.full_name || 'Not provided'}</span></div>
-                <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Owner Contact:</span><span className="text-slate-700 font-medium">{property?.contact_number || owner?.phone || 'Not provided'}</span></div>
-              </div>
-            </div>
+            <div className="bg-white rounded-xl border p-6"><h3 className="font-semibold mb-4">🏠 Your Room Details</h3><div className="space-y-3"><div className="flex justify-between py-2 border-b"><span className="text-gray-500">Room Number:</span><span>{room?.room_number}</span></div><div className="flex justify-between py-2 border-b"><span>Sharing Type:</span><span>{getSharingDetails(room?.sharing_type)?.label}</span></div><div className="flex justify-between py-2 border-b"><span>Monthly Rent:</span><span className="text-green-600 font-semibold">{formatCurrency(room?.monthly_rent)}</span></div><div className="flex justify-between py-2 border-b"><span>Move-in Date:</span><span>{formatDate(tenant?.move_in_date)}</span></div><div className="flex justify-between py-2 border-b"><span>Status:</span><span className={`px-2 py-1 rounded-full text-xs ${tenant?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{tenant?.status === 'active' ? 'Active' : 'Notice Period'}</span></div></div></div>
+            <div className="bg-white rounded-xl border p-6"><h3 className="font-semibold mb-4">🏢 Property Information</h3><div className="space-y-3"><div className="flex justify-between py-2 border-b"><span className="text-gray-500">Property Name:</span><span>{property?.name}</span></div><div className="flex justify-between py-2 border-b"><span>Address:</span><span className="text-right">{property?.address}, {property?.city}</span></div><div className="flex justify-between py-2 border-b"><span>Owner Name:</span><span>{owner?.full_name || 'Not provided'}</span></div><div className="flex justify-between py-2 border-b"><span>Owner Contact:</span><span className="font-medium">{property?.contact_number || owner?.phone || 'Not provided'}</span></div></div></div>
           </div>
         )}
 
         {/* Roommates Tab */}
         {activeTab === 'roommates' && (
-          <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
-            <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2"><span className="text-xl">👥</span> Your Roommates <span className="text-xs text-gray-400 ml-2">(Same Room Only)</span></h3>
-            {roommates.length > 0 ? (
-              <div className="grid md:grid-cols-2 gap-4">
-                {roommates.map((mate, idx) => (
-                  <div key={idx} className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition">
-                    <div className="w-12 h-12 bg-gradient-to-r from-slate-600 to-slate-500 rounded-full flex items-center justify-center text-white text-lg font-bold">{mate.name.charAt(0)}</div>
-                    <div><p className="font-semibold text-slate-800">{mate.name}</p><p className="text-xs text-gray-500">📞 {mate.phone}</p><p className="text-xs text-gray-400">Since {formatDate(mate.move_in_date)}</p></div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12"><div className="text-5xl mb-3">👤</div><p className="text-gray-500">You're the only person in this room</p><p className="text-xs text-gray-400">Enjoy the privacy!</p></div>
-            )}
+          <div className="bg-white rounded-xl border p-6"><h3 className="font-semibold mb-4">👥 Your Roommates <span className="text-xs text-gray-400 ml-2">(Same Room Only)</span></h3>
+            {roommates.length > 0 ? <div className="grid md:grid-cols-2 gap-4">{roommates.map((mate, idx) => (<div key={idx} className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl"><div className="w-12 h-12 bg-gradient-to-r from-slate-600 to-slate-500 rounded-full flex items-center justify-center text-white text-lg font-bold">{mate.name.charAt(0)}</div><div><p className="font-semibold">{mate.name}</p><p className="text-xs text-gray-500">📞 {mate.phone}</p><p className="text-xs text-gray-400">Since {formatDate(mate.move_in_date)}</p></div></div>))}</div> : <div className="text-center py-12"><div className="text-5xl mb-3">👤</div><p>You're the only person in this room</p><p className="text-xs text-gray-400">Enjoy the privacy!</p></div>}
           </div>
         )}
 
         {/* Notices Tab */}
         {activeTab === 'notices' && (
-          <div className="space-y-4">
-            {notices.map((notice) => (
-              <div key={notice.id} className={`bg-white rounded-xl border p-5 shadow-sm hover:shadow-md transition ${notice.is_urgent ? 'border-red-200 bg-red-50' : 'border-gray-100'}`}>
-                <div className="flex items-center gap-2 mb-3"><h3 className="font-semibold text-slate-800 text-lg">{notice.title}</h3>{notice.is_urgent && <span className="px-2 py-1 bg-red-500 text-white rounded-full text-xs font-semibold animate-pulse">URGENT</span>}<span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">{notice.type}</span></div>
-                <p className="text-gray-600 mb-3">{notice.content}</p>
-                <p className="text-xs text-gray-400">Posted: {formatDate(notice.created_at)}</p>
-              </div>
-            ))}
-            {notices.length === 0 && (<div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-5xl mb-3">📢</div><p className="text-gray-500">No notices yet</p></div>)}
-          </div>
+          <div className="space-y-4">{notices.map(notice => (<div key={notice.id} className={`bg-white rounded-xl border p-5 ${notice.is_urgent ? 'border-red-200 bg-red-50' : 'border-gray-100'}`}><div className="flex items-center gap-2 mb-3"><h3 className="font-semibold text-lg">{notice.title}</h3>{notice.is_urgent && <span className="px-2 py-1 bg-red-500 text-white rounded-full text-xs animate-pulse">URGENT</span>}<span className="px-2 py-1 bg-gray-100 rounded-full text-xs">{notice.type}</span></div><p className="text-gray-600 mb-3">{notice.content}</p><p className="text-xs text-gray-400">Posted: {formatDate(notice.created_at)}</p></div>))}{!notices.length && <div className="text-center py-12"><div className="text-5xl mb-3">📢</div><p>No notices yet</p></div>}</div>
         )}
 
         {/* Complaints Tab */}
         {activeTab === 'complaints' && (
           <div className="space-y-4">
-            {complaints.map((complaint) => (
-              <div key={complaint.id} className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition relative group">
+            {complaints.map(complaint => (
+              <div key={complaint.id} className="bg-white rounded-xl border p-5 shadow-sm relative group">
                 <button onClick={() => deleteComplaint(complaint.id)} className="absolute top-4 right-4 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition">🗑️ Delete</button>
                 <div className="flex justify-between items-start mb-3 pr-8">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <h3 className="font-semibold text-slate-800">{complaint.title}</h3>
-                      <span className={`px-2 py-1 rounded-full text-xs ${complaint.priority === 'high' ? 'bg-red-100 text-red-700' : complaint.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{complaint.priority}</span>
-                    </div>
-                    <p className="text-gray-600">{complaint.description}</p>
-                    {complaint.admin_response && (
-                      <div className="mt-3 p-3 bg-green-50 rounded-lg">
-                        <p className="text-xs text-green-600 font-semibold mb-1">Owner's Response:</p>
-                        <p className="text-sm text-gray-700">{complaint.admin_response}</p>
-                      </div>
-                    )}
-                  </div>
+                  <div><div className="flex items-center gap-2 mb-2"><h3 className="font-semibold">{complaint.title}</h3><span className={`px-2 py-1 rounded-full text-xs ${complaint.priority === 'high' ? 'bg-red-100 text-red-700' : complaint.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{complaint.priority}</span></div><p className="text-gray-600">{complaint.description}</p>{complaint.admin_response && (<div className="mt-3 p-3 bg-green-50 rounded-lg"><p className="text-xs text-green-600 font-semibold mb-1">Owner's Response:</p><p className="text-sm text-gray-700">{complaint.admin_response}</p></div>)}</div>
                   <span className={`px-2 py-1 rounded-full text-xs ${complaint.status === 'open' ? 'bg-red-100 text-red-700' : complaint.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{complaint.status === 'open' ? 'Open' : complaint.status === 'in_progress' ? 'In Progress' : 'Resolved'}</span>
                 </div>
                 <p className="text-xs text-gray-400">Submitted: {formatDate(complaint.created_at)}</p>
               </div>
             ))}
-            {complaints.length === 0 && (
-              <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
-                <div className="text-5xl mb-3">📝</div>
-                <p className="text-gray-500">No complaints filed yet</p>
-                <button onClick={() => setShowComplaintModal(true)} className="mt-3 text-slate-600 underline">Raise a complaint</button>
-              </div>
-            )}
+            {!complaints.length && <div className="text-center py-12"><div className="text-5xl mb-3">📝</div><p>No complaints filed yet</p><button onClick={() => setShowComplaintModal(true)} className="mt-3 text-slate-600 underline">Raise a complaint</button></div>}
           </div>
         )}
 
         {/* Payment History Tab */}
         {activeTab === 'payments' && (
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Amount</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Method</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paymentHistory.map((payment) => (
-                    <tr key={payment.id} className="border-b hover:bg-gray-50 transition">
-                      <td className="px-4 py-3 text-sm text-gray-600">{formatDate(payment.payment_date)}</td>
-                      <td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(payment.amount)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-500 capitalize">{payment.payment_method}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          payment.status === 'success' ? 'bg-green-100 text-green-700' : 
-                          payment.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' : 
-                          'bg-gray-100 text-gray-600'
-                        }`}>
-                          {payment.status === 'success' ? 'Success' : payment.status === 'payment_pending' ? 'Pending' : payment.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {paymentHistory.length === 0 && (
-                    <tr>
-                      <td colSpan="4" className="text-center py-8 text-gray-500">No payment history yet</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <div className="bg-white rounded-xl border overflow-hidden"><div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50 border-b"><tr><th className="px-4 py-3 text-left">Date</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead><tbody>{paymentHistory.map(p => (<tr key={p.id} className="border-b hover:bg-gray-50"><td className="px-4 py-3 text-sm">{formatDate(p.payment_date)}</td><td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(p.amount)}</td><td className="px-4 py-3 text-sm capitalize">{p.payment_method}</td><td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${p.status === 'success' ? 'bg-green-100 text-green-700' : p.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{p.status === 'success' ? 'Success' : p.status === 'payment_pending' ? 'Pending' : p.status}</span></td></tr>))}{!paymentHistory.length && <tr><td colSpan="4" className="text-center py-8 text-gray-500">No payment history yet</td></tr>}</tbody></table></div></div>
         )}
       </div>
 
-      {/* Payment Modal – UPI App Selector (No WhatsApp/Slice) */}
+      {/* Payment Modal – Direct app selection (Google Pay / PhonePe) */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -673,40 +570,16 @@ export default function TenantDashboard() {
                 <>
                   <div className="bg-blue-50 p-3 rounded-lg mb-4">
                     <p className="text-sm font-semibold text-center mb-2">Owner UPI ID: <span className="font-mono">{ownerUpiId}</span></p>
-                    <div className="flex justify-center gap-2 mb-3">
-                      <button onClick={() => setShowUpiAppSelector(true)} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Pay with UPI App</button>
+                    <div className="flex flex-wrap justify-center gap-2 mb-3">
+                      <button onClick={() => openGooglePay(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount)} className="bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-blue-700 transition">Google Pay</button>
+                      <button onClick={() => openPhonePe(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount)} className="bg-purple-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-purple-700 transition">PhonePe</button>
                       <button onClick={copyUpiId} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy UPI ID</button>
                     </div>
                     <p className="text-xs text-gray-500 text-center">After payment, upload screenshot below.</p>
                   </div>
-
-                  {/* UPI App Selector Modal */}
-                  <AnimatePresence>
-                    {showUpiAppSelector && (
-                      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowUpiAppSelector(false)}>
-                        <div className="bg-white rounded-2xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
-                          <h3 className="text-xl font-bold mb-4">Choose UPI App</h3>
-                          <div className="space-y-2">
-                            <button onClick={() => { setShowUpiAppSelector(false); openGooglePay(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount) }} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 transition">Google Pay</button>
-                            <button onClick={() => { setShowUpiAppSelector(false); openPhonePe(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount) }} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 transition">PhonePe</button>
-                            <button onClick={() => { setShowUpiAppSelector(false); openPaytm(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount) }} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 transition">Paytm</button>
-                            <button onClick={() => { setShowUpiAppSelector(false); copyUpiId() }} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 transition text-blue-600">Copy UPI ID (Manual Payment)</button>
-                          </div>
-                          <button onClick={() => setShowUpiAppSelector(false)} className="w-full mt-4 text-center text-gray-500">Cancel</button>
-                        </div>
-                      </div>
-                    )}
-                  </AnimatePresence>
-
                   <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label>
-                      <input type="text" className="w-full px-4 py-3 border rounded-xl" value={paymentTransactionId} onChange={e => setPaymentTransactionId(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold mb-1">Payment Screenshot *</label>
-                      <input type="file" accept="image/*" onChange={e => { if (e.target.files[0]) setPaymentScreenshot(e.target.files[0]) }} className="w-full" />
-                    </div>
+                    <div><label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label><input type="text" className="w-full px-4 py-3 border rounded-xl" value={paymentTransactionId} onChange={e => setPaymentTransactionId(e.target.value)} /></div>
+                    <div><label className="block text-sm font-semibold mb-1">Payment Screenshot *</label><input type="file" accept="image/*" onChange={e => { if (e.target.files[0]) setPaymentScreenshot(e.target.files[0]) }} className="w-full" /></div>
                     <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">After payment, upload the screenshot and submit. Owner will verify.</div>
                     <button onClick={submitPaymentWithProof} disabled={paymentLoading} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}</button>
                     <button onClick={() => setShowPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>
@@ -727,15 +600,12 @@ export default function TenantDashboard() {
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">📝 Raise Complaint</h2>
               <div className="space-y-4">
-                <input type="text" placeholder="Title" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={complaintForm.title} onChange={e => setComplaintForm({...complaintForm, title: e.target.value})} />
-                <textarea placeholder="Description" rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={complaintForm.description} onChange={e => setComplaintForm({...complaintForm, description: e.target.value})} />
-                <select className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={complaintForm.priority} onChange={e => setComplaintForm({...complaintForm, priority: e.target.value})}>
+                <input type="text" placeholder="Title" className="w-full px-4 py-3 border rounded-xl" value={complaintForm.title} onChange={e => setComplaintForm({...complaintForm, title: e.target.value})} />
+                <textarea placeholder="Description" rows="4" className="w-full px-4 py-3 border rounded-xl" value={complaintForm.description} onChange={e => setComplaintForm({...complaintForm, description: e.target.value})} />
+                <select className="w-full px-4 py-3 border rounded-xl" value={complaintForm.priority} onChange={e => setComplaintForm({...complaintForm, priority: e.target.value})}>
                   <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
                 </select>
-                <div className="flex gap-3 mt-6">
-                  <button onClick={submitComplaint} disabled={isSubmitting} className="flex-1 bg-orange-600 text-white py-3 rounded-xl">{isSubmitting ? 'Submitting...' : 'Submit Complaint'}</button>
-                  <button onClick={() => setShowComplaintModal(false)} className="flex-1 border-2 border-gray-300 py-3 rounded-xl">Cancel</button>
-                </div>
+                <div className="flex gap-3 mt-6"><button onClick={submitComplaint} disabled={isSubmitting} className="flex-1 bg-orange-600 text-white py-3 rounded-xl">{isSubmitting ? 'Submitting...' : 'Submit Complaint'}</button><button onClick={() => setShowComplaintModal(false)} className="flex-1 border-2 border-gray-300 py-3 rounded-xl">Cancel</button></div>
               </div>
             </motion.div>
           </div>
