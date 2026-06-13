@@ -51,6 +51,10 @@ export default function OwnerDashboard() {
   const [membershipStatus, setMembershipStatus] = useState('loading')
   const autoRefreshRef = useRef(null)
 
+  // Membership expiry
+  const [membershipExpiry, setMembershipExpiry] = useState(null)
+  const [daysLeft, setDaysLeft] = useState(null)
+
   // Pre‑booking state
   const [preBookings, setPreBookings] = useState([])
 
@@ -137,11 +141,23 @@ export default function OwnerDashboard() {
     if (!propertyData) {
       setMembershipActive(false)
       setMembershipStatus('none')
+      setMembershipExpiry(null)
+      setDaysLeft(null)
       return
     }
     const active = propertyData.membership_active && new Date(propertyData.membership_expiry) > new Date()
     setMembershipActive(active)
     setMembershipStatus(active ? 'active' : (propertyData.membership_active ? 'expired' : 'none'))
+    if (propertyData.membership_expiry) {
+      const expiryDate = new Date(propertyData.membership_expiry)
+      const today = new Date()
+      const remainingDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24))
+      setDaysLeft(remainingDays)
+      setMembershipExpiry(expiryDate)
+    } else {
+      setMembershipExpiry(null)
+      setDaysLeft(null)
+    }
   }
 
   const startAutoRefresh = () => {
@@ -528,16 +544,11 @@ export default function OwnerDashboard() {
     if (!confirm('Approve this pre‑booking? The current tenant will no longer be able to cancel vacate.')) return
     setIsSubmitting(true)
     try {
-      // Update pre‑booking status
       const { error: bookingError } = await supabase
         .from('pre_bookings')
         .update({ status: 'approved', updated_at: new Date() })
         .eq('id', bookingId)
       if (bookingError) throw bookingError
-
-      // Optionally, we could also lock the vacate cancellation flag on the room/tenant
-      // For now, we rely on the pre‑booking approved flag to block vacate cancellation.
-
       toast.success('Pre‑booking approved! The room is now reserved.')
       await loadData()
     } catch (error) {
@@ -731,7 +742,8 @@ export default function OwnerDashboard() {
       const pendingAmount = advanceMonths > 0 ? 0 : monthlyRent
       const rentStatus = advanceMonths > 0 ? 'paid' : 'pending'
 
-      const { error: tenantError } = await supabase
+      // Insert tenant
+      const { data: newTenant, error: tenantError } = await supabase
         .from('tenants')
         .insert({
           user_id: userId,
@@ -747,18 +759,21 @@ export default function OwnerDashboard() {
           move_in_date: new Date().toISOString().split('T')[0],
           status: 'active'
         })
+        .select()
+        .single()
       if (tenantError) throw tenantError
 
-      // Record advance payment in payment_history
-      if (totalJoiningAmount > 0) {
+      // ✅ FIX: Record joining fee + advance in payment_history
+      if (totalJoiningAmount > 0 && newTenant) {
         const { error: paymentError } = await supabase.from('payment_history').insert({
-          tenant_id: authData.user.id, // we don't have the tenant.id yet, but we can use the newly inserted tenant by fetching it
+          tenant_id: newTenant.id,
           amount: totalJoiningAmount,
           payment_date: new Date().toISOString().split('T')[0],
           payment_method: 'advance',
           status: 'success'
         })
         if (paymentError) console.warn('Failed to record advance payment:', paymentError)
+        else console.log(`Recorded ₹${totalJoiningAmount} advance payment for tenant ${newTenant.id}`)
       }
 
       const newOccupants = selectedRoom.current_occupants + 1
@@ -1108,6 +1123,24 @@ export default function OwnerDashboard() {
         </div>
       )}
 
+      {/* Membership Expiry Alert – Added */}
+      {membershipActive && daysLeft !== null && daysLeft <= 7 && daysLeft > 0 && (
+        <div className="bg-yellow-100 border-b border-yellow-300 px-4 py-3 text-center">
+          <p className="text-yellow-800 font-semibold">
+            ⚠️ Your membership will expire in {daysLeft} day{daysLeft !== 1 ? 's' : ''} on {formatDate(membershipExpiry)}. 
+            <button onClick={() => setShowMembershipModal(true)} className="ml-2 underline font-bold">Renew now</button>
+          </p>
+        </div>
+      )}
+      {membershipActive && daysLeft !== null && daysLeft <= 0 && (
+        <div className="bg-red-100 border-b border-red-300 px-4 py-3 text-center">
+          <p className="text-red-800 font-semibold">
+            ❌ Your membership has expired! 
+            <button onClick={() => setShowMembershipModal(true)} className="ml-2 underline font-bold">Renew now</button>
+          </p>
+        </div>
+      )}
+
       {/* Pending payment alert */}
       {stats.pendingPaymentCount > 0 && (
         <div className="bg-red-100 border-b border-red-300 px-4 py-3 text-center">
@@ -1152,7 +1185,7 @@ export default function OwnerDashboard() {
       </nav>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Stats Cards */}
+        {/* Stats Cards (unchanged) */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
           <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
             <div className="text-2xl font-bold text-slate-800">{stats.totalRooms}</div>
@@ -1180,7 +1213,7 @@ export default function OwnerDashboard() {
           </div>
         </div>
 
-        {/* Overview Alerts */}
+        {/* Overview Alerts (unchanged) */}
         {activeTab === 'overview' && (
           <div>
             {stats.pendingRentConfirmations > 0 && (
@@ -1221,7 +1254,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Action Buttons (disabled when not active) */}
+        {/* Action Buttons (unchanged) */}
         <div className="flex flex-wrap gap-3 mb-8">
           <button 
             onClick={() => membershipActive && setShowAddModal(true)} 
@@ -1269,7 +1302,7 @@ export default function OwnerDashboard() {
           </button>
         </div>
 
-        {/* Tabs – added Pre‑bookings */}
+        {/* Tabs (unchanged, includes pre-bookings) */}
         <div className="flex flex-wrap border-b border-gray-200 mb-6 gap-2">
           {['overview', 'rooms', 'tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'complaints', 'vacate', 'applications', 'notices'].map((tab) => (
             <button 
@@ -1298,7 +1331,7 @@ export default function OwnerDashboard() {
           ))}
         </div>
 
-        {/* Overview Tab */}
+        {/* Overview Tab (unchanged) */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border border-gray-100 p-6">
@@ -1333,7 +1366,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Rooms Tab */}
+        {/* Rooms Tab (unchanged) */}
         {activeTab === 'rooms' && (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {rooms.map((room) => {
@@ -1372,7 +1405,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab */}
+        {/* Tenants Tab (unchanged) */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1402,7 +1435,7 @@ export default function OwnerDashboard() {
                         {t.name}
                         {isNoticePeriod && <span className="ml-2 text-xs bg-purple-200 text-purple-800 px-1 rounded">Notice</span>}
                         {isPaymentPending && <span className="ml-2 text-xs bg-yellow-200 text-yellow-800 px-1 rounded">Payment Pending</span>}
-                      </td>
+                       </td>
                       <td className="px-4 py-3 text-gray-500">{t.phone}</td>
                       <td className="px-4 py-3 font-medium text-slate-700">Room {t.room_number || getRoomNumberById(t.room_id)}</td>
                       <td className="px-4 py-3 font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</td>
@@ -1422,7 +1455,7 @@ export default function OwnerDashboard() {
                         {isPaymentPending && (
                           <span className="ml-1 px-2 py-1 bg-yellow-200 text-yellow-800 rounded-full text-xs">⏳ Awaiting approval</span>
                         )}
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         {isPaymentPending ? (
                           <button 
@@ -1435,7 +1468,7 @@ export default function OwnerDashboard() {
                           <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
                         )}
                         <button onClick={() => { setTenantToDelete(t); setShowConfirmDeleteModal(true) }} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition">Delete</button>
-                      </td>
+                       </td>
                     </tr>
                   )
                 })}
@@ -1447,7 +1480,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Rent Payments Tab */}
+        {/* Rent Payments Tab (unchanged) */}
         {activeTab === 'rent-payments' && (
           <div className="space-y-4">
             {pendingRentPayments.length === 0 && (
@@ -1488,7 +1521,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Payment History Tab */}
+        {/* Payment History Tab (unchanged) */}
         {activeTab === 'payment-history' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1518,7 +1551,7 @@ export default function OwnerDashboard() {
                       }`}>
                         {p.status === 'success' ? 'Success' : p.status === 'payment_pending' ? 'Pending' : p.status}
                       </span>
-                    </td>
+                     </td>
                   </tr>
                 ))}
                 {allPayments.length === 0 && (
@@ -1529,7 +1562,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Pre‑bookings Tab */}
+        {/* Pre‑bookings Tab (unchanged) */}
         {activeTab === 'pre-bookings' && (
           <div className="space-y-4">
             {preBookings.filter(b => b.status === 'pending').length === 0 && (
@@ -1566,7 +1599,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Complaints Tab */}
+        {/* Complaints Tab (unchanged) */}
         {activeTab === 'complaints' && (
           <div className="space-y-4">
             {complaints.map(c => (
@@ -1582,7 +1615,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Vacate Tab – FIXED: Approve button only for pending requests */}
+        {/* Vacate Tab – FIXED: Approve button only for pending requests (unchanged) */}
         {activeTab === 'vacate' && (
           <div className="space-y-4">
             {vacateRequests.map(req => {
@@ -1621,7 +1654,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Applications Tab */}
+        {/* Applications Tab (unchanged) */}
         {activeTab === 'applications' && (
           <div className="space-y-4">
             {applications.map(app => (
@@ -1644,7 +1677,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Notices Tab */}
+        {/* Notices Tab (unchanged) */}
         {activeTab === 'notices' && (
           <div className="space-y-4">
             <button onClick={() => setShowNoticeModal(true)} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold mb-4 hover:bg-slate-700 transition">+ Post New Notice</button>
@@ -1661,7 +1694,7 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* All Modals – unchanged (same as before) */}
+      {/* All Modals – unchanged (same as before, kept for brevity) */}
       <AnimatePresence>{showConfirmDeleteModal && tenantToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
