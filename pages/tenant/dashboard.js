@@ -22,6 +22,7 @@ export default function TenantDashboard() {
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showVacateModal, setShowVacateModal] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const [showUpiAppSelector, setShowUpiAppSelector] = useState(false)
   const [complaintForm, setComplaintForm] = useState({ title: '', description: '', priority: 'medium' })
   const [vacateForm, setVacateForm] = useState({ expected_date: '', reason: '', rating: 0, review: '' })
   const [paymentAmount, setPaymentAmount] = useState(0)
@@ -36,15 +37,19 @@ export default function TenantDashboard() {
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
 
-  // Helper to open UPI app
-  const openUpiApp = () => {
-    const amount = tenant?.pending_amount || tenant?.rent_amount
-    const upiIntent = `upi://pay?pa=${ownerUpiId}&pn=HostelSet&am=${amount}&cu=INR`
-    // Try to open with window.location (works on many devices)
-    window.location.href = upiIntent
-    // Fallback: if after 2 seconds the page is still here, show manual instructions
+  // UPI apps with their intent URLs
+  const upiApps = [
+    { name: 'Google Pay', package: 'com.google.android.apps.nbu.pay', scheme: 'tez://upi/pay', intent: `intent://upi/pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=tez;package=com.google.android.apps.nbu.pay;end` },
+    { name: 'PhonePe', package: 'com.phonepe.app', scheme: 'phonepe://pay', intent: `intent://pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=phonepe;package=com.phonepe.app;end` },
+    { name: 'Paytm', package: 'net.one97.paytm', scheme: 'paytmmp://pay', intent: `intent://pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=paytmmp;package=net.one97.paytm;end` },
+    { name: 'Amazon Pay', package: 'in.amazon.mShop.android.shopping', scheme: 'amazonpay://upi/pay', intent: `intent://upi/pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=amazonpay;package=in.amazon.mShop.android.shopping;end` },
+  ]
+
+  // Helper to open a specific UPI app via intent
+  const openUpiApp = (intentUrl) => {
+    window.location.href = intentUrl
     setTimeout(() => {
-      toast.error('Unable to open UPI app. Please copy the UPI ID and pay manually.', { duration: 8000 })
+      toast.error('Unable to open the app. Please copy the UPI ID and pay manually.', { duration: 8000 })
     }, 2000)
   }
 
@@ -333,7 +338,7 @@ export default function TenantDashboard() {
     }
   }
 
-  // ✅ Delete complaint
+  // ✅ FIXED: Delete complaint (must work)
   const deleteComplaint = async (complaintId) => {
     if (!confirm('Delete this complaint? This action cannot be undone.')) return
     setIsSubmitting(true)
@@ -342,13 +347,16 @@ export default function TenantDashboard() {
         .from('complaints')
         .delete()
         .eq('id', complaintId)
-        .eq('tenant_id', tenant.id) // ensure tenant owns it
+        .eq('tenant_id', tenant.id) // extra security
       if (error) throw error
       toast.success('Complaint deleted.')
+      // Remove from local state immediately for better UX
+      setComplaints(prev => prev.filter(c => c.id !== complaintId))
+      // Also refresh to sync with server
       await refreshData()
     } catch (error) {
       console.error('Delete complaint error:', error)
-      toast.error('Failed to delete complaint')
+      toast.error('Failed to delete complaint: ' + error.message)
     } finally {
       setIsSubmitting(false)
     }
@@ -429,14 +437,12 @@ export default function TenantDashboard() {
 
     setIsSubmitting(true)
     try {
-      // Delete the vacate request
       const { error: delError } = await supabase
         .from('check_out_requests')
         .delete()
         .eq('id', existingVacateRequest.id)
       if (delError) throw delError
 
-      // Update tenant status back to active
       const { error: updateError } = await supabase
         .from('tenants')
         .update({ status: 'active', check_out_requested: false, notice_period_start: null, notice_period_end: null })
@@ -710,7 +716,7 @@ export default function TenantDashboard() {
                           {payment.status === 'success' ? 'Success' : payment.status === 'payment_pending' ? 'Pending' : payment.status}
                         </span>
                       </td>
-                    </tr>
+                    <tr>
                   ))}
                   {paymentHistory.length === 0 && (
                     <tr>
@@ -724,7 +730,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal – Direct UPI with fallback */}
+      {/* Payment Modal – with UPI app selector */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -739,10 +745,10 @@ export default function TenantDashboard() {
               {ownerUpiId ? (
                 <>
                   <div className="bg-blue-50 p-3 rounded-lg mb-4">
-                    <p className="text-sm font-semibold">Owner UPI ID: {ownerUpiId}</p>
-                    <div className="flex gap-2 mt-2">
+                    <p className="text-sm font-semibold text-center mb-2">Owner UPI ID: <span className="font-mono">{ownerUpiId}</span></p>
+                    <div className="flex justify-center gap-2 mb-3">
                       <button
-                        onClick={openUpiApp}
+                        onClick={() => setShowUpiAppSelector(true)}
                         className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition"
                       >
                         Pay with UPI App
@@ -754,8 +760,41 @@ export default function TenantDashboard() {
                         Copy UPI ID
                       </button>
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">After payment, upload screenshot below.</p>
+                    <p className="text-xs text-gray-500 text-center">After payment, upload screenshot below.</p>
                   </div>
+
+                  {/* UPI App Selector Modal */}
+                  <AnimatePresence>
+                    {showUpiAppSelector && (
+                      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowUpiAppSelector(false)}>
+                        <div className="bg-white rounded-2xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+                          <h3 className="text-xl font-bold mb-4">Choose UPI App</h3>
+                          <div className="space-y-2">
+                            {upiApps.map((app) => (
+                              <button
+                                key={app.name}
+                                onClick={() => {
+                                  setShowUpiAppSelector(false)
+                                  openUpiApp(app.intent)
+                                }}
+                                className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 transition"
+                              >
+                                {app.name}
+                              </button>
+                            ))}
+                            <button
+                              onClick={copyUpiId}
+                              className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 transition text-blue-600"
+                            >
+                              Copy UPI ID (Manual Payment)
+                            </button>
+                          </div>
+                          <button onClick={() => setShowUpiAppSelector(false)} className="w-full mt-4 text-center text-gray-500">Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                  </AnimatePresence>
+
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label>
