@@ -22,7 +22,6 @@ export default function TenantDashboard() {
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showVacateModal, setShowVacateModal] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
-  const [showUpiAppSelector, setShowUpiAppSelector] = useState(false)
   const [complaintForm, setComplaintForm] = useState({ title: '', description: '', priority: 'medium' })
   const [vacateForm, setVacateForm] = useState({ expected_date: '', reason: '', rating: 0, review: '' })
   const [paymentAmount, setPaymentAmount] = useState(0)
@@ -36,12 +35,12 @@ export default function TenantDashboard() {
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
 
-  // Direct UPI intent helpers
-  const openUpiApp = (packageName, scheme, upiId, amount) => {
-    const intent = `intent://upi/pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR#Intent;scheme=${scheme};package=${packageName};end`
-    window.location.href = intent
+  // Universal UPI opener (Android & iOS)
+  const openUpi = (upiId, amount) => {
+    const upiUrl = `upi://pay?pa=${upiId}&pn=HostelSet&am=${amount}&cu=INR`
+    window.location.href = upiUrl
     setTimeout(() => {
-      toast.error(`Unable to open the app. UPI ID copied.`, { duration: 5000 })
+      toast.error('Unable to open UPI app. UPI ID copied to clipboard.', { duration: 5000 })
       navigator.clipboard.writeText(upiId)
     }, 2000)
   }
@@ -51,6 +50,7 @@ export default function TenantDashboard() {
     toast.success('UPI ID copied!')
   }
 
+  // ========== Existing helper functions (unchanged) ==========
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -306,7 +306,6 @@ export default function TenantDashboard() {
     }
   }
 
-  // ✅ Fixed complaint deletion – works reliably
   const deleteComplaint = async (complaintId) => {
     if (!confirm('Delete this complaint? This action cannot be undone.')) return
     setIsSubmitting(true)
@@ -526,15 +525,15 @@ export default function TenantDashboard() {
 
         {/* Payment History Tab */}
         {activeTab === 'payments' && (
-          <div className="bg-white rounded-xl border overflow-hidden"><div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50 border-b"><tr><th className="px-4 py-3 text-left">Date</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead><tbody>{paymentHistory.map(p => (<tr key={p.id} className="border-b hover:bg-gray-50"><td className="px-4 py-3 text-sm">{formatDate(p.payment_date)}</td><td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(p.amount)}</td><td className="px-4 py-3 text-sm capitalize">{p.payment_method}</td><td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${p.status === 'success' ? 'bg-green-100 text-green-700' : p.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{p.status === 'success' ? 'Success' : p.status === 'payment_pending' ? 'Pending' : p.status}</span></td></tr>))}{!paymentHistory.length && <tr><td colSpan="4" className="text-center py-8 text-gray-500">No payment history yet</td></tr>}</tbody></table></div></div>
+          <div className="bg-white rounded-xl border overflow-hidden"><div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50 border-b"><tr><th className="px-4 py-3 text-left">Date</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead><tbody>{paymentHistory.map(p => (<tr key={p.id} className="border-b hover:bg-gray-50"><td className="px-4 py-3 text-sm">{formatDate(p.payment_date)}</td><td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(p.amount)}</td><td className="px-4 py-3 text-sm capitalize">{p.payment_method}</td><td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${p.status === 'success' ? 'bg-green-100 text-green-700' : p.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{p.status === 'success' ? 'Success' : p.status === 'payment_pending' ? 'Pending' : p.status}</span></td></td>))}{!paymentHistory.length && <tr><td colSpan="4" className="text-center py-8 text-gray-500">No payment history yet</td></tr>}</tbody></table></div></div>
         )}
       </div>
 
-      {/* Payment Modal – Direct UPI App Selector */}
+      {/* Payment Modal – Universal UPI (works on both Android & iOS) */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
-            <motion.div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">💳 Pay Rent via UPI</h2>
               <div className="bg-gray-50 rounded-xl p-4 mb-4">
                 <p className="font-semibold">{tenant?.name}</p>
@@ -547,27 +546,11 @@ export default function TenantDashboard() {
                   <div className="bg-blue-50 p-3 rounded-lg mb-4">
                     <p className="text-sm font-semibold text-center mb-2">Owner UPI ID: <span className="font-mono">{ownerUpiId}</span></p>
                     <div className="flex justify-center gap-2 mb-3">
-                      <button onClick={() => setShowUpiAppSelector(true)} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Pay with UPI App</button>
+                      <button onClick={() => openUpi(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount)} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Pay with UPI</button>
                       <button onClick={copyUpiId} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy UPI ID</button>
                     </div>
                     <p className="text-xs text-gray-500 text-center">After payment, upload screenshot below.</p>
                   </div>
-                  <AnimatePresence>
-                    {showUpiAppSelector && (
-                      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowUpiAppSelector(false)}>
-                        <div className="bg-white rounded-2xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
-                          <h3 className="text-xl font-bold mb-4">Choose UPI App</h3>
-                          <div className="space-y-2">
-                            <button onClick={() => { setShowUpiAppSelector(false); openUpiApp('com.google.android.apps.nbu.pay', 'tez', ownerUpiId, tenant?.pending_amount || tenant?.rent_amount) }} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50">Google Pay</button>
-                            <button onClick={() => { setShowUpiAppSelector(false); openUpiApp('com.phonepe.app', 'phonepe', ownerUpiId, tenant?.pending_amount || tenant?.rent_amount) }} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50">PhonePe</button>
-                            <button onClick={() => { setShowUpiAppSelector(false); openUpiApp('net.one97.paytm', 'paytmmp', ownerUpiId, tenant?.pending_amount || tenant?.rent_amount) }} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50">Paytm</button>
-                            <button onClick={copyUpiId} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 text-blue-600">Copy UPI ID (Manual Payment)</button>
-                          </div>
-                          <button onClick={() => setShowUpiAppSelector(false)} className="w-full mt-4 text-center text-gray-500">Cancel</button>
-                        </div>
-                      </div>
-                    )}
-                  </AnimatePresence>
                   <div className="space-y-4">
                     <div><label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label><input type="text" className="w-full px-4 py-3 border rounded-xl" value={paymentTransactionId} onChange={e => setPaymentTransactionId(e.target.value)} /></div>
                     <div><label className="block text-sm font-semibold mb-1">Payment Screenshot *</label><input type="file" accept="image/*" onChange={e => { if (e.target.files[0]) setPaymentScreenshot(e.target.files[0]) }} className="w-full" /></div>
@@ -588,7 +571,7 @@ export default function TenantDashboard() {
       <AnimatePresence>
         {showComplaintModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComplaintModal(false)}>
-            <motion.div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">📝 Raise Complaint</h2>
               <div className="space-y-4">
                 <input type="text" placeholder="Title" className="w-full px-4 py-3 border rounded-xl" value={complaintForm.title} onChange={e => setComplaintForm({...complaintForm, title: e.target.value})} />
