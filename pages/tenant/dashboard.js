@@ -22,7 +22,6 @@ export default function TenantDashboard() {
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showVacateModal, setShowVacateModal] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
-  const [showUpiAppSelector, setShowUpiAppSelector] = useState(false)
   const [complaintForm, setComplaintForm] = useState({ title: '', description: '', priority: 'medium' })
   const [vacateForm, setVacateForm] = useState({ expected_date: '', reason: '', rating: 0, review: '' })
   const [paymentAmount, setPaymentAmount] = useState(0)
@@ -37,18 +36,14 @@ export default function TenantDashboard() {
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
 
-  // UPI apps with intent URLs
-  const upiApps = [
-    { name: 'Google Pay', intent: `intent://upi/pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=tez;package=com.google.android.apps.nbu.pay;end` },
-    { name: 'PhonePe', intent: `intent://pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=phonepe;package=com.phonepe.app;end` },
-    { name: 'Paytm', intent: `intent://pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=paytmmp;package=net.one97.paytm;end` },
-    { name: 'Amazon Pay', intent: `intent://upi/pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=amazonpay;package=in.amazon.mShop.android.shopping;end` },
-  ]
-
-  const openUpiApp = (intentUrl) => {
-    window.location.href = intentUrl
+  // Helper to open UPI app using standard upi:// scheme
+  const openUpiApp = () => {
+    const amount = tenant.pending_amount || tenant.rent_amount
+    const upiUrl = `upi://pay?pa=${ownerUpiId}&pn=HostelSet&am=${amount}&cu=INR`
+    window.location.href = upiUrl
+    // Fallback: if after 2 seconds the page is still here, show error
     setTimeout(() => {
-      toast.error('Unable to open the app. Please copy the UPI ID and pay manually.', { duration: 8000 })
+      toast.error('Unable to open UPI app. Please copy the UPI ID and pay manually.', { duration: 8000 })
     }, 2000)
   }
 
@@ -57,6 +52,7 @@ export default function TenantDashboard() {
     toast.success('UPI ID copied!')
   }
 
+  // Calculate next due date
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -70,6 +66,7 @@ export default function TenantDashboard() {
     return nextDue
   }
 
+  // Rent due status
   const getRentStatus = () => {
     if (!tenant) return { status: 'loading', message: '', daysUntilDue: null, dueDate: null }
     const nextDueDate = calculateNextDueDate()
@@ -334,18 +331,28 @@ export default function TenantDashboard() {
     }
   }
 
+  // FIXED: Delete complaint
   const deleteComplaint = async (complaintId) => {
     if (!confirm('Delete this complaint? This action cannot be undone.')) return
     setIsSubmitting(true)
     try {
+      // First, verify the user is authenticated by getting the current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError || !session) {
+        toast.error('Please login again')
+        router.push('/login')
+        return
+      }
       const { error } = await supabase
         .from('complaints')
         .delete()
         .eq('id', complaintId)
-        .eq('tenant_id', tenant.id)
+        .eq('tenant_id', tenant.id) // ensure ownership
       if (error) throw error
       toast.success('Complaint deleted.')
+      // Update local state immediately
       setComplaints(prev => prev.filter(c => c.id !== complaintId))
+      // Optionally refresh from server
       await refreshData()
     } catch (error) {
       console.error('Delete complaint error:', error)
@@ -463,7 +470,6 @@ export default function TenantDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white">
-      {/* Navbar */}
       <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50 px-6 py-4">
         <div className="container mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -472,9 +478,7 @@ export default function TenantDashboard() {
           </div>
           <div className="flex items-center gap-4">
             <button onClick={() => setShowProfileModal(true)} className="flex items-center gap-2 text-gray-600 hover:text-slate-800 transition">
-              <div className="w-8 h-8 bg-gradient-to-r from-slate-600 to-slate-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                {tenant?.name?.charAt(0) || 'U'}
-              </div>
+              <div className="w-8 h-8 bg-gradient-to-r from-slate-600 to-slate-500 rounded-full flex items-center justify-center text-white text-sm font-bold">{tenant?.name?.charAt(0) || 'U'}</div>
               <span className="text-sm hidden md:inline">{tenant?.name}</span>
             </button>
             <button onClick={handleLogout} className="text-red-500 hover:text-red-600 transition">Logout</button>
@@ -483,7 +487,7 @@ export default function TenantDashboard() {
       </nav>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Welcome Section with Rent Status */}
+        {/* Welcome Section */}
         <div className={`rounded-2xl p-6 mb-8 text-white ${rentStatus.status === 'overdue' ? 'bg-gradient-to-r from-red-600 to-red-500 animate-pulse' : rentStatus.status === 'due_soon' ? 'bg-gradient-to-r from-orange-500 to-orange-600 animate-pulse' : 'bg-gradient-to-r from-slate-800 to-slate-700'}`}>
           <div className="flex justify-between items-start flex-wrap gap-4">
             <div>
@@ -491,15 +495,11 @@ export default function TenantDashboard() {
               <p className="text-white/80">Room {room?.room_number} • {getSharingDetails(room?.sharing_type)?.label}</p>
               <p className="text-white/70 text-sm mt-1">{property?.name}</p>
             </div>
-            <div className={`px-4 py-2 rounded-full text-sm font-semibold ${isUrgent ? 'bg-red-700 text-white animate-pulse' : 'bg-white/20'}`}>
-              {rentStatus.message}
-            </div>
+            <div className={`px-4 py-2 rounded-full text-sm font-semibold ${isUrgent ? 'bg-red-700 text-white animate-pulse' : 'bg-white/20'}`}>{rentStatus.message}</div>
           </div>
           {rentStatus.dueDate && isUrgent && (
             <div className="mt-4 text-center">
-              <div className="inline-block bg-black/40 backdrop-blur-sm px-4 py-2 rounded-lg text-lg font-bold">
-                ⚠️ Next due date: {formatDate(rentStatus.dueDate)} ⚠️
-              </div>
+              <div className="inline-block bg-black/40 backdrop-blur-sm px-4 py-2 rounded-lg text-lg font-bold">⚠️ Next due date: {formatDate(rentStatus.dueDate)} ⚠️</div>
             </div>
           )}
         </div>
@@ -509,9 +509,7 @@ export default function TenantDashboard() {
           <div className="bg-orange-100 border-l-4 border-orange-500 text-orange-700 p-4 mb-6 rounded-lg shadow-sm">
             <div className="flex items-center gap-2">
               <span className="text-xl">🚪</span>
-              <div>
-                <strong>Vacate Notice:</strong> {roommateVacateAlert.name} will vacate in <strong>{roommateVacateAlert.daysLeft}</strong> days (by {formatDate(roommateVacateAlert.date)}).
-              </div>
+              <div><strong>Vacate Notice:</strong> {roommateVacateAlert.name} will vacate in <strong>{roommateVacateAlert.daysLeft}</strong> days (by {formatDate(roommateVacateAlert.date)}).</div>
             </div>
           </div>
         )}
@@ -614,7 +612,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
-        {/* Complaints Tab – with delete button */}
+        {/* Complaints Tab */}
         {activeTab === 'complaints' && (
           <div className="space-y-4">
             {complaints.map((complaint) => (
@@ -691,7 +689,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal – with UPI App Selector */}
+      {/* Payment Modal */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -708,30 +706,11 @@ export default function TenantDashboard() {
                   <div className="bg-blue-50 p-3 rounded-lg mb-4">
                     <p className="text-sm font-semibold text-center mb-2">Owner UPI ID: <span className="font-mono">{ownerUpiId}</span></p>
                     <div className="flex justify-center gap-2 mb-3">
-                      <button onClick={() => setShowUpiAppSelector(true)} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Pay with UPI App</button>
+                      <button onClick={openUpiApp} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Pay with UPI App</button>
                       <button onClick={copyUpiId} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy UPI ID</button>
                     </div>
                     <p className="text-xs text-gray-500 text-center">After payment, upload screenshot below.</p>
                   </div>
-
-                  {/* UPI App Selector Modal */}
-                  <AnimatePresence>
-                    {showUpiAppSelector && (
-                      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowUpiAppSelector(false)}>
-                        <div className="bg-white rounded-2xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
-                          <h3 className="text-xl font-bold mb-4">Choose UPI App</h3>
-                          <div className="space-y-2">
-                            {upiApps.map((app) => (
-                              <button key={app.name} onClick={() => { setShowUpiAppSelector(false); openUpiApp(app.intent) }} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 transition">{app.name}</button>
-                            ))}
-                            <button onClick={copyUpiId} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 transition text-blue-600">Copy UPI ID (Manual Payment)</button>
-                          </div>
-                          <button onClick={() => setShowUpiAppSelector(false)} className="w-full mt-4 text-center text-gray-500">Cancel</button>
-                        </div>
-                      </div>
-                    )}
-                  </AnimatePresence>
-
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label>
@@ -739,19 +718,12 @@ export default function TenantDashboard() {
                     </div>
                     <div>
                       <label className="block text-sm font-semibold mb-1">Payment Screenshot *</label>
-                      <input type="file" accept="image/*" onChange={e => {
-                        const file = e.target.files[0]
-                        if (file) setPaymentScreenshot(file)
-                      }} className="w-full" />
+                      <input type="file" accept="image/*" onChange={e => { const file = e.target.files[0]; if (file) setPaymentScreenshot(file) }} className="w-full" />
                     </div>
                     <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
                       After payment, upload the screenshot and submit. Owner will verify.
                     </div>
-                    <button
-                      onClick={submitPaymentWithProof}
-                      disabled={paymentLoading}
-                      className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50"
-                    >
+                    <button onClick={submitPaymentWithProof} disabled={paymentLoading} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
                       {paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}
                     </button>
                     <button onClick={() => setShowPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>
@@ -801,7 +773,6 @@ export default function TenantDashboard() {
                 <div className="bg-yellow-50 p-3 rounded-lg"><p className="text-xs text-yellow-700">⚠️ Please clear all pending dues before vacating</p>{tenant?.pending_amount > 0 && (<p className="text-xs text-red-600 mt-1">⚠️ You have pending dues: {formatCurrency(tenant.pending_amount)}</p>)}</div>
                 <div className="bg-red-50 p-3 rounded-lg"><p className="text-xs text-red-600">⚠️ Once approved, you must vacate within 30 days</p></div>
 
-                {/* Star Rating Section */}
                 <div className="border-t pt-4">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Rate your experience * (required)</label>
                   <div className="flex gap-1 mb-2">
