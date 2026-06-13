@@ -31,21 +31,24 @@ export default function TenantDashboard() {
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', email: '' })
   const [ratingHover, setRatingHover] = useState(0)
   const [ownerUpiId, setOwnerUpiId] = useState('')
+  const [ownerUpiPhone, setOwnerUpiPhone] = useState('')
   const [paymentScreenshot, setPaymentScreenshot] = useState(null)
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
 
-  // ========== UPI intent functions using app-specific schemes ==========
+  // Screenshot modal state
+  const [showScreenshotModal, setShowScreenshotModal] = useState(false)
+  const [screenshotUrl, setScreenshotUrl] = useState('')
+
+  // ========== UPI intent functions (already fixed) ==========
   const openGooglePay = (upiId, amount) => {
     const payee = encodeURIComponent(upiId)
     const name = encodeURIComponent('HostelSet')
     const amt = encodeURIComponent(amount)
     const cu = encodeURIComponent('INR')
-    // Google Pay uses 'tez://' scheme
     const gpayUrl = `tez://upi/pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}`
     window.location.href = gpayUrl
     setTimeout(() => {
-      // Fallback to generic UPI if Google Pay not installed
       window.location.href = `upi://pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}`
       setTimeout(() => {
         toast.error('Google Pay not installed. UPI ID copied.', { duration: 5000 })
@@ -59,7 +62,6 @@ export default function TenantDashboard() {
     const name = encodeURIComponent('HostelSet')
     const amt = encodeURIComponent(amount)
     const cu = encodeURIComponent('INR')
-    // PhonePe uses 'phonepe://' scheme
     const phonepeUrl = `phonepe://pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}`
     window.location.href = phonepeUrl
     setTimeout(() => {
@@ -71,12 +73,17 @@ export default function TenantDashboard() {
     }, 1500)
   }
 
-  const copyUpiId = () => {
-    navigator.clipboard.writeText(ownerUpiId)
+  const copyUpiId = (upiId) => {
+    navigator.clipboard.writeText(upiId)
     toast.success('UPI ID copied!')
   }
 
-  // ========== Helper functions (unchanged from your working version) ==========
+  const copyUpiPhone = (phone) => {
+    navigator.clipboard.writeText(phone)
+    toast.success('UPI Phone Number copied!')
+  }
+
+  // ========== Helper functions ==========
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -181,15 +188,24 @@ export default function TenantDashboard() {
       setPaymentAmount(tenantData.pending_amount || tenantData.rent_amount)
       setProfileForm({ name: tenantData.name || '', phone: tenantData.phone || '', email: tenantData.email || '' })
 
-      if (tenantData.property?.owner_upi_id) {
-        setOwnerUpiId(tenantData.property.owner_upi_id)
-      } else {
+      // Fetch owner settings (UPI ID and UPI phone number)
+      if (tenantData.property?.owner_id) {
         const { data: settings } = await supabase
           .from('owner_settings')
-          .select('upi_id')
-          .eq('owner_id', tenantData.property?.owner_id)
+          .select('upi_id, upi_phone')
+          .eq('owner_id', tenantData.property.owner_id)
           .maybeSingle()
-        if (settings?.upi_id) setOwnerUpiId(settings.upi_id)
+        if (settings) {
+          setOwnerUpiId(settings.upi_id || '')
+          setOwnerUpiPhone(settings.upi_phone || '')
+        } else {
+          // Fallback to property's owner_upi_id
+          setOwnerUpiId(tenantData.property?.owner_upi_id || '')
+          setOwnerUpiPhone('')
+        }
+      } else {
+        setOwnerUpiId(tenantData.property?.owner_upi_id || '')
+        setOwnerUpiPhone('')
       }
 
       if (tenantData.property?.owner_id) {
@@ -565,7 +581,7 @@ export default function TenantDashboard() {
           </div>
         )}
 
-        {/* Payment History Tab */}
+        {/* Payment History Tab – with UTR and Screenshot Preview */}
         {activeTab === 'payments' && (
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
@@ -575,7 +591,9 @@ export default function TenantDashboard() {
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Amount</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Method</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">UTR</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Screenshot</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -584,6 +602,7 @@ export default function TenantDashboard() {
                       <td className="px-4 py-3 text-sm text-gray-600">{formatDate(payment.payment_date)}</td>
                       <td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(payment.amount)}</td>
                       <td className="px-4 py-3 text-sm text-gray-500 capitalize">{payment.payment_method}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500 font-mono">{payment.upi_transaction_id || '—'}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs ${
                           payment.status === 'success' ? 'bg-green-100 text-green-700' :
@@ -593,11 +612,23 @@ export default function TenantDashboard() {
                           {payment.status === 'success' ? 'Success' : payment.status === 'payment_pending' ? 'Pending' : payment.status}
                         </span>
                       </td>
-                    </tr>
+                      <td className="px-4 py-3">
+                        {payment.payment_screenshot ? (
+                          <button 
+                            onClick={() => { setScreenshotUrl(payment.payment_screenshot); setShowScreenshotModal(true); }}
+                            className="text-blue-600 hover:text-blue-800 text-sm underline"
+                          >
+                            View
+                          </button>
+                        ) : (
+                          <span className="text-gray-400 text-xs">—</span>
+                        )}
+                      </td>
+                    </table>
                   ))}
                   {paymentHistory.length === 0 && (
                     <tr>
-                      <td colSpan="4" className="text-center py-8 text-gray-500">No payment history yet</td>
+                      <td colSpan="6" className="text-center py-8 text-gray-500">No payment history yet</td>
                     </tr>
                   )}
                 </tbody>
@@ -607,11 +638,11 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal – with corrected UPI intents */}
+      {/* Payment Modal – with UPI ID + UPI Phone Number */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">💳 Pay Rent via UPI</h2>
               <div className="bg-gray-50 rounded-xl p-4 mb-4">
                 <p className="font-semibold">{tenant?.name}</p>
@@ -619,34 +650,49 @@ export default function TenantDashboard() {
                 <p>Monthly Rent: {formatCurrency(tenant?.rent_amount)}</p>
                 <p className="text-red-500">Pending: {formatCurrency(tenant?.pending_amount || tenant?.rent_amount)}</p>
               </div>
-              {ownerUpiId ? (
-                <>
-                  <div className="bg-blue-50 p-3 rounded-lg mb-4">
-                    <p className="text-sm font-semibold text-center mb-2">Owner UPI ID: <span className="font-mono">{ownerUpiId}</span></p>
-                    <div className="flex flex-wrap justify-center gap-2 mb-3">
-                      <button onClick={() => openGooglePay(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount)} className="bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-blue-700 transition">Google Pay</button>
-                      <button onClick={() => openPhonePe(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount)} className="bg-purple-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-purple-700 transition">PhonePe</button>
-                      <button onClick={copyUpiId} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy UPI ID</button>
+              {(ownerUpiId || ownerUpiPhone) ? (
+                <div className="space-y-4">
+                  {/* UPI ID Option */}
+                  {ownerUpiId && (
+                    <div className="bg-blue-50 p-3 rounded-lg">
+                      <p className="text-sm font-semibold mb-2">Pay to UPI ID</p>
+                      <p className="font-mono text-sm break-all mb-2">{ownerUpiId}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => openGooglePay(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount)} className="bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-blue-700 transition">Google Pay</button>
+                        <button onClick={() => openPhonePe(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount)} className="bg-purple-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-purple-700 transition">PhonePe</button>
+                        <button onClick={() => copyUpiId(ownerUpiId)} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy UPI ID</button>
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-500 text-center">After payment, upload screenshot below.</p>
-                  </div>
-                  <div className="space-y-4">
+                  )}
+                  {/* UPI Phone Number Option */}
+                  {ownerUpiPhone && (
+                    <div className="bg-green-50 p-3 rounded-lg">
+                      <p className="text-sm font-semibold mb-2">Pay to UPI Phone Number</p>
+                      <p className="font-mono text-sm break-all mb-2">{ownerUpiPhone}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => openGooglePay(ownerUpiPhone, tenant?.pending_amount || tenant?.rent_amount)} className="bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-blue-700 transition">Google Pay</button>
+                        <button onClick={() => openPhonePe(ownerUpiPhone, tenant?.pending_amount || tenant?.rent_amount)} className="bg-purple-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-purple-700 transition">PhonePe</button>
+                        <button onClick={() => copyUpiPhone(ownerUpiPhone)} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy Phone</button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="border-t pt-4 mt-2">
                     <div><label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label><input type="text" className="w-full px-4 py-3 border rounded-xl" value={paymentTransactionId} onChange={e => setPaymentTransactionId(e.target.value)} /></div>
-                    <div><label className="block text-sm font-semibold mb-1">Payment Screenshot *</label><input type="file" accept="image/*" onChange={e => { if (e.target.files[0]) setPaymentScreenshot(e.target.files[0]) }} className="w-full" /></div>
-                    <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">After payment, upload the screenshot and submit. Owner will verify.</div>
-                    <button onClick={submitPaymentWithProof} disabled={paymentLoading} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}</button>
-                    <button onClick={() => setShowPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>
+                    <div className="mt-3"><label className="block text-sm font-semibold mb-1">Payment Screenshot *</label><input type="file" accept="image/*" onChange={e => { if (e.target.files[0]) setPaymentScreenshot(e.target.files[0]) }} className="w-full" /></div>
+                    <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800 mt-3">After payment, upload the screenshot and submit. Owner will verify.</div>
+                    <button onClick={submitPaymentWithProof} disabled={paymentLoading} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold mt-4 disabled:opacity-50">{paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}</button>
+                    <button onClick={() => setShowPaymentModal(false)} className="w-full text-center text-gray-500 text-sm mt-3">Cancel</button>
                   </div>
-                </>
+                </div>
               ) : (
-                <p className="text-red-500">Owner UPI ID not set. Please contact your owner.</p>
+                <p className="text-red-500">Owner has not set up UPI payment details. Please contact owner.</p>
               )}
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Complaint Modal */}
+      {/* Complaint Modal (unchanged) */}
       <AnimatePresence>
         {showComplaintModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComplaintModal(false)}>
@@ -665,7 +711,7 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Vacate Request Modal */}
+      {/* Vacate Request Modal (unchanged) */}
       <AnimatePresence>
         {showVacateModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowVacateModal(false)}>
@@ -687,7 +733,7 @@ export default function TenantDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Profile Modal */}
+      {/* Profile Modal (unchanged) */}
       <AnimatePresence>
         {showProfileModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
@@ -707,6 +753,18 @@ export default function TenantDashboard() {
                 </div>
               )}
               <button onClick={() => setShowProfileModal(false)} className="w-full mt-4 py-2 text-gray-500">Close</button>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Screenshot Preview Modal (New) */}
+      <AnimatePresence>
+        {showScreenshotModal && screenshotUrl && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4" onClick={() => setShowScreenshotModal(false)}>
+            <div className="relative max-w-4xl w-full" onClick={e => e.stopPropagation()}>
+              <button onClick={() => setShowScreenshotModal(false)} className="absolute -top-10 right-0 text-white text-2xl hover:text-gray-300">✕</button>
+              <img src={screenshotUrl} alt="Payment Screenshot" className="w-full rounded-lg shadow-2xl" />
             </div>
           </div>
         )}
