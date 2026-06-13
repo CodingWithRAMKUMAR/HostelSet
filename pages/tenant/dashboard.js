@@ -36,6 +36,23 @@ export default function TenantDashboard() {
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
 
+  // Helper to open UPI app
+  const openUpiApp = () => {
+    const amount = tenant?.pending_amount || tenant?.rent_amount
+    const upiIntent = `upi://pay?pa=${ownerUpiId}&pn=HostelSet&am=${amount}&cu=INR`
+    // Try to open with window.location (works on many devices)
+    window.location.href = upiIntent
+    // Fallback: if after 2 seconds the page is still here, show manual instructions
+    setTimeout(() => {
+      toast.error('Unable to open UPI app. Please copy the UPI ID and pay manually.', { duration: 8000 })
+    }, 2000)
+  }
+
+  const copyUpiId = () => {
+    navigator.clipboard.writeText(ownerUpiId)
+    toast.success('UPI ID copied!')
+  }
+
   // Calculate next due date
   const calculateNextDueDate = () => {
     if (!tenant) return null
@@ -90,7 +107,6 @@ export default function TenantDashboard() {
 
   const uploadFile = async (file, prefix) => {
     const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${file.name.split('.').pop()}`
-    // Ensure bucket exists; create if not (you may need to create 'tenant-documents' bucket in Supabase Storage)
     const { data, error } = await supabase.storage
       .from('tenant-documents')
       .upload(fileName, file, { cacheControl: '3600' })
@@ -156,7 +172,6 @@ export default function TenantDashboard() {
         email: tenantData.email || ''
       })
 
-      // Owner UPI ID
       if (tenantData.property?.owner_upi_id) {
         setOwnerUpiId(tenantData.property.owner_upi_id)
       } else {
@@ -318,6 +333,27 @@ export default function TenantDashboard() {
     }
   }
 
+  // ✅ Delete complaint
+  const deleteComplaint = async (complaintId) => {
+    if (!confirm('Delete this complaint? This action cannot be undone.')) return
+    setIsSubmitting(true)
+    try {
+      const { error } = await supabase
+        .from('complaints')
+        .delete()
+        .eq('id', complaintId)
+        .eq('tenant_id', tenant.id) // ensure tenant owns it
+      if (error) throw error
+      toast.success('Complaint deleted.')
+      await refreshData()
+    } catch (error) {
+      console.error('Delete complaint error:', error)
+      toast.error('Failed to delete complaint')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const requestVacate = async () => {
     if (!vacateForm.expected_date) {
       toast.error('Please select expected check-out date')
@@ -370,11 +406,11 @@ export default function TenantDashboard() {
     }
   }
 
-  // Enhanced cancel function that works even after approval (if no pre-booking)
+  // Cancel vacate request (no 3‑day restriction, only check pre‑booking)
   const cancelVacateRequest = async () => {
     if (!existingVacateRequest) return
 
-    // Check if there is an approved pre-booking for this room
+    // Check for approved pre‑booking on the same room
     const { data: preBooking, error: preError } = await supabase
       .from('pre_bookings')
       .select('id')
@@ -386,16 +422,6 @@ export default function TenantDashboard() {
 
     if (preBooking) {
       toast.error('Cannot cancel vacate – a pre‑booking has already been approved for this room.')
-      return
-    }
-
-    const expectedDate = new Date(existingVacateRequest.expected_check_out)
-    const today = new Date()
-    const daysLeft = Math.ceil((expectedDate - today) / (1000 * 60 * 60 * 24))
-
-    // Allow cancellation only if more than 3 days remaining (owner may have other restrictions)
-    if (daysLeft < 3) {
-      toast.error('Cannot cancel within 3 days of vacate date. Please contact owner.')
       return
     }
 
@@ -505,28 +531,16 @@ export default function TenantDashboard() {
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-xl">💰</div>
-              <div><p className="text-xs text-gray-500">Monthly Rent</p><p className="text-xl font-bold text-slate-800">{formatCurrency(tenant?.rent_amount)}</p></div>
-            </div>
+            <div className="flex items-center gap-3"><div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-xl">💰</div><div><p className="text-xs text-gray-500">Monthly Rent</p><p className="text-xl font-bold text-slate-800">{formatCurrency(tenant?.rent_amount)}</p></div></div>
           </div>
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-xl">✅</div>
-              <div><p className="text-xs text-gray-500">Total Paid</p><p className="text-xl font-bold text-green-600">{formatCurrency(tenant?.total_paid || 0)}</p></div>
-            </div>
+            <div className="flex items-center gap-3"><div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-xl">✅</div><div><p className="text-xs text-gray-500">Total Paid</p><p className="text-xl font-bold text-green-600">{formatCurrency(tenant?.total_paid || 0)}</p></div></div>
           </div>
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-xl">⚠️</div>
-              <div><p className="text-xs text-gray-500">Pending Amount</p><p className="text-xl font-bold text-red-500">{formatCurrency(tenant?.pending_amount || 0)}</p></div>
-            </div>
+            <div className="flex items-center gap-3"><div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-xl">⚠️</div><div><p className="text-xs text-gray-500">Pending Amount</p><p className="text-xl font-bold text-red-500">{formatCurrency(tenant?.pending_amount || 0)}</p></div></div>
           </div>
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-xl">👥</div>
-              <div><p className="text-xs text-gray-500">Roommates</p><p className="text-xl font-bold text-slate-800">{roommates.length}</p></div>
-            </div>
+            <div className="flex items-center gap-3"><div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-xl">👥</div><div><p className="text-xs text-gray-500">Roommates</p><p className="text-xl font-bold text-slate-800">{roommates.length}</p></div></div>
           </div>
         </div>
 
@@ -616,19 +630,55 @@ export default function TenantDashboard() {
           </div>
         )}
 
-        {/* Complaints Tab */}
+        {/* Complaints Tab – with delete button */}
         {activeTab === 'complaints' && (
           <div className="space-y-4">
             {complaints.map((complaint) => (
-              <div key={complaint.id} className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition">
-                <div className="flex justify-between items-start mb-3">
-                  <div><div className="flex items-center gap-2 mb-2"><h3 className="font-semibold text-slate-800">{complaint.title}</h3><span className={`px-2 py-1 rounded-full text-xs ${complaint.priority === 'high' ? 'bg-red-100 text-red-700' : complaint.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{complaint.priority}</span></div><p className="text-gray-600">{complaint.description}</p>{complaint.admin_response && (<div className="mt-3 p-3 bg-green-50 rounded-lg"><p className="text-xs text-green-600 font-semibold mb-1">Owner's Response:</p><p className="text-sm text-gray-700">{complaint.admin_response}</p></div>)}</div>
-                  <span className={`px-2 py-1 rounded-full text-xs ${complaint.status === 'open' ? 'bg-red-100 text-red-700' : complaint.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{complaint.status === 'open' ? 'Open' : complaint.status === 'in_progress' ? 'In Progress' : 'Resolved'}</span>
+              <div key={complaint.id} className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition relative group">
+                <button
+                  onClick={() => deleteComplaint(complaint.id)}
+                  className="absolute top-4 right-4 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
+                >
+                  🗑️ Delete
+                </button>
+                <div className="flex justify-between items-start mb-3 pr-8">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <h3 className="font-semibold text-slate-800">{complaint.title}</h3>
+                      <span className={`px-2 py-1 rounded-full text-xs ${
+                        complaint.priority === 'high' ? 'bg-red-100 text-red-700' :
+                        complaint.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-green-100 text-green-700'
+                      }`}>
+                        {complaint.priority}
+                      </span>
+                    </div>
+                    <p className="text-gray-600">{complaint.description}</p>
+                    {complaint.admin_response && (
+                      <div className="mt-3 p-3 bg-green-50 rounded-lg">
+                        <p className="text-xs text-green-600 font-semibold mb-1">Owner's Response:</p>
+                        <p className="text-sm text-gray-700">{complaint.admin_response}</p>
+                      </div>
+                    )}
+                  </div>
+                  <span className={`px-2 py-1 rounded-full text-xs ${
+                    complaint.status === 'open' ? 'bg-red-100 text-red-700' :
+                    complaint.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-green-100 text-green-700'
+                  }`}>
+                    {complaint.status === 'open' ? 'Open' : complaint.status === 'in_progress' ? 'In Progress' : 'Resolved'}
+                  </span>
                 </div>
                 <p className="text-xs text-gray-400">Submitted: {formatDate(complaint.created_at)}</p>
               </div>
             ))}
-            {complaints.length === 0 && (<div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-5xl mb-3">📝</div><p className="text-gray-500">No complaints filed yet</p><button onClick={() => setShowComplaintModal(true)} className="mt-3 text-slate-600 underline">Raise a complaint</button></div>)}
+            {complaints.length === 0 && (
+              <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
+                <div className="text-5xl mb-3">📝</div>
+                <p className="text-gray-500">No complaints filed yet</p>
+                <button onClick={() => setShowComplaintModal(true)} className="mt-3 text-slate-600 underline">Raise a complaint</button>
+              </div>
+            )}
           </div>
         )}
 
@@ -653,8 +703,8 @@ export default function TenantDashboard() {
                       <td className="px-4 py-3 text-sm text-gray-500 capitalize">{payment.payment_method}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs ${
-                          payment.status === 'success' ? 'bg-green-100 text-green-700' : 
-                          payment.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' : 
+                          payment.status === 'success' ? 'bg-green-100 text-green-700' :
+                          payment.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' :
                           'bg-gray-100 text-gray-600'
                         }`}>
                           {payment.status === 'success' ? 'Success' : payment.status === 'payment_pending' ? 'Pending' : payment.status}
@@ -674,7 +724,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal – Direct UPI with screenshot */}
+      {/* Payment Modal – Direct UPI with fallback */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -690,13 +740,20 @@ export default function TenantDashboard() {
                 <>
                   <div className="bg-blue-50 p-3 rounded-lg mb-4">
                     <p className="text-sm font-semibold">Owner UPI ID: {ownerUpiId}</p>
-                    <a
-                      href={`upi://pay?pa=${ownerUpiId}&pn=HostelSet&am=${tenant?.pending_amount || tenant?.rent_amount}&cu=INR`}
-                      className="mt-2 inline-block bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition"
-                      target="_blank"
-                    >
-                      Pay with UPI App
-                    </a>
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={openUpiApp}
+                        className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition"
+                      >
+                        Pay with UPI App
+                      </button>
+                      <button
+                        onClick={copyUpiId}
+                        className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition"
+                      >
+                        Copy UPI ID
+                      </button>
+                    </div>
                     <p className="text-xs text-gray-500 mt-2">After payment, upload screenshot below.</p>
                   </div>
                   <div className="space-y-4">
