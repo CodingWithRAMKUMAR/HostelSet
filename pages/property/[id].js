@@ -28,6 +28,13 @@ export default function PropertyDetail() {
   const [transactionId, setTransactionId] = useState('')
   const [paymentSubmitting, setPaymentSubmitting] = useState(false)
 
+  // Pre‑booking state
+  const [vacateInfo, setVacateInfo] = useState({}) // { roomId: { daysLeft, tenantName, vacateRequestId } }
+  const [showPrebookModal, setShowPrebookModal] = useState(false)
+  const [prebookRoomId, setPrebookRoomId] = useState(null)
+  const [prebookForm, setPrebookForm] = useState({ name: '', phone: '', email: '', message: '' })
+  const [prebookSubmitting, setPrebookSubmitting] = useState(false)
+
   useEffect(() => {
     if (id) loadData()
   }, [id])
@@ -70,11 +77,33 @@ export default function PropertyDetail() {
           })
         }
       }
+
+      // Load approved vacate requests for pre‑booking info
+      await loadVacateInfo(propertyData)
     } catch (error) {
       console.error('Error:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  const loadVacateInfo = async (propertyData) => {
+    if (!propertyData) return
+    const { data: vacates } = await supabase
+      .from('check_out_requests')
+      .select('id, room_id, tenant_name, expected_check_out')
+      .eq('property_id', propertyData.id)
+      .eq('status', 'approved')
+    const info = {}
+    const today = new Date()
+    vacates?.forEach(v => {
+      const vacateDate = new Date(v.expected_check_out)
+      const daysLeft = Math.ceil((vacateDate - today) / (1000 * 60 * 60 * 24))
+      if (daysLeft > 0) { // only show future vacates
+        info[v.room_id] = { daysLeft, tenantName: v.tenant_name, vacateRequestId: v.id }
+      }
+    })
+    setVacateInfo(info)
   }
 
   const calculateTotalAmount = () => {
@@ -108,7 +137,6 @@ export default function PropertyDetail() {
 
   // Helper to find an existing user by phone or email
   const findExistingUser = async (phone, email) => {
-    // Try by phone first (unique per system)
     if (phone) {
       const { data: userByPhone } = await supabase
         .from('users')
@@ -117,7 +145,6 @@ export default function PropertyDetail() {
         .limit(1)
       if (userByPhone && userByPhone.length > 0) return userByPhone[0]
     }
-    // Try by email
     if (email) {
       const { data: userByEmail } = await supabase
         .from('users')
@@ -149,7 +176,6 @@ export default function PropertyDetail() {
       const idUrl = await uploadFile(idProof, 'id')
       const photoUrl = await uploadFile(photo, 'photo')
 
-      // Insert application – database will reject duplicates automatically
       const { error } = await supabase.from('applications').insert({
         property_id: id,
         room_id: selectedRoom,
@@ -164,7 +190,6 @@ export default function PropertyDetail() {
       })
 
       if (error) {
-        // Unique violation – show friendly message
         if (error.message.includes('duplicate key value') || error.code === '23505') {
           toast.error('You already have a pending application or active tenancy in this property.')
         } else {
@@ -196,19 +221,16 @@ export default function PropertyDetail() {
       const screenshotUrl = await uploadFile(paymentScreenshot, 'pay')
       const cleanPhone = cleanPhoneNumber(applyForm.phone)
 
-      // ---------- USER HANDLING (phone-first, then email) ----------
       let userId
       const existingUser = await findExistingUser(cleanPhone, applyForm.email)
 
       if (existingUser) {
-        // Reuse existing user account – update name/email if necessary
         userId = existingUser.id
         await supabase.from('users').update({
           full_name: applyForm.name,
-          email: applyForm.email, // allow email update if phone matches
+          email: applyForm.email,
         }).eq('id', userId)
       } else {
-        // No existing user – create new Auth account
         const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).charAt(0).toUpperCase()
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: applyForm.email,
@@ -217,7 +239,6 @@ export default function PropertyDetail() {
         })
         if (authError) throw authError
 
-        // Check again if a users row was auto-created by a trigger (phone might exist now)
         const { data: newUserRows } = await supabase
           .from('users')
           .select('id')
@@ -234,7 +255,6 @@ export default function PropertyDetail() {
           }).eq('id', userId)
         } else {
           userId = authData.user.id
-          // Insert manually – can fail if race condition; handle gracefully
           const { error: insertError } = await supabase.from('users').insert({
             id: userId,
             email: applyForm.email,
@@ -245,7 +265,6 @@ export default function PropertyDetail() {
           })
           if (insertError) {
             if (insertError.message.includes('duplicate key value') || insertError.code === '23505') {
-              // Race condition – fetch the conflicting user and use that
               const { data: conflictingUser } = await supabase
                 .from('users')
                 .select('id')
@@ -268,7 +287,6 @@ export default function PropertyDetail() {
           }
         }
 
-        // ✅ Only now, after successful user creation, send the password‑set email
         await supabase.auth.resetPasswordForEmail(applyForm.email, {
           redirectTo: `${window.location.origin}/reset-password`,
         }).catch(e => console.warn('Reset email not sent:', e))
@@ -277,7 +295,6 @@ export default function PropertyDetail() {
       const totalAmount = calculateTotalAmount()
       const room = rooms.find(r => r.id === selectedRoom)
 
-      // Create tenant record (payment_pending)
       const { error: tenantError } = await supabase.from('tenants').insert({
         user_id: userId,
         property_id: id,
@@ -304,6 +321,25 @@ export default function PropertyDetail() {
         return
       }
 
+      // ✅ FIX: Record joining fee + advance in payment_history
+      const { data: newTenant, error: fetchTenantError } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('property_id', id)
+        .single()
+      if (!fetchTenantError && newTenant && totalAmount > 0) {
+        await supabase.from('payment_history').insert({
+          tenant_id: newTenant.id,
+          amount: totalAmount,
+          payment_date: new Date().toISOString().split('T')[0],
+          payment_method: 'advance',
+          status: 'success',
+          upi_transaction_id: transactionId || null,
+          payment_screenshot: screenshotUrl,
+        })
+      }
+
       const newOccupants = room.current_occupants + 1
       const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
       await supabase.from('rooms').update({
@@ -323,6 +359,41 @@ export default function PropertyDetail() {
       toast.error('Something went wrong: ' + error.message)
     } finally {
       setPaymentSubmitting(false)
+    }
+  }
+
+  const submitPreBooking = async () => {
+    if (!prebookForm.name || !prebookForm.phone) {
+      toast.error('Please enter name and phone number')
+      return
+    }
+    const cleanPhone = cleanPhoneNumber(prebookForm.phone)
+    if (cleanPhone.length !== 10) {
+      toast.error('Enter valid 10-digit phone number')
+      return
+    }
+    setPrebookSubmitting(true)
+    try {
+      const { error } = await supabase.from('pre_bookings').insert({
+        room_id: prebookRoomId,
+        property_id: id,
+        applicant_name: prebookForm.name,
+        applicant_phone: cleanPhone,
+        applicant_email: prebookForm.email,
+        message: prebookForm.message,
+        status: 'pending',
+        created_at: new Date(),
+      })
+      if (error) throw error
+      toast.success('Pre‑booking request sent! Owner will review and contact you.')
+      setShowPrebookModal(false)
+      setPrebookForm({ name: '', phone: '', email: '', message: '' })
+      setPrebookRoomId(null)
+    } catch (error) {
+      console.error(error)
+      toast.error('Failed to submit pre‑booking')
+    } finally {
+      setPrebookSubmitting(false)
     }
   }
 
@@ -442,15 +513,17 @@ export default function PropertyDetail() {
               const sharing = getSharingDetails(room.sharing_type)
               const isAvailable = room.current_occupants < room.capacity
               const availableSlots = room.capacity - room.current_occupants
+              const roomVacate = vacateInfo[room.id]
+              const isPrebookable = roomVacate && roomVacate.daysLeft > 0
               return (
-                <div key={room.id} className={`bg-white rounded-2xl border-2 p-6 transition-all ${isAvailable ? 'border-green-200 hover:border-green-400' : 'border-gray-200 opacity-70'}`}>
+                <div key={room.id} className={`bg-white rounded-2xl border-2 p-6 transition-all ${isAvailable ? 'border-green-200 hover:border-green-400' : (isPrebookable ? 'border-blue-200 hover:border-blue-400' : 'border-gray-200 opacity-70')}`}>
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <h3 className="text-2xl font-bold text-slate-800">Room {room.room_number}</h3>
                       <p className="text-gray-500 text-sm mt-1">{sharing.label} {sharing.icon}</p>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${isAvailable ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {isAvailable ? `${availableSlots} slot available` : 'Full'}
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${isAvailable ? 'bg-green-100 text-green-700' : (isPrebookable ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500')}`}>
+                      {isAvailable ? `${availableSlots} slot available` : (isPrebookable ? 'Pre‑bookable' : 'Full')}
                     </span>
                   </div>
                   <div className="mb-4">
@@ -467,8 +540,25 @@ export default function PropertyDetail() {
                       <div className="bg-slate-600 h-2 rounded-full" style={{ width: `${(room.current_occupants / room.capacity) * 100}%` }} />
                     </div>
                   </div>
-                  {isAvailable && (
-                    <button onClick={() => { setSelectedRoom(room.id); setShowApplyModal(true) }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition mt-2">Apply Now →</button>
+                  {isPrebookable && (
+                    <div className="mt-2 mb-2">
+                      <span className="inline-block bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full">
+                        🚪 Vacates in {roomVacate.daysLeft} days
+                      </span>
+                    </div>
+                  )}
+                  {isAvailable ? (
+                    <button onClick={() => { setSelectedRoom(room.id); setShowApplyModal(true) }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition mt-2">
+                      Apply Now →
+                    </button>
+                  ) : isPrebookable ? (
+                    <button onClick={() => { setPrebookRoomId(room.id); setShowPrebookModal(true) }} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition mt-2">
+                      📅 Pre‑book this room
+                    </button>
+                  ) : (
+                    <button disabled className="w-full bg-gray-300 text-gray-500 py-3 rounded-xl font-semibold mt-2 cursor-not-allowed">
+                      Full – Not available
+                    </button>
                   )}
                 </div>
               )
@@ -597,6 +687,32 @@ export default function PropertyDetail() {
                   {paymentSubmitting ? 'Processing...' : 'I Have Paid – Submit'}
                 </button>
                 <button onClick={() => setShowPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Pre‑booking Modal */}
+      <AnimatePresence>
+        {showPrebookModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookModal(false)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-slate-800">Pre‑book Room</h2>
+                <button onClick={() => setShowPrebookModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+              </div>
+              <div className="space-y-4">
+                <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={prebookForm.name} onChange={e => setPrebookForm({...prebookForm, name: e.target.value})} />
+                <div className="flex gap-2">
+                  <span className="bg-gray-100 px-4 py-3 rounded-xl border border-gray-200 text-gray-600">+91</span>
+                  <input type="tel" placeholder="Phone Number *" className="flex-1 px-4 py-3 border border-gray-200 rounded-xl" value={prebookForm.phone} onChange={e => setPrebookForm({...prebookForm, phone: e.target.value})} maxLength={10} />
+                </div>
+                <input type="email" placeholder="Email (optional)" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={prebookForm.email} onChange={e => setPrebookForm({...prebookForm, email: e.target.value})} />
+                <textarea placeholder="Any message for the owner?" rows="2" className="w-full px-4 py-3 border border-gray-200 rounded-xl resize-none" value={prebookForm.message} onChange={e => setPrebookForm({...prebookForm, message: e.target.value})} />
+                <button onClick={submitPreBooking} disabled={prebookSubmitting} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50">
+                  {prebookSubmitting ? 'Submitting...' : 'Submit Pre‑booking'}
+                </button>
               </div>
             </motion.div>
           </div>
