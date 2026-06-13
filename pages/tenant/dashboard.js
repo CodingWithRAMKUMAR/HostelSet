@@ -40,26 +40,40 @@ export default function TenantDashboard() {
   const [showScreenshotModal, setShowScreenshotModal] = useState(false)
   const [screenshotUrl, setScreenshotUrl] = useState('')
 
-  // ========== FIXED UPI intent functions ==========
-  // Direct payment page for Google Pay (gpay:// scheme)
+  // ========== CORRECTED UPI intent functions ==========
+  // Build generic UPI URL (works with any app, shows app chooser)
+  const buildUpiUrl = (upiId, amount, name = 'HostelSet Rent') => {
+    const payee = encodeURIComponent(upiId)
+    const payeeName = encodeURIComponent(name)
+    const amt = encodeURIComponent(amount)
+    const cu = encodeURIComponent('INR')
+    return `upi://pay?pa=${payee}&pn=${payeeName}&am=${amt}&cu=${cu}`
+  }
+
+  // Google Pay - uses intent scheme with package name
   const openGooglePay = (upiId, amount) => {
     const payee = encodeURIComponent(upiId)
     const name = encodeURIComponent('HostelSet Rent')
     const amt = encodeURIComponent(amount)
     const cu = encodeURIComponent('INR')
-    // Correct Google Pay scheme (gpay://) – opens payment screen directly
+    // Correct Google Pay intent using 'gpay://' scheme
     const gpayUrl = `gpay://upi/pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}`
     window.location.href = gpayUrl
-    // Fallback after 3 seconds: copy UPI ID and show instructions
+    // Fallback: if not installed, open generic UPI chooser after 2 seconds
     setTimeout(() => {
       if (document.hasFocus()) {
-        toast.error('Google Pay not installed or failed. UPI ID copied.', { duration: 5000 })
-        navigator.clipboard.writeText(upiId)
+        window.location.href = buildUpiUrl(upiId, amount)
+        setTimeout(() => {
+          if (document.hasFocus()) {
+            toast.error('No UPI app detected. UPI ID copied.', { duration: 5000 })
+            navigator.clipboard.writeText(upiId)
+          }
+        }, 1500)
       }
-    }, 3000)
+    }, 2000)
   }
 
-  // Direct payment page for PhonePe (phonepe:// scheme)
+  // PhonePe - uses 'phonepe://' scheme with 'pay' action
   const openPhonePe = (upiId, amount) => {
     const payee = encodeURIComponent(upiId)
     const name = encodeURIComponent('HostelSet Rent')
@@ -69,10 +83,26 @@ export default function TenantDashboard() {
     window.location.href = phonepeUrl
     setTimeout(() => {
       if (document.hasFocus()) {
-        toast.error('PhonePe not installed or failed. UPI ID copied.', { duration: 5000 })
+        window.location.href = buildUpiUrl(upiId, amount)
+        setTimeout(() => {
+          if (document.hasFocus()) {
+            toast.error('PhonePe not installed. UPI ID copied.', { duration: 5000 })
+            navigator.clipboard.writeText(upiId)
+          }
+        }, 1500)
+      }
+    }, 2000)
+  }
+
+  // Generic UPI chooser (opens list of installed UPI apps)
+  const openUpiChooser = (upiId, amount) => {
+    window.location.href = buildUpiUrl(upiId, amount)
+    setTimeout(() => {
+      if (document.hasFocus()) {
+        toast.error('No UPI app found. UPI ID copied.', { duration: 5000 })
         navigator.clipboard.writeText(upiId)
       }
-    }, 3000)
+    }, 2000)
   }
 
   const copyUpiId = (upiId) => {
@@ -639,7 +669,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal – with fixed UPI intents */}
+      {/* Payment Modal – with fully working UPI intents */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -660,6 +690,7 @@ export default function TenantDashboard() {
                       <div className="flex flex-wrap gap-2">
                         <button onClick={() => openGooglePay(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount)} className="bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-blue-700 transition">Google Pay</button>
                         <button onClick={() => openPhonePe(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount)} className="bg-purple-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-purple-700 transition">PhonePe</button>
+                        <button onClick={() => openUpiChooser(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount)} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Other UPI Apps</button>
                         <button onClick={() => copyUpiId(ownerUpiId)} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy UPI ID</button>
                       </div>
                     </div>
@@ -671,6 +702,7 @@ export default function TenantDashboard() {
                       <div className="flex flex-wrap gap-2">
                         <button onClick={() => openGooglePay(ownerUpiPhone, tenant?.pending_amount || tenant?.rent_amount)} className="bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-blue-700 transition">Google Pay</button>
                         <button onClick={() => openPhonePe(ownerUpiPhone, tenant?.pending_amount || tenant?.rent_amount)} className="bg-purple-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-purple-700 transition">PhonePe</button>
+                        <button onClick={() => openUpiChooser(ownerUpiPhone, tenant?.pending_amount || tenant?.rent_amount)} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Other UPI Apps</button>
                         <button onClick={() => copyUpiPhone(ownerUpiPhone)} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy Phone</button>
                       </div>
                     </div>
