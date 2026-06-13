@@ -37,15 +37,14 @@ export default function TenantDashboard() {
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
 
-  // UPI apps with their intent URLs
+  // UPI apps with intent URLs
   const upiApps = [
-    { name: 'Google Pay', package: 'com.google.android.apps.nbu.pay', scheme: 'tez://upi/pay', intent: `intent://upi/pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=tez;package=com.google.android.apps.nbu.pay;end` },
-    { name: 'PhonePe', package: 'com.phonepe.app', scheme: 'phonepe://pay', intent: `intent://pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=phonepe;package=com.phonepe.app;end` },
-    { name: 'Paytm', package: 'net.one97.paytm', scheme: 'paytmmp://pay', intent: `intent://pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=paytmmp;package=net.one97.paytm;end` },
-    { name: 'Amazon Pay', package: 'in.amazon.mShop.android.shopping', scheme: 'amazonpay://upi/pay', intent: `intent://upi/pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=amazonpay;package=in.amazon.mShop.android.shopping;end` },
+    { name: 'Google Pay', intent: `intent://upi/pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=tez;package=com.google.android.apps.nbu.pay;end` },
+    { name: 'PhonePe', intent: `intent://pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=phonepe;package=com.phonepe.app;end` },
+    { name: 'Paytm', intent: `intent://pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=paytmmp;package=net.one97.paytm;end` },
+    { name: 'Amazon Pay', intent: `intent://upi/pay?pa=${ownerUpiId}&pn=HostelSet&am=${paymentAmount}&cu=INR#Intent;scheme=amazonpay;package=in.amazon.mShop.android.shopping;end` },
   ]
 
-  // Helper to open a specific UPI app via intent
   const openUpiApp = (intentUrl) => {
     window.location.href = intentUrl
     setTimeout(() => {
@@ -58,7 +57,6 @@ export default function TenantDashboard() {
     toast.success('UPI ID copied!')
   }
 
-  // Calculate next due date
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -72,7 +70,6 @@ export default function TenantDashboard() {
     return nextDue
   }
 
-  // Rent due status
   const getRentStatus = () => {
     if (!tenant) return { status: 'loading', message: '', daysUntilDue: null, dueDate: null }
     const nextDueDate = calculateNextDueDate()
@@ -139,7 +136,6 @@ export default function TenantDashboard() {
         upi_transaction_id: paymentTransactionId || null
       })
       if (paymentError) throw paymentError
-
       toast.success('Payment proof submitted! Waiting for owner confirmation.')
       setShowPaymentModal(false)
       setPaymentScreenshot(null)
@@ -338,7 +334,6 @@ export default function TenantDashboard() {
     }
   }
 
-  // ✅ FIXED: Delete complaint (must work)
   const deleteComplaint = async (complaintId) => {
     if (!confirm('Delete this complaint? This action cannot be undone.')) return
     setIsSubmitting(true)
@@ -347,12 +342,10 @@ export default function TenantDashboard() {
         .from('complaints')
         .delete()
         .eq('id', complaintId)
-        .eq('tenant_id', tenant.id) // extra security
+        .eq('tenant_id', tenant.id)
       if (error) throw error
       toast.success('Complaint deleted.')
-      // Remove from local state immediately for better UX
       setComplaints(prev => prev.filter(c => c.id !== complaintId))
-      // Also refresh to sync with server
       await refreshData()
     } catch (error) {
       console.error('Delete complaint error:', error)
@@ -390,7 +383,6 @@ export default function TenantDashboard() {
       }
       const { error } = await supabase.from('check_out_requests').insert(vacateData)
       if (error) throw new Error(error.message)
-
       const { error: ratingError } = await supabase
         .from('ratings')
         .insert({
@@ -401,7 +393,6 @@ export default function TenantDashboard() {
           created_at: new Date().toISOString()
         })
       if (ratingError) console.error('Rating submit error:', ratingError)
-
       toast.success('Vacate request submitted! Owner will review it.')
       setShowVacateModal(false)
       setVacateForm({ expected_date: '', reason: '', rating: 0, review: '' })
@@ -414,27 +405,20 @@ export default function TenantDashboard() {
     }
   }
 
-  // Cancel vacate request (no 3‑day restriction, only check pre‑booking)
   const cancelVacateRequest = async () => {
     if (!existingVacateRequest) return
-
-    // Check for approved pre‑booking on the same room
     const { data: preBooking, error: preError } = await supabase
       .from('pre_bookings')
       .select('id')
       .eq('room_id', tenant.room_id)
       .eq('status', 'approved')
       .maybeSingle()
-
     if (preError) console.error('Pre-booking check error:', preError)
-
     if (preBooking) {
       toast.error('Cannot cancel vacate – a pre‑booking has already been approved for this room.')
       return
     }
-
     if (!confirm('Cancel your vacate request? You will continue as a tenant.')) return
-
     setIsSubmitting(true)
     try {
       const { error: delError } = await supabase
@@ -442,13 +426,11 @@ export default function TenantDashboard() {
         .delete()
         .eq('id', existingVacateRequest.id)
       if (delError) throw delError
-
       const { error: updateError } = await supabase
         .from('tenants')
         .update({ status: 'active', check_out_requested: false, notice_period_start: null, notice_period_end: null })
         .eq('id', tenant.id)
       if (updateError) throw updateError
-
       toast.success('Vacate request cancelled. You remain as an active tenant.')
       await refreshData()
     } catch (error) {
@@ -555,13 +537,9 @@ export default function TenantDashboard() {
           <button onClick={() => setShowPaymentModal(true)} className="bg-green-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-green-700 transition shadow-sm flex items-center gap-2">💳 Pay Rent (UPI)</button>
           <button onClick={() => setShowComplaintModal(true)} className="border-2 border-orange-300 text-orange-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition flex items-center gap-2">📝 Raise Complaint</button>
           {existingVacateRequest ? (
-            <button onClick={cancelVacateRequest} className="border-2 border-yellow-500 text-yellow-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition flex items-center gap-2">
-              ❌ Cancel Vacate Request
-            </button>
+            <button onClick={cancelVacateRequest} className="border-2 border-yellow-500 text-yellow-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition flex items-center gap-2">❌ Cancel Vacate Request</button>
           ) : (
-            <button onClick={() => setShowVacateModal(true)} className="border-2 border-red-300 text-red-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition flex items-center gap-2">
-              🚪 Request Vacate
-            </button>
+            <button onClick={() => setShowVacateModal(true)} className="border-2 border-red-300 text-red-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition flex items-center gap-2">🚪 Request Vacate</button>
           )}
         </div>
 
@@ -641,23 +619,12 @@ export default function TenantDashboard() {
           <div className="space-y-4">
             {complaints.map((complaint) => (
               <div key={complaint.id} className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition relative group">
-                <button
-                  onClick={() => deleteComplaint(complaint.id)}
-                  className="absolute top-4 right-4 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
-                >
-                  🗑️ Delete
-                </button>
+                <button onClick={() => deleteComplaint(complaint.id)} className="absolute top-4 right-4 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition">🗑️ Delete</button>
                 <div className="flex justify-between items-start mb-3 pr-8">
                   <div>
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <h3 className="font-semibold text-slate-800">{complaint.title}</h3>
-                      <span className={`px-2 py-1 rounded-full text-xs ${
-                        complaint.priority === 'high' ? 'bg-red-100 text-red-700' :
-                        complaint.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {complaint.priority}
-                      </span>
+                      <span className={`px-2 py-1 rounded-full text-xs ${complaint.priority === 'high' ? 'bg-red-100 text-red-700' : complaint.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{complaint.priority}</span>
                     </div>
                     <p className="text-gray-600">{complaint.description}</p>
                     {complaint.admin_response && (
@@ -667,13 +634,7 @@ export default function TenantDashboard() {
                       </div>
                     )}
                   </div>
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    complaint.status === 'open' ? 'bg-red-100 text-red-700' :
-                    complaint.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-green-100 text-green-700'
-                  }`}>
-                    {complaint.status === 'open' ? 'Open' : complaint.status === 'in_progress' ? 'In Progress' : 'Resolved'}
-                  </span>
+                  <span className={`px-2 py-1 rounded-full text-xs ${complaint.status === 'open' ? 'bg-red-100 text-red-700' : complaint.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{complaint.status === 'open' ? 'Open' : complaint.status === 'in_progress' ? 'In Progress' : 'Resolved'}</span>
                 </div>
                 <p className="text-xs text-gray-400">Submitted: {formatDate(complaint.created_at)}</p>
               </div>
@@ -709,14 +670,14 @@ export default function TenantDashboard() {
                       <td className="px-4 py-3 text-sm text-gray-500 capitalize">{payment.payment_method}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs ${
-                          payment.status === 'success' ? 'bg-green-100 text-green-700' :
-                          payment.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' :
+                          payment.status === 'success' ? 'bg-green-100 text-green-700' : 
+                          payment.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' : 
                           'bg-gray-100 text-gray-600'
                         }`}>
                           {payment.status === 'success' ? 'Success' : payment.status === 'payment_pending' ? 'Pending' : payment.status}
                         </span>
                       </td>
-                    <tr>
+                    </tr>
                   ))}
                   {paymentHistory.length === 0 && (
                     <tr>
@@ -730,7 +691,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal – with UPI app selector */}
+      {/* Payment Modal – with UPI App Selector */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -747,18 +708,8 @@ export default function TenantDashboard() {
                   <div className="bg-blue-50 p-3 rounded-lg mb-4">
                     <p className="text-sm font-semibold text-center mb-2">Owner UPI ID: <span className="font-mono">{ownerUpiId}</span></p>
                     <div className="flex justify-center gap-2 mb-3">
-                      <button
-                        onClick={() => setShowUpiAppSelector(true)}
-                        className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition"
-                      >
-                        Pay with UPI App
-                      </button>
-                      <button
-                        onClick={copyUpiId}
-                        className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition"
-                      >
-                        Copy UPI ID
-                      </button>
+                      <button onClick={() => setShowUpiAppSelector(true)} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Pay with UPI App</button>
+                      <button onClick={copyUpiId} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy UPI ID</button>
                     </div>
                     <p className="text-xs text-gray-500 text-center">After payment, upload screenshot below.</p>
                   </div>
@@ -771,23 +722,9 @@ export default function TenantDashboard() {
                           <h3 className="text-xl font-bold mb-4">Choose UPI App</h3>
                           <div className="space-y-2">
                             {upiApps.map((app) => (
-                              <button
-                                key={app.name}
-                                onClick={() => {
-                                  setShowUpiAppSelector(false)
-                                  openUpiApp(app.intent)
-                                }}
-                                className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 transition"
-                              >
-                                {app.name}
-                              </button>
+                              <button key={app.name} onClick={() => { setShowUpiAppSelector(false); openUpiApp(app.intent) }} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 transition">{app.name}</button>
                             ))}
-                            <button
-                              onClick={copyUpiId}
-                              className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 transition text-blue-600"
-                            >
-                              Copy UPI ID (Manual Payment)
-                            </button>
+                            <button onClick={copyUpiId} className="w-full text-left px-4 py-3 border rounded-xl hover:bg-gray-50 transition text-blue-600">Copy UPI ID (Manual Payment)</button>
                           </div>
                           <button onClick={() => setShowUpiAppSelector(false)} className="w-full mt-4 text-center text-gray-500">Cancel</button>
                         </div>
