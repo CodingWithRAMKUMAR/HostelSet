@@ -35,18 +35,23 @@ export default function TenantDashboard() {
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
 
-  // ========== UPI intent functions (fixed: directly open specific apps) ==========
+  // ========== UPI intent functions using app-specific schemes ==========
   const openGooglePay = (upiId, amount) => {
     const payee = encodeURIComponent(upiId)
     const name = encodeURIComponent('HostelSet')
     const amt = encodeURIComponent(amount)
     const cu = encodeURIComponent('INR')
-    const upiUrl = `upi://pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}&pkg=com.google.android.apps.nbu.pay`
-    window.location.href = upiUrl
+    // Google Pay uses 'tez://' scheme
+    const gpayUrl = `tez://upi/pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}`
+    window.location.href = gpayUrl
     setTimeout(() => {
-      toast.error('Google Pay not installed or failed to open. UPI ID copied.', { duration: 5000 })
-      navigator.clipboard.writeText(upiId)
-    }, 2000)
+      // Fallback to generic UPI if Google Pay not installed
+      window.location.href = `upi://pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}`
+      setTimeout(() => {
+        toast.error('Google Pay not installed. UPI ID copied.', { duration: 5000 })
+        navigator.clipboard.writeText(upiId)
+      }, 1500)
+    }, 1500)
   }
 
   const openPhonePe = (upiId, amount) => {
@@ -54,12 +59,16 @@ export default function TenantDashboard() {
     const name = encodeURIComponent('HostelSet')
     const amt = encodeURIComponent(amount)
     const cu = encodeURIComponent('INR')
-    const upiUrl = `upi://pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}&pkg=com.phonepe.app`
-    window.location.href = upiUrl
+    // PhonePe uses 'phonepe://' scheme
+    const phonepeUrl = `phonepe://pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}`
+    window.location.href = phonepeUrl
     setTimeout(() => {
-      toast.error('PhonePe not installed or failed to open. UPI ID copied.', { duration: 5000 })
-      navigator.clipboard.writeText(upiId)
-    }, 2000)
+      window.location.href = `upi://pay?pa=${payee}&pn=${name}&am=${amt}&cu=${cu}`
+      setTimeout(() => {
+        toast.error('PhonePe not installed. UPI ID copied.', { duration: 5000 })
+        navigator.clipboard.writeText(upiId)
+      }, 1500)
+    }, 1500)
   }
 
   const copyUpiId = () => {
@@ -67,7 +76,7 @@ export default function TenantDashboard() {
     toast.success('UPI ID copied!')
   }
 
-  // ========== Helper functions (unchanged) ==========
+  // ========== Helper functions (unchanged from your working version) ==========
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -598,7 +607,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal – with fixed UPI intents */}
+      {/* Payment Modal – with corrected UPI intents */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
