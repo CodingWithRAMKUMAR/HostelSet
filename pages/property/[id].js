@@ -22,7 +22,7 @@ export default function PropertyDetail() {
   const [ownerSettings, setOwnerSettings] = useState({ upi_id: '', advance_months: 1, joining_fee: 0, pre_booking_fee: 0 })
   const [applySubmitting, setApplySubmitting] = useState(false)
 
-  // Payment modal state
+  // Payment modal for regular application
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [paymentScreenshot, setPaymentScreenshot] = useState(null)
   const [transactionId, setTransactionId] = useState('')
@@ -35,7 +35,13 @@ export default function PropertyDetail() {
   const [prebookForm, setPrebookForm] = useState({ name: '', phone: '', email: '', message: '' })
   const [prebookSubmitting, setPrebookSubmitting] = useState(false)
 
-  // Validation states
+  // Pre‑booking payment modal
+  const [showPrebookPaymentModal, setShowPrebookPaymentModal] = useState(false)
+  const [prebookPaymentScreenshot, setPrebookPaymentScreenshot] = useState(null)
+  const [prebookTransactionId, setPrebookTransactionId] = useState('')
+  const [prebookPaymentSubmitting, setPrebookPaymentSubmitting] = useState(false)
+
+  // Validation states for apply modal
   const [phoneError, setPhoneError] = useState('')
   const [emailError, setEmailError] = useState('')
   const [phoneValid, setPhoneValid] = useState(false)
@@ -43,6 +49,7 @@ export default function PropertyDetail() {
   const [checkingPhone, setCheckingPhone] = useState(false)
   const [checkingEmail, setCheckingEmail] = useState(false)
 
+  // Current logged‑in user (for pre‑booking)
   const [user, setUser] = useState(null)
 
   useEffect(() => {
@@ -160,7 +167,7 @@ export default function PropertyDetail() {
     return publicUrl
   }
 
-  // Validation functions (block ANY existing user)
+  // ========== Apply Form Validation ==========
   const validatePhone = async (phone) => {
     const cleanPhone = cleanPhoneNumber(phone)
     if (!cleanPhone || cleanPhone.length !== 10) {
@@ -284,6 +291,7 @@ export default function PropertyDetail() {
     return null
   }
 
+  // ========== Regular Application Flow ==========
   const submitApplication = async () => {
     if (!applyForm.name || !applyForm.phone || !applyForm.email) {
       toast.error('Please fill all required fields (Name, Phone, Email)')
@@ -495,8 +503,25 @@ export default function PropertyDetail() {
     }
   }
 
-  // ========== FIXED PRE‑BOOKING (adds payment_status and pre_booking_fee_amount) ==========
-  const submitPreBooking = async () => {
+  // ========== PRE‑BOOKING FLOW (Login required + payment proof) ==========
+  const openPrebookModal = (roomId) => {
+    if (!user) {
+      toast.error('Please login to pre‑book a room', { duration: 5000 })
+      router.push('/login')
+      return
+    }
+    setPrebookRoomId(roomId)
+    setPrebookForm({
+      name: user.full_name || '',
+      phone: user.phone || '',
+      email: user.email || '',
+      message: ''
+    })
+    setShowPrebookModal(true)
+  }
+
+  // Step 1: Submit pre‑booking form, then open payment modal
+  const submitPreBookingForm = async () => {
     if (!prebookForm.name || !prebookForm.phone) {
       toast.error('Please enter name and phone number')
       return
@@ -510,12 +535,25 @@ export default function PropertyDetail() {
       toast.error('Room not selected')
       return
     }
-    setPrebookSubmitting(true)
+    // Close the form modal and open payment modal
+    setShowPrebookModal(false)
+    setShowPrebookPaymentModal(true)
+  }
+
+  // Step 2: Upload payment proof and create pre‑booking record
+  const submitPreBookingPayment = async () => {
+    if (!prebookPaymentScreenshot) {
+      toast.error('Please upload payment screenshot')
+      return
+    }
+    const cleanPhone = cleanPhoneNumber(prebookForm.phone)
+    setPrebookPaymentSubmitting(true)
     try {
+      const screenshotUrl = await uploadFile(prebookPaymentScreenshot, 'prebook')
       const prebookData = {
         property_id: id,
         room_id: prebookRoomId,
-        user_id: user?.id || null,
+        user_id: user.id,
         name: prebookForm.name.trim(),
         phone: cleanPhone,
         email: prebookForm.email?.trim() || null,
@@ -523,19 +561,23 @@ export default function PropertyDetail() {
         status: 'pending',
         payment_status: 'pending',
         pre_booking_fee_amount: ownerSettings.pre_booking_fee || 0,
+        payment_screenshot: screenshotUrl,
+        payment_transaction_id: prebookTransactionId || null,
         created_at: new Date().toISOString()
       }
       const { error } = await supabase.from('pre_bookings').insert(prebookData)
       if (error) throw error
-      toast.success('Pre‑booking request sent! Owner will review and contact you.')
-      setShowPrebookModal(false)
+      toast.success('Pre‑booking request sent! Owner will verify payment and approve.')
+      setShowPrebookPaymentModal(false)
       setPrebookForm({ name: '', phone: '', email: '', message: '' })
       setPrebookRoomId(null)
+      setPrebookPaymentScreenshot(null)
+      setPrebookTransactionId('')
     } catch (error) {
       console.error('Pre-booking error:', error)
       toast.error('Failed to submit pre‑booking: ' + (error.message || 'Unknown error'))
     } finally {
-      setPrebookSubmitting(false)
+      setPrebookPaymentSubmitting(false)
     }
   }
 
@@ -721,7 +763,7 @@ export default function PropertyDetail() {
                         Apply Now →
                       </button>
                     ) : isPrebookable ? (
-                      <button onClick={() => { setPrebookRoomId(room.id); setShowPrebookModal(true) }} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition transform hover:-translate-y-0.5 duration-200">
+                      <button onClick={() => openPrebookModal(room.id)} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition transform hover:-translate-y-0.5 duration-200">
                         📅 Pre‑book this room
                       </button>
                     ) : (
@@ -781,7 +823,9 @@ export default function PropertyDetail() {
         )}
       </div>
 
-      {/* Apply Modal – with validation */}
+      {/* ========== MODALS ========== */}
+
+      {/* Apply Modal (unchanged) */}
       <AnimatePresence>
         {showApplyModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowApplyModal(false)}>
@@ -792,7 +836,6 @@ export default function PropertyDetail() {
               </div>
               <div className="space-y-4">
                 <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-400" value={applyForm.name} onChange={(e) => setApplyForm({...applyForm, name: e.target.value})} />
-                
                 <div>
                   <div className="flex gap-2">
                     <span className="bg-gray-100 px-4 py-3 rounded-xl border border-gray-200 text-gray-600">+91</span>
@@ -809,7 +852,6 @@ export default function PropertyDetail() {
                   {phoneError && <p className="text-red-500 text-xs mt-1">{phoneError}</p>}
                   {checkingPhone && <p className="text-gray-400 text-xs mt-1">Checking...</p>}
                 </div>
-
                 <div>
                   <input 
                     type="email" 
@@ -823,9 +865,7 @@ export default function PropertyDetail() {
                   {emailError && <p className="text-red-500 text-xs mt-1">{emailError}</p>}
                   {checkingEmail && <p className="text-gray-400 text-xs mt-1">Checking...</p>}
                 </div>
-
                 <textarea placeholder="Any message for the owner?" rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl resize-none" value={applyForm.message} onChange={(e) => setApplyForm({...applyForm, message: e.target.value})} />
-                
                 <div>
                   <label className="block text-sm font-semibold mb-1">ID Proof (Aadhaar/PAN) *</label>
                   <input type="file" accept="image/*,.pdf" onChange={e => handleFileChange(e, setIdProof)} className="w-full" />
@@ -847,7 +887,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Payment Modal (unchanged) */}
+      {/* Regular Payment Modal (unchanged) */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -891,7 +931,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Modal (unchanged – but uses updated submitPreBooking) */}
+      {/* Pre‑booking Form Modal (Step 1) */}
       <AnimatePresence>
         {showPrebookModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookModal(false)}>
@@ -908,9 +948,54 @@ export default function PropertyDetail() {
                 </div>
                 <input type="email" placeholder="Email (optional)" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={prebookForm.email} onChange={e => setPrebookForm({...prebookForm, email: e.target.value})} />
                 <textarea placeholder="Any message for the owner?" rows="2" className="w-full px-4 py-3 border border-gray-200 rounded-xl resize-none" value={prebookForm.message} onChange={e => setPrebookForm({...prebookForm, message: e.target.value})} />
-                <button onClick={submitPreBooking} disabled={prebookSubmitting} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50">
-                  {prebookSubmitting ? 'Submitting...' : 'Submit Pre‑booking'}
+                <button onClick={submitPreBookingForm} disabled={prebookSubmitting} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition">
+                  Proceed to Payment
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Pre‑booking Payment Modal (Step 2) */}
+      <AnimatePresence>
+        {showPrebookPaymentModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookPaymentModal(false)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <h2 className="text-2xl font-bold mb-4">Pay Pre‑booking Fee</h2>
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <p className="text-sm text-gray-600">Room {rooms.find(r => r.id === prebookRoomId)?.room_number}</p>
+                <p className="text-lg font-bold mt-1">Non‑refundable Fee: {formatCurrency(ownerSettings.pre_booking_fee)}</p>
+                <p className="text-xs text-gray-500 mt-1">This amount will be adjusted against your first month's rent.</p>
+              </div>
+              {ownerSettings.upi_id && (
+                <div className="bg-blue-50 p-3 rounded-lg mb-4">
+                  <p className="text-sm font-semibold">Owner UPI ID: {ownerSettings.upi_id}</p>
+                  <a
+                    href={`upi://pay?pa=${ownerSettings.upi_id}&pn=HostelSet&am=${ownerSettings.pre_booking_fee}&cu=INR`}
+                    className="mt-2 inline-block bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition"
+                    target="_blank"
+                  >
+                    Pay with UPI App
+                  </a>
+                </div>
+              )}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label>
+                  <input type="text" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={prebookTransactionId} onChange={e => setPrebookTransactionId(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Payment Screenshot *</label>
+                  <input type="file" accept="image/*" onChange={e => handleFileChange(e, setPrebookPaymentScreenshot)} className="w-full" />
+                </div>
+                <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
+                  After payment, owner will verify and approve your pre‑booking.
+                </div>
+                <button onClick={submitPreBookingPayment} disabled={prebookPaymentSubmitting} className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-50">
+                  {prebookPaymentSubmitting ? 'Submitting...' : 'Submit Payment Proof'}
+                </button>
+                <button onClick={() => setShowPrebookPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>
               </div>
             </motion.div>
           </div>
