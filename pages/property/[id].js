@@ -29,13 +29,12 @@ export default function PropertyDetail() {
   const [paymentSubmitting, setPaymentSubmitting] = useState(false)
 
   // Pre‑booking state
-  const [vacateInfo, setVacateInfo] = useState({}) // { roomId: { daysLeft, tenantName, vacateRequestId } }
+  const [vacateInfo, setVacateInfo] = useState({})
   const [showPrebookModal, setShowPrebookModal] = useState(false)
   const [prebookRoomId, setPrebookRoomId] = useState(null)
   const [prebookForm, setPrebookForm] = useState({ name: '', phone: '', email: '', message: '' })
   const [prebookSubmitting, setPrebookSubmitting] = useState(false)
 
-  // Load property data
   useEffect(() => {
     if (id) loadData()
   }, [id])
@@ -57,7 +56,6 @@ export default function PropertyDetail() {
         .order('room_number')
       setRooms(roomsData || [])
 
-      // Load owner settings
       if (propertyData) {
         const { data: settingsData } = await supabase
           .from('owner_settings')
@@ -79,7 +77,6 @@ export default function PropertyDetail() {
         }
       }
 
-      // Load approved vacate requests for pre‑booking info
       await loadVacateInfo(propertyData)
     } catch (error) {
       console.error('Error:', error)
@@ -321,7 +318,6 @@ export default function PropertyDetail() {
         return
       }
 
-      // Record joining fee + advance in payment_history
       const { data: newTenant, error: fetchTenantError } = await supabase
         .from('tenants')
         .select('id')
@@ -362,6 +358,7 @@ export default function PropertyDetail() {
     }
   }
 
+  // FIXED: Robust pre-booking submission with error logging
   const submitPreBooking = async () => {
     if (!prebookForm.name || !prebookForm.phone) {
       toast.error('Please enter name and phone number')
@@ -372,26 +369,38 @@ export default function PropertyDetail() {
       toast.error('Enter valid 10-digit phone number')
       return
     }
+    if (!prebookRoomId) {
+      toast.error('Room not selected')
+      return
+    }
     setPrebookSubmitting(true)
     try {
-      const { error } = await supabase.from('pre_bookings').insert({
+      const prebookData = {
         room_id: prebookRoomId,
         property_id: id,
-        applicant_name: prebookForm.name,
+        applicant_name: prebookForm.name.trim(),
         applicant_phone: cleanPhone,
-        applicant_email: prebookForm.email,
-        message: prebookForm.message,
+        applicant_email: prebookForm.email?.trim() || null,
+        message: prebookForm.message?.trim() || null,
         status: 'pending',
-        created_at: new Date(),
-      })
-      if (error) throw error
+        created_at: new Date().toISOString()
+      }
+      console.log('Submitting pre-booking:', prebookData)
+      const { data, error } = await supabase
+        .from('pre_bookings')
+        .insert(prebookData)
+        .select()
+      if (error) {
+        console.error('Supabase error:', error)
+        throw error
+      }
       toast.success('Pre‑booking request sent! Owner will review and contact you.')
       setShowPrebookModal(false)
       setPrebookForm({ name: '', phone: '', email: '', message: '' })
       setPrebookRoomId(null)
     } catch (error) {
-      console.error(error)
-      toast.error('Failed to submit pre‑booking')
+      console.error('Pre-booking error:', error)
+      toast.error('Failed to submit pre‑booking: ' + (error.message || 'Unknown error'))
     } finally {
       setPrebookSubmitting(false)
     }
@@ -455,12 +464,10 @@ export default function PropertyDetail() {
       </header>
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
-        {/* Back button */}
         <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-500 hover:text-slate-800 mb-6 transition group">
           <span className="group-hover:-translate-x-1 transition">←</span> Back to Search
         </button>
 
-        {/* Property Title */}
         <div className="mb-8">
           <h1 className="text-3xl md:text-4xl font-bold text-slate-800 mb-2">{property.name}</h1>
           <div className="flex flex-wrap items-center gap-4 text-gray-500">
@@ -470,7 +477,7 @@ export default function PropertyDetail() {
           </div>
         </div>
 
-        {/* Gallery with glassmorphism */}
+        {/* Gallery */}
         <div className="mb-8 rounded-2xl overflow-hidden shadow-xl">
           <div className="relative bg-gray-900/5 backdrop-blur-sm">
             {property.photos && property.photos.length > 0 ? (
@@ -503,7 +510,7 @@ export default function PropertyDetail() {
           )}
         </div>
 
-        {/* Tabs with premium styling */}
+        {/* Tabs */}
         <div className="flex border-b border-gray-200 mb-6">
           <button onClick={() => setActiveTab('rooms')} className={`px-6 py-3 font-semibold transition relative ${activeTab === 'rooms' ? 'text-slate-800' : 'text-gray-500 hover:text-slate-600'}`}>
             🏠 Rooms & Availability
@@ -636,7 +643,7 @@ export default function PropertyDetail() {
         )}
       </div>
 
-      {/* Apply Modal – with document uploads (premium style) */}
+      {/* Apply Modal */}
       <AnimatePresence>
         {showApplyModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowApplyModal(false)}>
@@ -670,7 +677,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Payment Modal – UPI + Screenshot (unchanged functionality, premium styling) */}
+      {/* Payment Modal */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -680,7 +687,6 @@ export default function PropertyDetail() {
                 <p className="text-sm text-gray-600">Room {rooms.find(r => r.id === selectedRoom)?.room_number} – {getSharingDetails(rooms.find(r => r.id === selectedRoom)?.sharing_type)?.label}</p>
                 <p className="text-lg font-bold mt-1">Total Amount: {formatCurrency(calculateTotalAmount())}</p>
               </div>
-
               {ownerSettings.upi_id && (
                 <div className="bg-blue-50 p-3 rounded-lg mb-4">
                   <p className="text-sm font-semibold">Owner UPI ID: {ownerSettings.upi_id}</p>
@@ -693,7 +699,6 @@ export default function PropertyDetail() {
                   </a>
                 </div>
               )}
-
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label>
@@ -706,11 +711,7 @@ export default function PropertyDetail() {
                 <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
                   After payment, your account will be created instantly and you can log in.
                 </div>
-                <button
-                  onClick={submitPayment}
-                  disabled={paymentSubmitting}
-                  className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50"
-                >
+                <button onClick={submitPayment} disabled={paymentSubmitting} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50">
                   {paymentSubmitting ? 'Processing...' : 'I Have Paid – Submit'}
                 </button>
                 <button onClick={() => setShowPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>
@@ -720,7 +721,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Modal (new, premium) */}
+      {/* Pre‑booking Modal (fixed) */}
       <AnimatePresence>
         {showPrebookModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookModal(false)}>
