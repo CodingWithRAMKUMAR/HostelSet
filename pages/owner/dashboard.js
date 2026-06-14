@@ -1347,7 +1347,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab - FIXED JSX */}
+        {/* Tenants Tab - FIXED (proper <tr> wrapping) */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1419,7 +1419,9 @@ export default function OwnerDashboard() {
                   )
                 })}
                 {filteredTenants.length === 0 && (
-                  <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants match your search</td</tr>
+                  <tr>
+                    <td colSpan="8" className="text-center py-8 text-gray-500">No tenants match your search</td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -1488,10 +1490,12 @@ export default function OwnerDashboard() {
                         {p.status === 'success' ? 'Success' : p.status === 'payment_pending' ? 'Pending' : p.status}
                       </span>
                     </td>
-                  </tr>
+                  <tr>
                 ))}
                 {filteredPayments.length === 0 && (
-                  <tr><td colSpan="6" className="text-center py-8 text-gray-500">No payment records match your search</td</tr>
+                  <tr>
+                    <td colSpan="6" className="text-center py-8 text-gray-500">No payment records match your search</td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -1866,7 +1870,14 @@ export default function OwnerDashboard() {
                 <p className="font-semibold">{confirmingTenant.name}</p>
                 <p className="text-sm text-gray-500">Room {confirmingTenant.room_number || getRoomNumberById(confirmingTenant.room_id)}</p>
                 <p className="text-sm text-gray-500 mt-2">UPI Transaction ID: {confirmingTenant.upi_transaction_id || 'N/A'}</p>
-                {confirmingTenant.payment_screenshot && (<div className="mt-2"><p className="text-xs text-gray-500 mb-1">Payment Screenshot:</p><button onClick={() => { setScreenshotUrl(confirmingTenant.payment_screenshot); setShowScreenshotModal(true); }}><img src={confirmingTenant.payment_screenshot} alt="Payment proof" className="w-full rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-80" /></button></div>)}
+                {confirmingTenant.payment_screenshot && (
+                  <div className="mt-2">
+                    <p className="text-xs text-gray-500 mb-1">Payment Screenshot:</p>
+                    <button onClick={() => { setScreenshotUrl(confirmingTenant.payment_screenshot); setShowScreenshotModal(true); }}>
+                      <img src={confirmingTenant.payment_screenshot} alt="Payment proof" className="w-full rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-80" />
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="flex gap-3"><button onClick={() => confirmPayment(confirmingTenant.id)} disabled={isSubmitting} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Confirming...' : '✅ Confirm Payment'}</button><button onClick={() => setShowPaymentConfirmModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div>
             </div>
