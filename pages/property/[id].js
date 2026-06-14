@@ -358,7 +358,7 @@ export default function PropertyDetail() {
     }
   }
 
-  // ✅ CORRECTED PRE‑BOOKING – uses 'email' column (not 'applicant_email')
+  // ✅ CORRECTED PRE‑BOOKING – matches your actual schema: name, phone, email
   const submitPreBooking = async () => {
     if (!prebookForm.name || !prebookForm.phone) {
       toast.error('Please enter name and phone number')
@@ -376,15 +376,16 @@ export default function PropertyDetail() {
     setPrebookSubmitting(true)
     try {
       const prebookData = {
-        room_id: prebookRoomId,
         property_id: id,
-        applicant_name: prebookForm.name.trim(),
-        applicant_phone: cleanPhone,
+        room_id: prebookRoomId,
+        name: prebookForm.name.trim(),
+        phone: cleanPhone,
         email: prebookForm.email?.trim() || null,
         message: prebookForm.message?.trim() || null,
         status: 'pending',
         created_at: new Date().toISOString()
       }
+      // Note: vacate_request_id and user_id are optional; leaving them null for now
       const { error } = await supabase.from('pre_bookings').insert(prebookData)
       if (error) throw error
       toast.success('Pre‑booking request sent! Owner will review and contact you.')
