@@ -36,21 +36,13 @@ export default function PropertyDetail() {
   const [agreeTerms, setAgreeTerms] = useState(false)
   const [prebookSubmitting, setPrebookSubmitting] = useState(false)
 
-  // Pre‑booking validation states (same as apply)
-  const [prebookPhoneError, setPrebookPhoneError] = useState('')
-  const [prebookEmailError, setPrebookEmailError] = useState('')
-  const [prebookPhoneValid, setPrebookPhoneValid] = useState(false)
-  const [prebookEmailValid, setPrebookEmailValid] = useState(false)
-  const [prebookCheckingPhone, setPrebookCheckingPhone] = useState(false)
-  const [prebookCheckingEmail, setPrebookCheckingEmail] = useState(false)
-
   // Pre‑booking payment modal
   const [showPrebookPaymentModal, setShowPrebookPaymentModal] = useState(false)
   const [prebookPaymentScreenshot, setPrebookPaymentScreenshot] = useState(null)
   const [prebookTransactionId, setPrebookTransactionId] = useState('')
   const [prebookPaymentSubmitting, setPrebookPaymentSubmitting] = useState(false)
 
-  // Validation states for apply modal
+  // Apply form validation
   const [phoneError, setPhoneError] = useState('')
   const [emailError, setEmailError] = useState('')
   const [phoneValid, setPhoneValid] = useState(false)
@@ -58,7 +50,7 @@ export default function PropertyDetail() {
   const [checkingPhone, setCheckingPhone] = useState(false)
   const [checkingEmail, setCheckingEmail] = useState(false)
 
-  // Current logged‑in user
+  // Logged‑in user (for pre‑booking)
   const [user, setUser] = useState(null)
 
   useEffect(() => {
@@ -176,73 +168,58 @@ export default function PropertyDetail() {
     return publicUrl
   }
 
-  // ========== Shared Validation Functions ==========
-  const validatePhone = async (phone, propertyId, setError, setValid, setChecking) => {
+  // ========== Apply Form Validation (blocks any existing user) ==========
+  const validatePhone = async (phone) => {
     const cleanPhone = cleanPhoneNumber(phone)
     if (!cleanPhone || cleanPhone.length !== 10) {
-      setError('Enter a valid 10-digit phone number')
-      setValid(false)
+      setPhoneError('Enter a valid 10-digit phone number')
+      setPhoneValid(false)
       return false
     }
-    setChecking(true)
+    setCheckingPhone(true)
     try {
-      // Check if phone already exists in users (any role)
       const { data: existingUser } = await supabase
         .from('users')
         .select('id')
         .eq('phone', cleanPhone)
         .maybeSingle()
       if (existingUser) {
-        setError('This phone number is already registered. Please login.')
-        setValid(false)
+        setPhoneError('This phone number is already registered. Please login.')
+        setPhoneValid(false)
         return false
       }
-      // Check pending applications for this property
       const { data: existingApp } = await supabase
         .from('applications')
-        .select('id')
+        .select('id, status')
         .eq('phone', cleanPhone)
-        .eq('property_id', propertyId)
+        .eq('property_id', id)
         .in('status', ['pending', 'approved'])
         .maybeSingle()
       if (existingApp) {
-        setError('You already have a pending application for this property.')
-        setValid(false)
+        setPhoneError('You already have a pending application for this property.')
+        setPhoneValid(false)
         return false
       }
-      // Check pending pre‑bookings for this property
-      const { data: existingPrebook } = await supabase
-        .from('pre_bookings')
-        .select('id')
-        .eq('phone', cleanPhone)
-        .eq('property_id', propertyId)
-        .in('status', ['pending', 'approved'])
-        .maybeSingle()
-      if (existingPrebook) {
-        setError('You already have a pending pre‑booking for this property.')
-        setValid(false)
-        return false
-      }
-      setError('')
-      setValid(true)
+      setPhoneError('')
+      setPhoneValid(true)
       return true
     } catch (error) {
       console.error('Phone validation error:', error)
-      setError('Validation failed')
-      setValid(false)
+      setPhoneError('Validation failed')
+      setPhoneValid(false)
       return false
     } finally {
-      setChecking(false)
+      setCheckingPhone(false)
     }
   }
 
-  const validateEmail = async (email, propertyId, setError, setValid, setChecking) => {
+  const validateEmail = async (email) => {
     if (!email || !email.includes('@')) {
-      setError('Enter a valid email address')
-      setValid(false)
+      setEmailError('Enter a valid email address')
+      setEmailValid(false)
       return false
     }
-    setChecking(true)
+    setCheckingEmail(true)
     try {
       const { data: existingUser } = await supabase
         .from('users')
@@ -250,82 +227,48 @@ export default function PropertyDetail() {
         .eq('email', email)
         .maybeSingle()
       if (existingUser) {
-        setError('This email is already registered. Please login.')
-        setValid(false)
+        setEmailError('This email is already registered. Please login.')
+        setEmailValid(false)
         return false
       }
       const { data: existingApp } = await supabase
         .from('applications')
         .select('id')
         .eq('email', email)
-        .eq('property_id', propertyId)
+        .eq('property_id', id)
         .in('status', ['pending', 'approved'])
         .maybeSingle()
       if (existingApp) {
-        setError('An application with this email already exists.')
-        setValid(false)
+        setEmailError('An application with this email already exists.')
+        setEmailValid(false)
         return false
       }
-      const { data: existingPrebook } = await supabase
-        .from('pre_bookings')
-        .select('id')
-        .eq('email', email)
-        .eq('property_id', propertyId)
-        .in('status', ['pending', 'approved'])
-        .maybeSingle()
-      if (existingPrebook) {
-        setError('A pre‑booking with this email already exists.')
-        setValid(false)
-        return false
-      }
-      setError('')
-      setValid(true)
+      setEmailError('')
+      setEmailValid(true)
       return true
     } catch (error) {
       console.error('Email validation error:', error)
-      setError('Validation failed')
-      setValid(false)
+      setEmailError('Validation failed')
+      setEmailValid(false)
       return false
     } finally {
-      setChecking(false)
+      setCheckingEmail(false)
     }
   }
 
-  // Apply form specific handlers
   const handlePhoneBlur = async () => {
-    if (applyForm.phone) {
-      await validatePhone(applyForm.phone, id, setPhoneError, setPhoneValid, setCheckingPhone)
-    } else {
+    if (applyForm.phone) await validatePhone(applyForm.phone)
+    else {
       setPhoneError('Phone number is required')
       setPhoneValid(false)
     }
   }
 
   const handleEmailBlur = async () => {
-    if (applyForm.email) {
-      await validateEmail(applyForm.email, id, setEmailError, setEmailValid, setCheckingEmail)
-    } else {
+    if (applyForm.email) await validateEmail(applyForm.email)
+    else {
       setEmailError('Email is required')
       setEmailValid(false)
-    }
-  }
-
-  // Pre‑booking form specific handlers
-  const handlePrebookPhoneBlur = async () => {
-    if (prebookForm.phone) {
-      await validatePhone(prebookForm.phone, id, setPrebookPhoneError, setPrebookPhoneValid, setPrebookCheckingPhone)
-    } else {
-      setPrebookPhoneError('Phone number is required')
-      setPrebookPhoneValid(false)
-    }
-  }
-
-  const handlePrebookEmailBlur = async () => {
-    if (prebookForm.email) {
-      await validateEmail(prebookForm.email, id, setPrebookEmailError, setPrebookEmailValid, setPrebookCheckingEmail)
-    } else {
-      setPrebookEmailError('Email is required')
-      setPrebookEmailValid(false)
     }
   }
 
@@ -364,8 +307,8 @@ export default function PropertyDetail() {
       toast.error('Please upload ID proof and photo')
       return
     }
-    const phoneOk = await validatePhone(applyForm.phone, id, setPhoneError, setPhoneValid, setCheckingPhone)
-    const emailOk = await validateEmail(applyForm.email, id, setEmailError, setEmailValid, setCheckingEmail)
+    const phoneOk = await validatePhone(applyForm.phone)
+    const emailOk = await validateEmail(applyForm.email)
     if (!phoneOk || !emailOk) {
       toast.error('Please correct the errors before submitting')
       return
@@ -561,7 +504,7 @@ export default function PropertyDetail() {
     }
   }
 
-  // ========== STRICT PRE‑BOOKING FLOW (with validation) ==========
+  // ========== STRICT PRE‑BOOKING FLOW (empty form, login required) ==========
   const openPrebookModal = (roomId, vacateDate) => {
     if (!user) {
       toast.error('Please login to pre‑book a room', { duration: 5000 })
@@ -569,52 +512,29 @@ export default function PropertyDetail() {
       return
     }
     setPrebookRoomId(roomId)
-    // Pre‑fill with user's data (from logged‑in user) but allow editing
     setPrebookForm({
-      name: user.full_name || '',
-      phone: user.phone || '',
-      email: user.email || '',
+      name: '',
+      phone: '',
+      email: '',
       move_in_date: vacateDate || '',
       message: ''
     })
-    // Reset validation states
-    setPrebookPhoneError('')
-    setPrebookEmailError('')
-    setPrebookPhoneValid(!!user.phone)
-    setPrebookEmailValid(!!user.email)
     setAgreeTerms(false)
     setShowPrebookModal(true)
   }
 
-  // Step 1: Validate pre‑booking form (with same validation as apply) and open payment modal
   const submitPreBookingForm = async () => {
-    // Validate name
-    if (!prebookForm.name) {
-      toast.error('Please enter your full name')
+    if (!prebookForm.name || !prebookForm.phone || !prebookForm.email || !prebookForm.move_in_date) {
+      toast.error('Please fill all required fields (Name, Phone, Email, Expected Move‑in Date)')
       return
     }
-    // Validate phone
-    if (!prebookForm.phone) {
-      toast.error('Please enter phone number')
+    const cleanPhone = cleanPhoneNumber(prebookForm.phone)
+    if (cleanPhone.length !== 10) {
+      toast.error('Enter valid 10-digit phone number')
       return
     }
-    const phoneOk = await validatePhone(prebookForm.phone, id, setPrebookPhoneError, setPrebookPhoneValid, setPrebookCheckingPhone)
-    if (!phoneOk) {
-      toast.error('Phone number is invalid or already registered')
-      return
-    }
-    // Validate email
-    if (!prebookForm.email) {
-      toast.error('Please enter email address')
-      return
-    }
-    const emailOk = await validateEmail(prebookForm.email, id, setPrebookEmailError, setPrebookEmailValid, setPrebookCheckingEmail)
-    if (!emailOk) {
-      toast.error('Email is invalid or already registered')
-      return
-    }
-    if (!prebookForm.move_in_date) {
-      toast.error('Please select expected move‑in date')
+    if (!prebookForm.email.includes('@')) {
+      toast.error('Enter a valid email address')
       return
     }
     if (!agreeTerms) {
@@ -625,12 +545,10 @@ export default function PropertyDetail() {
       toast.error('Room not selected')
       return
     }
-    // Close the form modal and open payment modal
     setShowPrebookModal(false)
     setShowPrebookPaymentModal(true)
   }
 
-  // Step 2: Upload payment proof and create pre‑booking record
   const submitPreBookingPayment = async () => {
     if (!prebookPaymentScreenshot) {
       toast.error('Please upload payment screenshot')
@@ -711,7 +629,6 @@ export default function PropertyDetail() {
   }
 
   const isApplyFormValid = applyForm.name && phoneValid && emailValid && idProof && photo
-  const isPrebookFormValid = prebookForm.name && prebookPhoneValid && prebookEmailValid && prebookForm.move_in_date && agreeTerms
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50">
@@ -918,7 +835,7 @@ export default function PropertyDetail() {
 
       {/* ========== MODALS ========== */}
 
-      {/* Apply Modal (unchanged) */}
+      {/* Apply Modal */}
       <AnimatePresence>
         {showApplyModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowApplyModal(false)}>
@@ -980,7 +897,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Regular Payment Modal (unchanged) */}
+      {/* Regular Payment Modal */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -1024,7 +941,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Form Modal (Step 1 – with validation) */}
+      {/* Pre‑booking Form Modal */}
       <AnimatePresence>
         {showPrebookModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookModal(false)}>
@@ -1035,57 +952,24 @@ export default function PropertyDetail() {
               </div>
               <div className="space-y-4">
                 <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={prebookForm.name} onChange={e => setPrebookForm({...prebookForm, name: e.target.value})} />
-                
-                <div>
-                  <div className="flex gap-2">
-                    <span className="bg-gray-100 px-4 py-3 rounded-xl border border-gray-200 text-gray-600">+91</span>
-                    <input 
-                      type="tel" 
-                      placeholder="Phone Number *" 
-                      className={`flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 ${prebookPhoneError ? 'border-red-500 focus:ring-red-400' : 'border-gray-200 focus:ring-blue-400'}`}
-                      value={prebookForm.phone} 
-                      onChange={(e) => setPrebookForm({...prebookForm, phone: e.target.value})}
-                      onBlur={handlePrebookPhoneBlur}
-                      maxLength={10}
-                    />
-                  </div>
-                  {prebookPhoneError && <p className="text-red-500 text-xs mt-1">{prebookPhoneError}</p>}
-                  {prebookCheckingPhone && <p className="text-gray-400 text-xs mt-1">Checking...</p>}
+                <div className="flex gap-2">
+                  <span className="bg-gray-100 px-4 py-3 rounded-xl border border-gray-200 text-gray-600">+91</span>
+                  <input type="tel" placeholder="Phone Number *" className="flex-1 px-4 py-3 border border-gray-200 rounded-xl" value={prebookForm.phone} onChange={e => setPrebookForm({...prebookForm, phone: e.target.value})} maxLength={10} />
                 </div>
-
-                <div>
-                  <input 
-                    type="email" 
-                    placeholder="Email Address *" 
-                    className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 ${prebookEmailError ? 'border-red-500 focus:ring-red-400' : 'border-gray-200 focus:ring-blue-400'}`}
-                    value={prebookForm.email} 
-                    onChange={(e) => setPrebookForm({...prebookForm, email: e.target.value})}
-                    onBlur={handlePrebookEmailBlur}
-                  />
-                  {prebookEmailError && <p className="text-red-500 text-xs mt-1">{prebookEmailError}</p>}
-                  {prebookCheckingEmail && <p className="text-gray-400 text-xs mt-1">Checking...</p>}
-                </div>
-
+                <input type="email" placeholder="Email Address *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={prebookForm.email} onChange={e => setPrebookForm({...prebookForm, email: e.target.value})} />
                 <div>
                   <label className="block text-sm font-semibold mb-1">Expected Move‑in Date *</label>
                   <input type="date" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={prebookForm.move_in_date} onChange={e => setPrebookForm({...prebookForm, move_in_date: e.target.value})} min={new Date().toISOString().split('T')[0]} />
                   <p className="text-xs text-gray-400 mt-1">Based on the current tenant’s vacate date.</p>
                 </div>
-
                 <textarea placeholder="Any message for the owner?" rows="2" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={prebookForm.message} onChange={e => setPrebookForm({...prebookForm, message: e.target.value})} />
-                
                 <div className="flex items-start gap-2">
                   <input type="checkbox" id="terms" checked={agreeTerms} onChange={e => setAgreeTerms(e.target.checked)} className="mt-1" />
                   <label htmlFor="terms" className="text-sm text-gray-600">
                     I agree that the pre‑booking fee of <strong>{formatCurrency(ownerSettings.pre_booking_fee)}</strong> is <strong>non‑refundable</strong>. If I do not move in by the expected date, my booking will be automatically cancelled and the fee will not be returned.
                   </label>
                 </div>
-
-                <button 
-                  onClick={submitPreBookingForm} 
-                  disabled={prebookSubmitting || !isPrebookFormValid || prebookCheckingPhone || prebookCheckingEmail} 
-                  className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <button onClick={submitPreBookingForm} disabled={prebookSubmitting} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition">
                   Proceed to Payment
                 </button>
               </div>
@@ -1094,7 +978,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Payment Modal (Step 2 – mandatory screenshot) */}
+      {/* Pre‑booking Payment Modal */}
       <AnimatePresence>
         {showPrebookPaymentModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookPaymentModal(false)}>
@@ -1132,11 +1016,7 @@ export default function PropertyDetail() {
                 <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
                   After payment, upload the screenshot and submit. Owner will verify and approve your pre‑booking.
                 </div>
-                <button 
-                  onClick={submitPreBookingPayment} 
-                  disabled={prebookPaymentSubmitting || !prebookPaymentScreenshot} 
-                  className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <button onClick={submitPreBookingPayment} disabled={prebookPaymentSubmitting} className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-50">
                   {prebookPaymentSubmitting ? 'Submitting...' : 'Submit Payment Proof'}
                 </button>
                 <button onClick={() => setShowPrebookPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>
