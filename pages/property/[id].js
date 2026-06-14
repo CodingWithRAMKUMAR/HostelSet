@@ -35,7 +35,7 @@ export default function PropertyDetail() {
   const [prebookForm, setPrebookForm] = useState({ name: '', phone: '', email: '', message: '' })
   const [prebookSubmitting, setPrebookSubmitting] = useState(false)
 
-  // ========== NEW: Validation states ==========
+  // Validation states
   const [phoneError, setPhoneError] = useState('')
   const [emailError, setEmailError] = useState('')
   const [phoneValid, setPhoneValid] = useState(false)
@@ -43,7 +43,6 @@ export default function PropertyDetail() {
   const [checkingPhone, setCheckingPhone] = useState(false)
   const [checkingEmail, setCheckingEmail] = useState(false)
 
-  // Check login status (for pre‑booking)
   const [user, setUser] = useState(null)
 
   useEffect(() => {
@@ -159,7 +158,7 @@ export default function PropertyDetail() {
     return publicUrl
   }
 
-  // ========== NEW: Real‑time validation functions ==========
+  // FIXED: Block ANY existing user (regardless of role)
   const validatePhone = async (phone) => {
     const cleanPhone = cleanPhoneNumber(phone)
     if (!cleanPhone || cleanPhone.length !== 10) {
@@ -169,14 +168,14 @@ export default function PropertyDetail() {
     }
     setCheckingPhone(true)
     try {
-      // Check if phone already exists in users (tenants) or pending applications
+      // Check if phone already exists in users (any role)
       const { data: existingUser } = await supabase
         .from('users')
-        .select('id, role')
+        .select('id')
         .eq('phone', cleanPhone)
         .maybeSingle()
-      if (existingUser && existingUser.role === 'tenant') {
-        setPhoneError('This phone number is already registered as a tenant. Please login.')
+      if (existingUser) {
+        setPhoneError('This phone number is already registered. Please login.')
         setPhoneValid(false)
         return false
       }
@@ -214,16 +213,18 @@ export default function PropertyDetail() {
     }
     setCheckingEmail(true)
     try {
+      // Check if email already exists in users (any role)
       const { data: existingUser } = await supabase
         .from('users')
-        .select('id, role')
+        .select('id')
         .eq('email', email)
         .maybeSingle()
-      if (existingUser && existingUser.role === 'tenant') {
+      if (existingUser) {
         setEmailError('This email is already registered. Please login.')
         setEmailValid(false)
         return false
       }
+      // Check pending applications for this property (same email)
       const { data: existingApp } = await supabase
         .from('applications')
         .select('id')
