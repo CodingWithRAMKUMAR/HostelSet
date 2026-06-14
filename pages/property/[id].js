@@ -19,7 +19,7 @@ export default function PropertyDetail() {
   const [photo, setPhoto] = useState(null)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [activeTab, setActiveTab] = useState('rooms')
-  const [ownerSettings, setOwnerSettings] = useState({ upi_id: '', advance_months: 1, joining_fee: 0 })
+  const [ownerSettings, setOwnerSettings] = useState({ upi_id: '', advance_months: 1, joining_fee: 0, pre_booking_fee: 0 })
   const [applySubmitting, setApplySubmitting] = useState(false)
 
   // Payment modal state
@@ -92,12 +92,14 @@ export default function PropertyDetail() {
             upi_id: settingsData.upi_id || propertyData.owner_upi_id || '',
             advance_months: settingsData.advance_months || 1,
             joining_fee: settingsData.joining_fee || 0,
+            pre_booking_fee: settingsData.pre_booking_fee || 0,
           })
         } else if (propertyData.owner_upi_id) {
           setOwnerSettings({
             upi_id: propertyData.owner_upi_id,
             advance_months: 1,
             joining_fee: 0,
+            pre_booking_fee: 0,
           })
         }
       }
@@ -158,7 +160,7 @@ export default function PropertyDetail() {
     return publicUrl
   }
 
-  // FIXED: Block ANY existing user (regardless of role)
+  // Validation functions (block ANY existing user)
   const validatePhone = async (phone) => {
     const cleanPhone = cleanPhoneNumber(phone)
     if (!cleanPhone || cleanPhone.length !== 10) {
@@ -168,7 +170,6 @@ export default function PropertyDetail() {
     }
     setCheckingPhone(true)
     try {
-      // Check if phone already exists in users (any role)
       const { data: existingUser } = await supabase
         .from('users')
         .select('id')
@@ -179,7 +180,6 @@ export default function PropertyDetail() {
         setPhoneValid(false)
         return false
       }
-      // Check pending applications for this property (same phone)
       const { data: existingApp } = await supabase
         .from('applications')
         .select('id, status')
@@ -213,7 +213,6 @@ export default function PropertyDetail() {
     }
     setCheckingEmail(true)
     try {
-      // Check if email already exists in users (any role)
       const { data: existingUser } = await supabase
         .from('users')
         .select('id')
@@ -224,7 +223,6 @@ export default function PropertyDetail() {
         setEmailValid(false)
         return false
       }
-      // Check pending applications for this property (same email)
       const { data: existingApp } = await supabase
         .from('applications')
         .select('id')
@@ -287,7 +285,6 @@ export default function PropertyDetail() {
   }
 
   const submitApplication = async () => {
-    // Final validation before submission
     if (!applyForm.name || !applyForm.phone || !applyForm.email) {
       toast.error('Please fill all required fields (Name, Phone, Email)')
       return
@@ -301,7 +298,6 @@ export default function PropertyDetail() {
       toast.error('Please upload ID proof and photo')
       return
     }
-    // Re‑validate phone and email to be safe
     const phoneOk = await validatePhone(applyForm.phone)
     const emailOk = await validateEmail(applyForm.email)
     if (!phoneOk || !emailOk) {
@@ -499,6 +495,7 @@ export default function PropertyDetail() {
     }
   }
 
+  // ========== FIXED PRE‑BOOKING (adds payment_status and pre_booking_fee_amount) ==========
   const submitPreBooking = async () => {
     if (!prebookForm.name || !prebookForm.phone) {
       toast.error('Please enter name and phone number')
@@ -518,11 +515,14 @@ export default function PropertyDetail() {
       const prebookData = {
         property_id: id,
         room_id: prebookRoomId,
+        user_id: user?.id || null,
         name: prebookForm.name.trim(),
         phone: cleanPhone,
         email: prebookForm.email?.trim() || null,
         message: prebookForm.message?.trim() || null,
         status: 'pending',
+        payment_status: 'pending',
+        pre_booking_fee_amount: ownerSettings.pre_booking_fee || 0,
         created_at: new Date().toISOString()
       }
       const { error } = await supabase.from('pre_bookings').insert(prebookData)
@@ -891,7 +891,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Modal (unchanged) */}
+      {/* Pre‑booking Modal (unchanged – but uses updated submitPreBooking) */}
       <AnimatePresence>
         {showPrebookModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookModal(false)}>
