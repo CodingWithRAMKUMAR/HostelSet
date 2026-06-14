@@ -280,9 +280,10 @@ export default function OwnerDashboard() {
         setVacateRequests(vacateData || [])
         setStats(prev => ({ ...prev, pendingVacate: vacateData?.filter(v => v.status === 'pending').length || 0 }))
 
+        // Updated pre‑bookings query to include room monthly_rent and capacity for tenant creation
         const { data: preBookingsData } = await supabase
           .from('pre_bookings')
-          .select('*, rooms(room_number)')
+          .select('*, rooms(room_number, monthly_rent, capacity)')
           .eq('property_id', propertyData.id)
           .order('created_at', { ascending: false })
         setPreBookings(preBookingsData || [])
@@ -569,26 +570,95 @@ export default function OwnerDashboard() {
     finally { setIsSubmitting(false) }
   }
 
-  const approvePreBooking = async (bookingId, roomId) => {
-    if (!confirm('Approve this pre‑booking? The current tenant will no longer be able to cancel vacate.')) return
+  // UPDATED: Approve pre‑booking with payment verification and tenant creation
+  const approvePreBooking = async (bookingId, roomId, userId) => {
+    if (!confirm('Approve this pre‑booking? The user will become a tenant and the room will be reserved.')) return
     setIsSubmitting(true)
     try {
-      await supabase.from('pre_bookings').update({ status: 'approved', updated_at: new Date() }).eq('id', bookingId)
-      toast.success('Pre‑booking approved! The room is now reserved.')
+      // Fetch full pre‑booking details including room rent and capacity
+      const { data: booking, error: fetchError } = await supabase
+        .from('pre_bookings')
+        .select('*, rooms(monthly_rent, capacity, room_number, property_id)')
+        .eq('id', bookingId)
+        .single()
+      if (fetchError) throw fetchError
+      if (!booking) throw new Error('Pre‑booking not found')
+      if (booking.payment_status !== 'pending') {
+        toast.error('Payment not verified yet')
+        return
+      }
+
+      // Mark pre‑booking as approved and payment as success
+      await supabase
+        .from('pre_bookings')
+        .update({ 
+          payment_status: 'success',
+          status: 'approved',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', bookingId)
+
+      // Create tenant record
+      const moveInDate = new Date()
+      moveInDate.setDate(moveInDate.getDate() + 7) // move‑in 7 days from approval
+      const totalPaid = booking.pre_booking_fee_amount || 0
+      const pendingAmount = booking.rooms.monthly_rent - totalPaid
+
+      const { error: tenantError } = await supabase.from('tenants').insert({
+        user_id: booking.user_id,
+        property_id: booking.property_id,
+        room_id: booking.room_id,
+        name: booking.name,
+        phone: booking.phone,
+        email: booking.email,
+        rent_amount: booking.rooms.monthly_rent,
+        pending_amount: pendingAmount > 0 ? pendingAmount : 0,
+        total_paid: totalPaid,
+        rent_status: pendingAmount <= 0 ? 'paid' : 'pending',
+        move_in_date: moveInDate.toISOString().split('T')[0],
+        status: 'active'
+      })
+      if (tenantError) throw tenantError
+
+      // Update room occupancy
+      const { data: roomData } = await supabase
+        .from('rooms')
+        .select('current_occupants, capacity')
+        .eq('id', booking.room_id)
+        .single()
+      const newOccupants = (roomData.current_occupants || 0) + 1
+      const newStatus = newOccupants >= roomData.capacity ? 'occupied' : 'vacant'
+      await supabase
+        .from('rooms')
+        .update({ current_occupants: newOccupants, status: newStatus })
+        .eq('id', booking.room_id)
+
+      toast.success('Pre‑booking approved! Tenant record created.')
       await loadData()
-    } catch (error) { toast.error('Failed to approve pre‑booking') }
-    finally { setIsSubmitting(false) }
+    } catch (error) {
+      console.error('Approve pre‑booking error:', error)
+      toast.error('Failed to approve pre‑booking: ' + error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const rejectPreBooking = async (bookingId) => {
-    if (!confirm('Reject this pre‑booking?')) return
+    if (!confirm('Reject this pre‑booking? The user will be notified.')) return
     setIsSubmitting(true)
     try {
-      await supabase.from('pre_bookings').update({ status: 'rejected', updated_at: new Date() }).eq('id', bookingId)
+      await supabase
+        .from('pre_bookings')
+        .update({ status: 'rejected', updated_at: new Date().toISOString() })
+        .eq('id', bookingId)
       toast.success('Pre‑booking rejected.')
       await loadData()
-    } catch (error) { toast.error('Failed to reject pre‑booking') }
-    finally { setIsSubmitting(false) }
+    } catch (error) {
+      console.error('Reject pre‑booking error:', error)
+      toast.error('Failed to reject pre‑booking')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const getTenantsInRoom = (roomId) => tenants.filter(t => t.room_id === roomId)
@@ -1283,7 +1353,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab - FIXED JSX */}
+        {/* Tenants Tab */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1297,7 +1367,7 @@ export default function OwnerDashboard() {
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Pending</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Actions</th>
-                </tr>
+                </td>
               </thead>
               <tbody>
                 {filteredTenants.map(t => {
@@ -1355,10 +1425,10 @@ export default function OwnerDashboard() {
                   )
                 })}
                 {filteredTenants.length === 0 && (
-                  <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants match your search</td></tr>
+                  <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants match your search</td</tr>
                 )}
               </tbody>
-            </table>
+            </div>
           </div>
         )}
 
@@ -1427,35 +1497,57 @@ export default function OwnerDashboard() {
                   </tr>
                 ))}
                 {filteredPayments.length === 0 && (
-                  <tr><td colSpan="6" className="text-center py-8 text-gray-500">No payment records match your search</td></tr>
+                  <tr><td colSpan="6" className="text-center py-8 text-gray-500">No payment records match your search</td</tr>
                 )}
               </tbody>
             </table>
           </div>
         )}
 
-        {/* Pre‑bookings Tab */}
+        {/* Pre‑bookings Tab – Updated to show payment info and approve/reject with tenant creation */}
         {activeTab === 'pre-bookings' && (
           <div className="space-y-4">
-            {preBookings.filter(b => b.status === 'pending').length === 0 && (
-              <div className="text-center py-12 bg-gray-50 rounded-xl">No pending pre‑bookings.</div>
+            {preBookings.filter(b => b.status === 'pending' && b.payment_status === 'pending').length === 0 && (
+              <div className="text-center py-12 bg-gray-50 rounded-xl">No pending pre‑bookings waiting for payment verification.</div>
             )}
-            {preBookings.filter(b => b.status === 'pending').map(booking => (
-              <div key={booking.id} className="bg-white rounded-xl border p-4 flex flex-col sm:flex-row justify-between items-start gap-4">
-                <div>
-                  <p className="font-semibold">{booking.applicant_name}</p>
-                  <p className="text-sm text-gray-500">📞 {booking.applicant_phone}</p>
-                  <p className="text-sm text-gray-500">📧 {booking.applicant_email}</p>
-                  <p className="text-sm">Room: {booking.rooms?.room_number || 'N/A'}</p>
-                  <p className="text-sm">Message: {booking.message || 'None'}</p>
-                  <p className="text-xs text-gray-400">Requested: {formatDate(booking.created_at)}</p>
+            {preBookings.filter(b => b.status === 'pending' && b.payment_status === 'pending').map(booking => {
+              const amountPaid = booking.pre_booking_fee_amount || 0
+              return (
+                <div key={booking.id} className="bg-white rounded-xl border p-4 flex flex-col sm:flex-row justify-between items-start gap-4">
+                  <div>
+                    <p className="font-semibold">{booking.name}</p>
+                    <p className="text-sm text-gray-500">📞 {booking.phone}</p>
+                    <p className="text-sm text-gray-500">📧 {booking.email || 'No email'}</p>
+                    <p className="text-sm">Room: {booking.rooms?.room_number || 'N/A'}</p>
+                    <p className="text-sm">Message: {booking.message || 'None'}</p>
+                    <p className="text-sm font-semibold text-green-600">Pre‑booking fee paid: {formatCurrency(amountPaid)}</p>
+                    {booking.payment_screenshot && (
+                      <div className="mt-2">
+                        <button onClick={() => { setScreenshotUrl(booking.payment_screenshot); setShowScreenshotModal(true); }} className="text-blue-600 underline text-sm">View Payment Screenshot</button>
+                      </div>
+                    )}
+                    {booking.payment_transaction_id && <p className="text-xs text-gray-400">UTR: {booking.payment_transaction_id}</p>}
+                    <p className="text-xs text-gray-400">Requested: {formatDate(booking.created_at)}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => approvePreBooking(booking.id, booking.room_id, booking.user_id)} 
+                      disabled={isSubmitting}
+                      className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition"
+                    >
+                      Approve & Create Tenant
+                    </button>
+                    <button 
+                      onClick={() => rejectPreBooking(booking.id)} 
+                      disabled={isSubmitting}
+                      className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition"
+                    >
+                      Reject
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => approvePreBooking(booking.id, booking.room_id)} disabled={isSubmitting} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition">Approve</button>
-                  <button onClick={() => rejectPreBooking(booking.id)} disabled={isSubmitting} className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition">Reject</button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
