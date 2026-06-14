@@ -35,6 +35,32 @@ export default function PropertyDetail() {
   const [prebookForm, setPrebookForm] = useState({ name: '', phone: '', email: '', message: '' })
   const [prebookSubmitting, setPrebookSubmitting] = useState(false)
 
+  // ========== NEW: Validation states ==========
+  const [phoneError, setPhoneError] = useState('')
+  const [emailError, setEmailError] = useState('')
+  const [phoneValid, setPhoneValid] = useState(false)
+  const [emailValid, setEmailValid] = useState(false)
+  const [checkingPhone, setCheckingPhone] = useState(false)
+  const [checkingEmail, setCheckingEmail] = useState(false)
+
+  // Check login status (for pre‑booking)
+  const [user, setUser] = useState(null)
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+        setUser(userData)
+      }
+    }
+    checkUser()
+  }, [])
+
   useEffect(() => {
     if (id) loadData()
   }, [id])
@@ -133,12 +159,117 @@ export default function PropertyDetail() {
     return publicUrl
   }
 
-  // Helper to check if a user already exists (by phone or email)
+  // ========== NEW: Real‑time validation functions ==========
+  const validatePhone = async (phone) => {
+    const cleanPhone = cleanPhoneNumber(phone)
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      setPhoneError('Enter a valid 10-digit phone number')
+      setPhoneValid(false)
+      return false
+    }
+    setCheckingPhone(true)
+    try {
+      // Check if phone already exists in users (tenants) or pending applications
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id, role')
+        .eq('phone', cleanPhone)
+        .maybeSingle()
+      if (existingUser && existingUser.role === 'tenant') {
+        setPhoneError('This phone number is already registered as a tenant. Please login.')
+        setPhoneValid(false)
+        return false
+      }
+      // Check pending applications for this property (same phone)
+      const { data: existingApp } = await supabase
+        .from('applications')
+        .select('id, status')
+        .eq('phone', cleanPhone)
+        .eq('property_id', id)
+        .in('status', ['pending', 'approved'])
+        .maybeSingle()
+      if (existingApp) {
+        setPhoneError('You already have a pending application for this property.')
+        setPhoneValid(false)
+        return false
+      }
+      setPhoneError('')
+      setPhoneValid(true)
+      return true
+    } catch (error) {
+      console.error('Phone validation error:', error)
+      setPhoneError('Validation failed')
+      setPhoneValid(false)
+      return false
+    } finally {
+      setCheckingPhone(false)
+    }
+  }
+
+  const validateEmail = async (email) => {
+    if (!email || !email.includes('@')) {
+      setEmailError('Enter a valid email address')
+      setEmailValid(false)
+      return false
+    }
+    setCheckingEmail(true)
+    try {
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id, role')
+        .eq('email', email)
+        .maybeSingle()
+      if (existingUser && existingUser.role === 'tenant') {
+        setEmailError('This email is already registered. Please login.')
+        setEmailValid(false)
+        return false
+      }
+      const { data: existingApp } = await supabase
+        .from('applications')
+        .select('id')
+        .eq('email', email)
+        .eq('property_id', id)
+        .in('status', ['pending', 'approved'])
+        .maybeSingle()
+      if (existingApp) {
+        setEmailError('An application with this email already exists.')
+        setEmailValid(false)
+        return false
+      }
+      setEmailError('')
+      setEmailValid(true)
+      return true
+    } catch (error) {
+      console.error('Email validation error:', error)
+      setEmailError('Validation failed')
+      setEmailValid(false)
+      return false
+    } finally {
+      setCheckingEmail(false)
+    }
+  }
+
+  const handlePhoneBlur = async () => {
+    if (applyForm.phone) await validatePhone(applyForm.phone)
+    else {
+      setPhoneError('Phone number is required')
+      setPhoneValid(false)
+    }
+  }
+
+  const handleEmailBlur = async () => {
+    if (applyForm.email) await validateEmail(applyForm.email)
+    else {
+      setEmailError('Email is required')
+      setEmailValid(false)
+    }
+  }
+
   const findExistingUser = async (phone, email) => {
     if (phone) {
       const { data: userByPhone } = await supabase
         .from('users')
-        .select('id, email, phone')
+        .select('id, email')
         .eq('phone', phone)
         .limit(1)
       if (userByPhone && userByPhone.length > 0) return userByPhone[0]
@@ -146,7 +277,7 @@ export default function PropertyDetail() {
     if (email) {
       const { data: userByEmail } = await supabase
         .from('users')
-        .select('id, email, phone')
+        .select('id, email')
         .eq('email', email)
         .limit(1)
       if (userByEmail && userByEmail.length > 0) return userByEmail[0]
@@ -154,29 +285,10 @@ export default function PropertyDetail() {
     return null
   }
 
-  // Helper to check if there's a pending application for same property/room with same phone or email
-  const checkDuplicateApplication = async (propertyId, roomId, phone, email) => {
-    const { data, error } = await supabase
-      .from('applications')
-      .select('id, status')
-      .eq('property_id', propertyId)
-      .eq('room_id', roomId)
-      .or(`phone.eq.${phone},email.eq.${email}`)
-      .in('status', ['pending', 'approved'])
-      .limit(1)
-    if (error) throw error
-    return data && data.length > 0 ? data[0] : null
-  }
-
-  // FIXED: submitApplication with full validation
   const submitApplication = async () => {
-    // Validate name, phone, email
-    if (!applyForm.name || !applyForm.name.trim()) {
-      toast.error('Please enter your full name')
-      return
-    }
-    if (!applyForm.phone) {
-      toast.error('Please enter your phone number')
+    // Final validation before submission
+    if (!applyForm.name || !applyForm.phone || !applyForm.email) {
+      toast.error('Please fill all required fields (Name, Phone, Email)')
       return
     }
     const cleanPhone = cleanPhoneNumber(applyForm.phone)
@@ -184,65 +296,30 @@ export default function PropertyDetail() {
       toast.error('Enter valid 10-digit phone number')
       return
     }
-    if (!applyForm.email || !applyForm.email.trim()) {
-      toast.error('Email is required')
-      return
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(applyForm.email)) {
-      toast.error('Enter a valid email address')
-      return
-    }
     if (!idProof || !photo) {
       toast.error('Please upload ID proof and photo')
+      return
+    }
+    // Re‑validate phone and email to be safe
+    const phoneOk = await validatePhone(applyForm.phone)
+    const emailOk = await validateEmail(applyForm.email)
+    if (!phoneOk || !emailOk) {
+      toast.error('Please correct the errors before submitting')
       return
     }
 
     setApplySubmitting(true)
     try {
-      // Check if user already exists (phone or email)
-      const existingUser = await findExistingUser(cleanPhone, applyForm.email)
-      if (existingUser) {
-        // Check if that user already has an active or pending tenancy in this property
-        const { data: existingTenant } = await supabase
-          .from('tenants')
-          .select('id, status')
-          .eq('user_id', existingUser.id)
-          .eq('property_id', id)
-          .maybeSingle()
-        if (existingTenant && existingTenant.status !== 'inactive') {
-          toast.error('You already have an active or pending tenancy in this property. Please login to continue.')
-          setApplySubmitting(false)
-          return
-        }
-        // Also check for pending application
-        const duplicateApp = await checkDuplicateApplication(id, selectedRoom, cleanPhone, applyForm.email)
-        if (duplicateApp) {
-          toast.error('You already have a pending application for this room.')
-          setApplySubmitting(false)
-          return
-        }
-      }
-
-      // Check for duplicate application (even without user record)
-      const duplicateApp = await checkDuplicateApplication(id, selectedRoom, cleanPhone, applyForm.email)
-      if (duplicateApp) {
-        toast.error('You already have a pending application for this room.')
-        setApplySubmitting(false)
-        return
-      }
-
-      // Proceed to upload documents and insert application
       const idUrl = await uploadFile(idProof, 'id')
       const photoUrl = await uploadFile(photo, 'photo')
 
       const { error } = await supabase.from('applications').insert({
         property_id: id,
         room_id: selectedRoom,
-        name: applyForm.name.trim(),
+        name: applyForm.name,
         phone: cleanPhone,
-        email: applyForm.email.trim(),
-        message: applyForm.message?.trim() || null,
+        email: applyForm.email,
+        message: applyForm.message,
         status: 'pending',
         id_proof: idUrl,
         photo: photoUrl,
@@ -431,6 +508,10 @@ export default function PropertyDetail() {
       toast.error('Enter valid 10-digit phone number')
       return
     }
+    if (!prebookRoomId) {
+      toast.error('Room not selected')
+      return
+    }
     setPrebookSubmitting(true)
     try {
       const prebookData = {
@@ -494,6 +575,8 @@ export default function PropertyDetail() {
     )
   }
 
+  const isApplyFormValid = applyForm.name && phoneValid && emailValid && idProof && photo
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50">
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
@@ -504,7 +587,11 @@ export default function PropertyDetail() {
               <span className="text-xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">HOSTELSET</span>
             </Link>
             <div className="flex items-center gap-4">
-              <Link href="/login" className="text-gray-600 hover:text-slate-800 transition">Login</Link>
+              {!user ? (
+                <Link href="/login" className="text-gray-600 hover:text-slate-800 transition">Login / Signup</Link>
+              ) : (
+                <span className="text-sm text-gray-600">Hi, {user.full_name?.split(' ')[0]}</span>
+              )}
               <Link href="/owner/register-property" className="bg-slate-800 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-slate-700 transition shadow-md">
                 List Property
               </Link>
@@ -693,7 +780,7 @@ export default function PropertyDetail() {
         )}
       </div>
 
-      {/* Apply Modal */}
+      {/* Apply Modal – with validation */}
       <AnimatePresence>
         {showApplyModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowApplyModal(false)}>
@@ -704,12 +791,40 @@ export default function PropertyDetail() {
               </div>
               <div className="space-y-4">
                 <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-400" value={applyForm.name} onChange={(e) => setApplyForm({...applyForm, name: e.target.value})} />
-                <div className="flex gap-2">
-                  <span className="bg-gray-100 px-4 py-3 rounded-xl border border-gray-200 text-gray-600">+91</span>
-                  <input type="tel" placeholder="Phone Number *" className="flex-1 px-4 py-3 border border-gray-200 rounded-xl" value={applyForm.phone} onChange={(e) => setApplyForm({...applyForm, phone: e.target.value})} maxLength={10} />
+                
+                <div>
+                  <div className="flex gap-2">
+                    <span className="bg-gray-100 px-4 py-3 rounded-xl border border-gray-200 text-gray-600">+91</span>
+                    <input 
+                      type="tel" 
+                      placeholder="Phone Number *" 
+                      className={`flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 ${phoneError ? 'border-red-500 focus:ring-red-400' : 'border-gray-200 focus:ring-slate-400'}`}
+                      value={applyForm.phone} 
+                      onChange={(e) => setApplyForm({...applyForm, phone: e.target.value})}
+                      onBlur={handlePhoneBlur}
+                      maxLength={10}
+                    />
+                  </div>
+                  {phoneError && <p className="text-red-500 text-xs mt-1">{phoneError}</p>}
+                  {checkingPhone && <p className="text-gray-400 text-xs mt-1">Checking...</p>}
                 </div>
-                <input type="email" placeholder="Email * (required for login)" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={applyForm.email} onChange={(e) => setApplyForm({...applyForm, email: e.target.value})} required />
+
+                <div>
+                  <input 
+                    type="email" 
+                    placeholder="Email * (will be used for login)" 
+                    className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 ${emailError ? 'border-red-500 focus:ring-red-400' : 'border-gray-200 focus:ring-slate-400'}`}
+                    value={applyForm.email} 
+                    onChange={(e) => setApplyForm({...applyForm, email: e.target.value})}
+                    onBlur={handleEmailBlur}
+                    required
+                  />
+                  {emailError && <p className="text-red-500 text-xs mt-1">{emailError}</p>}
+                  {checkingEmail && <p className="text-gray-400 text-xs mt-1">Checking...</p>}
+                </div>
+
                 <textarea placeholder="Any message for the owner?" rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl resize-none" value={applyForm.message} onChange={(e) => setApplyForm({...applyForm, message: e.target.value})} />
+                
                 <div>
                   <label className="block text-sm font-semibold mb-1">ID Proof (Aadhaar/PAN) *</label>
                   <input type="file" accept="image/*,.pdf" onChange={e => handleFileChange(e, setIdProof)} className="w-full" />
@@ -718,7 +833,11 @@ export default function PropertyDetail() {
                   <label className="block text-sm font-semibold mb-1">Passport Size Photo *</label>
                   <input type="file" accept="image/*" onChange={e => handleFileChange(e, setPhoto)} className="w-full" />
                 </div>
-                <button onClick={submitApplication} disabled={applySubmitting} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50">
+                <button 
+                  onClick={submitApplication} 
+                  disabled={applySubmitting || !isApplyFormValid || checkingPhone || checkingEmail} 
+                  className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   {applySubmitting ? 'Submitting...' : 'Continue to Payment'}
                 </button>
               </div>
@@ -727,7 +846,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Payment Modal */}
+      {/* Payment Modal (unchanged) */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -771,7 +890,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Modal */}
+      {/* Pre‑booking Modal (unchanged) */}
       <AnimatePresence>
         {showPrebookModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookModal(false)}>
