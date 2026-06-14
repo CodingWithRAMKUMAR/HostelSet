@@ -358,7 +358,7 @@ export default function PropertyDetail() {
     }
   }
 
-  // FIXED: Robust pre-booking submission with error logging
+  // ✅ CORRECTED PRE‑BOOKING – uses 'email' column (not 'applicant_email')
   const submitPreBooking = async () => {
     if (!prebookForm.name || !prebookForm.phone) {
       toast.error('Please enter name and phone number')
@@ -380,20 +380,13 @@ export default function PropertyDetail() {
         property_id: id,
         applicant_name: prebookForm.name.trim(),
         applicant_phone: cleanPhone,
-        applicant_email: prebookForm.email?.trim() || null,
+        email: prebookForm.email?.trim() || null,
         message: prebookForm.message?.trim() || null,
         status: 'pending',
         created_at: new Date().toISOString()
       }
-      console.log('Submitting pre-booking:', prebookData)
-      const { data, error } = await supabase
-        .from('pre_bookings')
-        .insert(prebookData)
-        .select()
-      if (error) {
-        console.error('Supabase error:', error)
-        throw error
-      }
+      const { error } = await supabase.from('pre_bookings').insert(prebookData)
+      if (error) throw error
       toast.success('Pre‑booking request sent! Owner will review and contact you.')
       setShowPrebookModal(false)
       setPrebookForm({ name: '', phone: '', email: '', message: '' })
@@ -445,7 +438,6 @@ export default function PropertyDetail() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50">
-      {/* Header */}
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
@@ -721,7 +713,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Modal (fixed) */}
+      {/* Pre‑booking Modal */}
       <AnimatePresence>
         {showPrebookModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookModal(false)}>
