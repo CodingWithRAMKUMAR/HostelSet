@@ -280,7 +280,6 @@ export default function OwnerDashboard() {
         setVacateRequests(vacateData || [])
         setStats(prev => ({ ...prev, pendingVacate: vacateData?.filter(v => v.status === 'pending').length || 0 }))
 
-        // Updated pre‑bookings query to include room monthly_rent and capacity for tenant creation
         const { data: preBookingsData } = await supabase
           .from('pre_bookings')
           .select('*, rooms(room_number, monthly_rent, capacity)')
@@ -570,12 +569,10 @@ export default function OwnerDashboard() {
     finally { setIsSubmitting(false) }
   }
 
-  // UPDATED: Approve pre‑booking with payment verification and tenant creation
   const approvePreBooking = async (bookingId, roomId, userId) => {
     if (!confirm('Approve this pre‑booking? The user will become a tenant and the room will be reserved.')) return
     setIsSubmitting(true)
     try {
-      // Fetch full pre‑booking details including room rent and capacity
       const { data: booking, error: fetchError } = await supabase
         .from('pre_bookings')
         .select('*, rooms(monthly_rent, capacity, room_number, property_id)')
@@ -588,7 +585,6 @@ export default function OwnerDashboard() {
         return
       }
 
-      // Mark pre‑booking as approved and payment as success
       await supabase
         .from('pre_bookings')
         .update({ 
@@ -598,9 +594,8 @@ export default function OwnerDashboard() {
         })
         .eq('id', bookingId)
 
-      // Create tenant record
       const moveInDate = new Date()
-      moveInDate.setDate(moveInDate.getDate() + 7) // move‑in 7 days from approval
+      moveInDate.setDate(moveInDate.getDate() + 7)
       const totalPaid = booking.pre_booking_fee_amount || 0
       const pendingAmount = booking.rooms.monthly_rent - totalPaid
 
@@ -620,7 +615,6 @@ export default function OwnerDashboard() {
       })
       if (tenantError) throw tenantError
 
-      // Update room occupancy
       const { data: roomData } = await supabase
         .from('rooms')
         .select('current_occupants, capacity')
@@ -1353,7 +1347,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab */}
+        {/* Tenants Tab - FIXED JSX */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1367,7 +1361,7 @@ export default function OwnerDashboard() {
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Pending</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Actions</th>
-                </td>
+                </tr>
               </thead>
               <tbody>
                 {filteredTenants.map(t => {
@@ -1428,7 +1422,7 @@ export default function OwnerDashboard() {
                   <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants match your search</td</tr>
                 )}
               </tbody>
-            </div>
+            </table>
           </div>
         )}
 
@@ -1504,7 +1498,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Pre‑bookings Tab – Updated to show payment info and approve/reject with tenant creation */}
+        {/* Pre‑bookings Tab */}
         {activeTab === 'pre-bookings' && (
           <div className="space-y-4">
             {preBookings.filter(b => b.status === 'pending' && b.payment_status === 'pending').length === 0 && (
@@ -1807,32 +1801,12 @@ export default function OwnerDashboard() {
             <div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">⚙️ Property Settings</h2>
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Joining Fee (₹)</label>
-                  <input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.joining_fee} onChange={(e) => setSettings({...settings, joining_fee: parseInt(e.target.value) || 0})} min="0" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Advance Months Required (default for new tenants)</label>
-                  <input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.advance_months} onChange={(e) => setSettings({...settings, advance_months: parseInt(e.target.value) || 0})} min="0" max="12" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Alert Threshold (days before due)</label>
-                  <input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.due_day} onChange={(e) => setSettings({...settings, due_day: parseInt(e.target.value) || 5})} min="1" max="30" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Your UPI ID (for rent payments)</label>
-                  <input type="text" className="w-full px-4 py-3 border border-gray-200 rounded-xl" placeholder="yourname@okhdfcbank" value={settings.upi_id} onChange={(e) => setSettings({...settings, upi_id: e.target.value})} />
-                  <p className="text-xs text-gray-400 mt-1">Tenants can pay to this UPI ID.</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">UPI Phone Number (optional)</label>
-                  <input type="tel" className="w-full px-4 py-3 border border-gray-200 rounded-xl" placeholder="9876543210" value={settings.upi_phone} onChange={(e) => setSettings({...settings, upi_phone: e.target.value})} />
-                  <p className="text-xs text-gray-400 mt-1">If provided, tenants can also pay using this phone number as UPI ID (e.g., 9876543210@okhdfcbank). You must add the @bankhandle yourself – we'll use phone number only.</p>
-                </div>
-                <div className="flex gap-3 mt-6">
-                  <button onClick={saveSettings} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Save Settings'}</button>
-                  <button onClick={() => setShowSettingsModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
-                </div>
+                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Joining Fee (₹)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.joining_fee} onChange={(e) => setSettings({...settings, joining_fee: parseInt(e.target.value) || 0})} min="0" /></div>
+                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Advance Months Required (default for new tenants)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.advance_months} onChange={(e) => setSettings({...settings, advance_months: parseInt(e.target.value) || 0})} min="0" max="12" /></div>
+                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Alert Threshold (days before due)</label><input type="number" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={settings.due_day} onChange={(e) => setSettings({...settings, due_day: parseInt(e.target.value) || 5})} min="1" max="30" /></div>
+                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Your UPI ID (for rent payments)</label><input type="text" className="w-full px-4 py-3 border border-gray-200 rounded-xl" placeholder="yourname@okhdfcbank" value={settings.upi_id} onChange={(e) => setSettings({...settings, upi_id: e.target.value})} /><p className="text-xs text-gray-400 mt-1">Tenants can pay to this UPI ID.</p></div>
+                <div><label className="block text-sm font-semibold text-gray-700 mb-2">UPI Phone Number (optional)</label><input type="tel" className="w-full px-4 py-3 border border-gray-200 rounded-xl" placeholder="9876543210" value={settings.upi_phone} onChange={(e) => setSettings({...settings, upi_phone: e.target.value})} /><p className="text-xs text-gray-400 mt-1">If provided, tenants can also pay using this phone number as UPI ID (e.g., 9876543210@okhdfcbank).</p></div>
+                <div className="flex gap-3 mt-6"><button onClick={saveSettings} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Save Settings'}</button><button onClick={() => setShowSettingsModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div>
               </div>
             </div>
           </div>
@@ -1848,10 +1822,7 @@ export default function OwnerDashboard() {
               <p className="text-sm text-gray-500 mb-2">From: {selectedComplaint.tenant_name}</p>
               <p className="text-sm text-gray-600 mb-4">"{selectedComplaint.title}"</p>
               <textarea placeholder="Your response..." rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={complaintResponse} onChange={(e) => setComplaintResponse(e.target.value)} />
-              <div className="flex gap-3">
-                <button onClick={respondToComplaint} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Send Response</button>
-                <button onClick={() => setShowComplaintResponseModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
-              </div>
+              <div className="flex gap-3"><button onClick={respondToComplaint} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Send Response</button><button onClick={() => setShowComplaintResponseModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div>
             </div>
           </div>
         )}
@@ -1862,46 +1833,10 @@ export default function OwnerDashboard() {
         {showRoomDetailsModal && selectedRoom && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomDetailsModal(false)}>
             <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-slate-800">Room {selectedRoom.room_number} Details</h2>
-                <button onClick={() => setShowRoomDetailsModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
-              </div>
+              <div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold text-slate-800">Room {selectedRoom.room_number} Details</h2><button onClick={() => setShowRoomDetailsModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button></div>
               <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-semibold text-slate-800 mb-3">Room Information</h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Room Number:</span><span className="font-semibold text-slate-700">{selectedRoom.room_number}</span></div>
-                    <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Sharing Type:</span><span className="font-semibold text-slate-700">{getSharingDetails(selectedRoom.sharing_type)?.label}</span></div>
-                    <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Monthly Rent:</span><span className="font-semibold text-slate-700">{formatCurrency(selectedRoom.monthly_rent)}</span></div>
-                    <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Capacity:</span><span className="font-semibold text-slate-700">{selectedRoom.capacity} persons</span></div>
-                    <div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Current Occupants:</span><span className="font-semibold text-slate-700">{selectedRoom.current_occupants}</span></div>
-                  </div>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-slate-800 mb-3">Current Residents</h3>
-                  <div className="space-y-3">
-                    {getTenantsInRoom(selectedRoom.id).map(tenant => (
-                      <div key={tenant.id} className="bg-gray-50 rounded-lg p-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-semibold text-slate-800">{tenant.name}</p>
-                            <p className="text-xs text-gray-500">📞 {tenant.phone}</p>
-                            <p className="text-xs text-gray-500 mt-1">Move-in: {formatDate(tenant.move_in_date)}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-semibold text-slate-700">{formatCurrency(tenant.rent_amount)}/month</p>
-                            <p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>{tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}</p>
-                            <div className="flex gap-1 mt-1">
-                              <button onClick={() => fetchTenantPayments(tenant)} className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">📜 History</button>
-                              <button onClick={() => fetchTenantApplication(tenant)} className="text-xs bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700">👤 Profile</button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {getTenantsInRoom(selectedRoom.id).length === 0 && <p className="text-gray-400 text-center py-4">No residents currently</p>}
-                  </div>
-                </div>
+                <div><h3 className="font-semibold text-slate-800 mb-3">Room Information</h3><div className="space-y-2 text-sm"><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Room Number:</span><span className="font-semibold text-slate-700">{selectedRoom.room_number}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Sharing Type:</span><span className="font-semibold text-slate-700">{getSharingDetails(selectedRoom.sharing_type)?.label}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Monthly Rent:</span><span className="font-semibold text-slate-700">{formatCurrency(selectedRoom.monthly_rent)}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Capacity:</span><span className="font-semibold text-slate-700">{selectedRoom.capacity} persons</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Current Occupants:</span><span className="font-semibold text-slate-700">{selectedRoom.current_occupants}</span></div></div></div>
+                <div><h3 className="font-semibold text-slate-800 mb-3">Current Residents</h3><div className="space-y-3">{getTenantsInRoom(selectedRoom.id).map(tenant => (<div key={tenant.id} className="bg-gray-50 rounded-lg p-3"><div className="flex justify-between items-start"><div><p className="font-semibold text-slate-800">{tenant.name}</p><p className="text-xs text-gray-500">📞 {tenant.phone}</p><p className="text-xs text-gray-500 mt-1">Move-in: {formatDate(tenant.move_in_date)}</p></div><div className="text-right"><p className="text-sm font-semibold text-slate-700">{formatCurrency(tenant.rent_amount)}/month</p><p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>{tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}</p><div className="flex gap-1 mt-1"><button onClick={() => fetchTenantPayments(tenant)} className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">📜 History</button><button onClick={() => fetchTenantApplication(tenant)} className="text-xs bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700">👤 Profile</button></div></div></div></div>))}{getTenantsInRoom(selectedRoom.id).length === 0 && <p className="text-gray-400 text-center py-4">No residents currently</p>}</div></div>
               </div>
             </div>
           </div>
@@ -1914,21 +1849,7 @@ export default function OwnerDashboard() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowMembershipModal(false)}>
             <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">✨ Choose Membership Plan</h2>
-              <div className="space-y-3">
-                <button onClick={() => initiateMembershipPayment('monthly', 499, 'Monthly')} disabled={membershipLoading} className="w-full p-4 border rounded-xl text-left hover:bg-gray-50 transition">
-                  <div className="font-bold text-lg">Monthly Plan</div>
-                  <div className="text-sm text-gray-500">₹499 / month</div>
-                  <div className="text-xs text-gray-400 mt-1">✓ Basic support</div>
-                  <div className="text-xs text-gray-400">✓ Up to 50 tenants</div>
-                </button>
-                <button onClick={() => initiateMembershipPayment('yearly', 4999, 'Yearly')} disabled={membershipLoading} className="w-full p-4 border rounded-xl text-left hover:bg-gray-50 transition">
-                  <div className="font-bold text-lg">Yearly Plan</div>
-                  <div className="text-sm text-gray-500">₹4,999 / year</div>
-                  <div className="text-xs text-gray-400 mt-1">✓ Priority support</div>
-                  <div className="text-xs text-gray-400">✓ Unlimited tenants</div>
-                  <div className="text-xs text-gray-400">✓ Analytics dashboard</div>
-                </button>
-              </div>
+              <div className="space-y-3"><button onClick={() => initiateMembershipPayment('monthly', 499, 'Monthly')} disabled={membershipLoading} className="w-full p-4 border rounded-xl text-left hover:bg-gray-50 transition"><div className="font-bold text-lg">Monthly Plan</div><div className="text-sm text-gray-500">₹499 / month</div><div className="text-xs text-gray-400 mt-1">✓ Basic support</div><div className="text-xs text-gray-400">✓ Up to 50 tenants</div></button><button onClick={() => initiateMembershipPayment('yearly', 4999, 'Yearly')} disabled={membershipLoading} className="w-full p-4 border rounded-xl text-left hover:bg-gray-50 transition"><div className="font-bold text-lg">Yearly Plan</div><div className="text-sm text-gray-500">₹4,999 / year</div><div className="text-xs text-gray-400 mt-1">✓ Priority support</div><div className="text-xs text-gray-400">✓ Unlimited tenants</div><div className="text-xs text-gray-400">✓ Analytics dashboard</div></button></div>
               <button onClick={() => setShowMembershipModal(false)} className="w-full mt-4 py-2 text-gray-500 hover:text-gray-700 transition">Cancel</button>
             </div>
           </div>
@@ -1945,19 +1866,9 @@ export default function OwnerDashboard() {
                 <p className="font-semibold">{confirmingTenant.name}</p>
                 <p className="text-sm text-gray-500">Room {confirmingTenant.room_number || getRoomNumberById(confirmingTenant.room_id)}</p>
                 <p className="text-sm text-gray-500 mt-2">UPI Transaction ID: {confirmingTenant.upi_transaction_id || 'N/A'}</p>
-                {confirmingTenant.payment_screenshot && (
-                  <div className="mt-2">
-                    <p className="text-xs text-gray-500 mb-1">Payment Screenshot:</p>
-                    <button onClick={() => { setScreenshotUrl(confirmingTenant.payment_screenshot); setShowScreenshotModal(true); }}>
-                      <img src={confirmingTenant.payment_screenshot} alt="Payment proof" className="w-full rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-80" />
-                    </button>
-                  </div>
-                )}
+                {confirmingTenant.payment_screenshot && (<div className="mt-2"><p className="text-xs text-gray-500 mb-1">Payment Screenshot:</p><button onClick={() => { setScreenshotUrl(confirmingTenant.payment_screenshot); setShowScreenshotModal(true); }}><img src={confirmingTenant.payment_screenshot} alt="Payment proof" className="w-full rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-80" /></button></div>)}
               </div>
-              <div className="flex gap-3">
-                <button onClick={() => confirmPayment(confirmingTenant.id)} disabled={isSubmitting} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Confirming...' : '✅ Confirm Payment'}</button>
-                <button onClick={() => setShowPaymentConfirmModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
-              </div>
+              <div className="flex gap-3"><button onClick={() => confirmPayment(confirmingTenant.id)} disabled={isSubmitting} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{isSubmitting ? 'Confirming...' : '✅ Confirm Payment'}</button><button onClick={() => setShowPaymentConfirmModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div>
             </div>
           </div>
         )}
@@ -1969,29 +1880,8 @@ export default function OwnerDashboard() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowApplicationDetailModal(false)}>
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">Application Details</h2>
-              <div className="space-y-2 text-sm">
-                <p><strong>Name:</strong> {selectedApplication.name}</p>
-                <p><strong>Phone:</strong> {selectedApplication.phone}</p>
-                <p><strong>Email:</strong> {selectedApplication.email || 'N/A'}</p>
-                <p><strong>Message:</strong> {selectedApplication.message || 'None'}</p>
-                <p><strong>Applied:</strong> {formatDate(selectedApplication.created_at)}</p>
-                {selectedApplication.id_proof && (
-                  <div className="mt-3">
-                    <p className="font-semibold mb-1">ID Proof:</p>
-                    <img src={selectedApplication.id_proof} alt="ID Proof" className="w-full rounded-lg max-h-48 object-cover border" />
-                  </div>
-                )}
-                {selectedApplication.photo && (
-                  <div className="mt-3">
-                    <p className="font-semibold mb-1">Photo:</p>
-                    <img src={selectedApplication.photo} alt="Applicant Photo" className="w-full rounded-lg max-h-48 object-cover border" />
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-3 mt-6">
-                <button onClick={() => { setShowApplicationDetailModal(false); approveApplication(selectedApplication.id) }} className="flex-1 bg-green-600 text-white py-2 rounded-lg font-semibold hover:bg-green-700">Approve</button>
-                <button onClick={() => setShowApplicationDetailModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-2 rounded-lg font-semibold">Close</button>
-              </div>
+              <div className="space-y-2 text-sm"><p><strong>Name:</strong> {selectedApplication.name}</p><p><strong>Phone:</strong> {selectedApplication.phone}</p><p><strong>Email:</strong> {selectedApplication.email || 'N/A'}</p><p><strong>Message:</strong> {selectedApplication.message || 'None'}</p><p><strong>Applied:</strong> {formatDate(selectedApplication.created_at)}</p>{selectedApplication.id_proof && (<div className="mt-3"><p className="font-semibold mb-1">ID Proof:</p><img src={selectedApplication.id_proof} alt="ID Proof" className="w-full rounded-lg max-h-48 object-cover border" /></div>)}{selectedApplication.photo && (<div className="mt-3"><p className="font-semibold mb-1">Photo:</p><img src={selectedApplication.photo} alt="Applicant Photo" className="w-full rounded-lg max-h-48 object-cover border" /></div>)}</div>
+              <div className="flex gap-3 mt-6"><button onClick={() => { setShowApplicationDetailModal(false); approveApplication(selectedApplication.id) }} className="flex-1 bg-green-600 text-white py-2 rounded-lg font-semibold hover:bg-green-700">Approve</button><button onClick={() => setShowApplicationDetailModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-2 rounded-lg font-semibold">Close</button></div>
             </motion.div>
           </div>
         )}
@@ -2002,36 +1892,8 @@ export default function OwnerDashboard() {
         {showTenantPaymentsModal && selectedTenantForPayments && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowTenantPaymentsModal(false)}>
             <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-slate-800">Payment History – {selectedTenantForPayments.name}</h2>
-                <button onClick={() => setShowTenantPaymentsModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
-              </div>
-              {tenantPayments.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">No payment records found.</p>
-              ) : (
-                <div className="space-y-4">
-                  {tenantPayments.map(pay => (
-                    <div key={pay.id} className="border rounded-xl p-4 bg-gray-50">
-                      <div className="flex justify-between items-start flex-wrap gap-2">
-                        <div>
-                          <p className="font-semibold">{formatCurrency(pay.amount)}</p>
-                          <p className="text-sm text-gray-500">Date: {formatDate(pay.payment_date)}</p>
-                          <p className="text-sm text-gray-500">Method: {pay.payment_method}</p>
-                          <p className="text-sm text-gray-500">Status: {pay.status}</p>
-                          {pay.upi_transaction_id && <p className="text-xs text-gray-400">UTR: {pay.upi_transaction_id}</p>}
-                        </div>
-                        {pay.payment_screenshot && (
-                          <div>
-                            <button onClick={() => { setScreenshotUrl(pay.payment_screenshot); setShowScreenshotModal(true); }}>
-                              <img src={pay.payment_screenshot} alt="Screenshot" className="w-24 h-24 object-cover rounded-lg border cursor-pointer hover:opacity-80" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold text-slate-800">Payment History – {selectedTenantForPayments.name}</h2><button onClick={() => setShowTenantPaymentsModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button></div>
+              {tenantPayments.length === 0 ? <p className="text-center text-gray-500 py-8">No payment records found.</p> : <div className="space-y-4">{tenantPayments.map(pay => (<div key={pay.id} className="border rounded-xl p-4 bg-gray-50"><div className="flex justify-between items-start flex-wrap gap-2"><div><p className="font-semibold">{formatCurrency(pay.amount)}</p><p className="text-sm text-gray-500">Date: {formatDate(pay.payment_date)}</p><p className="text-sm text-gray-500">Method: {pay.payment_method}</p><p className="text-sm text-gray-500">Status: {pay.status}</p>{pay.upi_transaction_id && <p className="text-xs text-gray-400">UTR: {pay.upi_transaction_id}</p>}</div>{pay.payment_screenshot && (<div><button onClick={() => { setScreenshotUrl(pay.payment_screenshot); setShowScreenshotModal(true); }}><img src={pay.payment_screenshot} alt="Screenshot" className="w-24 h-24 object-cover rounded-lg border cursor-pointer hover:opacity-80" /></button></div>)}</div></div>))}</div>}
             </div>
           </div>
         )}
@@ -2042,68 +1904,8 @@ export default function OwnerDashboard() {
         {showTenantProfileModal && selectedProfileTenant && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowTenantProfileModal(false)}>
             <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-slate-800">Tenant Profile</h2>
-                <button onClick={() => setShowTenantProfileModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
-              </div>
-              {loadingProfile ? (
-                <div className="text-center py-8">Loading...</div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex justify-center">
-                    {tenantApplication?.photo ? (
-                      <img src={tenantApplication.photo} alt="Profile" className="w-32 h-32 rounded-full object-cover border-4 border-slate-200" />
-                    ) : (
-                      <div className="w-32 h-32 rounded-full bg-slate-200 flex items-center justify-center text-4xl font-bold text-slate-500">
-                        {selectedProfileTenant.name?.charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                  </div>
-                  <div className="border-t pt-4">
-                    <h3 className="font-semibold text-lg mb-2">Personal Information</h3>
-                    <div className="space-y-2 text-sm">
-                      <p><strong>Name:</strong> {selectedProfileTenant.name}</p>
-                      <p><strong>Phone:</strong> {selectedProfileTenant.phone}</p>
-                      <p><strong>Email:</strong> {selectedProfileTenant.email || 'N/A'}</p>
-                      <p><strong>Move-in Date:</strong> {formatDate(selectedProfileTenant.move_in_date)}</p>
-                      <p><strong>Rent Amount:</strong> {formatCurrency(selectedProfileTenant.rent_amount)}</p>
-                      <p><strong>Paid:</strong> {formatCurrency(selectedProfileTenant.total_paid || 0)}</p>
-                      <p><strong>Pending:</strong> {formatCurrency(selectedProfileTenant.pending_amount || 0)}</p>
-                    </div>
-                  </div>
-                  {tenantApplication && (
-                    <div className="border-t pt-4">
-                      <h3 className="font-semibold text-lg mb-2">Documents (from Application)</h3>
-                      <div className="space-y-3">
-                        {tenantApplication.id_proof && (
-                          <div>
-                            <p className="text-sm font-medium">ID Proof:</p>
-                            <button onClick={() => { setScreenshotUrl(tenantApplication.id_proof); setShowScreenshotModal(true); }} className="mt-1">
-                              <img src={tenantApplication.id_proof} alt="ID Proof" className="max-h-40 rounded border cursor-pointer hover:opacity-80" />
-                            </button>
-                          </div>
-                        )}
-                        {tenantApplication.photo && (
-                          <div>
-                            <p className="text-sm font-medium">Passport Photo:</p>
-                            <button onClick={() => { setScreenshotUrl(tenantApplication.photo); setShowScreenshotModal(true); }}>
-                              <img src={tenantApplication.photo} alt="Photo" className="max-h-40 rounded border cursor-pointer hover:opacity-80" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {!tenantApplication && (
-                    <div className="border-t pt-4 text-center text-gray-500">
-                      No application documents found. This tenant was added manually.
-                    </div>
-                  )}
-                  <div className="flex justify-end">
-                    <button onClick={() => setShowTenantProfileModal(false)} className="bg-slate-800 text-white px-4 py-2 rounded-lg">Close</button>
-                  </div>
-                </div>
-              )}
+              <div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold text-slate-800">Tenant Profile</h2><button onClick={() => setShowTenantProfileModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button></div>
+              {loadingProfile ? <div className="text-center py-8">Loading...</div> : <div className="space-y-4"><div className="flex justify-center">{tenantApplication?.photo ? <img src={tenantApplication.photo} alt="Profile" className="w-32 h-32 rounded-full object-cover border-4 border-slate-200" /> : <div className="w-32 h-32 rounded-full bg-slate-200 flex items-center justify-center text-4xl font-bold text-slate-500">{selectedProfileTenant.name?.charAt(0).toUpperCase()}</div>}</div><div className="border-t pt-4"><h3 className="font-semibold text-lg mb-2">Personal Information</h3><div className="space-y-2 text-sm"><p><strong>Name:</strong> {selectedProfileTenant.name}</p><p><strong>Phone:</strong> {selectedProfileTenant.phone}</p><p><strong>Email:</strong> {selectedProfileTenant.email || 'N/A'}</p><p><strong>Move-in Date:</strong> {formatDate(selectedProfileTenant.move_in_date)}</p><p><strong>Rent Amount:</strong> {formatCurrency(selectedProfileTenant.rent_amount)}</p><p><strong>Paid:</strong> {formatCurrency(selectedProfileTenant.total_paid || 0)}</p><p><strong>Pending:</strong> {formatCurrency(selectedProfileTenant.pending_amount || 0)}</p></div></div>{tenantApplication && (<div className="border-t pt-4"><h3 className="font-semibold text-lg mb-2">Documents (from Application)</h3><div className="space-y-3">{tenantApplication.id_proof && (<div><p className="text-sm font-medium">ID Proof:</p><button onClick={() => { setScreenshotUrl(tenantApplication.id_proof); setShowScreenshotModal(true); }} className="mt-1"><img src={tenantApplication.id_proof} alt="ID Proof" className="max-h-40 rounded border cursor-pointer hover:opacity-80" /></button></div>)}{tenantApplication.photo && (<div><p className="text-sm font-medium">Passport Photo:</p><button onClick={() => { setScreenshotUrl(tenantApplication.photo); setShowScreenshotModal(true); }}><img src={tenantApplication.photo} alt="Photo" className="max-h-40 rounded border cursor-pointer hover:opacity-80" /></button></div>)}</div></div>)}{!tenantApplication && (<div className="border-t pt-4 text-center text-gray-500">No application documents found. This tenant was added manually.</div>)}<div className="flex justify-end"><button onClick={() => setShowTenantProfileModal(false)} className="bg-slate-800 text-white px-4 py-2 rounded-lg">Close</button></div></div>}
             </div>
           </div>
         )}
