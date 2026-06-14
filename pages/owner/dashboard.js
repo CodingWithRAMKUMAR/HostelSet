@@ -79,10 +79,15 @@ export default function OwnerDashboard() {
   const [tenantApplication, setTenantApplication] = useState(null)
   const [loadingProfile, setLoadingProfile] = useState(false)
 
+  // ========== ALERTS STATE ==========
+  const [alerts, setAlerts] = useState([])
+  const alertTimeoutRef = useRef({})
+
   const previousDataRef = useRef({
     vacateRequests: [],
     pendingRentPayments: [],
-    complaints: []
+    complaints: [],
+    preBookings: []
   })
 
   const sharingTypes = [
@@ -147,26 +152,53 @@ export default function OwnerDashboard() {
     }
   }
 
-  const showNewEventNotifications = (newData, oldData, type) => {
-    if (newData.length > oldData.length) {
-      const newItems = newData.filter(n => !oldData.some(o => o.id === n.id))
-      newItems.forEach(item => {
-        if (type === 'vacate') {
-          toast(`🚪 New vacate request from ${item.tenant_name}`, { duration: 8000, icon: '🔔' })
-        } else if (type === 'payment') {
-          toast(`💰 New pending payment from ${item.tenants?.name || 'tenant'}`, { duration: 8000, icon: '💸' })
-        } else if (type === 'complaint') {
-          toast(`🔧 New complaint: ${item.title} from ${item.tenant_name}`, { duration: 8000, icon: '⚠️' })
-        }
-      })
-    }
-  }
-
   const startAutoRefresh = () => {
     if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
     autoRefreshRef.current = setInterval(() => {
       loadData(true)
     }, 15000)
+  }
+
+  // ========== ALERT HANDLING ==========
+  const addAlert = (message, type, linkTab, linkId = null) => {
+    const id = Date.now() + Math.random()
+    const newAlert = { id, message, type, linkTab, linkId, createdAt: Date.now() }
+    setAlerts(prev => [newAlert, ...prev])
+    // Auto-remove after 30 seconds
+    alertTimeoutRef.current[id] = setTimeout(() => {
+      setAlerts(prev => prev.filter(a => a.id !== id))
+      delete alertTimeoutRef.current[id]
+    }, 30000)
+  }
+
+  const removeAlert = (id) => {
+    if (alertTimeoutRef.current[id]) clearTimeout(alertTimeoutRef.current[id])
+    setAlerts(prev => prev.filter(a => a.id !== id))
+  }
+
+  const handleAlertClick = (alert) => {
+    if (alert.linkTab) {
+      setActiveTab(alert.linkTab)
+      if (alert.linkId && alert.linkTab === 'vacate') {
+        // Optional: scroll to that request
+      }
+    }
+    removeAlert(alert.id)
+  }
+
+  // Detect new items and create alerts
+  const detectNewItems = (newData, oldData, type, tab) => {
+    if (newData.length > oldData.length) {
+      const newItems = newData.filter(n => !oldData.some(o => o.id === n.id))
+      newItems.forEach(item => {
+        let message = ''
+        if (type === 'vacate') message = `🚪 New vacate request from ${item.tenant_name}`
+        else if (type === 'payment') message = `💰 New pending payment from ${item.tenants?.name || 'tenant'}`
+        else if (type === 'complaint') message = `🔧 New complaint: ${item.title} from ${item.tenant_name}`
+        else if (type === 'prebooking') message = `📋 New pre‑booking from ${item.name}`
+        if (message) addAlert(message, type, tab, item.id)
+      })
+    }
   }
 
   useEffect(() => {
@@ -201,6 +233,7 @@ export default function OwnerDashboard() {
     initDashboard()
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
+      Object.values(alertTimeoutRef.current).forEach(clearTimeout)
     }
   }, [])
 
@@ -275,7 +308,8 @@ export default function OwnerDashboard() {
           .in('status', ['pending', 'approved'])
           .order('created_at', { ascending: false })
         
-        showNewEventNotifications(vacateData || [], previousDataRef.current.vacateRequests, 'vacate')
+        // Alerts for vacate
+        detectNewItems(vacateData || [], previousDataRef.current.vacateRequests, 'vacate', 'vacate')
         previousDataRef.current.vacateRequests = vacateData || []
         setVacateRequests(vacateData || [])
         setStats(prev => ({ ...prev, pendingVacate: vacateData?.filter(v => v.status === 'pending').length || 0 }))
@@ -285,6 +319,8 @@ export default function OwnerDashboard() {
           .select('*, rooms(room_number)')
           .eq('property_id', propertyData.id)
           .order('created_at', { ascending: false })
+        detectNewItems(preBookingsData || [], previousDataRef.current.preBookings, 'prebooking', 'pre-bookings')
+        previousDataRef.current.preBookings = preBookingsData || []
         setPreBookings(preBookingsData || [])
 
         const { data: complaintsData } = await supabase
@@ -293,12 +329,12 @@ export default function OwnerDashboard() {
           .eq('property_id', propertyData.id)
           .eq('status', 'open')
           .order('created_at', { ascending: false })
-        showNewEventNotifications(complaintsData || [], previousDataRef.current.complaints, 'complaint')
+        detectNewItems(complaintsData || [], previousDataRef.current.complaints, 'complaint', 'complaints')
         previousDataRef.current.complaints = complaintsData || []
         setComplaints(complaintsData || [])
         setStats(prev => ({ ...prev, totalComplaints: complaintsData?.length || 0 }))
 
-        showNewEventNotifications(pendingPayments || [], previousDataRef.current.pendingRentPayments, 'payment')
+        detectNewItems(pendingPayments || [], previousDataRef.current.pendingRentPayments, 'payment', 'rent-payments')
         previousDataRef.current.pendingRentPayments = pendingPayments || []
 
         const { data: noticesData } = await supabase
@@ -569,12 +605,16 @@ export default function OwnerDashboard() {
     finally { setIsSubmitting(false) }
   }
 
-  // ========== UPDATED PRE‑BOOKING APPROVAL (with tenant creation) ==========
+  // ========== FIXED: Approve pre‑booking with double-click prevention ==========
   const approvePreBooking = async (bookingId, roomId, userId) => {
+    if (isSubmitting) {
+      toast.error('Please wait, already processing')
+      return
+    }
     if (!confirm('Approve this pre‑booking? The user will become a tenant and the room will be reserved.')) return
     setIsSubmitting(true)
     try {
-      // 1. Fetch the pre‑booking with room details
+      // 1. Fetch the pre‑booking with room details, and check status
       const { data: booking, error: fetchError } = await supabase
         .from('pre_bookings')
         .select('*, rooms(monthly_rent, capacity, room_number, property_id)')
@@ -582,15 +622,13 @@ export default function OwnerDashboard() {
         .single()
       if (fetchError) throw fetchError
       if (!booking) throw new Error('Pre‑booking not found')
-      
-      // 2. Verify payment is still pending
-      if (booking.payment_status !== 'pending') {
-        toast.error('Payment already processed or not pending')
+      if (booking.status !== 'pending' || booking.payment_status !== 'pending') {
+        toast.error('This pre‑booking has already been processed or payment not pending')
         return
       }
-
-      // 3. Mark payment as success and approve pre‑booking
-      await supabase
+      
+      // 2. Mark payment as success and approve pre‑booking
+      const { error: updateError } = await supabase
         .from('pre_bookings')
         .update({ 
           payment_status: 'success',
@@ -598,10 +636,11 @@ export default function OwnerDashboard() {
           updated_at: new Date().toISOString()
         })
         .eq('id', bookingId)
+      if (updateError) throw updateError
 
-      // 4. Create tenant record
+      // 3. Create tenant record (only once)
       const moveInDate = new Date()
-      moveInDate.setDate(moveInDate.getDate() + 7) // move-in 7 days from approval
+      moveInDate.setDate(moveInDate.getDate() + 7)
       const totalPaid = booking.pre_booking_fee_amount || 0
       const pendingAmount = booking.rooms.monthly_rent - totalPaid
 
@@ -621,7 +660,7 @@ export default function OwnerDashboard() {
       })
       if (tenantError) throw tenantError
 
-      // 5. Update room occupancy
+      // 4. Update room occupancy
       const { data: roomData } = await supabase
         .from('rooms')
         .select('current_occupants, capacity')
@@ -645,6 +684,7 @@ export default function OwnerDashboard() {
   }
 
   const rejectPreBooking = async (bookingId) => {
+    if (isSubmitting) return
     if (!confirm('Reject this pre‑booking? The user will be notified.')) return
     setIsSubmitting(true)
     try {
@@ -657,6 +697,46 @@ export default function OwnerDashboard() {
     } catch (error) {
       console.error('Reject pre-booking error:', error)
       toast.error('Failed to reject pre‑booking')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // ========== FIXED: Approve application with double-click prevention ==========
+  const approveApplication = async (appId) => {
+    if (isSubmitting) {
+      toast.error('Please wait, already processing')
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      const { data: app } = await supabase.from('applications').select('*').eq('id', appId).single()
+      if (!app || app.status !== 'pending') {
+        toast.error('This application has already been processed')
+        return
+      }
+      const { data: room } = await supabase.from('rooms').select('*').eq('id', app.room_id).single()
+      let userId = null
+      const { data: existingUser } = await supabase.from('users').select('id').eq('phone', app.phone).maybeSingle()
+      if (existingUser) userId = existingUser.id
+      else {
+        const { data: newUser } = await supabase.from('users').insert({ phone: app.phone, email: app.email, full_name: app.name, role: 'tenant', is_active: true }).select().single()
+        userId = newUser.id
+      }
+      await supabase.from('tenants').insert({
+        user_id: userId, property_id: app.property_id, room_id: app.room_id, name: app.name,
+        phone: app.phone, email: app.email, rent_amount: room.monthly_rent,
+        pending_amount: room.monthly_rent, total_paid: 0, rent_status: 'pending',
+        move_in_date: app.expected_move_in || new Date().toISOString().split('T')[0], status: 'active'
+      })
+      const newOccupants = (room.current_occupants || 0) + 1
+      await supabase.from('rooms').update({ current_occupants: newOccupants, status: newOccupants >= room.capacity ? 'occupied' : 'vacant' }).eq('id', app.room_id)
+      await supabase.from('applications').update({ status: 'approved', processed_at: new Date() }).eq('id', appId)
+      toast.success('Application approved!')
+      await loadData()
+    } catch (error) {
+      console.error('Approve error:', error)
+      toast.error('Failed to approve: ' + error.message)
     } finally {
       setIsSubmitting(false)
     }
@@ -929,33 +1009,6 @@ export default function OwnerDashboard() {
     finally { setIsSubmitting(false) }
   }
 
-  const approveApplication = async (appId) => {
-    setIsSubmitting(true)
-    try {
-      const { data: app } = await supabase.from('applications').select('*').eq('id', appId).single()
-      const { data: room } = await supabase.from('rooms').select('*').eq('id', app.room_id).single()
-      let userId = null
-      const { data: existingUser } = await supabase.from('users').select('id').eq('phone', app.phone).maybeSingle()
-      if (existingUser) userId = existingUser.id
-      else {
-        const { data: newUser } = await supabase.from('users').insert({ phone: app.phone, email: app.email, full_name: app.name, role: 'tenant', is_active: true }).select().single()
-        userId = newUser.id
-      }
-      await supabase.from('tenants').insert({
-        user_id: userId, property_id: app.property_id, room_id: app.room_id, name: app.name,
-        phone: app.phone, email: app.email, rent_amount: room.monthly_rent,
-        pending_amount: room.monthly_rent, total_paid: 0, rent_status: 'pending',
-        move_in_date: app.expected_move_in || new Date().toISOString().split('T')[0], status: 'active'
-      })
-      const newOccupants = (room.current_occupants || 0) + 1
-      await supabase.from('rooms').update({ current_occupants: newOccupants, status: newOccupants >= room.capacity ? 'occupied' : 'vacant' }).eq('id', app.room_id)
-      await supabase.from('applications').update({ status: 'approved', processed_at: new Date() }).eq('id', appId)
-      toast.success('Application approved!')
-      await loadData()
-    } catch (error) { toast.error('Failed to approve') }
-    finally { setIsSubmitting(false) }
-  }
-
   const deleteRoom = async (id) => {
     const room = rooms.find(r => r.id === id)
     if (room.current_occupants > 0) { toast.error(`Cannot delete room with ${room.current_occupants} occupants`); return }
@@ -1049,6 +1102,32 @@ export default function OwnerDashboard() {
               Review now
             </button>
           </p>
+        </div>
+      )}
+
+      {/* ========== NEW ALERTS SECTION ========== */}
+      {alerts.length > 0 && (
+        <div className="bg-white border-b border-gray-200 px-4 py-2 shadow-sm">
+          <div className="container mx-auto">
+            <h3 className="text-sm font-semibold text-slate-600 mb-2">🔔 Notifications</h3>
+            <div className="space-y-1">
+              {alerts.map(alert => (
+                <div
+                  key={alert.id}
+                  className="flex items-center justify-between bg-gray-50 hover:bg-gray-100 rounded-lg px-3 py-2 cursor-pointer transition"
+                  onClick={() => handleAlertClick(alert)}
+                >
+                  <span className="text-sm">{alert.message}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeAlert(alert.id); }}
+                    className="text-gray-400 hover:text-gray-600 text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
