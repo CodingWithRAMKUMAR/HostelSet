@@ -504,7 +504,7 @@ export default function PropertyDetail() {
     }
   }
 
-  // ========== STRICT PRE‑BOOKING FLOW ==========
+  // ========== STRICT PRE‑BOOKING FLOW (empty form) ==========
   const openPrebookModal = (roomId, vacateDate) => {
     if (!user) {
       toast.error('Please login to pre‑book a room', { duration: 5000 })
@@ -512,10 +512,11 @@ export default function PropertyDetail() {
       return
     }
     setPrebookRoomId(roomId)
+    // Empty form – no auto‑fill
     setPrebookForm({
-      name: user.full_name || '',
-      phone: user.phone || '',
-      email: user.email || '',
+      name: '',
+      phone: '',
+      email: '',
       move_in_date: vacateDate || '',
       message: ''
     })
@@ -570,8 +571,8 @@ export default function PropertyDetail() {
         email: prebookForm.email.trim(),
         message: prebookForm.message?.trim() || null,
         expected_move_in_date: prebookForm.move_in_date,
-        status: 'pending',             // waiting for owner approval
-        payment_status: 'pending',     // waiting for owner verification
+        status: 'pending',
+        payment_status: 'pending',
         pre_booking_fee_amount: ownerSettings.pre_booking_fee,
         payment_screenshot: screenshotUrl,
         payment_transaction_id: prebookTransactionId || null,
@@ -944,7 +945,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Form Modal (Step 1 – strict) */}
+      {/* Pre‑booking Form Modal (Step 1 – empty form) */}
       <AnimatePresence>
         {showPrebookModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookModal(false)}>
