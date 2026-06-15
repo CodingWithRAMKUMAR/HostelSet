@@ -618,7 +618,7 @@ export default function PropertyDetail() {
     }
   }
 
-  // ========== PRE‑BOOKING FLOW (Same as apply but with pre‑booking fee) ==========
+  // ========== PRE‑BOOKING FLOW (Strict, login required, payment proof) ==========
   const openPrebookModal = (roomId, vacateDate) => {
     if (!user) {
       toast.error('Please login to pre‑book a room', { duration: 5000 })
@@ -636,7 +636,6 @@ export default function PropertyDetail() {
     setPrebookIdProof(null)
     setPrebookPhoto(null)
     setAgreeTerms(false)
-    // Reset validation states
     setPrebookPhoneError('')
     setPrebookEmailError('')
     setPrebookPhoneValid(false)
@@ -690,7 +689,7 @@ export default function PropertyDetail() {
     const cleanPhone = cleanPhoneNumber(prebookForm.phone)
     setPrebookPaymentSubmitting(true)
     try {
-      // Upload ID proof and photo
+      // Upload ID proof, photo, and payment screenshot
       const idProofUrl = await uploadFile(prebookIdProof, 'prebook_id')
       const photoUrl = await uploadFile(prebookPhoto, 'prebook_photo')
       const screenshotUrl = await uploadFile(prebookPaymentScreenshot, 'prebook_pay')
@@ -1083,7 +1082,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Form Modal (Same as Apply Form) */}
+      {/* Pre‑booking Form Modal (Step 1 – full application form) */}
       <AnimatePresence>
         {showPrebookModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookModal(false)}>
@@ -1156,7 +1155,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Payment Modal */}
+      {/* Pre‑booking Payment Modal (Step 2) */}
       <AnimatePresence>
         {showPrebookPaymentModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookPaymentModal(false)}>
