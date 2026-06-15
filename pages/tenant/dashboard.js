@@ -40,30 +40,28 @@ export default function TenantDashboard() {
   const [showScreenshotModal, setShowScreenshotModal] = useState(false)
   const [screenshotUrl, setScreenshotUrl] = useState('')
 
-  // ========== UNIVERSAL UPI INTENT (works for all apps, including Google Pay & PhonePe) ==========
+  // ========== ROOM CHANGE REQUEST STATE ==========
+  const [showRoomChangeModal, setShowRoomChangeModal] = useState(false)
+  const [availableRooms, setAvailableRooms] = useState([])
+  const [selectedNewRoom, setSelectedNewRoom] = useState('')
+  const [roomChangeReason, setRoomChangeReason] = useState('')
+  const [pendingRoomChangeRequest, setPendingRoomChangeRequest] = useState(null)
+
+  // ========== UNIVERSAL UPI INTENT ==========
   const initiateUPIPayment = (upiId, amount) => {
-    // Remove any spaces and ensure a valid UPI identifier
     const cleanUpi = upiId.trim()
     if (!cleanUpi) {
       toast.error('Owner UPI ID not available')
       return
     }
-
     const payee = encodeURIComponent(cleanUpi)
     const payeeName = encodeURIComponent('HostelSet Rent')
     const amt = encodeURIComponent(amount)
     const cu = encodeURIComponent('INR')
-    // Optional: transaction reference (can help with tracking)
     const tr = encodeURIComponent(`RENT_${Date.now()}`)
     const tn = encodeURIComponent(`Rent payment for ${tenant?.name || 'tenant'}`)
-
-    // Build the standard NPCI UPI intent URL
     const upiUrl = `upi://pay?pa=${payee}&pn=${payeeName}&am=${amt}&cu=${cu}&tr=${tr}&tn=${tn}`
-
-    // Open the UPI intent
     window.location.href = upiUrl
-
-    // Fallback: if the intent doesn't trigger after 2.5 seconds, copy the UPI ID
     setTimeout(() => {
       if (document.hasFocus()) {
         navigator.clipboard.writeText(cleanUpi)
@@ -272,6 +270,15 @@ export default function TenantDashboard() {
         .order('payment_date', { ascending: false })
       setPaymentHistory(paymentsData || [])
 
+      // ========== LOAD PENDING ROOM CHANGE REQUEST ==========
+      const { data: pendingChange } = await supabase
+        .from('room_change_requests')
+        .select('*')
+        .eq('tenant_id', tenantData.id)
+        .eq('status', 'pending')
+        .maybeSingle()
+      setPendingRoomChangeRequest(pendingChange)
+
       const rentStatus = getRentStatus()
       const lastAlertDate = localStorage.getItem('lastTenantAlertDate')
       const today = new Date().toDateString()
@@ -444,6 +451,77 @@ export default function TenantDashboard() {
     }
   }
 
+  // ========== ROOM CHANGE REQUEST FUNCTIONS ==========
+  const fetchAvailableRooms = async () => {
+    try {
+      // Get all rooms in the same property that are not the current room, not full, and not already having a pending room change request from another tenant
+      const { data: allRooms, error } = await supabase
+        .from('rooms')
+        .select('id, room_number, sharing_type, monthly_rent, capacity, current_occupants')
+        .eq('property_id', tenant.property_id)
+        .neq('id', tenant.room_id)
+      if (error) throw error
+
+      // Get rooms that have pending change requests (to exclude them)
+      const { data: pendingChanges } = await supabase
+        .from('room_change_requests')
+        .select('new_room_id')
+        .eq('property_id', tenant.property_id)
+        .eq('status', 'pending')
+      const pendingRoomIds = pendingChanges?.map(p => p.new_room_id) || []
+
+      const available = allRooms.filter(room => 
+        room.current_occupants < room.capacity && 
+        !pendingRoomIds.includes(room.id)
+      )
+      setAvailableRooms(available)
+    } catch (error) {
+      console.error('Fetch available rooms error:', error)
+      toast.error('Failed to load available rooms')
+    }
+  }
+
+  const openRoomChangeModal = () => {
+    fetchAvailableRooms()
+    setSelectedNewRoom('')
+    setRoomChangeReason('')
+    setShowRoomChangeModal(true)
+  }
+
+  const submitRoomChangeRequest = async () => {
+    if (!selectedNewRoom) {
+      toast.error('Please select a room')
+      return
+    }
+    if (pendingRoomChangeRequest) {
+      toast.error('You already have a pending room change request')
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      const { error } = await supabase
+        .from('room_change_requests')
+        .insert({
+          tenant_id: tenant.id,
+          property_id: tenant.property_id,
+          old_room_id: tenant.room_id,
+          new_room_id: selectedNewRoom,
+          reason: roomChangeReason || null,
+          status: 'pending',
+          requested_at: new Date().toISOString()
+        })
+      if (error) throw error
+      toast.success('Room change request submitted! Owner will review it.')
+      setShowRoomChangeModal(false)
+      await refreshData()
+    } catch (error) {
+      console.error('Room change request error:', error)
+      toast.error('Failed to submit request: ' + error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleLogout = () => {
     localStorage.clear()
     toast.success('Logged out successfully')
@@ -522,6 +600,12 @@ export default function TenantDashboard() {
         <div className="flex flex-wrap gap-3 mb-8">
           <button onClick={() => setShowPaymentModal(true)} className="bg-green-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-green-700 transition">💳 Pay Rent (UPI)</button>
           <button onClick={() => setShowComplaintModal(true)} className="border-2 border-orange-300 text-orange-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition">📝 Raise Complaint</button>
+          {/* Room Change Button */}
+          {!pendingRoomChangeRequest ? (
+            <button onClick={openRoomChangeModal} className="border-2 border-blue-300 text-blue-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-50 transition">🔄 Request Room Change</button>
+          ) : (
+            <button disabled className="border-2 border-gray-300 text-gray-500 px-6 py-2.5 rounded-full text-sm font-semibold cursor-not-allowed">⏳ Room Change Pending</button>
+          )}
           {existingVacateRequest ? (
             <button onClick={cancelVacateRequest} className="border-2 border-yellow-500 text-yellow-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition">❌ Cancel Vacate Request</button>
           ) : (
@@ -545,7 +629,7 @@ export default function TenantDashboard() {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="grid md:grid-cols-2 gap-6">
-            <div className="bg-white rounded-xl border p-6"><h3 className="font-semibold mb-4">🏠 Your Room Details</h3><div className="space-y-3"><div className="flex justify-between py-2 border-b"><span className="text-gray-500">Room Number:</span><span>{room?.room_number}</span></div><div className="flex justify-between py-2 border-b"><span>Sharing Type:</span><span>{getSharingDetails(room?.sharing_type)?.label}</span></div><div className="flex justify-between py-2 border-b"><span>Monthly Rent:</span><span className="text-green-600 font-semibold">{formatCurrency(room?.monthly_rent)}</span></div><div className="flex justify-between py-2 border-b"><span>Move-in Date:</span><span>{formatDate(tenant?.move_in_date)}</span></div><div className="flex justify-between py-2 border-b"><span>Status:</span><span className={`px-2 py-1 rounded-full text-xs ${tenant?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{tenant?.status === 'active' ? 'Active' : 'Notice Period'}</span></div></div></div>
+            <div className="bg-white rounded-xl border p-6"><h3 className="font-semibold mb-4">🏠 Your Room Details</h3><div className="space-y-3"><div className="flex justify-between py-2 border-b"><span className="text-gray-500">Room Number:</span><span>{room?.room_number}</span></div><div className="flex justify-between py-2 border-b"><span>Sharing Type:</span><span>{getSharingDetails(room?.sharing_type)?.label}</span></div><div className="flex justify-between py-2 border-b"><span>Monthly Rent:</span><span className="text-green-600 font-semibold">{formatCurrency(room?.monthly_rent)}</span></div><div className="flex justify-between py-2 border-b"><span>Move-in Date:</span><span>{formatDate(tenant?.move_in_date)}</span></div><div className="flex justify-between py-2 border-b"><span>Status:</span><span className={`px-2 py-1 rounded-full text-xs ${tenant?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{tenant?.status === 'active' ? 'Active' : 'Notice Period'}</span></div>{pendingRoomChangeRequest && (<div className="mt-3 p-2 bg-blue-50 rounded-lg text-sm text-blue-700">⏳ Room change request pending approval to Room {pendingRoomChangeRequest.new_room_id}.</div>)}</div></div>
             <div className="bg-white rounded-xl border p-6"><h3 className="font-semibold mb-4">🏢 Property Information</h3><div className="space-y-3"><div className="flex justify-between py-2 border-b"><span className="text-gray-500">Property Name:</span><span>{property?.name}</span></div><div className="flex justify-between py-2 border-b"><span>Address:</span><span className="text-right">{property?.address}, {property?.city}</span></div><div className="flex justify-between py-2 border-b"><span>Owner Name:</span><span>{owner?.full_name || 'Not provided'}</span></div><div className="flex justify-between py-2 border-b"><span>Owner Contact:</span><span className="font-medium">{property?.contact_number || owner?.phone || 'Not provided'}</span></div></div></div>
           </div>
         )}
@@ -747,6 +831,48 @@ export default function TenantDashboard() {
                 </div>
               )}
               <button onClick={() => setShowProfileModal(false)} className="w-full mt-4 py-2 text-gray-500">Close</button>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Room Change Request Modal */}
+      <AnimatePresence>
+        {showRoomChangeModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomChangeModal(false)}>
+            <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+              <h2 className="text-2xl font-bold mb-4">🔄 Request Room Change</h2>
+              <p className="text-sm text-gray-600 mb-4">Select a new room from the same property. Owner will review and approve.</p>
+              <div className="space-y-4">
+                <select 
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl"
+                  value={selectedNewRoom}
+                  onChange={(e) => setSelectedNewRoom(e.target.value)}
+                >
+                  <option value="">Select a room</option>
+                  {availableRooms.map(room => (
+                    <option key={room.id} value={room.id}>
+                      Room {room.room_number} - {getSharingDetails(room.sharing_type)?.label} - ₹{formatCurrency(room.monthly_rent)}/month ({room.capacity - room.current_occupants} slots available)
+                    </option>
+                  ))}
+                </select>
+                <textarea
+                  placeholder="Reason for room change (optional)"
+                  rows="3"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl"
+                  value={roomChangeReason}
+                  onChange={(e) => setRoomChangeReason(e.target.value)}
+                />
+                <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
+                  ⚠️ Your request will be sent to the owner for approval. You will be notified when the owner responds.
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button onClick={submitRoomChangeRequest} disabled={isSubmitting || !selectedNewRoom} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
+                    {isSubmitting ? 'Submitting...' : 'Submit Request'}
+                  </button>
+                  <button onClick={() => setShowRoomChangeModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
+                </div>
+              </div>
             </div>
           </div>
         )}
