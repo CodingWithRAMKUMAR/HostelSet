@@ -600,7 +600,7 @@ export default function PropertyDetail() {
     }
   }
 
-  // ========== PRE‑BOOKING FLOW (No login required – same as regular application) ==========
+  // ========== PRE‑BOOKING FLOW (No login required, creates user during payment) ==========
   const openPrebookModal = (roomId, vacateDate) => {
     setPrebookRoomId(roomId)
     setPrebookForm({
@@ -666,23 +666,18 @@ export default function PropertyDetail() {
     const cleanPhone = cleanPhoneNumber(prebookForm.phone)
     setPrebookPaymentSubmitting(true)
     try {
-      // Upload ID proof, photo, and payment screenshot
-      const idProofUrl = await uploadFile(prebookIdProof, 'prebook_id')
-      const photoUrl = await uploadFile(prebookPhoto, 'prebook_photo')
-      const screenshotUrl = await uploadFile(prebookPaymentScreenshot, 'prebook_pay')
-
-      // Check if user already exists
+      // 1. Create or get user account
       let userId
       const existingUser = await findExistingUser(cleanPhone, prebookForm.email)
+      
       if (existingUser) {
         userId = existingUser.id
-        // Update user details if needed
         await supabase.from('users').update({
           full_name: prebookForm.name,
           email: prebookForm.email,
+          phone: cleanPhone,
         }).eq('id', userId)
       } else {
-        // Create new user account
         const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).charAt(0).toUpperCase()
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: prebookForm.email,
@@ -697,16 +692,20 @@ export default function PropertyDetail() {
           full_name: prebookForm.name,
           phone: cleanPhone,
           role: 'tenant',
-          is_active: true,
-          id_proof: idProofUrl,
-          photo: photoUrl
+          is_active: true
         })
-        // Send password reset email so user can set password later
+        // Send password reset email
         await supabase.auth.resetPasswordForEmail(prebookForm.email, {
           redirectTo: `${window.location.origin}/reset-password`,
         }).catch(e => console.warn('Reset email not sent:', e))
       }
 
+      // 2. Upload documents
+      const idProofUrl = await uploadFile(prebookIdProof, 'prebook_id')
+      const photoUrl = await uploadFile(prebookPhoto, 'prebook_photo')
+      const screenshotUrl = await uploadFile(prebookPaymentScreenshot, 'prebook_pay')
+
+      // 3. Insert pre‑booking record with valid user_id
       const prebookData = {
         property_id: id,
         room_id: prebookRoomId,
@@ -727,7 +726,8 @@ export default function PropertyDetail() {
       }
       const { error } = await supabase.from('pre_bookings').insert(prebookData)
       if (error) throw error
-      toast.success('Pre‑booking request sent! Owner will verify payment and approve.')
+      
+      toast.success('Pre‑booking request sent! Owner will verify payment and approve. Check your email to set password.')
       setShowPrebookPaymentModal(false)
       setPrebookForm({ name: '', phone: '', email: '', move_in_date: '', message: '' })
       setPrebookRoomId(null)
@@ -1091,7 +1091,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Form Modal (Step 1 – full application, no login) */}
+      {/* Pre‑booking Form Modal (Step 1) */}
       <AnimatePresence>
         {showPrebookModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookModal(false)}>
@@ -1200,7 +1200,7 @@ export default function PropertyDetail() {
                   <input type="file" accept="image/*" onChange={e => handleFileChange(e, setPrebookPaymentScreenshot)} className="w-full" required />
                 </div>
                 <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
-                  After payment, your account will be created and owner will verify your pre‑booking.
+                  After payment, upload the screenshot and submit. Owner will verify and approve your pre‑booking. A password set email will be sent to your email.
                 </div>
                 <button onClick={submitPreBookingPayment} disabled={prebookPaymentSubmitting} className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-50">
                   {prebookPaymentSubmitting ? 'Submitting...' : 'Submit Payment Proof'}
