@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { motion, useScroll, useTransform, useAnimation, useInView } from 'framer-motion'
+import { motion, useScroll, useTransform, useAnimation, useInView, AnimatePresence } from 'framer-motion'
 import { supabase } from '../lib/supabase'
 import { formatCurrency } from '../lib/utils'
-import { useRef } from 'react'
 
 export default function Home() {
   const [scrolled, setScrolled] = useState(false)
@@ -14,25 +13,25 @@ export default function Home() {
   const [animatedStats, setAnimatedStats] = useState({ properties: 0, rooms: 0, tenants: 0 })
 
   const { scrollYProgress } = useScroll()
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.2], [1, 0])
+  const heroY = useTransform(scrollYProgress, [0, 0.5], [0, 150])
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0])
 
-  // Animate stats when they load
+  // Animate stats on load
   useEffect(() => {
     if (stats.properties > 0) {
       const duration = 2000
-      const interval = 20
-      const steps = duration / interval
+      const steps = duration / 20
       let step = 0
-      const timer = setInterval(() => {
+      const interval = setInterval(() => {
         step++
         setAnimatedStats({
           properties: Math.min(stats.properties, Math.floor((step / steps) * stats.properties)),
           rooms: Math.min(stats.rooms, Math.floor((step / steps) * stats.rooms)),
           tenants: Math.min(stats.tenants, Math.floor((step / steps) * stats.tenants)),
         })
-        if (step >= steps) clearInterval(timer)
-      }, interval)
-      return () => clearInterval(timer)
+        if (step >= steps) clearInterval(interval)
+      }, 20)
+      return () => clearInterval(interval)
     }
   }, [stats])
 
@@ -58,7 +57,7 @@ export default function Home() {
             rooms (id, monthly_rent)
           `)
           .order('created_at', { ascending: false })
-          .limit(8)
+          .limit(6)
 
         const filtered = (props || []).filter(p => p.rooms && p.rooms.length > 0)
         setProperties(filtered)
@@ -88,31 +87,39 @@ export default function Home() {
   }, [])
 
   const features = [
-    { icon: '💰', title: 'Easy Rent Collection', desc: 'Auto reminders and online payments' },
-    { icon: '🔒', title: 'Secure & Safe', desc: 'Bank-grade security for all data' },
-    { icon: '⏰', title: 'Real-time Updates', desc: 'Instant notifications and tracking' },
-    { icon: '👥', title: 'Tenant Management', desc: 'Easy onboarding and tracking' },
-    { icon: '🏢', title: 'Multi-Property', desc: 'Manage multiple properties' },
-    { icon: '⭐', title: '24/7 Support', desc: 'Dedicated support team' },
+    { icon: '💰', title: 'Easy Rent Collection', desc: 'Auto reminders & online payments', gradient: 'from-amber-500 to-orange-500' },
+    { icon: '🔒', title: 'Bank-grade Security', desc: 'Your data is always protected', gradient: 'from-emerald-500 to-teal-500' },
+    { icon: '⚡', title: 'Real-time Updates', desc: 'Instant notifications & tracking', gradient: 'from-blue-500 to-cyan-500' },
+    { icon: '👥', title: 'Tenant Management', desc: 'Easy onboarding & tracking', gradient: 'from-purple-500 to-pink-500' },
+    { icon: '🏢', title: 'Multi-Property', desc: 'Manage all properties in one place', gradient: 'from-indigo-500 to-purple-500' },
+    { icon: '🎯', title: 'Smart Insights', desc: 'Analytics to grow your business', gradient: 'from-rose-500 to-pink-500' },
   ]
 
   const testimonials = [
-    { name: 'Rajesh Kumar', role: 'Property Owner', text: 'HOSTELSET transformed my business. Rent collection is now effortless!', rating: 5 },
-    { name: 'Priya Sharma', role: 'Tenant', text: 'Found my perfect PG within days. The platform is super easy to use.', rating: 5 },
-    { name: 'Amit Patel', role: 'Owner', text: 'The analytics dashboard helps me track everything in real time.', rating: 5 },
+    { name: 'Rajesh Kumar', role: 'Property Owner', text: 'HOSTELSET transformed my business. Rent collection is now effortless!', rating: 5, avatar: '👨' },
+    { name: 'Priya Sharma', role: 'Tenant', text: 'Found my perfect PG within days. The platform is super easy to use.', rating: 5, avatar: '👩' },
+    { name: 'Amit Patel', role: 'Owner', text: 'The analytics dashboard helps me track everything in real time.', rating: 5, avatar: '👨' },
   ]
 
   // Animation variants
   const fadeUp = {
     hidden: { opacity: 0, y: 40 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.6 } }
+    visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: 'easeOut' } }
+  }
+  const fadeLeft = {
+    hidden: { opacity: 0, x: -50 },
+    visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: 'easeOut' } }
+  }
+  const fadeRight = {
+    hidden: { opacity: 0, x: 50 },
+    visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: 'easeOut' } }
   }
   const staggerContainer = {
     hidden: { opacity: 0 },
     visible: { opacity: 1, transition: { staggerChildren: 0.15 } }
   }
 
-  const SectionWrapper = ({ children }) => {
+  const Section = ({ children, className = '' }) => {
     const ref = useRef(null)
     const isInView = useInView(ref, { once: true, amount: 0.2 })
     const controls = useAnimation()
@@ -125,7 +132,7 @@ export default function Home() {
         initial="hidden"
         animate={controls}
         variants={fadeUp}
-        className="py-24 px-4"
+        className={`py-24 px-4 ${className}`}
       >
         {children}
       </motion.section>
@@ -133,14 +140,19 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white overflow-x-hidden">
       {/* ========== NAVBAR ========== */}
-      <nav className={`fixed top-0 w-full z-50 transition-all duration-500 ${
-        scrolled 
-          ? 'bg-white/95 backdrop-blur-xl shadow-lg py-3' 
-          : 'bg-transparent py-5'
-      }`}>
-        <div className="container mx-auto px-4 md:px-8">
+      <motion.nav 
+        initial={{ y: -100 }}
+        animate={{ y: 0 }}
+        transition={{ duration: 0.5 }}
+        className={`fixed top-0 w-full z-50 transition-all duration-500 ${
+          scrolled 
+            ? 'bg-white/90 backdrop-blur-xl shadow-lg py-3' 
+            : 'bg-transparent py-5'
+        }`}
+      >
+        <div className="container mx-auto px-6 md:px-10">
           <div className="flex justify-between items-center">
             <Link href="/" className="flex items-center gap-2 group">
               <motion.div 
@@ -155,13 +167,15 @@ export default function Home() {
               </span>
             </Link>
             
-            <div className="hidden md:flex items-center gap-6">
-              <Link href="/properties" className="text-gray-600 hover:text-slate-800 transition font-medium">Browse</Link>
-              <Link href="/owner/register-property" className="text-gray-600 hover:text-slate-800 transition font-medium">List Property</Link>
+            <div className="hidden md:flex items-center gap-8">
+              <Link href="/properties" className="text-gray-600 hover:text-slate-800 transition font-medium relative group">
+                Browse Properties
+                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-slate-800 transition-all group-hover:w-full"></span>
+              </Link>
               <Link href="/login" className="text-gray-600 hover:text-slate-800 transition font-medium">Login</Link>
               <Link 
                 href="/register" 
-                className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-5 py-2.5 rounded-full text-sm font-semibold hover:shadow-xl transition-all hover:scale-105"
+                className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:shadow-xl transition-all hover:scale-105"
               >
                 Get Started
               </Link>
@@ -175,36 +189,37 @@ export default function Home() {
             </button>
           </div>
         </div>
-      </nav>
+      </motion.nav>
 
       {/* Mobile menu */}
-      {mobileMenuOpen && (
-        <motion.div 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          className="fixed top-20 left-4 right-4 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl z-40 md:hidden border border-gray-100 p-4"
-        >
-          <div className="flex flex-col gap-3">
-            <Link href="/properties" className="py-3 text-center font-medium" onClick={() => setMobileMenuOpen(false)}>Browse</Link>
-            <Link href="/owner/register-property" className="py-3 text-center font-medium" onClick={() => setMobileMenuOpen(false)}>List Property</Link>
-            <Link href="/login" className="py-3 text-center font-medium" onClick={() => setMobileMenuOpen(false)}>Login</Link>
-            <Link href="/register" className="bg-slate-800 text-white py-3 text-center rounded-xl font-medium" onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
-          </div>
-        </motion.div>
-      )}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-20 left-4 right-4 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl z-40 md:hidden border border-gray-100 p-4"
+          >
+            <div className="flex flex-col gap-3">
+              <Link href="/properties" className="py-3 text-center font-medium" onClick={() => setMobileMenuOpen(false)}>Browse Properties</Link>
+              <Link href="/login" className="py-3 text-center font-medium" onClick={() => setMobileMenuOpen(false)}>Login</Link>
+              <Link href="/register" className="bg-slate-800 text-white py-3 text-center rounded-xl font-medium" onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ========== HERO SECTION ========== */}
       <section className="relative min-h-screen flex items-center overflow-hidden">
         {/* Animated gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-indigo-50/30" />
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 via-white to-purple-50" />
         <div className="absolute inset-0">
-          <div className="absolute top-20 left-10 w-96 h-96 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" />
-          <div className="absolute bottom-20 right-10 w-96 h-96 bg-yellow-300 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse delay-1000" />
-          <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse delay-500" />
+          <div className="absolute top-20 left-10 w-96 h-96 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse" />
+          <div className="absolute bottom-20 right-10 w-96 h-96 bg-yellow-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse delay-1000" />
+          <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse delay-500" />
         </div>
 
-        <div className="relative container mx-auto px-4 md:px-8 pt-32 pb-20">
+        <div className="relative container mx-auto px-6 md:px-10 pt-32 pb-20">
           <div className="max-w-5xl mx-auto text-center">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
@@ -224,7 +239,10 @@ export default function Home() {
                 <span className="text-sm font-medium text-gray-700">Trusted by 500+ Property Owners</span>
               </motion.div>
               
-              <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight">
+              <motion.h1 
+                className="text-6xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight"
+                variants={fadeUp}
+              >
                 <span className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
                   Modern PG &
                 </span>
@@ -232,13 +250,19 @@ export default function Home() {
                 <span className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
                   Hostel Management
                 </span>
-              </h1>
+              </motion.h1>
               
-              <p className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto leading-relaxed">
+              <motion.p 
+                className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto leading-relaxed"
+                variants={fadeUp}
+              >
                 Set Your Hostel, Simplify Life. India's most trusted platform for PG and hostel management with modern tools and real-time insights.
-              </p>
+              </motion.p>
               
-              <div className="flex flex-col sm:flex-row gap-5 justify-center mb-16">
+              <motion.div 
+                className="flex flex-col sm:flex-row gap-5 justify-center mb-16"
+                variants={fadeUp}
+              >
                 <Link 
                   href="/register" 
                   className="group relative bg-gradient-to-r from-slate-800 to-slate-700 text-white px-10 py-4 rounded-full font-semibold hover:shadow-2xl transition-all duration-300 hover:scale-105 overflow-hidden"
@@ -249,12 +273,12 @@ export default function Home() {
                   </span>
                 </Link>
                 <Link 
-                  href="/owner/register-property" 
+                  href="/properties" 
                   className="border-2 border-gray-300 text-gray-700 px-10 py-4 rounded-full font-semibold hover:border-slate-800 hover:bg-white/50 transition-all duration-300 hover:scale-105 backdrop-blur-sm"
                 >
-                  List Your Property
+                  Browse Properties
                 </Link>
-              </div>
+              </motion.div>
             </motion.div>
 
             {/* Animated Stats */}
@@ -262,33 +286,38 @@ export default function Home() {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.4 }}
-              className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-3xl mx-auto"
+              className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl mx-auto"
             >
-              <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 text-center border border-gray-100 shadow-sm">
-                <div className="text-4xl mb-2">🏢</div>
-                <div className="text-3xl font-bold text-slate-800">{animatedStats.properties}+</div>
-                <div className="text-gray-500 mt-1">Properties Listed</div>
-              </div>
-              <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 text-center border border-gray-100 shadow-sm">
-                <div className="text-4xl mb-2">🏠</div>
-                <div className="text-3xl font-bold text-slate-800">{animatedStats.rooms}+</div>
-                <div className="text-gray-500 mt-1">Rooms Available</div>
-              </div>
-              <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 text-center border border-gray-100 shadow-sm">
-                <div className="text-4xl mb-2">👥</div>
-                <div className="text-3xl font-bold text-slate-800">{animatedStats.tenants}+</div>
-                <div className="text-gray-500 mt-1">Happy Tenants</div>
-              </div>
+              {[
+                { icon: '🏢', value: animatedStats.properties, label: 'Properties Listed' },
+                { icon: '🏠', value: animatedStats.rooms, label: 'Rooms Available' },
+                { icon: '👥', value: animatedStats.tenants, label: 'Happy Tenants' },
+              ].map((stat, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.6 + i * 0.1 }}
+                  whileHover={{ y: -5, scale: 1.05 }}
+                  className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 text-center border border-gray-100 shadow-sm hover:shadow-xl transition-all"
+                >
+                  <div className="text-4xl mb-2">{stat.icon}</div>
+                  <div className="text-3xl font-bold text-slate-800">{stat.value}+</div>
+                  <div className="text-gray-500 mt-1">{stat.label}</div>
+                </motion.div>
+              ))}
             </motion.div>
           </div>
         </div>
       </section>
 
       {/* ========== FEATURED PROPERTIES ========== */}
-      <SectionWrapper>
-        <div className="container mx-auto px-4">
+      <Section>
+        <div className="container mx-auto px-6 md:px-10">
           <div className="text-center mb-12">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">Featured Properties</h2>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+              Featured Properties
+            </h2>
             <p className="text-xl text-gray-500 max-w-2xl mx-auto">Discover handpicked PG and hostels near you</p>
           </div>
           {loading ? (
@@ -305,34 +334,34 @@ export default function Home() {
               initial="hidden"
               whileInView="visible"
               viewport={{ once: true }}
-              className="grid md:grid-cols-2 lg:grid-cols-4 gap-6"
+              className="grid md:grid-cols-2 lg:grid-cols-3 gap-8"
             >
               {properties.map((property) => (
                 <motion.div
                   key={property.id}
                   variants={fadeUp}
-                  whileHover={{ y: -8 }}
+                  whileHover={{ y: -10 }}
                   className="group bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100"
                 >
-                  <div className="relative h-48 overflow-hidden">
+                  <div className="relative h-56 overflow-hidden">
                     {property.photos && property.photos[0] ? (
                       <img 
                         src={property.photos[0]} 
                         alt={property.name}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-5xl bg-gradient-to-br from-gray-100 to-gray-200">
+                      <div className="w-full h-full flex items-center justify-center text-6xl bg-gradient-to-br from-gray-100 to-gray-200">
                         🏠
                       </div>
                     )}
-                    <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-full text-xs font-semibold">
+                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-semibold">
                       {property.rooms?.length} rooms
                     </div>
                   </div>
-                  <div className="p-5">
-                    <h3 className="text-lg font-bold text-slate-800 mb-1 line-clamp-1">{property.name}</h3>
-                    <p className="text-gray-500 text-sm mb-2 flex items-center gap-1">
+                  <div className="p-6">
+                    <h3 className="text-xl font-bold text-slate-800 mb-1">{property.name}</h3>
+                    <p className="text-gray-500 text-sm mb-3 flex items-center gap-1">
                       <span>📍</span> {property.city}
                     </p>
                     <div className="flex justify-between items-center">
@@ -341,9 +370,9 @@ export default function Home() {
                       </span>
                       <Link 
                         href={`/property/${property.id}`}
-                        className="text-slate-600 hover:text-slate-800 text-sm font-medium flex items-center gap-1"
+                        className="text-slate-600 hover:text-slate-800 flex items-center gap-1 text-sm font-medium transition group-hover:gap-2"
                       >
-                        View <span>→</span>
+                        View Details <span>→</span>
                       </Link>
                     </div>
                   </div>
@@ -357,11 +386,11 @@ export default function Home() {
             </Link>
           </div>
         </div>
-      </SectionWrapper>
+      </Section>
 
       {/* ========== FEATURES GRID ========== */}
-      <SectionWrapper>
-        <div className="container mx-auto px-4 bg-gray-50 rounded-3xl py-16">
+      <Section className="bg-gradient-to-br from-gray-50 to-white">
+        <div className="container mx-auto px-6 md:px-10">
           <div className="text-center mb-12">
             <h2 className="text-4xl md:text-5xl font-bold mb-4">Why Choose HOSTELSET?</h2>
             <p className="text-xl text-gray-500">Everything you need to manage your PG business efficiently</p>
@@ -377,21 +406,23 @@ export default function Home() {
               <motion.div
                 key={idx}
                 variants={fadeUp}
-                whileHover={{ y: -5, scale: 1.02 }}
-                className="bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition-all duration-300"
+                whileHover={{ y: -8, scale: 1.02 }}
+                className="bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100"
               >
-                <div className="text-4xl mb-4">{feature.icon}</div>
-                <h3 className="text-xl font-bold text-slate-800 mb-2">{feature.title}</h3>
-                <p className="text-gray-500">{feature.desc}</p>
+                <div className={`text-5xl mb-5 bg-gradient-to-r ${feature.gradient} bg-clip-text text-transparent`}>
+                  {feature.icon}
+                </div>
+                <h3 className="text-xl font-bold text-slate-800 mb-3">{feature.title}</h3>
+                <p className="text-gray-500 leading-relaxed">{feature.desc}</p>
               </motion.div>
             ))}
           </motion.div>
         </div>
-      </SectionWrapper>
+      </Section>
 
       {/* ========== TESTIMONIALS ========== */}
-      <SectionWrapper>
-        <div className="container mx-auto px-4">
+      <Section>
+        <div className="container mx-auto px-6 md:px-10">
           <div className="text-center mb-12">
             <h2 className="text-4xl md:text-5xl font-bold mb-4">What Our Users Say</h2>
             <p className="text-xl text-gray-500">Join thousands of satisfied property owners and tenants</p>
@@ -407,19 +438,25 @@ export default function Home() {
               <motion.div
                 key={idx}
                 variants={fadeUp}
+                whileHover={{ y: -5 }}
                 className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100"
               >
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="text-3xl">{t.avatar}</div>
+                  <div>
+                    <div className="font-semibold text-slate-800">{t.name}</div>
+                    <div className="text-sm text-gray-500">{t.role}</div>
+                  </div>
+                </div>
                 <div className="flex text-yellow-400 mb-3">
                   {'★'.repeat(t.rating)}{'☆'.repeat(5-t.rating)}
                 </div>
-                <p className="text-gray-600 mb-4">"{t.text}"</p>
-                <div className="font-semibold text-slate-800">{t.name}</div>
-                <div className="text-sm text-gray-500">{t.role}</div>
+                <p className="text-gray-600 leading-relaxed">"{t.text}"</p>
               </motion.div>
             ))}
           </motion.div>
         </div>
-      </SectionWrapper>
+      </Section>
 
       {/* ========== CTA SECTION ========== */}
       <section className="relative py-24 overflow-hidden">
@@ -428,7 +465,7 @@ export default function Home() {
           <div className="absolute top-0 left-0 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl animate-pulse" />
           <div className="absolute bottom-0 right-0 w-96 h-96 bg-pink-500 rounded-full mix-blend-multiply filter blur-3xl animate-pulse delay-1000" />
         </div>
-        <div className="relative container mx-auto px-4 text-center">
+        <div className="relative container mx-auto px-6 md:px-10 text-center">
           <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">Ready to Get Started?</h2>
           <p className="text-xl text-gray-300 mb-10 max-w-2xl mx-auto">
             Join thousands of property owners who have streamlined their business with HOSTELSET.
@@ -437,8 +474,8 @@ export default function Home() {
             <Link href="/register" className="bg-white text-slate-800 px-8 py-3 rounded-full font-semibold hover:shadow-xl transition hover:scale-105">
               Start Free Trial
             </Link>
-            <Link href="/owner/register-property" className="border-2 border-white/30 text-white px-8 py-3 rounded-full font-semibold hover:bg-white/10 transition">
-              List Your Property
+            <Link href="/properties" className="border-2 border-white/30 text-white px-8 py-3 rounded-full font-semibold hover:bg-white/10 transition">
+              Browse Properties
             </Link>
           </div>
         </div>
@@ -446,21 +483,21 @@ export default function Home() {
 
       {/* ========== FOOTER ========== */}
       <footer className="bg-gray-900 text-gray-400 pt-16 pb-8">
-        <div className="container mx-auto px-4">
+        <div className="container mx-auto px-6 md:px-10">
           <div className="grid md:grid-cols-4 gap-8 mb-12">
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-2xl">🏠</span>
                 <span className="text-xl font-bold text-white">HOSTELSET</span>
               </div>
-              <p className="text-sm">India's most trusted PG & hostel management platform. Set Your Hostel, Simplify Life.</p>
+              <p className="text-sm leading-relaxed">India's most trusted PG & hostel management platform. Set Your Hostel, Simplify Life.</p>
             </div>
             <div>
-              <h4 className="text-white font-semibold mb-4">Product</h4>
+              <h4 className="text-white font-semibold mb-4">Explore</h4>
               <ul className="space-y-2 text-sm">
                 <li><Link href="/properties" className="hover:text-white transition">Browse Properties</Link></li>
-                <li><Link href="/owner/register-property" className="hover:text-white transition">List Property</Link></li>
-                <li><Link href="/features" className="hover:text-white transition">Features</Link></li>
+                <li><Link href="/login" className="hover:text-white transition">Login</Link></li>
+                <li><Link href="/register" className="hover:text-white transition">Register</Link></li>
               </ul>
             </div>
             <div>
