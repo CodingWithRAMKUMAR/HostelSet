@@ -203,39 +203,62 @@ export default function OwnerDashboard() {
     }
   }
 
-  useEffect(() => {
-    const isLoggedIn = localStorage.getItem('isLoggedIn')
-    const userRole = localStorage.getItem('userRole')
-    if (!isLoggedIn || userRole !== 'owner') {
+  // ========== AUTH PERSISTENCE ==========
+  const checkAuthAndRedirect = async () => {
+    const { data: { user }, error } = await supabase.auth.getUser()
+    if (error || !user) {
+      localStorage.clear()
       router.push('/login')
-      return
+      return null
     }
-    const initDashboard = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession()
-      if (error || !session) {
-        localStorage.clear()
+    const { data: userRecord, error: roleError } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    if (roleError || !userRecord) {
+      localStorage.clear()
+      router.push('/login')
+      return null
+    }
+    return { user, role: userRecord.role }
+  }
+
+  useEffect(() => {
+    const init = async () => {
+      const auth = await checkAuthAndRedirect()
+      if (!auth) return
+      if (auth.role !== 'owner') {
         router.push('/login')
         return
       }
-      await supabase.auth.setSession(session)
+      localStorage.setItem('userId', auth.user.id)
+      localStorage.setItem('userEmail', auth.user.email || '')
+      localStorage.setItem('userName', auth.user.user_metadata?.full_name || '')
       await loadData()
       await loadSettings()
       await checkVacateAlerts()
       if (property) {
-        if (!membershipActive) {
-          if (membershipStatus === 'expired') {
-            router.push('/owner/subscribe?reason=expired')
-            return
-          }
-        } else {
-          startAutoRefresh()
+        if (!membershipActive && membershipStatus === 'expired') {
+          router.push('/owner/subscribe?reason=expired')
+          return
         }
+        startAutoRefresh()
       }
     }
-    initDashboard()
+    init()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        localStorage.clear()
+        router.push('/login')
+      } else if (event === 'TOKEN_REFRESHED') {
+        console.log('Session refreshed')
+      }
+    })
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
       Object.values(alertTimeoutRef.current).forEach(clearTimeout)
+      subscription.unsubscribe()
     }
   }, [])
 
@@ -523,6 +546,7 @@ export default function OwnerDashboard() {
   }
 
   const saveSettings = async () => {
+    if (isSubmitting) return
     if (!settings.upi_id.trim() && !settings.upi_phone.trim()) {
       toast.error('Please provide at least one UPI ID or UPI Phone Number')
       return
@@ -656,6 +680,7 @@ export default function OwnerDashboard() {
   }
 
   const confirmPayment = async (tenantId) => {
+    if (isSubmitting) return
     setIsSubmitting(true)
     try {
       const { error } = await supabase.from('tenants').update({ status: 'active' }).eq('id', tenantId)
@@ -669,6 +694,7 @@ export default function OwnerDashboard() {
   }
 
   const confirmRentPayment = async (paymentId, tenantId, amount) => {
+    if (isSubmitting) return
     setIsSubmitting(true)
     try {
       await supabase.from('payment_history').update({ status: 'success' }).eq('id', paymentId)
@@ -686,6 +712,7 @@ export default function OwnerDashboard() {
   }
 
   const rejectRentPayment = async (paymentId) => {
+    if (isSubmitting) return
     if (!confirm('Reject this payment? The record will be deleted.')) return
     setIsSubmitting(true)
     try {
@@ -888,6 +915,7 @@ export default function OwnerDashboard() {
   }
 
   const removeImage = async (imageUrl) => {
+    if (isSubmitting) return
     setIsSubmitting(true)
     try {
       const newImages = propertyImages.filter(img => img !== imageUrl)
@@ -899,6 +927,7 @@ export default function OwnerDashboard() {
   }
 
   const addRoom = async () => {
+    if (isSubmitting) return
     if (!roomForm.room_number) { toast.error('Enter room number'); return }
     if (rooms.some(r => r.room_number === roomForm.room_number)) { toast.error(`Room ${roomForm.room_number} already exists!`); return }
     setIsSubmitting(true)
@@ -923,6 +952,7 @@ export default function OwnerDashboard() {
   }
 
   const addTenant = async () => {
+    if (isSubmitting) return
     if (!formData.name || !formData.phone || !formData.email || !formData.rent_amount || !formData.room_id) {
       toast.error('Please fill all fields (Email is required)')
       return
@@ -976,6 +1006,7 @@ export default function OwnerDashboard() {
   }
 
   const deleteTenantComplete = async (tenantId, roomId, userId) => {
+    if (isSubmitting) return
     setIsSubmitting(true)
     try {
       await supabase.from('tenants').delete().eq('id', tenantId)
@@ -990,6 +1021,7 @@ export default function OwnerDashboard() {
   }
 
   const deleteTenantSoft = async (tenantId, roomId) => {
+    if (isSubmitting) return
     setIsSubmitting(true)
     try {
       await supabase.from('tenants').delete().eq('id', tenantId)
@@ -1000,6 +1032,7 @@ export default function OwnerDashboard() {
   }
 
   const postNotice = async () => {
+    if (isSubmitting) return
     if (!noticeForm.title || !noticeForm.content) { toast.error('Please fill both title and content'); return }
     setIsSubmitting(true)
     try {
@@ -1016,6 +1049,7 @@ export default function OwnerDashboard() {
   }
 
   const deleteNotice = async (noticeId) => {
+    if (isSubmitting) return
     if (!confirm('Delete this notice?')) return
     setIsSubmitting(true)
     try {
@@ -1027,6 +1061,7 @@ export default function OwnerDashboard() {
   }
 
   const collectRent = async () => {
+    if (isSubmitting) return
     if (!selectedTenant || !paymentAmount) { toast.error('Enter amount'); return }
     const amount = parseInt(paymentAmount)
     const maxAmount = selectedTenant.pending_amount || selectedTenant.rent_amount
@@ -1053,6 +1088,7 @@ export default function OwnerDashboard() {
   }
 
   const respondToComplaint = async () => {
+    if (isSubmitting) return
     if (!selectedComplaint) return
     setIsSubmitting(true)
     try {
@@ -1068,6 +1104,7 @@ export default function OwnerDashboard() {
   }
 
   const resolveComplaint = async (complaintId) => {
+    if (isSubmitting) return
     if (!confirm('Mark as resolved?')) return
     setIsSubmitting(true)
     try {
@@ -1079,6 +1116,7 @@ export default function OwnerDashboard() {
   }
 
   const approveVacateRequest = async (requestId, tenantId, roomId) => {
+    if (isSubmitting) return
     if (!confirm('Approve vacate request? Tenant will be put on notice period.')) return
     setIsSubmitting(true)
     try {
@@ -1095,6 +1133,7 @@ export default function OwnerDashboard() {
   }
 
   const deleteRoom = async (id) => {
+    if (isSubmitting) return
     const room = rooms.find(r => r.id === id)
     if (room.current_occupants > 0) { toast.error(`Cannot delete room with ${room.current_occupants} occupants`); return }
     if (!confirm(`Delete Room ${room.room_number}?`)) return
@@ -1107,7 +1146,8 @@ export default function OwnerDashboard() {
     finally { setIsSubmitting(false) }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
     localStorage.clear()
     router.push('/')
   }
@@ -1190,7 +1230,7 @@ export default function OwnerDashboard() {
         </div>
       )}
 
-      {/* ========== ALERTS SECTION ========== */}
+      {/* Alerts Section */}
       {alerts.length > 0 && (
         <div className="bg-white border-b border-gray-200 px-4 py-2 shadow-sm">
           <div className="container mx-auto">
@@ -1428,7 +1468,8 @@ export default function OwnerDashboard() {
                       </div>
                       <button
                         onClick={() => { setSelectedComplaint(c); setShowComplaintResponseModal(true) }}
-                        className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700"
+                        disabled={isSubmitting}
+                        className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700 disabled:opacity-50"
                       >
                         Respond
                       </button>
@@ -1441,7 +1482,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Rooms Tab (unchanged) */}
+        {/* Rooms Tab */}
         {activeTab === 'rooms' && (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {rooms.map((room) => {
@@ -1501,7 +1542,7 @@ export default function OwnerDashboard() {
                       </div>
                     )}
                     <div className="mt-3 pt-2 flex justify-end">
-                      <button onClick={(e) => { e.stopPropagation(); deleteRoom(room.id) }} className="text-red-400 hover:text-red-600 text-xs">
+                      <button onClick={(e) => { e.stopPropagation(); deleteRoom(room.id) }} disabled={isSubmitting} className="text-red-400 hover:text-red-600 text-xs disabled:opacity-50">
                         Delete Room
                       </button>
                     </div>
@@ -1519,7 +1560,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab – FIXED: No unclosed JSX */}
+        {/* Tenants Tab */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1577,15 +1618,15 @@ export default function OwnerDashboard() {
                       </td>
                       <td className="px-4 py-3">
                         {isPaymentPending ? (
-                          <button onClick={() => { setConfirmingTenant(t); setShowPaymentConfirmModal(true) }} className="bg-yellow-600 text-white px-3 py-1 rounded text-xs mr-2">Confirm Payment</button>
+                          <button onClick={() => { setConfirmingTenant(t); setShowPaymentConfirmModal(true) }} disabled={isSubmitting} className="bg-yellow-600 text-white px-3 py-1 rounded text-xs mr-2 disabled:opacity-50">Confirm Payment</button>
                         ) : (
                           <>
-                            <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button>
-                            <button onClick={() => fetchTenantPayments(t)} className="bg-blue-600 text-white px-3 py-1 rounded text-xs mr-2">📜 History</button>
-                            <button onClick={() => fetchTenantApplication(t)} className="bg-purple-600 text-white px-3 py-1 rounded text-xs mr-2">👤 Profile</button>
+                            <button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} disabled={isSubmitting} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2 disabled:opacity-50">Collect</button>
+                            <button onClick={() => fetchTenantPayments(t)} disabled={isSubmitting} className="bg-blue-600 text-white px-3 py-1 rounded text-xs mr-2 disabled:opacity-50">📜 History</button>
+                            <button onClick={() => fetchTenantApplication(t)} disabled={isSubmitting} className="bg-purple-600 text-white px-3 py-1 rounded text-xs mr-2 disabled:opacity-50">👤 Profile</button>
                           </>
                         )}
-                        <button onClick={() => { setTenantToDelete(t); setShowConfirmDeleteModal(true) }} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition">Delete</button>
+                        <button onClick={() => { setTenantToDelete(t); setShowConfirmDeleteModal(true) }} disabled={isSubmitting} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition disabled:opacity-50">Delete</button>
                       </td>
                     </tr>
                   )
@@ -1600,7 +1641,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Rent Payments Tab (unchanged) */}
+        {/* Rent Payments Tab */}
         {activeTab === 'rent-payments' && (
           <div className="space-y-4">
             {pendingRentPayments.length === 0 && (
@@ -1616,22 +1657,20 @@ export default function OwnerDashboard() {
                   {p.upi_transaction_id && <p className="text-xs text-gray-500">UTR: {p.upi_transaction_id}</p>}
                   {p.payment_screenshot && (
                     <div className="mt-2">
-                      <button onClick={() => { setScreenshotUrl(p.payment_screenshot); setShowScreenshotModal(true); }}>
-                        <img src={p.payment_screenshot} alt="Payment proof" className="max-h-32 rounded-lg border cursor-pointer hover:opacity-80 transition" />
-                      </button>
+                      <button onClick={() => { setScreenshotUrl(p.payment_screenshot); setShowScreenshotModal(true); }} className="text-blue-600 underline text-sm">View Screenshot</button>
                     </div>
                   )}
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => confirmRentPayment(p.id, p.tenant_id, p.amount)} disabled={isSubmitting} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition">Received</button>
-                  <button onClick={() => rejectRentPayment(p.id)} disabled={isSubmitting} className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition">Not Received</button>
+                  <button onClick={() => confirmRentPayment(p.id, p.tenant_id, p.amount)} disabled={isSubmitting} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50">Received</button>
+                  <button onClick={() => rejectRentPayment(p.id)} disabled={isSubmitting} className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition disabled:opacity-50">Not Received</button>
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Payment History Tab (unchanged) */}
+        {/* Payment History Tab */}
         {activeTab === 'payment-history' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1674,7 +1713,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Pre‑bookings Tab (unchanged) */}
+        {/* Pre‑bookings Tab */}
         {activeTab === 'pre-bookings' && (
           <div className="space-y-4">
             {preBookings.filter(b => b.status === 'pending' && b.payment_status === 'pending').length === 0 && (
@@ -1703,14 +1742,14 @@ export default function OwnerDashboard() {
                     <button
                       onClick={() => approvePreBooking(booking.id, booking.room_id, booking.user_id)}
                       disabled={isSubmitting}
-                      className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition"
+                      className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50"
                     >
                       Approve & Create Tenant
                     </button>
                     <button
                       onClick={() => rejectPreBooking(booking.id)}
                       disabled={isSubmitting}
-                      className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition"
+                      className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition disabled:opacity-50"
                     >
                       Reject
                     </button>
@@ -1721,7 +1760,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Complaints Tab (unchanged) */}
+        {/* Complaints Tab */}
         {activeTab === 'complaints' && (
           <div className="space-y-4">
             {complaints.map(c => (
@@ -1738,8 +1777,8 @@ export default function OwnerDashboard() {
                     {c.admin_response && <p className="text-sm text-green-600 mt-2 bg-green-50 p-2 rounded">Response: {c.admin_response}</p>}
                   </div>
                   <div className="flex gap-2">
-                    {c.status === 'open' && (<button onClick={() => { setSelectedComplaint(c); setShowComplaintResponseModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-sm">Respond</button>)}
-                    {c.status === 'in_progress' && (<button onClick={() => resolveComplaint(c.id)} className="bg-green-600 text-white px-3 py-1 rounded text-sm">Resolve</button>)}
+                    {c.status === 'open' && (<button onClick={() => { setSelectedComplaint(c); setShowComplaintResponseModal(true) }} disabled={isSubmitting} className="bg-slate-800 text-white px-3 py-1 rounded text-sm disabled:opacity-50">Respond</button>)}
+                    {c.status === 'in_progress' && (<button onClick={() => resolveComplaint(c.id)} disabled={isSubmitting} className="bg-green-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50">Resolve</button>)}
                   </div>
                 </div>
                 <div className="mt-3">
@@ -1753,7 +1792,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Vacate Tab (unchanged) */}
+        {/* Vacate Tab */}
         {activeTab === 'vacate' && (
           <div className="space-y-4">
             {vacateRequests.map(req => {
@@ -1777,7 +1816,7 @@ export default function OwnerDashboard() {
                       {req.reason && <p className="text-sm text-gray-500 mt-1">Reason: {req.reason}</p>}
                     </div>
                     {isPending && (
-                      <button onClick={() => approveVacateRequest(req.id, req.tenant_id, req.room_id)} className="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-700 transition">Approve</button>
+                      <button onClick={() => approveVacateRequest(req.id, req.tenant_id, req.room_id)} disabled={isSubmitting} className="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-700 transition disabled:opacity-50">Approve</button>
                     )}
                   </div>
                 </div>
@@ -1787,7 +1826,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* ========== ROOM CHANGE REQUESTS TAB ========== */}
+        {/* Room Change Requests Tab */}
         {activeTab === 'room-change' && (
           <div className="space-y-4">
             {roomChangeRequests.length === 0 ? (
@@ -1846,7 +1885,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Applications Tab (unchanged) */}
+        {/* Applications Tab */}
         {activeTab === 'applications' && (
           <div className="space-y-4">
             {applications.map(app => (
@@ -1857,20 +1896,20 @@ export default function OwnerDashboard() {
                   {app.message && <p className="text-sm text-gray-600 mt-1">💬 {app.message}</p>}
                   <p className="text-xs text-gray-400 mt-1">Applied: {formatDate(app.created_at)}</p>
                 </div>
-                <button onClick={(e) => { e.stopPropagation(); approveApplication(app.id) }} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition">Approve →</button>
+                <button onClick={(e) => { e.stopPropagation(); approveApplication(app.id) }} disabled={isSubmitting} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50">Approve →</button>
               </div>
             ))}
             {applications.length === 0 && <div className="text-center py-12 bg-gray-50 rounded-xl"><div className="text-5xl mb-3">📋</div><p className="text-gray-500">No pending applications</p></div>}
           </div>
         )}
 
-        {/* Notices Tab (unchanged) */}
+        {/* Notices Tab */}
         {activeTab === 'notices' && (
           <div className="space-y-4">
-            <button onClick={() => setShowNoticeModal(true)} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold mb-4 hover:bg-slate-700 transition">+ Post New Notice</button>
+            <button onClick={() => setShowNoticeModal(true)} disabled={isSubmitting} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold mb-4 hover:bg-slate-700 transition disabled:opacity-50">+ Post New Notice</button>
             {notices.map(notice => (
               <div key={notice.id} className={`bg-white rounded-xl border p-4 ${notice.is_urgent ? 'border-red-200 bg-red-50' : 'border-gray-100'} relative group`}>
-                <button onClick={() => deleteNotice(notice.id)} className="absolute top-4 right-4 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition">🗑️ Delete</button>
+                <button onClick={() => deleteNotice(notice.id)} disabled={isSubmitting} className="absolute top-4 right-4 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition disabled:opacity-50">🗑️ Delete</button>
                 <div className="flex items-center gap-2 mb-2 pr-12">
                   <h3 className="font-semibold text-slate-800">{notice.title}</h3>
                   {notice.is_urgent && <span className="px-2 py-1 bg-red-500 text-white rounded-full text-xs">URGENT</span>}
@@ -1885,9 +1924,8 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* ========== MODALS (all existing modals remain unchanged) ========== */}
-
-      {/* Confirm Delete Modal (unchanged) */}
+      {/* ========== MODALS ========== */}
+      {/* Confirm Delete Modal */}
       <AnimatePresence>
         {showConfirmDeleteModal && tenantToDelete && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmDeleteModal(false)}>
@@ -1914,7 +1952,7 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Add Tenant Modal (unchanged) */}
+      {/* Add Tenant Modal */}
       <AnimatePresence>
         {showAddModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowAddModal(false)}>
@@ -1955,7 +1993,7 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Add Room Modal (unchanged) */}
+      {/* Add Room Modal */}
       <AnimatePresence>
         {showRoomModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomModal(false)}>
@@ -1968,7 +2006,7 @@ export default function OwnerDashboard() {
                 </select>
                 <input type="number" placeholder="Monthly Rent (₹) *" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={roomForm.monthly_rent} onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})} />
                 <div className="flex gap-3 mt-6">
-                  <button onClick={addRoom} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Add Room</button>
+                  <button onClick={addRoom} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">Add Room</button>
                   <button onClick={() => setShowRoomModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
                 </div>
               </div>
@@ -1977,7 +2015,7 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Collect Rent Modal (unchanged) */}
+      {/* Collect Rent Modal */}
       <AnimatePresence>
         {showPaymentModal && selectedTenant && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -1999,7 +2037,7 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Post Notice Modal (unchanged) */}
+      {/* Post Notice Modal */}
       <AnimatePresence>
         {showNoticeModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowNoticeModal(false)}>
@@ -2029,7 +2067,7 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Settings Modal (unchanged) */}
+      {/* Settings Modal */}
       <AnimatePresence>
         {showSettingsModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSettingsModal(false)}>
@@ -2048,7 +2086,7 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Complaint Response Modal (unchanged) */}
+      {/* Complaint Response Modal */}
       <AnimatePresence>
         {showComplaintResponseModal && selectedComplaint && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComplaintResponseModal(false)}>
@@ -2057,13 +2095,13 @@ export default function OwnerDashboard() {
               <p className="text-sm text-gray-500 mb-2">From: {selectedComplaint.tenant_name}</p>
               <p className="text-sm text-gray-600 mb-4">"{selectedComplaint.title}"</p>
               <textarea placeholder="Your response..." rows="4" className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4" value={complaintResponse} onChange={(e) => setComplaintResponse(e.target.value)} />
-              <div className="flex gap-3"><button onClick={respondToComplaint} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold">Send Response</button><button onClick={() => setShowComplaintResponseModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div>
+              <div className="flex gap-3"><button onClick={respondToComplaint} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">Send Response</button><button onClick={() => setShowComplaintResponseModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button></div>
             </div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Room Details Modal (unchanged) */}
+      {/* Room Details Modal */}
       <AnimatePresence>
         {showRoomDetailsModal && selectedRoom && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomDetailsModal(false)}>
@@ -2071,14 +2109,14 @@ export default function OwnerDashboard() {
               <div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold text-slate-800">Room {selectedRoom.room_number} Details</h2><button onClick={() => setShowRoomDetailsModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button></div>
               <div className="grid md:grid-cols-2 gap-6">
                 <div><h3 className="font-semibold text-slate-800 mb-3">Room Information</h3><div className="space-y-2 text-sm"><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Room Number:</span><span className="font-semibold text-slate-700">{selectedRoom.room_number}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Sharing Type:</span><span className="font-semibold text-slate-700">{getSharingDetails(selectedRoom.sharing_type)?.label}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Monthly Rent:</span><span className="font-semibold text-slate-700">{formatCurrency(selectedRoom.monthly_rent)}</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Capacity:</span><span className="font-semibold text-slate-700">{selectedRoom.capacity} persons</span></div><div className="flex justify-between py-2 border-b border-gray-100"><span className="text-gray-500">Current Occupants:</span><span className="font-semibold text-slate-700">{selectedRoom.current_occupants}</span></div></div></div>
-                <div><h3 className="font-semibold text-slate-800 mb-3">Current Residents</h3><div className="space-y-3">{getTenantsInRoom(selectedRoom.id).map(tenant => (<div key={tenant.id} className="bg-gray-50 rounded-lg p-3"><div className="flex justify-between items-start"><div><p className="font-semibold text-slate-800">{tenant.name}</p><p className="text-xs text-gray-500">📞 {tenant.phone}</p><p className="text-xs text-gray-500 mt-1">Move-in: {formatDate(tenant.move_in_date)}</p></div><div className="text-right"><p className="text-sm font-semibold text-slate-700">{formatCurrency(tenant.rent_amount)}/month</p><p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>{tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}</p><div className="flex gap-1 mt-1"><button onClick={() => fetchTenantPayments(tenant)} className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">📜 History</button><button onClick={() => fetchTenantApplication(tenant)} className="text-xs bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700">👤 Profile</button></div></div></div></div>))}{getTenantsInRoom(selectedRoom.id).length === 0 && <p className="text-gray-400 text-center py-4">No residents currently</p>}</div></div>
+                <div><h3 className="font-semibold text-slate-800 mb-3">Current Residents</h3><div className="space-y-3">{getTenantsInRoom(selectedRoom.id).map(tenant => (<div key={tenant.id} className="bg-gray-50 rounded-lg p-3"><div className="flex justify-between items-start"><div><p className="font-semibold text-slate-800">{tenant.name}</p><p className="text-xs text-gray-500">📞 {tenant.phone}</p><p className="text-xs text-gray-500 mt-1">Move-in: {formatDate(tenant.move_in_date)}</p></div><div className="text-right"><p className="text-sm font-semibold text-slate-700">{formatCurrency(tenant.rent_amount)}/month</p><p className={`text-xs ${tenant.rent_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>{tenant.rent_status === 'paid' ? '✅ Paid' : '⚠️ Pending'}</p><div className="flex gap-1 mt-1"><button onClick={() => fetchTenantPayments(tenant)} disabled={isSubmitting} className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 disabled:opacity-50">📜 History</button><button onClick={() => fetchTenantApplication(tenant)} disabled={isSubmitting} className="text-xs bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700 disabled:opacity-50">👤 Profile</button></div></div></div></div>))}{getTenantsInRoom(selectedRoom.id).length === 0 && <p className="text-gray-400 text-center py-4">No residents currently</p>}</div></div>
               </div>
             </div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Membership Modal (unchanged) */}
+      {/* Membership Modal */}
       <AnimatePresence>
         {showMembershipModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowMembershipModal(false)}>
@@ -2091,7 +2129,7 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Payment Confirmation Modal (unchanged) */}
+      {/* Payment Confirmation Modal */}
       <AnimatePresence>
         {showPaymentConfirmModal && confirmingTenant && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentConfirmModal(false)}>
@@ -2109,20 +2147,20 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Application Detail Modal (unchanged) */}
+      {/* Application Detail Modal */}
       <AnimatePresence>
         {showApplicationDetailModal && selectedApplication && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowApplicationDetailModal(false)}>
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-2xl font-bold mb-4">Application Details</h2>
               <div className="space-y-2 text-sm"><p><strong>Name:</strong> {selectedApplication.name}</p><p><strong>Phone:</strong> {selectedApplication.phone}</p><p><strong>Email:</strong> {selectedApplication.email || 'N/A'}</p><p><strong>Message:</strong> {selectedApplication.message || 'None'}</p><p><strong>Applied:</strong> {formatDate(selectedApplication.created_at)}</p>{selectedApplication.id_proof && (<div className="mt-3"><p className="font-semibold mb-1">ID Proof:</p><img src={selectedApplication.id_proof} alt="ID Proof" className="w-full rounded-lg max-h-48 object-cover border" /></div>)}{selectedApplication.photo && (<div className="mt-3"><p className="font-semibold mb-1">Photo:</p><img src={selectedApplication.photo} alt="Applicant Photo" className="w-full rounded-lg max-h-48 object-cover border" /></div>)}</div>
-              <div className="flex gap-3 mt-6"><button onClick={() => { setShowApplicationDetailModal(false); approveApplication(selectedApplication.id) }} className="flex-1 bg-green-600 text-white py-2 rounded-lg font-semibold hover:bg-green-700">Approve</button><button onClick={() => setShowApplicationDetailModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-2 rounded-lg font-semibold">Close</button></div>
+              <div className="flex gap-3 mt-6"><button onClick={() => { setShowApplicationDetailModal(false); approveApplication(selectedApplication.id) }} disabled={isSubmitting} className="flex-1 bg-green-600 text-white py-2 rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50">Approve</button><button onClick={() => setShowApplicationDetailModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-2 rounded-lg font-semibold">Close</button></div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Tenant Payment History Modal (unchanged) */}
+      {/* Tenant Payment History Modal */}
       <AnimatePresence>
         {showTenantPaymentsModal && selectedTenantForPayments && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowTenantPaymentsModal(false)}>
@@ -2134,7 +2172,7 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Tenant Profile Modal (unchanged) */}
+      {/* Tenant Profile Modal */}
       <AnimatePresence>
         {showTenantProfileModal && selectedProfileTenant && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowTenantProfileModal(false)}>
@@ -2169,7 +2207,7 @@ export default function OwnerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Full‑screen Screenshot Modal (unchanged) */}
+      {/* Full‑screen Screenshot Modal */}
       <AnimatePresence>
         {showScreenshotModal && screenshotUrl && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4" onClick={() => setShowScreenshotModal(false)}>
