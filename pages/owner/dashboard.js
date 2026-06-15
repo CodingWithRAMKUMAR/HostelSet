@@ -79,13 +79,13 @@ export default function OwnerDashboard() {
   const [tenantApplication, setTenantApplication] = useState(null)
   const [loadingProfile, setLoadingProfile] = useState(false)
 
-  // ========== ROOM CHANGE REQUESTS ==========
+  // Room change requests
   const [roomChangeRequests, setRoomChangeRequests] = useState([])
   const [showRoomChangeReasonModal, setShowRoomChangeReasonModal] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
   const [selectedRoomChangeRequest, setSelectedRoomChangeRequest] = useState(null)
 
-  // ========== ALERTS STATE ==========
+  // Alerts
   const [alerts, setAlerts] = useState([])
   const alertTimeoutRef = useRef({})
 
@@ -203,7 +203,6 @@ export default function OwnerDashboard() {
     }
   }
 
-  // ========== AUTH PERSISTENCE ==========
   const checkAuthAndRedirect = async () => {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) {
@@ -247,6 +246,7 @@ export default function OwnerDashboard() {
       }
     }
     init()
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         localStorage.clear()
@@ -255,10 +255,31 @@ export default function OwnerDashboard() {
         console.log('Session refreshed')
       }
     })
+
+    // ---------- LEAVE PAGE WARNING ----------
+    const handleBeforeUnload = (e) => {
+      if (localStorage.getItem('userId')) {
+        e.preventDefault()
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?'
+        return e.returnValue
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    const handleRouteChange = (url) => {
+      if (localStorage.getItem('userId') && !confirm('You will lose any unsaved data. Do you want to leave the dashboard?')) {
+        throw 'Route change cancelled'
+      }
+    }
+    router.events?.on('routeChangeStart', handleRouteChange)
+    // ---------------------------------------
+
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
       Object.values(alertTimeoutRef.current).forEach(clearTimeout)
       subscription.unsubscribe()
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      router.events?.off('routeChangeStart', handleRouteChange)
     }
   }, [])
 
@@ -332,7 +353,6 @@ export default function OwnerDashboard() {
           .eq('property_id', propertyData.id)
           .in('status', ['pending', 'approved'])
           .order('created_at', { ascending: false })
-        
         detectNewItems(vacateData || [], previousDataRef.current.vacateRequests, 'vacate', 'vacate')
         previousDataRef.current.vacateRequests = vacateData || []
         setVacateRequests(vacateData || [])
@@ -1925,6 +1945,7 @@ export default function OwnerDashboard() {
       </div>
 
       {/* ========== MODALS ========== */}
+
       {/* Confirm Delete Modal */}
       <AnimatePresence>
         {showConfirmDeleteModal && tenantToDelete && (
