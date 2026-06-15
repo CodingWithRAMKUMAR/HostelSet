@@ -25,7 +25,7 @@ export default function Home() {
           .from('properties')
           .select('id, name, city, address, photos, rooms(id, monthly_rent)')
           .order('created_at', { ascending: false })
-          .limit(8)
+          .limit(12)
         const filtered = (props || []).filter(p => p.rooms?.length > 0)
         setProperties(filtered)
         const { count: propertiesCount } = await supabase.from('properties').select('*', { count: 'exact', head: true })
@@ -98,7 +98,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ========== HERO – FIND YOUR VIBE ========== */}
+      {/* ========== HERO – "UNIQUE TEMPLATES / FIND YOUR VIBE" ========== */}
       <section className="relative min-h-screen flex items-center pt-20 bg-gradient-to-br from-purple-50 via-white to-pink-50">
         <div className="container mx-auto px-6 text-center">
           <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-5xl md:text-7xl font-black text-slate-800 mb-4">
@@ -117,12 +117,12 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto mt-16">
             <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-5 border border-gray-100 shadow-sm"><div className="text-3xl">🏢</div><div className="text-2xl font-bold text-purple-600">{stats.properties}+</div><div>Properties</div></div>
             <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-5 border border-gray-100 shadow-sm"><div className="text-3xl">🏠</div><div className="text-2xl font-bold text-purple-600">{stats.rooms}+</div><div>Rooms</div></div>
-            <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-5 border border-gray-100 shadow-sm"><div className="text-3xl">👥</div><div className="text-2xl font-bold text-purple-600">{stats.tenants}+</div><div>Tenants</div></div>
+            <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-5 border border-gray-100 shadow-sm"><div className="text-3xl">👥</div><div className="text-2xl font-bold text-purple-600">{stats.tenants}+</div><div>Happy Tenants</div></div>
           </div>
         </div>
       </section>
 
-      {/* ========== URBAN SANCTUARY – bold monochromatic ========== */}
+      {/* ========== URBAN SANCTUARY (dark minimal, full-width cards) ========== */}
       <Section className="bg-black text-white">
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter">URBAN SANCTUARY.</h2>
@@ -143,13 +143,13 @@ export default function Home() {
         </div>
       </Section>
 
-      {/* ========== RIDE THE WAVE – vibrant, wave background ========== */}
+      {/* ========== RIDE THE WAVE (gradient wave background, horizontal scroll effect) ========== */}
       <div className="relative bg-gradient-to-r from-cyan-500 to-blue-600 text-white overflow-hidden">
         <div className="absolute inset-0 opacity-20"><div className="absolute bottom-0 w-full h-20 bg-white/20 rounded-t-full animate-pulse"/></div>
         <div className="container mx-auto px-6 py-20 text-center relative z-10">
           <h2 className="text-4xl md:text-5xl font-black">🌊 RIDE THE WAVE</h2>
           <p className="text-cyan-100 mt-2 mb-10">Fresh, energetic spaces near the coast</p>
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
             {properties.slice(3,5).map(p => (
               <div key={p.id} className="bg-white/20 backdrop-blur-sm rounded-2xl p-5 flex gap-4 items-center">
                 <div className="w-24 h-24 rounded-full overflow-hidden bg-white/30">{p.photos?.[0] ? <img src={p.photos[0]} className="w-full h-full object-cover"/> : <div className="text-4xl flex items-center justify-center h-full">🌊</div>}</div>
@@ -160,7 +160,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ========== OUTDOOR REFRESH – glassmorphism, green tones ========== */}
+      {/* ========== OUTDOOR REFRESH (glassmorphism, green tones) ========== */}
       <Section className="bg-green-50">
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-4xl md:text-5xl font-bold text-green-800">🌿 OUTDOOR REFRESH</h2>
@@ -179,7 +179,7 @@ export default function Home() {
         </div>
       </Section>
 
-      {/* ========== STORIED STAYS – vintage, sepia ========== */}
+      {/* ========== STORIED STAYS (vintage, sepia, postcard style) ========== */}
       <div className="bg-amber-100 py-20" style={{ backgroundImage: 'radial-gradient(circle at 10% 20%, rgba(210,180,140,0.2) 0%, transparent 50%)' }}>
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-4xl md:text-5xl font-serif italic text-amber-900">📖 STORIED STAYS</h2>
@@ -201,7 +201,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ========== VIBRANT SOCIAL – neon, grid, community ========== */}
+      {/* ========== VIBRANT SOCIAL (neon, grid, community) ========== */}
       <Section className="bg-gradient-to-br from-fuchsia-900 to-purple-900 text-white">
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-5xl font-black bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 to-pink-300">🎉 VIBRANT SOCIAL</h2>
@@ -218,7 +218,7 @@ export default function Home() {
         </div>
       </Section>
 
-      {/* ========== PRICING CARDS (Startup Co‑stay & Heritage House) ========== */}
+      {/* ========== PRICING CARDS (Startup Co‑stay & Heritage House – $100) ========== */}
       <div className="py-20 bg-white">
         <div className="container mx-auto px-6">
           <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
