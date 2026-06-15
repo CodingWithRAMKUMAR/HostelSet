@@ -11,11 +11,22 @@ export default function Home() {
   const [stats, setStats] = useState({ properties: 0, rooms: 0, tenants: 0 })
   const [loading, setLoading] = useState(true)
   const [animatedStats, setAnimatedStats] = useState({ properties: 0, rooms: 0, tenants: 0 })
+  const [activeTab, setActiveTab] = useState('tenant') // 'tenant' or 'owner'
+  const [currentTestimonial, setCurrentTestimonial] = useState(0)
 
   const { scrollYProgress } = useScroll()
   const heroY = useTransform(scrollYProgress, [0, 0.5], [0, 150])
   const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0])
 
+  // Auto-scroll testimonials
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTestimonial((prev) => (prev + 1) % testimonials.length)
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Animate stats on load
   useEffect(() => {
     if (stats.properties > 0) {
       const duration = 2000
@@ -40,6 +51,7 @@ export default function Home() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
+  // Fetch real data
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
@@ -94,11 +106,15 @@ export default function Home() {
   ]
 
   const testimonials = [
-    { name: 'Rajesh Kumar', role: 'Property Owner', text: 'HOSTELSET transformed my business. Rent collection is now effortless!', rating: 5, avatar: '👨' },
-    { name: 'Priya Sharma', role: 'Tenant', text: 'Found my perfect PG within days. The platform is super easy to use.', rating: 5, avatar: '👩' },
-    { name: 'Amit Patel', role: 'Owner', text: 'The analytics dashboard helps me track everything in real time.', rating: 5, avatar: '👨' },
+    { name: 'Rajesh Kumar', role: 'Property Owner', text: 'HOSTELSET transformed my business. Rent collection is now effortless!', rating: 5, avatar: '👨', type: 'owner' },
+    { name: 'Priya Sharma', role: 'Tenant', text: 'Found my perfect PG within days. The platform is super easy to use.', rating: 5, avatar: '👩', type: 'tenant' },
+    { name: 'Amit Patel', role: 'Owner', text: 'The analytics dashboard helps me track everything in real time.', rating: 5, avatar: '👨', type: 'owner' },
+    { name: 'Neha Gupta', role: 'Tenant', text: 'Safe, secure, and hassle‑free. Highly recommended!', rating: 5, avatar: '👩', type: 'tenant' },
   ]
 
+  const filteredTestimonials = testimonials.filter(t => t.type === activeTab)
+
+  // Animation variants
   const fadeUp = {
     hidden: { opacity: 0, y: 40 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: 'easeOut' } }
@@ -129,7 +145,14 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden">
+    <div className="min-h-screen overflow-x-hidden bg-white">
+      {/* Custom Cursor (optional, uncomment for premium feel) */}
+      {/* <motion.div
+        className="fixed w-6 h-6 bg-purple-500 rounded-full mix-blend-difference pointer-events-none z-[100] hidden lg:block"
+        animate={{ x: mouseX, y: mouseY }}
+        transition={{ type: "spring", damping: 30, stiffness: 200 }}
+      /> */}
+
       {/* ========== NAVBAR ========== */}
       <motion.nav 
         initial={{ y: -100 }}
@@ -198,123 +221,175 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* ========== HERO SECTION ========== */}
-      <section className="relative min-h-screen flex items-center overflow-hidden bg-gradient-to-br from-stone-50 via-white to-stone-100">
-        {/* Abstract background shapes */}
+      {/* ========== SPLIT-SCREEN HERO (Tenant / Owner) ========== */}
+      <section className="relative min-h-screen flex items-center overflow-hidden">
+        {/* Abstract animated gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 via-white to-purple-50" />
         <div className="absolute inset-0">
-          <div className="absolute top-20 left-10 w-96 h-96 bg-amber-100 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse" />
-          <div className="absolute bottom-20 right-10 w-96 h-96 bg-emerald-100 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse delay-1000" />
-          <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-stone-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse delay-500" />
+          <div className="absolute top-20 left-10 w-96 h-96 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse" />
+          <div className="absolute bottom-20 right-10 w-96 h-96 bg-yellow-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse delay-1000" />
+          <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse delay-500" />
         </div>
 
         <div className="relative container mx-auto px-6 md:px-10 pt-32 pb-20">
-          <div className="max-w-5xl mx-auto text-center">
+          {/* Animated welcome badge */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="text-center mb-8"
+          >
+            <span className="inline-block px-4 py-2 rounded-full bg-white/80 backdrop-blur-sm text-sm font-semibold text-gray-700 border border-gray-200 shadow-sm">
+              ✨ The future of PG & hostel management
+            </span>
+          </motion.div>
+
+          {/* Split decision cards */}
+          <div className="max-w-5xl mx-auto">
             <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="grid md:grid-cols-2 gap-6 mb-16"
             >
-              <motion.div 
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-                className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 mb-6 shadow-sm border border-stone-200"
+              {/* Tenant Card */}
+              <motion.div
+                whileHover={{ scale: 1.02, y: -5 }}
+                onClick={() => setActiveTab('tenant')}
+                className={`cursor-pointer rounded-3xl p-8 backdrop-blur-sm border transition-all duration-300 ${
+                  activeTab === 'tenant'
+                    ? 'bg-gradient-to-br from-purple-500 to-pink-500 text-white shadow-2xl'
+                    : 'bg-white/80 border-gray-200 hover:shadow-xl'
+                }`}
               >
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span className="text-sm font-medium text-stone-700">Trusted by 500+ Property Owners</span>
+                <div className="text-5xl mb-4">🔍</div>
+                <h3 className="text-2xl font-bold mb-2">I'm a Tenant</h3>
+                <p className={activeTab === 'tenant' ? 'text-purple-100' : 'text-gray-600'}>
+                  Find the perfect PG/hostel near you. Safe, verified, and hassle‑free.
+                </p>
               </motion.div>
-              
-              <motion.h1 
-                className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight"
-                variants={fadeUp}
+
+              {/* Owner Card */}
+              <motion.div
+                whileHover={{ scale: 1.02, y: -5 }}
+                onClick={() => setActiveTab('owner')}
+                className={`cursor-pointer rounded-3xl p-8 backdrop-blur-sm border transition-all duration-300 ${
+                  activeTab === 'owner'
+                    ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-2xl'
+                    : 'bg-white/80 border-gray-200 hover:shadow-xl'
+                }`}
               >
-                <span className="bg-gradient-to-r from-stone-800 to-stone-600 bg-clip-text text-transparent">
-                  Find your
-                </span>
-                <br />
-                <span className="bg-gradient-to-r from-emerald-700 to-teal-600 bg-clip-text text-transparent">
-                  perfect PG
-                </span>
-              </motion.h1>
-              
-              <motion.p 
-                className="text-xl text-stone-500 mb-10 max-w-2xl mx-auto leading-relaxed"
-                variants={fadeUp}
-              >
-                Hostel management simplified. Connect with trusted properties, manage rent effortlessly, and grow your business — all in one place.
-              </motion.p>
-              
-              <motion.div 
-                className="flex flex-col sm:flex-row gap-5 justify-center mb-16"
-                variants={fadeUp}
-              >
-                <Link 
-                  href="/register" 
-                  className="group relative bg-gradient-to-r from-stone-800 to-stone-700 text-white px-10 py-4 rounded-full font-semibold hover:shadow-2xl transition-all duration-300 hover:scale-105 overflow-hidden"
-                >
-                  <span className="relative z-10 flex items-center gap-2">
-                    Start Free Trial
-                    <span className="group-hover:translate-x-1 transition">→</span>
-                  </span>
-                </Link>
-                <Link 
-                  href="/properties" 
-                  className="border-2 border-stone-300 text-stone-700 px-10 py-4 rounded-full font-semibold hover:border-stone-800 hover:bg-stone-50 transition-all duration-300 hover:scale-105 backdrop-blur-sm"
-                >
-                  Browse Properties
-                </Link>
+                <div className="text-5xl mb-4">🏢</div>
+                <h3 className="text-2xl font-bold mb-2">I'm an Owner</h3>
+                <p className={activeTab === 'owner' ? 'text-emerald-100' : 'text-gray-600'}>
+                  List your property, manage tenants, and collect rent effortlessly.
+                </p>
               </motion.div>
             </motion.div>
 
-            {/* Animated Stats */}
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.4 }}
-              className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl mx-auto"
-            >
-              {[
-                { icon: '🏢', value: animatedStats.properties, label: 'Properties Listed' },
-                { icon: '🏠', value: animatedStats.rooms, label: 'Rooms Available' },
-                { icon: '👥', value: animatedStats.tenants, label: 'Happy Tenants' },
-              ].map((stat, i) => (
+            {/* Dynamic content based on selected role */}
+            <AnimatePresence mode="wait">
+              {activeTab === 'tenant' && (
                 <motion.div
-                  key={i}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.6 + i * 0.1 }}
-                  whileHover={{ y: -5, scale: 1.05 }}
-                  className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 text-center border border-stone-100 shadow-sm hover:shadow-xl transition-all"
+                  key="tenant"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.5 }}
+                  className="text-center"
                 >
-                  <div className="text-4xl mb-2">{stat.icon}</div>
-                  <div className="text-3xl font-bold text-stone-800">{stat.value}+</div>
-                  <div className="text-stone-500 mt-1">{stat.label}</div>
+                  <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight">
+                    <span className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
+                      Find your
+                    </span>
+                    <br />
+                    <span className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                      perfect PG
+                    </span>
+                  </h1>
+                  <p className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto">
+                    Discover thousands of verified properties, transparent pricing, and instant booking.
+                  </p>
+                  <Link href="/properties" className="inline-flex items-center gap-2 bg-purple-600 text-white px-8 py-4 rounded-full font-semibold hover:shadow-xl transition hover:scale-105">
+                    Browse Properties <span>→</span>
+                  </Link>
                 </motion.div>
-              ))}
-            </motion.div>
+              )}
+
+              {activeTab === 'owner' && (
+                <motion.div
+                  key="owner"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.5 }}
+                  className="text-center"
+                >
+                  <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight">
+                    <span className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
+                      Manage your
+                    </span>
+                    <br />
+                    <span className="bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+                      property empire
+                    </span>
+                  </h1>
+                  <p className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto">
+                    Automate rent collection, track occupancy, and grow your business with powerful analytics.
+                  </p>
+                  <Link href="/owner/register-property" className="inline-flex items-center gap-2 bg-emerald-600 text-white px-8 py-4 rounded-full font-semibold hover:shadow-xl transition hover:scale-105">
+                    List Your Property <span>→</span>
+                  </Link>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
+
+          {/* Animated Stats - same for both */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.6 }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl mx-auto mt-16"
+          >
+            {[
+              { icon: '🏢', value: animatedStats.properties, label: 'Properties Listed' },
+              { icon: '🏠', value: animatedStats.rooms, label: 'Rooms Available' },
+              { icon: '👥', value: animatedStats.tenants, label: 'Happy Tenants' },
+            ].map((stat, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.8 + i * 0.1 }}
+                whileHover={{ y: -5, scale: 1.05 }}
+                className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 text-center border border-gray-100 shadow-sm hover:shadow-xl transition-all"
+              >
+                <div className="text-4xl mb-2">{stat.icon}</div>
+                <div className="text-3xl font-bold text-slate-800">{stat.value}+</div>
+                <div className="text-gray-500 mt-1">{stat.label}</div>
+              </motion.div>
+            ))}
+          </motion.div>
         </div>
       </section>
 
-      {/* ========== FEATURED PROPERTIES ========== */}
+      {/* ========== FEATURED PROPERTIES (Tenant focused) ========== */}
       <Section>
         <div className="container mx-auto px-6 md:px-10">
           <div className="text-center mb-12">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-stone-800 to-stone-600 bg-clip-text text-transparent">
+            <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
               Featured Properties
             </h2>
-            <p className="text-xl text-stone-500 max-w-2xl mx-auto">Discover handpicked PG and hostels near you</p>
+            <p className="text-xl text-gray-500 max-w-2xl mx-auto">Discover handpicked PG and hostels near you</p>
           </div>
           {loading ? (
             <div className="flex justify-center py-12">
-              <div className="w-12 h-12 border-4 border-stone-200 border-t-stone-800 rounded-full animate-spin"></div>
+              <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
             </div>
           ) : properties.length === 0 ? (
-            <div className="text-center py-12 bg-stone-50 rounded-2xl">
-              <p className="text-stone-500">No properties available yet. Check back soon!</p>
+            <div className="text-center py-12 bg-gray-50 rounded-2xl">
+              <p className="text-gray-500">No properties available yet. Check back soon!</p>
             </div>
           ) : (
             <motion.div
@@ -329,7 +404,7 @@ export default function Home() {
                   key={property.id}
                   variants={fadeUp}
                   whileHover={{ y: -10 }}
-                  className="group bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-stone-100"
+                  className="group bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100"
                 >
                   <div className="relative h-56 overflow-hidden">
                     {property.photos && property.photos[0] ? (
@@ -339,26 +414,26 @@ export default function Home() {
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-6xl bg-gradient-to-br from-stone-100 to-stone-200">
+                      <div className="w-full h-full flex items-center justify-center text-6xl bg-gradient-to-br from-gray-100 to-gray-200">
                         🏠
                       </div>
                     )}
-                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-semibold text-stone-800">
+                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-semibold text-slate-800">
                       {property.rooms?.length} rooms
                     </div>
                   </div>
                   <div className="p-6">
-                    <h3 className="text-xl font-bold text-stone-800 mb-1">{property.name}</h3>
-                    <p className="text-stone-500 text-sm mb-3 flex items-center gap-1">
+                    <h3 className="text-xl font-bold text-slate-800 mb-1">{property.name}</h3>
+                    <p className="text-gray-500 text-sm mb-3 flex items-center gap-1">
                       <span>📍</span> {property.city}
                     </p>
                     <div className="flex justify-between items-center">
-                      <span className="text-emerald-600 font-bold">
+                      <span className="text-purple-600 font-bold">
                         ₹{formatCurrency(property.rooms?.[0]?.monthly_rent || 5000)}/mo
                       </span>
                       <Link 
                         href={`/property/${property.id}`}
-                        className="text-stone-600 hover:text-stone-800 flex items-center gap-1 text-sm font-medium transition group-hover:gap-2"
+                        className="text-slate-600 hover:text-slate-800 flex items-center gap-1 text-sm font-medium transition group-hover:gap-2"
                       >
                         View Details <span>→</span>
                       </Link>
@@ -369,19 +444,19 @@ export default function Home() {
             </motion.div>
           )}
           <div className="text-center mt-10">
-            <Link href="/properties" className="inline-flex items-center gap-2 text-emerald-600 font-semibold hover:gap-3 transition-all">
+            <Link href="/properties" className="inline-flex items-center gap-2 text-purple-600 font-semibold hover:gap-3 transition-all">
               Browse All Properties <span>→</span>
             </Link>
           </div>
         </div>
       </Section>
 
-      {/* ========== FEATURES GRID ========== */}
-      <Section className="bg-gradient-to-br from-stone-50 to-white">
+      {/* ========== FEATURES GRID (Owner focused) ========== */}
+      <Section className="bg-gradient-to-br from-gray-50 to-white">
         <div className="container mx-auto px-6 md:px-10">
           <div className="text-center mb-12">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4 text-stone-800">Why Choose HOSTELSET?</h2>
-            <p className="text-xl text-stone-500">Everything you need to manage your PG business efficiently</p>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4">Powerful Tools for Owners</h2>
+            <p className="text-xl text-gray-500">Everything you need to manage your PG business efficiently</p>
           </div>
           <motion.div
             variants={staggerContainer}
@@ -395,70 +470,100 @@ export default function Home() {
                 key={idx}
                 variants={fadeUp}
                 whileHover={{ y: -8, scale: 1.02 }}
-                className="bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all duration-300 border border-stone-100"
+                className="bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100"
               >
                 <div className={`text-5xl mb-5 bg-gradient-to-r ${feature.gradient} bg-clip-text text-transparent`}>
                   {feature.icon}
                 </div>
-                <h3 className="text-xl font-bold text-stone-800 mb-3">{feature.title}</h3>
-                <p className="text-stone-500 leading-relaxed">{feature.desc}</p>
+                <h3 className="text-xl font-bold text-slate-800 mb-3">{feature.title}</h3>
+                <p className="text-gray-500 leading-relaxed">{feature.desc}</p>
               </motion.div>
             ))}
           </motion.div>
         </div>
       </Section>
 
-      {/* ========== TESTIMONIALS ========== */}
+      {/* ========== TESTIMONIALS CAROUSEL ========== */}
       <Section>
         <div className="container mx-auto px-6 md:px-10">
           <div className="text-center mb-12">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4 text-stone-800">What Our Users Say</h2>
-            <p className="text-xl text-stone-500">Join thousands of satisfied property owners and tenants</p>
-          </div>
-          <motion.div
-            variants={staggerContainer}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="grid md:grid-cols-3 gap-6"
-          >
-            {testimonials.map((t, idx) => (
-              <motion.div
-                key={idx}
-                variants={fadeUp}
-                whileHover={{ y: -5 }}
-                className="bg-white rounded-2xl p-6 shadow-lg border border-stone-100"
+            <h2 className="text-4xl md:text-5xl font-bold mb-4">What Our Community Says</h2>
+            <p className="text-xl text-gray-500">Real stories from tenants and property owners</p>
+            <div className="flex justify-center gap-4 mt-6">
+              <button
+                onClick={() => setActiveTab('tenant')}
+                className={`px-6 py-2 rounded-full transition ${
+                  activeTab === 'tenant' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600'
+                }`}
               >
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="text-3xl">{t.avatar}</div>
-                  <div>
-                    <div className="font-semibold text-stone-800">{t.name}</div>
-                    <div className="text-sm text-stone-500">{t.role}</div>
-                  </div>
-                </div>
-                <div className="flex text-amber-400 mb-3">
-                  {'★'.repeat(t.rating)}{'☆'.repeat(5-t.rating)}
-                </div>
-                <p className="text-stone-600 leading-relaxed">"{t.text}"</p>
-              </motion.div>
-            ))}
-          </motion.div>
+                Tenants
+              </button>
+              <button
+                onClick={() => setActiveTab('owner')}
+                className={`px-6 py-2 rounded-full transition ${
+                  activeTab === 'owner' ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-600'
+                }`}
+              >
+                Owners
+              </button>
+            </div>
+          </div>
+          <div className="relative max-w-3xl mx-auto">
+            <AnimatePresence mode="wait">
+              {filteredTestimonials.map((testimonial, idx) => (
+                idx === currentTestimonial % filteredTestimonials.length && (
+                  <motion.div
+                    key={idx}
+                    initial={{ opacity: 0, x: 50 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -50 }}
+                    transition={{ duration: 0.5 }}
+                    className="bg-white rounded-3xl p-8 shadow-xl border border-gray-100"
+                  >
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="text-5xl">{testimonial.avatar}</div>
+                      <div>
+                        <div className="font-bold text-xl text-slate-800">{testimonial.name}</div>
+                        <div className="text-gray-500">{testimonial.role}</div>
+                      </div>
+                    </div>
+                    <div className="flex text-yellow-400 mb-4">
+                      {'★'.repeat(testimonial.rating)}{'☆'.repeat(5-testimonial.rating)}
+                    </div>
+                    <p className="text-gray-600 text-lg leading-relaxed">"{testimonial.text}"</p>
+                  </motion.div>
+                )
+              ))}
+            </AnimatePresence>
+            <div className="flex justify-center gap-2 mt-6">
+              {filteredTestimonials.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setCurrentTestimonial(idx)}
+                  className={`w-2 h-2 rounded-full transition ${
+                    idx === currentTestimonial % filteredTestimonials.length ? 'bg-purple-600 w-4' : 'bg-gray-300'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       </Section>
 
       {/* ========== CTA SECTION ========== */}
-      <section className="relative py-24 overflow-hidden bg-gradient-to-r from-stone-900 to-stone-800">
+      <section className="relative py-24 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-900 to-slate-800" />
         <div className="absolute inset-0 opacity-30">
-          <div className="absolute top-0 left-0 w-96 h-96 bg-amber-500 rounded-full mix-blend-multiply filter blur-3xl animate-pulse" />
-          <div className="absolute bottom-0 right-0 w-96 h-96 bg-emerald-500 rounded-full mix-blend-multiply filter blur-3xl animate-pulse delay-1000" />
+          <div className="absolute top-0 left-0 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl animate-pulse" />
+          <div className="absolute bottom-0 right-0 w-96 h-96 bg-pink-500 rounded-full mix-blend-multiply filter blur-3xl animate-pulse delay-1000" />
         </div>
         <div className="relative container mx-auto px-6 md:px-10 text-center">
           <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">Ready to Get Started?</h2>
-          <p className="text-xl text-stone-300 mb-10 max-w-2xl mx-auto">
-            Join thousands of property owners who have streamlined their business with HOSTELSET.
+          <p className="text-xl text-gray-300 mb-10 max-w-2xl mx-auto">
+            Join thousands of property owners and tenants who have streamlined their business with HOSTELSET.
           </p>
           <div className="flex flex-col sm:flex-row gap-5 justify-center">
-            <Link href="/register" className="bg-white text-stone-800 px-8 py-3 rounded-full font-semibold hover:shadow-xl transition hover:scale-105">
+            <Link href="/register" className="bg-white text-slate-800 px-8 py-3 rounded-full font-semibold hover:shadow-xl transition hover:scale-105">
               Start Free Trial
             </Link>
             <Link href="/properties" className="border-2 border-white/30 text-white px-8 py-3 rounded-full font-semibold hover:bg-white/10 transition">
@@ -469,7 +574,7 @@ export default function Home() {
       </section>
 
       {/* ========== FOOTER ========== */}
-      <footer className="bg-stone-900 text-stone-400 pt-16 pb-8">
+      <footer className="bg-gray-900 text-gray-400 pt-16 pb-8">
         <div className="container mx-auto px-6 md:px-10">
           <div className="grid md:grid-cols-4 gap-8 mb-12">
             <div>
@@ -503,7 +608,7 @@ export default function Home() {
               </ul>
             </div>
           </div>
-          <div className="border-t border-stone-800 pt-6 text-center text-sm">
+          <div className="border-t border-gray-800 pt-6 text-center text-sm">
             <p>&copy; {new Date().getFullYear()} HOSTELSET. All rights reserved.</p>
           </div>
         </div>
