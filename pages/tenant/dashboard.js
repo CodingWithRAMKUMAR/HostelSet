@@ -40,14 +40,14 @@ export default function TenantDashboard() {
   const [showScreenshotModal, setShowScreenshotModal] = useState(false)
   const [screenshotUrl, setScreenshotUrl] = useState('')
 
-  // ========== ROOM CHANGE REQUEST STATE ==========
+  // Room change request state
   const [showRoomChangeModal, setShowRoomChangeModal] = useState(false)
   const [availableRooms, setAvailableRooms] = useState([])
   const [selectedNewRoom, setSelectedNewRoom] = useState('')
   const [roomChangeReason, setRoomChangeReason] = useState('')
   const [pendingRoomChangeRequest, setPendingRoomChangeRequest] = useState(null)
 
-  // ========== UNIVERSAL UPI INTENT ==========
+  // Universal UPI intent
   const initiateUPIPayment = (upiId, amount) => {
     const cleanUpi = upiId.trim()
     if (!cleanUpi) {
@@ -80,7 +80,7 @@ export default function TenantDashboard() {
     toast.success('UPI Phone Number copied!')
   }
 
-  // ========== Helper functions (unchanged) ==========
+  // Helper functions
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -112,15 +112,71 @@ export default function TenantDashboard() {
     loadTenantData(localStorage.getItem('userId'))
   }
 
-  useEffect(() => {
-    const isLoggedIn = localStorage.getItem('isLoggedIn')
-    const userRole = localStorage.getItem('userRole')
-    const userId = localStorage.getItem('userId')
-    if (!isLoggedIn || userRole !== 'tenant') {
+  // Auth persistence
+  const checkAuthAndRedirect = async () => {
+    const { data: { user }, error } = await supabase.auth.getUser()
+    if (error || !user) {
+      localStorage.clear()
       router.push('/login')
-      return
+      return null
     }
-    loadTenantData(userId)
+    const { data: userRecord, error: roleError } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    if (roleError || !userRecord) {
+      localStorage.clear()
+      router.push('/login')
+      return null
+    }
+    return { user, role: userRecord.role }
+  }
+
+  useEffect(() => {
+    const init = async () => {
+      const auth = await checkAuthAndRedirect()
+      if (!auth) return
+      if (auth.role !== 'tenant') {
+        router.push('/login')
+        return
+      }
+      localStorage.setItem('userId', auth.user.id)
+      await loadTenantData(auth.user.id)
+    }
+    init()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        localStorage.clear()
+        router.push('/login')
+      } else if (event === 'TOKEN_REFRESHED') {
+        console.log('Session refreshed')
+      }
+    })
+
+    // Leave page warning
+    const handleBeforeUnload = (e) => {
+      if (localStorage.getItem('userId')) {
+        e.preventDefault()
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?'
+        return e.returnValue
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    const handleRouteChange = (url) => {
+      if (localStorage.getItem('userId') && !confirm('You will lose any unsaved data. Do you want to leave the dashboard?')) {
+        throw 'Route change cancelled'
+      }
+    }
+    router.events?.on('routeChangeStart', handleRouteChange)
+
+    return () => {
+      subscription.unsubscribe()
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      router.events?.off('routeChangeStart', handleRouteChange)
+    }
   }, [])
 
   const uploadFile = async (file, prefix) => {
@@ -134,11 +190,13 @@ export default function TenantDashboard() {
   }
 
   const submitPaymentWithProof = async () => {
+    if (isSubmitting) return
     if (!paymentScreenshot) {
       toast.error('Please upload payment screenshot')
       return
     }
     setPaymentLoading(true)
+    setIsSubmitting(true)
     try {
       const screenshotUrl = await uploadFile(paymentScreenshot, 'rent')
       const amount = tenant.pending_amount || tenant.rent_amount
@@ -162,6 +220,7 @@ export default function TenantDashboard() {
       toast.error('Failed to submit payment: ' + error.message)
     } finally {
       setPaymentLoading(false)
+      setIsSubmitting(false)
     }
   }
 
@@ -270,7 +329,7 @@ export default function TenantDashboard() {
         .order('payment_date', { ascending: false })
       setPaymentHistory(paymentsData || [])
 
-      // ========== LOAD PENDING ROOM CHANGE REQUEST ==========
+      // Load pending room change request
       const { data: pendingChange } = await supabase
         .from('room_change_requests')
         .select('*')
@@ -299,6 +358,7 @@ export default function TenantDashboard() {
   }
 
   const updateProfile = async () => {
+    if (isSubmitting) return
     if (!profileForm.name) {
       toast.error('Name is required')
       return
@@ -321,6 +381,7 @@ export default function TenantDashboard() {
   }
 
   const submitComplaint = async () => {
+    if (isSubmitting) return
     if (!complaintForm.title || !complaintForm.description) {
       toast.error('Please fill all fields')
       return
@@ -355,6 +416,7 @@ export default function TenantDashboard() {
   }
 
   const deleteComplaint = async (complaintId) => {
+    if (isSubmitting) return
     if (!confirm('Delete this complaint? This action cannot be undone.')) return
     setIsSubmitting(true)
     try {
@@ -376,6 +438,7 @@ export default function TenantDashboard() {
   }
 
   const requestVacate = async () => {
+    if (isSubmitting) return
     if (!vacateForm.expected_date) {
       toast.error('Please select expected check-out date')
       return
@@ -426,6 +489,7 @@ export default function TenantDashboard() {
   }
 
   const cancelVacateRequest = async () => {
+    if (isSubmitting) return
     if (!existingVacateRequest) return
     const { data: preBooking } = await supabase
       .from('pre_bookings')
@@ -451,10 +515,9 @@ export default function TenantDashboard() {
     }
   }
 
-  // ========== ROOM CHANGE REQUEST FUNCTIONS ==========
+  // Room change request functions
   const fetchAvailableRooms = async () => {
     try {
-      // Get all rooms in the same property that are not the current room, not full, and not already having a pending room change request from another tenant
       const { data: allRooms, error } = await supabase
         .from('rooms')
         .select('id, room_number, sharing_type, monthly_rent, capacity, current_occupants')
@@ -462,7 +525,6 @@ export default function TenantDashboard() {
         .neq('id', tenant.room_id)
       if (error) throw error
 
-      // Get rooms that have pending change requests (to exclude them)
       const { data: pendingChanges } = await supabase
         .from('room_change_requests')
         .select('new_room_id')
@@ -489,6 +551,7 @@ export default function TenantDashboard() {
   }
 
   const submitRoomChangeRequest = async () => {
+    if (isSubmitting) return
     if (!selectedNewRoom) {
       toast.error('Please select a room')
       return
@@ -522,9 +585,9 @@ export default function TenantDashboard() {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
     localStorage.clear()
-    toast.success('Logged out successfully')
     router.push('/')
   }
 
@@ -598,18 +661,17 @@ export default function TenantDashboard() {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-3 mb-8">
-          <button onClick={() => setShowPaymentModal(true)} className="bg-green-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-green-700 transition">💳 Pay Rent (UPI)</button>
-          <button onClick={() => setShowComplaintModal(true)} className="border-2 border-orange-300 text-orange-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition">📝 Raise Complaint</button>
-          {/* Room Change Button */}
+          <button onClick={() => setShowPaymentModal(true)} disabled={isSubmitting} className="bg-green-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50">💳 Pay Rent (UPI)</button>
+          <button onClick={() => setShowComplaintModal(true)} disabled={isSubmitting} className="border-2 border-orange-300 text-orange-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition disabled:opacity-50">📝 Raise Complaint</button>
           {!pendingRoomChangeRequest ? (
-            <button onClick={openRoomChangeModal} className="border-2 border-blue-300 text-blue-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-50 transition">🔄 Request Room Change</button>
+            <button onClick={openRoomChangeModal} disabled={isSubmitting} className="border-2 border-blue-300 text-blue-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-50 transition disabled:opacity-50">🔄 Request Room Change</button>
           ) : (
             <button disabled className="border-2 border-gray-300 text-gray-500 px-6 py-2.5 rounded-full text-sm font-semibold cursor-not-allowed">⏳ Room Change Pending</button>
           )}
           {existingVacateRequest ? (
-            <button onClick={cancelVacateRequest} className="border-2 border-yellow-500 text-yellow-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition">❌ Cancel Vacate Request</button>
+            <button onClick={cancelVacateRequest} disabled={isSubmitting} className="border-2 border-yellow-500 text-yellow-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition disabled:opacity-50">❌ Cancel Vacate Request</button>
           ) : (
-            <button onClick={() => setShowVacateModal(true)} className="border-2 border-red-300 text-red-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition">🚪 Request Vacate</button>
+            <button onClick={() => setShowVacateModal(true)} disabled={isSubmitting} className="border-2 border-red-300 text-red-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50">🚪 Request Vacate</button>
           )}
         </div>
 
@@ -651,7 +713,7 @@ export default function TenantDashboard() {
           <div className="space-y-4">
             {complaints.map(complaint => (
               <div key={complaint.id} className="bg-white rounded-xl border p-5 shadow-sm relative group">
-                <button onClick={() => deleteComplaint(complaint.id)} className="absolute top-4 right-4 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition">🗑️ Delete</button>
+                <button onClick={() => deleteComplaint(complaint.id)} disabled={isSubmitting} className="absolute top-4 right-4 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition disabled:opacity-50">🗑️ Delete</button>
                 <div className="flex justify-between items-start mb-3 pr-8">
                   <div><div className="flex items-center gap-2 mb-2"><h3 className="font-semibold">{complaint.title}</h3><span className={`px-2 py-1 rounded-full text-xs ${complaint.priority === 'high' ? 'bg-red-100 text-red-700' : complaint.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{complaint.priority}</span></div><p className="text-gray-600">{complaint.description}</p>{complaint.admin_response && (<div className="mt-3 p-3 bg-green-50 rounded-lg"><p className="text-xs text-green-600 font-semibold mb-1">Owner's Response:</p><p className="text-sm text-gray-700">{complaint.admin_response}</p></div>)}</div>
                   <span className={`px-2 py-1 rounded-full text-xs ${complaint.status === 'open' ? 'bg-red-100 text-red-700' : complaint.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{complaint.status === 'open' ? 'Open' : complaint.status === 'in_progress' ? 'In Progress' : 'Resolved'}</span>
@@ -720,7 +782,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal – with universal UPI intent */}
+      {/* Payment Modal */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
@@ -758,7 +820,7 @@ export default function TenantDashboard() {
                     <div><label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label><input type="text" className="w-full px-4 py-3 border rounded-xl" value={paymentTransactionId} onChange={e => setPaymentTransactionId(e.target.value)} /></div>
                     <div className="mt-3"><label className="block text-sm font-semibold mb-1">Payment Screenshot *</label><input type="file" accept="image/*" onChange={e => { if (e.target.files[0]) setPaymentScreenshot(e.target.files[0]) }} className="w-full" /></div>
                     <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800 mt-3">After payment, upload the screenshot and submit. Owner will verify.</div>
-                    <button onClick={submitPaymentWithProof} disabled={paymentLoading} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold mt-4 disabled:opacity-50">{paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}</button>
+                    <button onClick={submitPaymentWithProof} disabled={paymentLoading || isSubmitting} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold mt-4 disabled:opacity-50">{paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}</button>
                     <button onClick={() => setShowPaymentModal(false)} className="w-full text-center text-gray-500 text-sm mt-3">Cancel</button>
                   </div>
                 </div>
