@@ -166,12 +166,10 @@ export default function OwnerDashboard() {
     }, 15000)
   }
 
-  // ========== ALERT HANDLING ==========
   const addAlert = (message, type, linkTab, linkId = null) => {
     const id = Date.now() + Math.random()
     const newAlert = { id, message, type, linkTab, linkId, createdAt: Date.now() }
     setAlerts(prev => [newAlert, ...prev])
-    // Auto-remove after 30 seconds
     alertTimeoutRef.current[id] = setTimeout(() => {
       setAlerts(prev => prev.filter(a => a.id !== id))
       delete alertTimeoutRef.current[id]
@@ -186,14 +184,10 @@ export default function OwnerDashboard() {
   const handleAlertClick = (alert) => {
     if (alert.linkTab) {
       setActiveTab(alert.linkTab)
-      if (alert.linkId && alert.linkTab === 'vacate') {
-        // Optional: scroll to that request
-      }
     }
     removeAlert(alert.id)
   }
 
-  // Detect new items and create alerts
   const detectNewItems = (newData, oldData, type, tab) => {
     if (newData.length > oldData.length) {
       const newItems = newData.filter(n => !oldData.some(o => o.id === n.id))
@@ -344,7 +338,6 @@ export default function OwnerDashboard() {
         detectNewItems(pendingPayments || [], previousDataRef.current.pendingRentPayments, 'payment', 'rent-payments')
         previousDataRef.current.pendingRentPayments = pendingPayments || []
 
-        // ========== LOAD ROOM CHANGE REQUESTS ==========
         await loadRoomChangeRequests(propertyData.id)
 
         const { data: noticesData } = await supabase
@@ -362,16 +355,15 @@ export default function OwnerDashboard() {
     }
   }
 
-  // ========== ROOM CHANGE REQUESTS ==========
   const loadRoomChangeRequests = async (propertyId) => {
     try {
       const { data, error } = await supabase
         .from('room_change_requests')
         .select(`
           *,
-          tenants:tenant_id (name, phone, email, room_id, rooms:room_id (room_number)),
-          old_room:old_room_id (room_number),
-          new_room:new_room_id (room_number, capacity, current_occupants, monthly_rent)
+          tenants:tenant_id (id, name, phone, email, room_id, rent_amount),
+          old_room:old_room_id (id, room_number),
+          new_room:new_room_id (id, room_number, capacity, current_occupants, monthly_rent)
         `)
         .eq('property_id', propertyId)
         .eq('status', 'pending')
@@ -393,7 +385,6 @@ export default function OwnerDashboard() {
     if (!confirm(`Approve room change for ${request.tenants?.name} from Room ${request.old_room?.room_number} to Room ${request.new_room?.room_number}?`)) return
     setIsSubmitting(true)
     try {
-      // Re-check target room capacity (in case it changed)
       const { data: targetRoom, error: roomError } = await supabase
         .from('rooms')
         .select('capacity, current_occupants')
@@ -404,39 +395,17 @@ export default function OwnerDashboard() {
         toast.error(`Room ${request.new_room?.room_number} is now full. Cannot approve.`)
         return
       }
-      // Start a transaction-ish (multiple updates)
-      // 1. Update tenant's room_id
-      const { error: updateTenantError } = await supabase
-        .from('tenants')
-        .update({ room_id: request.new_room_id })
-        .eq('id', request.tenant_id)
-      if (updateTenantError) throw updateTenantError
-      // 2. Decrement old room occupancy
-      const { data: oldRoom } = await supabase
-        .from('rooms')
-        .select('current_occupants')
-        .eq('id', request.old_room_id)
-        .single()
+      await supabase.from('tenants').update({ room_id: request.new_room_id }).eq('id', request.tenant_id)
+      const { data: oldRoom } = await supabase.from('rooms').select('current_occupants').eq('id', request.old_room_id).single()
       const newOldOccupants = Math.max(0, (oldRoom.current_occupants || 0) - 1)
       const newOldStatus = newOldOccupants === 0 ? 'vacant' : (newOldOccupants >= targetRoom.capacity ? 'occupied' : 'vacant')
-      await supabase
-        .from('rooms')
-        .update({ current_occupants: newOldOccupants, status: newOldStatus })
-        .eq('id', request.old_room_id)
-      // 3. Increment new room occupancy
+      await supabase.from('rooms').update({ current_occupants: newOldOccupants, status: newOldStatus }).eq('id', request.old_room_id)
       const newNewOccupants = (targetRoom.current_occupants || 0) + 1
       const newNewStatus = newNewOccupants >= targetRoom.capacity ? 'occupied' : 'vacant'
-      await supabase
-        .from('rooms')
-        .update({ current_occupants: newNewOccupants, status: newNewStatus })
-        .eq('id', request.new_room_id)
-      // 4. Update request status
-      await supabase
-        .from('room_change_requests')
-        .update({ status: 'approved', processed_at: new Date().toISOString() })
-        .eq('id', request.id)
+      await supabase.from('rooms').update({ current_occupants: newNewOccupants, status: newNewStatus }).eq('id', request.new_room_id)
+      await supabase.from('room_change_requests').update({ status: 'approved', processed_at: new Date().toISOString() }).eq('id', request.id)
       toast.success('Room change approved! Tenant moved successfully.')
-      await loadData() // refresh everything
+      await loadData()
     } catch (error) {
       console.error('Approve room change error:', error)
       toast.error('Failed to approve room change: ' + error.message)
@@ -727,7 +696,6 @@ export default function OwnerDashboard() {
     finally { setIsSubmitting(false) }
   }
 
-  // ========== FIXED: Approve pre‑booking with double-click prevention ==========
   const approvePreBooking = async (bookingId, roomId, userId) => {
     if (isSubmitting) {
       toast.error('Please wait, already processing')
@@ -736,7 +704,6 @@ export default function OwnerDashboard() {
     if (!confirm('Approve this pre‑booking? The user will become a tenant and the room will be reserved.')) return
     setIsSubmitting(true)
     try {
-      // 1. Fetch the pre‑booking with room details, and check status
       const { data: booking, error: fetchError } = await supabase
         .from('pre_bookings')
         .select('*, rooms(monthly_rent, capacity, room_number, property_id)')
@@ -749,7 +716,6 @@ export default function OwnerDashboard() {
         return
       }
       
-      // 2. Mark payment as success and approve pre‑booking
       const { error: updateError } = await supabase
         .from('pre_bookings')
         .update({ 
@@ -760,7 +726,6 @@ export default function OwnerDashboard() {
         .eq('id', bookingId)
       if (updateError) throw updateError
 
-      // 3. Create tenant record (only once)
       const moveInDate = new Date()
       moveInDate.setDate(moveInDate.getDate() + 7)
       const totalPaid = booking.pre_booking_fee_amount || 0
@@ -782,7 +747,6 @@ export default function OwnerDashboard() {
       })
       if (tenantError) throw tenantError
 
-      // 4. Update room occupancy
       const { data: roomData } = await supabase
         .from('rooms')
         .select('current_occupants, capacity')
@@ -824,7 +788,6 @@ export default function OwnerDashboard() {
     }
   }
 
-  // ========== FIXED: Approve application with double-click prevention ==========
   const approveApplication = async (appId) => {
     if (isSubmitting) {
       toast.error('Please wait, already processing')
@@ -1227,7 +1190,7 @@ export default function OwnerDashboard() {
         </div>
       )}
 
-      {/* ========== NEW ALERTS SECTION ========== */}
+      {/* ========== ALERTS SECTION ========== */}
       {alerts.length > 0 && (
         <div className="bg-white border-b border-gray-200 px-4 py-2 shadow-sm">
           <div className="container mx-auto">
@@ -1556,7 +1519,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Tenants Tab (unchanged) */}
+        {/* Tenants Tab – FIXED: No unclosed JSX */}
         {activeTab === 'tenants' && (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1591,7 +1554,7 @@ export default function OwnerDashboard() {
                           {isNoticePeriod && <span className="ml-1 text-xs bg-purple-200 text-purple-800 px-1 rounded">Notice</span>}
                           {isPaymentPending && <span className="ml-1 text-xs bg-yellow-200 text-yellow-800 px-1 rounded">Payment Pending</span>}
                         </div>
-                       </td>
+                      </td>
                       <td className="px-4 py-3 text-gray-500">{t.phone}</td>
                       <td className="px-4 py-3 font-medium text-slate-700">Room {t.room_number || getRoomNumberById(t.room_id)}</td>
                       <td className="px-4 py-3 font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</td>
@@ -1611,7 +1574,7 @@ export default function OwnerDashboard() {
                         {isPaymentPending && (
                           <span className="ml-1 px-2 py-1 bg-yellow-200 text-yellow-800 rounded-full text-xs">⏳ Awaiting approval</span>
                         )}
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         {isPaymentPending ? (
                           <button onClick={() => { setConfirmingTenant(t); setShowPaymentConfirmModal(true) }} className="bg-yellow-600 text-white px-3 py-1 rounded text-xs mr-2">Confirm Payment</button>
@@ -1623,8 +1586,8 @@ export default function OwnerDashboard() {
                           </>
                         )}
                         <button onClick={() => { setTenantToDelete(t); setShowConfirmDeleteModal(true) }} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition">Delete</button>
-                       </td>
-                    </table>
+                      </td>
+                    </tr>
                   )
                 })}
                 {filteredTenants.length === 0 && (
@@ -1824,7 +1787,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* ========== NEW: ROOM CHANGE REQUESTS TAB ========== */}
+        {/* ========== ROOM CHANGE REQUESTS TAB ========== */}
         {activeTab === 'room-change' && (
           <div className="space-y-4">
             {roomChangeRequests.length === 0 ? (
