@@ -543,7 +543,6 @@ export default function PropertyDetail() {
         }
 
         // ❌ NO PASSWORD RESET EMAIL HERE – will be sent by owner on approval
-        // await supabase.auth.resetPasswordForEmail(...) -> removed
       }
 
       const totalAmount = calculateTotalAmount()
@@ -617,7 +616,6 @@ export default function PropertyDetail() {
 
   // ========== PRE‑BOOKING FLOW (no login required) ==========
   const openPrebookModal = (roomId, vacateDate) => {
-    // No login check – anyone can pre‑book
     setPrebookRoomId(roomId)
     setPrebookForm({
       name: '',
@@ -662,14 +660,12 @@ export default function PropertyDetail() {
       toast.error('Room not selected')
       return
     }
-    // Validate phone/email against existing users
     const phoneOk = await validatePrebookPhone(prebookForm.phone)
     const emailOk = await validatePrebookEmail(prebookForm.email)
     if (!phoneOk || !emailOk) {
       toast.error('Please correct the errors before proceeding')
       return
     }
-    // Close the form modal and open payment modal
     setShowPrebookModal(false)
     setShowPrebookPaymentModal(true)
   }
@@ -682,7 +678,6 @@ export default function PropertyDetail() {
     const cleanPhone = cleanPhoneNumber(prebookForm.phone)
     setPrebookPaymentSubmitting(true)
     try {
-      // Upload ID proof, photo, and payment screenshot
       const idProofUrl = await uploadFile(prebookIdProof, 'prebook_id')
       const photoUrl = await uploadFile(prebookPhoto, 'prebook_photo')
       const screenshotUrl = await uploadFile(prebookPaymentScreenshot, 'prebook_pay')
@@ -690,7 +685,6 @@ export default function PropertyDetail() {
       const prebookData = {
         property_id: id,
         room_id: prebookRoomId,
-        // user_id is optional – after SQL changes it can be null
         user_id: null,
         name: prebookForm.name.trim(),
         phone: cleanPhone,
@@ -761,6 +755,9 @@ export default function PropertyDetail() {
       </div>
     )
   }
+
+  // ---- NEW: Check if property has any rooms ----
+  const hasNoRooms = rooms.length === 0
 
   const isApplyFormValid = applyForm.name && phoneValid && emailValid && idProof && photo
   const isPrebookFormValid = prebookForm.name && prebookPhoneValid && prebookEmailValid && prebookIdProof && prebookPhoto && agreeTerms && prebookForm.move_in_date
@@ -849,74 +846,85 @@ export default function PropertyDetail() {
 
         {/* Rooms Tab */}
         {activeTab === 'rooms' && (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {rooms.map((room) => {
-              const sharing = getSharingDetails(room.sharing_type)
-              const isAvailable = room.current_occupants < room.capacity
-              const availableSlots = room.capacity - room.current_occupants
-              const roomVacate = vacateInfo[room.id]
-              const isPrebookable = roomVacate && roomVacate.daysLeft > 0 && !approvedPrebookings[room.id]
-              return (
-                <motion.div
-                  key={room.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className={`group bg-white rounded-2xl border shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden ${
-                    isAvailable ? 'border-green-200 hover:border-green-400' : (isPrebookable ? 'border-blue-200 hover:border-blue-400' : 'border-gray-200 opacity-70')
-                  }`}
-                >
-                  <div className="p-6">
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h3 className="text-2xl font-bold text-slate-800">Room {room.room_number}</h3>
-                        <p className="text-sm text-gray-500 mt-1">{sharing.label} {sharing.icon}</p>
+          <>
+            {hasNoRooms ? (
+              <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-12 text-center border border-gray-100">
+                <div className="text-5xl mb-4">🏠</div>
+                <h3 className="text-xl font-semibold text-slate-800 mb-2">No Rooms Available</h3>
+                <p className="text-gray-500">This property currently has no rooms listed. Please check back later.</p>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {rooms.map((room) => {
+                  const sharing = getSharingDetails(room.sharing_type)
+                  const isAvailable = room.current_occupants < room.capacity
+                  const availableSlots = room.capacity - room.current_occupants
+                  const roomVacate = vacateInfo[room.id]
+                  // Pre‑bookable only if vacate exists, days left > 0, AND no approved pre‑booking
+                  const isPrebookable = roomVacate && roomVacate.daysLeft > 0 && !approvedPrebookings[room.id]
+                  return (
+                    <motion.div
+                      key={room.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className={`group bg-white rounded-2xl border shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden ${
+                        isAvailable ? 'border-green-200 hover:border-green-400' : (isPrebookable ? 'border-blue-200 hover:border-blue-400' : 'border-gray-200 opacity-70')
+                      }`}
+                    >
+                      <div className="p-6">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <h3 className="text-2xl font-bold text-slate-800">Room {room.room_number}</h3>
+                            <p className="text-sm text-gray-500 mt-1">{sharing.label} {sharing.icon}</p>
+                          </div>
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            isAvailable ? 'bg-green-100 text-green-700' : (isPrebookable ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500')
+                          }`}>
+                            {isAvailable ? `${availableSlots} slot available` : (isPrebookable ? 'Pre‑bookable' : 'Full')}
+                          </span>
+                        </div>
+                        <div className="mb-4">
+                          <p className="text-3xl font-bold text-slate-800">{formatCurrency(room.monthly_rent)}</p>
+                          <p className="text-gray-400 text-sm">per month</p>
+                          <p className="text-gray-400 text-sm mt-1">Deposit: {formatCurrency(room.deposit_amount || 0)}</p>
+                        </div>
+                        <div className="mb-4">
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-gray-500">Occupancy</span>
+                            <span className="text-slate-600">{room.current_occupants}/{room.capacity}</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div className="bg-slate-600 h-2 rounded-full transition-all duration-500" style={{ width: `${(room.current_occupants / room.capacity) * 100}%` }} />
+                          </div>
+                        </div>
+                        {isPrebookable && (
+                          <div className="mt-2 mb-2">
+                            <span className="inline-block bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full">
+                              🚪 Vacates in {roomVacate.daysLeft} days
+                            </span>
+                          </div>
+                        )}
+                        {isAvailable ? (
+                          <button onClick={() => { setSelectedRoom(room.id); setShowApplyModal(true) }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition transform hover:-translate-y-0.5 duration-200">
+                            Apply Now →
+                          </button>
+                        ) : isPrebookable ? (
+                          <button onClick={() => openPrebookModal(room.id, roomVacate.vacateDate)} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition transform hover:-translate-y-0.5 duration-200">
+                            📅 Pre‑book this room
+                          </button>
+                        ) : (
+                          <button disabled className="w-full bg-gray-300 text-gray-500 py-3 rounded-xl font-semibold cursor-not-allowed">
+                            Full – Not available
+                          </button>
+                        )}
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        isAvailable ? 'bg-green-100 text-green-700' : (isPrebookable ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500')
-                      }`}>
-                        {isAvailable ? `${availableSlots} slot available` : (isPrebookable ? 'Pre‑bookable' : 'Full')}
-                      </span>
-                    </div>
-                    <div className="mb-4">
-                      <p className="text-3xl font-bold text-slate-800">{formatCurrency(room.monthly_rent)}</p>
-                      <p className="text-gray-400 text-sm">per month</p>
-                      <p className="text-gray-400 text-sm mt-1">Deposit: {formatCurrency(room.deposit_amount || 0)}</p>
-                    </div>
-                    <div className="mb-4">
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="text-gray-500">Occupancy</span>
-                        <span className="text-slate-600">{room.current_occupants}/{room.capacity}</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div className="bg-slate-600 h-2 rounded-full transition-all duration-500" style={{ width: `${(room.current_occupants / room.capacity) * 100}%` }} />
-                      </div>
-                    </div>
-                    {isPrebookable && (
-                      <div className="mt-2 mb-2">
-                        <span className="inline-block bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full">
-                          🚪 Vacates in {roomVacate.daysLeft} days
-                        </span>
-                      </div>
-                    )}
-                    {isAvailable ? (
-                      <button onClick={() => { setSelectedRoom(room.id); setShowApplyModal(true) }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition transform hover:-translate-y-0.5 duration-200">
-                        Apply Now →
-                      </button>
-                    ) : isPrebookable ? (
-                      <button onClick={() => openPrebookModal(room.id, roomVacate.vacateDate)} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition transform hover:-translate-y-0.5 duration-200">
-                        📅 Pre‑book this room
-                      </button>
-                    ) : (
-                      <button disabled className="w-full bg-gray-300 text-gray-500 py-3 rounded-xl font-semibold cursor-not-allowed">
-                        Full – Not available
-                      </button>
-                    )}
-                  </div>
-                </motion.div>
-              )
-            })}
-          </div>
+                    </motion.div>
+                  )
+                })}
+              </div>
+            )}
+          </>
         )}
 
         {/* Amenities Tab */}
@@ -964,7 +972,7 @@ export default function PropertyDetail() {
         )}
       </div>
 
-      {/* ========== MODALS ========== */}
+      {/* ========== MODALS (unchanged) ========== */}
 
       {/* Apply Modal */}
       <AnimatePresence>
