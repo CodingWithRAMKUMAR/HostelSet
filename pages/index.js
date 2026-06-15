@@ -11,20 +11,11 @@ export default function Home() {
   const [stats, setStats] = useState({ properties: 0, rooms: 0, tenants: 0 })
   const [loading, setLoading] = useState(true)
   const [animatedStats, setAnimatedStats] = useState({ properties: 0, rooms: 0, tenants: 0 })
-  const [activeTab, setActiveTab] = useState('tenant') // 'tenant' or 'owner'
-  const [currentTestimonial, setCurrentTestimonial] = useState(0)
+  const [activeRole, setActiveRole] = useState('tenant') // 'tenant' or 'owner'
 
   const { scrollYProgress } = useScroll()
   const heroY = useTransform(scrollYProgress, [0, 0.5], [0, 150])
   const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0])
-
-  // Auto-scroll testimonials
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTestimonial((prev) => (prev + 1) % testimonials.length)
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [])
 
   // Animate stats on load
   useEffect(() => {
@@ -96,23 +87,18 @@ export default function Home() {
     loadData()
   }, [])
 
-  const features = [
-    { icon: '💰', title: 'Easy Rent Collection', desc: 'Auto reminders & online payments', gradient: 'from-amber-500 to-orange-500' },
-    { icon: '🔒', title: 'Bank-grade Security', desc: 'Your data is always protected', gradient: 'from-emerald-500 to-teal-500' },
-    { icon: '⚡', title: 'Real-time Updates', desc: 'Instant notifications & tracking', gradient: 'from-blue-500 to-cyan-500' },
-    { icon: '👥', title: 'Tenant Management', desc: 'Easy onboarding & tracking', gradient: 'from-purple-500 to-pink-500' },
-    { icon: '🏢', title: 'Multi-Property', desc: 'Manage all properties in one place', gradient: 'from-indigo-500 to-purple-500' },
-    { icon: '🎯', title: 'Smart Insights', desc: 'Analytics to grow your business', gradient: 'from-rose-500 to-pink-500' },
+  const ownerBenefits = [
+    { icon: '💰', title: 'Effortless Rent Collection', desc: 'Auto‑reminders, UPI, cash – all tracked in one place.' },
+    { icon: '📊', title: 'Real‑time Analytics', desc: 'Occupancy, revenue, pending dues – know your numbers instantly.' },
+    { icon: '👥', title: 'Tenant Management', desc: 'Onboard, communicate, resolve complaints – all from one dashboard.' },
   ]
 
-  const testimonials = [
-    { name: 'Rajesh Kumar', role: 'Property Owner', text: 'HOSTELSET transformed my business. Rent collection is now effortless!', rating: 5, avatar: '👨', type: 'owner' },
-    { name: 'Priya Sharma', role: 'Tenant', text: 'Found my perfect PG within days. The platform is super easy to use.', rating: 5, avatar: '👩', type: 'tenant' },
-    { name: 'Amit Patel', role: 'Owner', text: 'The analytics dashboard helps me track everything in real time.', rating: 5, avatar: '👨', type: 'owner' },
-    { name: 'Neha Gupta', role: 'Tenant', text: 'Safe, secure, and hassle‑free. Highly recommended!', rating: 5, avatar: '👩', type: 'tenant' },
+  const trustBadges = [
+    { icon: '🏢', text: '500+ Properties Listed' },
+    { icon: '⭐', text: '4.9/5 User Rating' },
+    { icon: '🔒', text: '100% Secure Payments' },
+    { icon: '⚡', text: '24/7 Dedicated Support' },
   ]
-
-  const filteredTestimonials = testimonials.filter(t => t.type === activeTab)
 
   // Animation variants
   const fadeUp = {
@@ -146,13 +132,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-white">
-      {/* Custom Cursor (optional, uncomment for premium feel) */}
-      {/* <motion.div
-        className="fixed w-6 h-6 bg-purple-500 rounded-full mix-blend-difference pointer-events-none z-[100] hidden lg:block"
-        animate={{ x: mouseX, y: mouseY }}
-        transition={{ type: "spring", damping: 30, stiffness: 200 }}
-      /> */}
-
       {/* ========== NAVBAR ========== */}
       <motion.nav 
         initial={{ y: -100 }}
@@ -221,7 +200,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* ========== SPLIT-SCREEN HERO (Tenant / Owner) ========== */}
+      {/* ========== SPLIT HERO (Tenant / Owner) ========== */}
       <section className="relative min-h-screen flex items-center overflow-hidden">
         {/* Abstract animated gradient background */}
         <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 via-white to-purple-50" />
@@ -232,120 +211,103 @@ export default function Home() {
         </div>
 
         <div className="relative container mx-auto px-6 md:px-10 pt-32 pb-20">
-          {/* Animated welcome badge */}
+          {/* Role switcher */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="text-center mb-8"
+            className="flex justify-center gap-4 mb-12"
           >
-            <span className="inline-block px-4 py-2 rounded-full bg-white/80 backdrop-blur-sm text-sm font-semibold text-gray-700 border border-gray-200 shadow-sm">
-              ✨ The future of PG & hostel management
-            </span>
+            <button
+              onClick={() => setActiveRole('tenant')}
+              className={`px-8 py-3 rounded-full font-semibold transition-all duration-300 ${
+                activeRole === 'tenant'
+                  ? 'bg-purple-600 text-white shadow-lg scale-105'
+                  : 'bg-white/80 text-gray-600 hover:bg-purple-50'
+              }`}
+            >
+              🏠 I'm a Tenant
+            </button>
+            <button
+              onClick={() => setActiveRole('owner')}
+              className={`px-8 py-3 rounded-full font-semibold transition-all duration-300 ${
+                activeRole === 'owner'
+                  ? 'bg-teal-600 text-white shadow-lg scale-105'
+                  : 'bg-white/80 text-gray-600 hover:bg-teal-50'
+              }`}
+            >
+              🏢 I'm an Owner
+            </button>
           </motion.div>
 
-          {/* Split decision cards */}
-          <div className="max-w-5xl mx-auto">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="grid md:grid-cols-2 gap-6 mb-16"
-            >
-              {/* Tenant Card */}
+          {/* Dynamic content */}
+          <AnimatePresence mode="wait">
+            {activeRole === 'tenant' && (
               <motion.div
-                whileHover={{ scale: 1.02, y: -5 }}
-                onClick={() => setActiveTab('tenant')}
-                className={`cursor-pointer rounded-3xl p-8 backdrop-blur-sm border transition-all duration-300 ${
-                  activeTab === 'tenant'
-                    ? 'bg-gradient-to-br from-purple-500 to-pink-500 text-white shadow-2xl'
-                    : 'bg-white/80 border-gray-200 hover:shadow-xl'
-                }`}
+                key="tenant"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.5 }}
+                className="text-center"
               >
-                <div className="text-5xl mb-4">🔍</div>
-                <h3 className="text-2xl font-bold mb-2">I'm a Tenant</h3>
-                <p className={activeTab === 'tenant' ? 'text-purple-100' : 'text-gray-600'}>
-                  Find the perfect PG/hostel near you. Safe, verified, and hassle‑free.
+                <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight">
+                  <span className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
+                    Find your
+                  </span>
+                  <br />
+                  <span className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                    perfect PG
+                  </span>
+                </h1>
+                <p className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto">
+                  Discover thousands of verified properties, transparent pricing, and instant booking.
                 </p>
-              </motion.div>
-
-              {/* Owner Card */}
-              <motion.div
-                whileHover={{ scale: 1.02, y: -5 }}
-                onClick={() => setActiveTab('owner')}
-                className={`cursor-pointer rounded-3xl p-8 backdrop-blur-sm border transition-all duration-300 ${
-                  activeTab === 'owner'
-                    ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-2xl'
-                    : 'bg-white/80 border-gray-200 hover:shadow-xl'
-                }`}
-              >
-                <div className="text-5xl mb-4">🏢</div>
-                <h3 className="text-2xl font-bold mb-2">I'm an Owner</h3>
-                <p className={activeTab === 'owner' ? 'text-emerald-100' : 'text-gray-600'}>
-                  List your property, manage tenants, and collect rent effortlessly.
-                </p>
-              </motion.div>
-            </motion.div>
-
-            {/* Dynamic content based on selected role */}
-            <AnimatePresence mode="wait">
-              {activeTab === 'tenant' && (
-                <motion.div
-                  key="tenant"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.5 }}
-                  className="text-center"
-                >
-                  <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight">
-                    <span className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
-                      Find your
-                    </span>
-                    <br />
-                    <span className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                      perfect PG
-                    </span>
-                  </h1>
-                  <p className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto">
-                    Discover thousands of verified properties, transparent pricing, and instant booking.
-                  </p>
+                <div className="flex justify-center gap-4 flex-wrap">
                   <Link href="/properties" className="inline-flex items-center gap-2 bg-purple-600 text-white px-8 py-4 rounded-full font-semibold hover:shadow-xl transition hover:scale-105">
                     Browse Properties <span>→</span>
                   </Link>
-                </motion.div>
-              )}
+                  <Link href="/login" className="inline-flex items-center gap-2 border-2 border-gray-300 text-gray-700 px-8 py-4 rounded-full font-semibold hover:border-purple-600 hover:bg-purple-50 transition">
+                    Login <span>→</span>
+                  </Link>
+                </div>
+              </motion.div>
+            )}
 
-              {activeTab === 'owner' && (
-                <motion.div
-                  key="owner"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.5 }}
-                  className="text-center"
-                >
-                  <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight">
-                    <span className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
-                      Manage your
-                    </span>
-                    <br />
-                    <span className="bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-                      property empire
-                    </span>
-                  </h1>
-                  <p className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto">
-                    Automate rent collection, track occupancy, and grow your business with powerful analytics.
-                  </p>
-                  <Link href="/owner/register-property" className="inline-flex items-center gap-2 bg-emerald-600 text-white px-8 py-4 rounded-full font-semibold hover:shadow-xl transition hover:scale-105">
+            {activeRole === 'owner' && (
+              <motion.div
+                key="owner"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.5 }}
+                className="text-center"
+              >
+                <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight">
+                  <span className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
+                    Grow your
+                  </span>
+                  <br />
+                  <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">
+                    property business
+                  </span>
+                </h1>
+                <p className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto">
+                  Automate rent collection, track occupancy, and scale your portfolio with powerful analytics.
+                </p>
+                <div className="flex justify-center gap-4 flex-wrap">
+                  <Link href="/owner/register-property" className="inline-flex items-center gap-2 bg-teal-600 text-white px-8 py-4 rounded-full font-semibold hover:shadow-xl transition hover:scale-105">
                     List Your Property <span>→</span>
                   </Link>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                  <Link href="/login" className="inline-flex items-center gap-2 border-2 border-gray-300 text-gray-700 px-8 py-4 rounded-full font-semibold hover:border-teal-600 hover:bg-teal-50 transition">
+                    Login <span>→</span>
+                  </Link>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          {/* Animated Stats - same for both */}
+          {/* Animated Stats (shared) */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -374,14 +336,21 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ========== FEATURED PROPERTIES (Tenant focused) ========== */}
+      {/* ========== MISSION STATEMENT BAR ========== */}
+      <div className="bg-gradient-to-r from-purple-900 to-indigo-900 py-6 text-center text-white">
+        <p className="text-lg md:text-xl font-medium">
+          ✨ Our mission: Make PG living effortless for tenants and profitable for owners. ✨
+        </p>
+      </div>
+
+      {/* ========== FEATURED PROPERTIES ========== */}
       <Section>
         <div className="container mx-auto px-6 md:px-10">
           <div className="text-center mb-12">
             <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
-              Featured Properties
+              Discover Your Space
             </h2>
-            <p className="text-xl text-gray-500 max-w-2xl mx-auto">Discover handpicked PG and hostels near you</p>
+            <p className="text-xl text-gray-500 max-w-2xl mx-auto">Handpicked PG and hostels near you</p>
           </div>
           {loading ? (
             <div className="flex justify-center py-12">
@@ -421,6 +390,12 @@ export default function Home() {
                     <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-semibold text-slate-800">
                       {property.rooms?.length} rooms
                     </div>
+                    {/* "Only X rooms left" badge */}
+                    {property.rooms?.some(r => r.current_occupants && (r.capacity - r.current_occupants) <= 2) && (
+                      <div className="absolute bottom-4 left-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse">
+                        Only {Math.min(...property.rooms.map(r => r.capacity - (r.current_occupants || 0)))} rooms left!
+                      </div>
+                    )}
                   </div>
                   <div className="p-6">
                     <h3 className="text-xl font-bold text-slate-800 mb-1">{property.name}</h3>
@@ -451,124 +426,89 @@ export default function Home() {
         </div>
       </Section>
 
-      {/* ========== FEATURES GRID (Owner focused) ========== */}
-      <Section className="bg-gradient-to-br from-gray-50 to-white">
-        <div className="container mx-auto px-6 md:px-10">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">Powerful Tools for Owners</h2>
-            <p className="text-xl text-gray-500">Everything you need to manage your PG business efficiently</p>
-          </div>
-          <motion.div
-            variants={staggerContainer}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="grid md:grid-cols-2 lg:grid-cols-3 gap-8"
-          >
-            {features.map((feature, idx) => (
-              <motion.div
-                key={idx}
-                variants={fadeUp}
-                whileHover={{ y: -8, scale: 1.02 }}
-                className="bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100"
-              >
-                <div className={`text-5xl mb-5 bg-gradient-to-r ${feature.gradient} bg-clip-text text-transparent`}>
-                  {feature.icon}
-                </div>
-                <h3 className="text-xl font-bold text-slate-800 mb-3">{feature.title}</h3>
-                <p className="text-gray-500 leading-relaxed">{feature.desc}</p>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </Section>
-
-      {/* ========== TESTIMONIALS CAROUSEL ========== */}
-      <Section>
-        <div className="container mx-auto px-6 md:px-10">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">What Our Community Says</h2>
-            <p className="text-xl text-gray-500">Real stories from tenants and property owners</p>
-            <div className="flex justify-center gap-4 mt-6">
-              <button
-                onClick={() => setActiveTab('tenant')}
-                className={`px-6 py-2 rounded-full transition ${
-                  activeTab === 'tenant' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600'
-                }`}
-              >
-                Tenants
-              </button>
-              <button
-                onClick={() => setActiveTab('owner')}
-                className={`px-6 py-2 rounded-full transition ${
-                  activeTab === 'owner' ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-600'
-                }`}
-              >
-                Owners
-              </button>
-            </div>
-          </div>
-          <div className="relative max-w-3xl mx-auto">
-            <AnimatePresence mode="wait">
-              {filteredTestimonials.map((testimonial, idx) => (
-                idx === currentTestimonial % filteredTestimonials.length && (
-                  <motion.div
-                    key={idx}
-                    initial={{ opacity: 0, x: 50 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -50 }}
-                    transition={{ duration: 0.5 }}
-                    className="bg-white rounded-3xl p-8 shadow-xl border border-gray-100"
-                  >
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="text-5xl">{testimonial.avatar}</div>
-                      <div>
-                        <div className="font-bold text-xl text-slate-800">{testimonial.name}</div>
-                        <div className="text-gray-500">{testimonial.role}</div>
-                      </div>
-                    </div>
-                    <div className="flex text-yellow-400 mb-4">
-                      {'★'.repeat(testimonial.rating)}{'☆'.repeat(5-testimonial.rating)}
-                    </div>
-                    <p className="text-gray-600 text-lg leading-relaxed">"{testimonial.text}"</p>
-                  </motion.div>
-                )
-              ))}
-            </AnimatePresence>
-            <div className="flex justify-center gap-2 mt-6">
-              {filteredTestimonials.map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setCurrentTestimonial(idx)}
-                  className={`w-2 h-2 rounded-full transition ${
-                    idx === currentTestimonial % filteredTestimonials.length ? 'bg-purple-600 w-4' : 'bg-gray-300'
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      </Section>
-
-      {/* ========== CTA SECTION ========== */}
-      <section className="relative py-24 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-900 to-slate-800" />
-        <div className="absolute inset-0 opacity-30">
+      {/* ========== OWNER BENEFITS (Glassmorphism, dark background) ========== */}
+      <section className="py-24 bg-gradient-to-br from-slate-900 to-slate-800 relative overflow-hidden">
+        <div className="absolute inset-0 opacity-20">
           <div className="absolute top-0 left-0 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl animate-pulse" />
           <div className="absolute bottom-0 right-0 w-96 h-96 bg-pink-500 rounded-full mix-blend-multiply filter blur-3xl animate-pulse delay-1000" />
         </div>
-        <div className="relative container mx-auto px-6 md:px-10 text-center">
-          <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">Ready to Get Started?</h2>
-          <p className="text-xl text-gray-300 mb-10 max-w-2xl mx-auto">
-            Join thousands of property owners and tenants who have streamlined their business with HOSTELSET.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-5 justify-center">
-            <Link href="/register" className="bg-white text-slate-800 px-8 py-3 rounded-full font-semibold hover:shadow-xl transition hover:scale-105">
-              Start Free Trial
-            </Link>
-            <Link href="/properties" className="border-2 border-white/30 text-white px-8 py-3 rounded-full font-semibold hover:bg-white/10 transition">
-              Browse Properties
-            </Link>
+        <div className="container mx-auto px-6 md:px-10 relative z-10">
+          <div className="text-center mb-12">
+            <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">Why Owners Love HOSTELSET</h2>
+            <p className="text-xl text-gray-300">Tools that simplify and supercharge your business</p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-8">
+            {ownerBenefits.map((benefit, idx) => (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.1 }}
+                viewport={{ once: true }}
+                whileHover={{ y: -8 }}
+                className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:border-purple-400 transition-all"
+              >
+                <div className="text-5xl mb-5">{benefit.icon}</div>
+                <h3 className="text-2xl font-bold text-white mb-3">{benefit.title}</h3>
+                <p className="text-gray-300 leading-relaxed">{benefit.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ========== TRUST BANNER ========== */}
+      <div className="bg-white py-12 border-y border-gray-100">
+        <div className="container mx-auto px-6 md:px-10">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+            {trustBadges.map((badge, idx) => (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, scale: 0.9 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                transition={{ delay: idx * 0.1 }}
+                viewport={{ once: true }}
+                className="flex flex-col items-center gap-2"
+              >
+                <div className="text-3xl">{badge.icon}</div>
+                <div className="font-semibold text-slate-800">{badge.text}</div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ========== SPLIT CTA (Final Push) ========== */}
+      <section className="relative py-24 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-purple-900 via-pink-900 to-purple-900 animate-gradient-x" />
+        <div className="absolute inset-0 opacity-30">
+          <div className="absolute top-0 left-0 w-96 h-96 bg-white rounded-full mix-blend-overlay filter blur-3xl animate-pulse" />
+          <div className="absolute bottom-0 right-0 w-96 h-96 bg-white rounded-full mix-blend-overlay filter blur-3xl animate-pulse delay-1000" />
+        </div>
+        <div className="relative container mx-auto px-6 md:px-10">
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 text-center border border-white/20 hover:border-purple-300 transition-all"
+            >
+              <div className="text-5xl mb-4">🔑</div>
+              <h3 className="text-2xl font-bold text-white mb-3">For Tenants</h3>
+              <p className="text-gray-200 mb-6">Find your perfect PG in minutes.</p>
+              <Link href="/properties" className="inline-block bg-white text-purple-900 px-6 py-3 rounded-full font-semibold hover:shadow-xl transition">
+                Browse Properties
+              </Link>
+            </motion.div>
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 text-center border border-white/20 hover:border-teal-300 transition-all"
+            >
+              <div className="text-5xl mb-4">📈</div>
+              <h3 className="text-2xl font-bold text-white mb-3">For Owners</h3>
+              <p className="text-gray-200 mb-6">Start earning more, with less effort.</p>
+              <Link href="/owner/register-property" className="inline-block bg-white text-teal-900 px-6 py-3 rounded-full font-semibold hover:shadow-xl transition">
+                List Your Property
+              </Link>
+            </motion.div>
           </div>
         </div>
       </section>
