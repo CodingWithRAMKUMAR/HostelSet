@@ -176,7 +176,7 @@ export default function PropertyDetail() {
     return publicUrl
   }
 
-  // ========== Apply Form Validation (blocks existing users) ==========
+  // ========== Apply Form Validation ==========
   const validatePhone = async (phone) => {
     const cleanPhone = cleanPhoneNumber(phone)
     if (!cleanPhone || cleanPhone.length !== 10) {
@@ -280,7 +280,7 @@ export default function PropertyDetail() {
     }
   }
 
-  // ========== Pre‑booking Form Validation (same as apply) ==========
+  // ========== Pre‑booking Form Validation ==========
   const validatePrebookPhone = async (phone) => {
     const cleanPhone = cleanPhoneNumber(phone)
     if (!cleanPhone || cleanPhone.length !== 10) {
@@ -404,7 +404,7 @@ export default function PropertyDetail() {
     return null
   }
 
-  // ========== Regular Application Flow (no password reset email) ==========
+  // ========== Regular Application Flow ==========
   const submitApplication = async () => {
     if (!applyForm.name || !applyForm.phone || !applyForm.email) {
       toast.error('Please fill all required fields (Name, Phone, Email)')
@@ -541,8 +541,6 @@ export default function PropertyDetail() {
             }
           }
         }
-
-        // ❌ NO PASSWORD RESET EMAIL HERE – will be sent by owner on approval
       }
 
       const totalAmount = calculateTotalAmount()
@@ -614,7 +612,7 @@ export default function PropertyDetail() {
     }
   }
 
-  // ========== PRE‑BOOKING FLOW (no login required) ==========
+  // ========== PRE‑BOOKING FLOW ==========
   const openPrebookModal = (roomId, vacateDate) => {
     setPrebookRoomId(roomId)
     setPrebookForm({
@@ -756,9 +754,7 @@ export default function PropertyDetail() {
     )
   }
 
-  // ---- NEW: Check if property has any rooms ----
   const hasNoRooms = rooms.length === 0
-
   const isApplyFormValid = applyForm.name && phoneValid && emailValid && idProof && photo
   const isPrebookFormValid = prebookForm.name && prebookPhoneValid && prebookEmailValid && prebookIdProof && prebookPhoto && agreeTerms && prebookForm.move_in_date
 
@@ -860,8 +856,26 @@ export default function PropertyDetail() {
                   const isAvailable = room.current_occupants < room.capacity
                   const availableSlots = room.capacity - room.current_occupants
                   const roomVacate = vacateInfo[room.id]
-                  // Pre‑bookable only if vacate exists, days left > 0, AND no approved pre‑booking
-                  const isPrebookable = roomVacate && roomVacate.daysLeft > 0 && !approvedPrebookings[room.id]
+                  const hasApprovedPrebooking = approvedPrebookings[room.id]
+                  const isPrebookable = roomVacate && roomVacate.daysLeft > 0 && !hasApprovedPrebooking
+                  const isReserved = hasApprovedPrebooking
+
+                  let badgeText = ''
+                  let badgeColor = ''
+                  if (isAvailable && !isReserved) {
+                    badgeText = `${availableSlots} slot available`
+                    badgeColor = 'bg-green-100 text-green-700'
+                  } else if (isReserved) {
+                    badgeText = 'Reserved'
+                    badgeColor = 'bg-purple-100 text-purple-700'
+                  } else if (isPrebookable) {
+                    badgeText = 'Pre‑bookable'
+                    badgeColor = 'bg-blue-100 text-blue-700'
+                  } else {
+                    badgeText = 'Full'
+                    badgeColor = 'bg-gray-100 text-gray-500'
+                  }
+
                   return (
                     <motion.div
                       key={room.id}
@@ -869,7 +883,7 @@ export default function PropertyDetail() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.3 }}
                       className={`group bg-white rounded-2xl border shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden ${
-                        isAvailable ? 'border-green-200 hover:border-green-400' : (isPrebookable ? 'border-blue-200 hover:border-blue-400' : 'border-gray-200 opacity-70')
+                        isAvailable && !isReserved ? 'border-green-200 hover:border-green-400' : (isPrebookable ? 'border-blue-200 hover:border-blue-400' : 'border-gray-200 opacity-70')
                       }`}
                     >
                       <div className="p-6">
@@ -878,10 +892,8 @@ export default function PropertyDetail() {
                             <h3 className="text-2xl font-bold text-slate-800">Room {room.room_number}</h3>
                             <p className="text-sm text-gray-500 mt-1">{sharing.label} {sharing.icon}</p>
                           </div>
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                            isAvailable ? 'bg-green-100 text-green-700' : (isPrebookable ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500')
-                          }`}>
-                            {isAvailable ? `${availableSlots} slot available` : (isPrebookable ? 'Pre‑bookable' : 'Full')}
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${badgeColor}`}>
+                            {badgeText}
                           </span>
                         </div>
                         <div className="mb-4">
@@ -898,14 +910,18 @@ export default function PropertyDetail() {
                             <div className="bg-slate-600 h-2 rounded-full transition-all duration-500" style={{ width: `${(room.current_occupants / room.capacity) * 100}%` }} />
                           </div>
                         </div>
-                        {isPrebookable && (
+                        {isPrebookable && !isReserved && (
                           <div className="mt-2 mb-2">
                             <span className="inline-block bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full">
                               🚪 Vacates in {roomVacate.daysLeft} days
                             </span>
                           </div>
                         )}
-                        {isAvailable ? (
+                        {isReserved ? (
+                          <button disabled className="w-full bg-gray-400 text-white py-3 rounded-xl font-semibold cursor-not-allowed">
+                            Reserved (Pre‑booked)
+                          </button>
+                        ) : isAvailable ? (
                           <button onClick={() => { setSelectedRoom(room.id); setShowApplyModal(true) }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition transform hover:-translate-y-0.5 duration-200">
                             Apply Now →
                           </button>
@@ -972,7 +988,7 @@ export default function PropertyDetail() {
         )}
       </div>
 
-      {/* ========== MODALS (unchanged) ========== */}
+      {/* ========== MODALS ========== */}
 
       {/* Apply Modal */}
       <AnimatePresence>
