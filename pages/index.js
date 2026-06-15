@@ -2,14 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { motion, useAnimation, useInView } from 'framer-motion'
 import { supabase } from '../lib/supabase'
-import { formatCurrency } from '../lib/utils'
 
 export default function Home() {
   const [scrolled, setScrolled] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [properties, setProperties] = useState([])
-  const [stats, setStats] = useState({ properties: 0, rooms: 0, tenants: 0, revenue: 0 })
-  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState({ uptime: 99.97, performance: 31.2, security: 99.99, scalability: 100 })
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50)
@@ -17,38 +14,8 @@ export default function Home() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true)
-      try {
-        const { data: props } = await supabase
-          .from('properties')
-          .select('id, name, city, address, photos, rooms(id, monthly_rent)')
-          .order('created_at', { ascending: false })
-          .limit(6)
-        const filtered = (props || []).filter(p => p.rooms?.length > 0)
-        setProperties(filtered)
-
-        const { count: propertiesCount } = await supabase.from('properties').select('*', { count: 'exact', head: true })
-        const { count: roomsCount } = await supabase.from('rooms').select('*', { count: 'exact', head: true })
-        const { count: tenantsCount } = await supabase.from('tenants').select('*', { count: 'exact', head: true })
-        const { data: payments } = await supabase.from('payment_history').select('amount').eq('status', 'success')
-        const totalRevenue = payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0
-
-        setStats({
-          properties: propertiesCount || 0,
-          rooms: roomsCount || 0,
-          tenants: tenantsCount || 0,
-          revenue: totalRevenue,
-        })
-      } catch (error) {
-        console.error(error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadData()
-  }, [])
+  // In a real implementation, you could fetch these from Supabase
+  // For now, they are static to match the modular SaaS style.
 
   const fadeUp = {
     hidden: { opacity: 0, y: 30 },
@@ -56,7 +23,7 @@ export default function Home() {
   }
   const staggerContainer = {
     hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
+    visible: { opacity: 1, transition: { staggerChildren: 0.15 } }
   }
 
   const Section = ({ children, className = '' }) => {
@@ -80,234 +47,214 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white overflow-x-hidden">
+    <div className="min-h-screen bg-black text-white overflow-x-hidden">
       {/* ========== NAVBAR ========== */}
-      <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${scrolled ? 'bg-[#0a0a0f]/80 backdrop-blur-md border-b border-gray-800 py-3' : 'bg-transparent py-5'}`}>
+      <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${scrolled ? 'bg-black/90 backdrop-blur-md border-b border-orange-500/20 py-3' : 'bg-transparent py-5'}`}>
         <div className="container mx-auto px-6 flex justify-between items-center">
           <Link href="/" className="flex items-center gap-2">
-            <span className="text-2xl">🏠</span>
-            <span className="text-xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">HOSTELSET</span>
+            <span className="text-3xl">🏠</span>
+            <span className="text-xl font-bold tracking-tight">HOSTELSET</span>
           </Link>
           <div className="hidden md:flex items-center gap-6">
-            <Link href="/properties" className="text-gray-300 hover:text-purple-400 transition">Properties</Link>
-            <Link href="/login" className="text-gray-300 hover:text-purple-400 transition">Login</Link>
-            <Link href="/register" className="bg-gradient-to-r from-purple-600 to-cyan-600 text-white px-5 py-2 rounded-full text-sm font-semibold hover:shadow-lg transition">Get Started</Link>
+            <Link href="/platform" className="text-gray-300 hover:text-orange-400 transition">Platform</Link>
+            <Link href="/login" className="text-gray-300 hover:text-orange-400 transition">Login</Link>
+            <Link href="/register" className="bg-orange-600 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-orange-500 transition shadow-lg">Get Started</Link>
           </div>
           <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-2xl">☰</button>
         </div>
       </nav>
 
       {mobileMenuOpen && (
-        <div className="fixed top-16 left-0 right-0 bg-[#0a0a0f]/95 backdrop-blur-md border-b border-gray-800 z-40 md:hidden p-4">
+        <div className="fixed top-16 left-0 right-0 bg-black/95 backdrop-blur-md border-b border-orange-500/20 z-40 md:hidden p-4">
           <div className="flex flex-col gap-3">
-            <Link href="/properties" className="py-2 text-center" onClick={() => setMobileMenuOpen(false)}>Properties</Link>
-            <Link href="/login" className="py-2 text-center" onClick={() => setMobileMenuOpen(false)}>Login</Link>
-            <Link href="/register" className="bg-purple-600 text-white py-2 text-center rounded-full" onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
+            <Link href="/platform" className="py-2 text-center text-gray-300" onClick={() => setMobileMenuOpen(false)}>Platform</Link>
+            <Link href="/login" className="py-2 text-center text-gray-300" onClick={() => setMobileMenuOpen(false)}>Login</Link>
+            <Link href="/register" className="bg-orange-600 text-white py-2 text-center rounded-full" onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
           </div>
         </div>
       )}
 
-      {/* ========== HERO ========== */}
-      <section className="relative min-h-[90vh] flex items-center pt-20">
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-transparent to-cyan-900/20" />
-        <div className="container mx-auto px-6">
-          <div className="max-w-3xl">
-            <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-5xl md:text-7xl font-bold leading-tight">
-              We run <span className="bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">infrastructure</span>,<br />you lead innovation.
-            </motion.h1>
-            <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="text-xl text-gray-400 mt-6 max-w-2xl">
-              — The smarter way to build, run, and scale your PG & hostel business.
-            </motion.p>
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="flex flex-wrap gap-4 mt-10">
-              <Link href="/properties" className="group bg-gradient-to-r from-purple-600 to-cyan-600 text-white px-6 py-3 rounded-full font-semibold hover:shadow-xl transition flex items-center gap-2">
-                See Platform in action
-                <span className="group-hover:translate-x-1 transition">→</span>
+      {/* ========== HERO – "We run infrastructure, you lead innovation" ========== */}
+      <section className="relative min-h-screen flex items-center pt-20 overflow-hidden">
+        {/* Abstract orange glow */}
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-orange-600/20 rounded-full blur-3xl" />
+        <div className="container mx-auto px-6 text-center relative z-10">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+            <h1 className="text-5xl md:text-7xl font-bold tracking-tight">
+              We run <span className="text-orange-500">infrastructure</span>,<br />
+              you lead innovation.
+            </h1>
+            <p className="text-xl text-gray-400 mt-6 max-w-2xl mx-auto">
+              The smarter way to build, run, and scale your PG & hostel business.
+            </p>
+            <div className="flex flex-wrap gap-4 justify-center mt-10">
+              <Link href="/register" className="bg-orange-600 text-white px-8 py-3 rounded-full font-semibold hover:bg-orange-500 transition shadow-lg inline-flex items-center gap-2">
+                See Platform in action <span>→</span>
               </Link>
-              <Link href="/register" className="border border-gray-600 text-gray-300 px-6 py-3 rounded-full font-semibold hover:border-purple-400 hover:text-purple-400 transition">
-                Join our guided tour
+              <Link href="/demo" className="border border-gray-600 text-gray-300 px-8 py-3 rounded-full font-semibold hover:border-orange-500 hover:text-orange-400 transition">
+                Book a demo
               </Link>
-            </motion.div>
-          </div>
-        </div>
-      </section>
+            </div>
+          </motion.div>
 
-      {/* ========== STATS CARDS (uptime, performance) ========== */}
-      <div className="container mx-auto px-6 -mt-10 relative z-10">
-        <div className="grid md:grid-cols-3 gap-6">
-          <div className="bg-black/40 backdrop-blur-sm border border-gray-800 rounded-2xl p-6 text-center">
-            <div className="text-4xl font-bold text-purple-400">97.8%</div>
-            <div className="text-gray-400 mt-1">Uptime</div>
-            <div className="text-xs text-gray-500">60-day monitoring</div>
-          </div>
-          <div className="bg-black/40 backdrop-blur-sm border border-gray-800 rounded-2xl p-6 text-center">
-            <div className="text-4xl font-bold text-cyan-400">+31.2%</div>
-            <div className="text-gray-400 mt-1">Performance</div>
-            <div className="text-xs text-gray-500">AI optimized build</div>
-          </div>
-          <div className="bg-black/40 backdrop-blur-sm border border-gray-800 rounded-2xl p-6 text-center">
-            <div className="text-4xl font-bold text-green-400">₹{(stats.revenue / 100000).toFixed(1)}L+</div>
-            <div className="text-gray-400 mt-1">Revenue collected</div>
-            <div className="text-xs text-gray-500">via HOSTELSET</div>
-          </div>
-        </div>
-      </div>
-
-      {/* ========== MODULAR SERVICES (01 Neural Network, 02 Core Services, etc.) ========== */}
-      <Section>
-        <div className="container mx-auto px-6">
-          <div className="flex justify-between items-center mb-12 border-b border-gray-800 pb-4">
-            <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">modular by design</h2>
-            <span className="text-xs text-gray-500 uppercase tracking-wider">Our Services</span>
-          </div>
-          <div className="grid md:grid-cols-2 gap-8">
-            <div className="border-l-4 border-purple-500 pl-6">
-              <div className="text-5xl font-black text-purple-500/40 mb-2">01</div>
-              <h3 className="text-2xl font-bold">Neural Network</h3>
-              <p className="text-gray-400 mt-2">Self-learning systems that train smarter and faster — AI-driven vacancy predictions and dynamic pricing.</p>
+          {/* Stats row – uptime, performance, etc. */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="grid grid-cols-1 md:grid-cols-4 gap-6 max-w-4xl mx-auto mt-20"
+          >
+            <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10">
+              <div className="text-3xl font-bold text-orange-400">{stats.uptime}%</div>
+              <div className="text-gray-400 text-sm">Uptime</div>
+              <div className="text-xs text-gray-500">60-day monitoring</div>
             </div>
-            <div className="border-l-4 border-cyan-500 pl-6">
-              <div className="text-5xl font-black text-cyan-500/40 mb-2">02</div>
-              <h3 className="text-2xl font-bold">Core Services</h3>
-              <p className="text-gray-400 mt-2">Modular, flexible solutions for modern digital infrastructure — rent collection, tenant management, analytics.</p>
+            <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10">
+              <div className="text-3xl font-bold text-orange-400">+{stats.performance}%</div>
+              <div className="text-gray-400 text-sm">Performance</div>
+              <div className="text-xs text-gray-500">AI optimized build</div>
             </div>
-            <div className="border-l-4 border-gray-600 pl-6">
-              <div className="text-5xl font-black text-gray-600/40 mb-2">03</div>
-              <h3 className="text-2xl font-bold">Future‑proof Systems</h3>
-              <p className="text-gray-400 mt-2">Scale seamlessly and adapt to your business needs. Platform by design.</p>
+            <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10">
+              <div className="text-3xl font-bold text-orange-400">{stats.security}%</div>
+              <div className="text-gray-400 text-sm">Security</div>
+              <div className="text-xs text-gray-500">Bank‑grade encryption</div>
             </div>
-            <div className="border-l-4 border-gray-600 pl-6">
-              <div className="text-5xl font-black text-gray-600/40 mb-2">04</div>
-              <h3 className="text-2xl font-bold">24/7 Support</h3>
-              <p className="text-gray-400 mt-2">Global coverage with real-time system health monitoring and dedicated account managers.</p>
+            <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10">
+              <div className="text-3xl font-bold text-orange-400">{stats.scalability}%</div>
+              <div className="text-gray-400 text-sm">Scalability</div>
+              <div className="text-xs text-gray-500">Unlimited growth</div>
             </div>
-          </div>
-        </div>
-      </Section>
-
-      {/* ========== PROPERTIES GRID (modular cards) ========== */}
-      <Section className="bg-black/40">
-        <div className="container mx-auto px-6">
-          <div className="flex justify-between items-center mb-10">
-            <h2 className="text-2xl md:text-3xl font-bold">Featured modular stays</h2>
-            <Link href="/properties" className="text-purple-400 hover:text-purple-300 text-sm">View all →</Link>
-          </div>
-          {loading ? (
-            <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"/></div>
-          ) : properties.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">No properties yet. Check back soon.</div>
-          ) : (
-            <motion.div variants={staggerContainer} initial="hidden" whileInView="visible" viewport={{ once: true }} className="grid md:grid-cols-3 gap-6">
-              {properties.map(p => (
-                <motion.div key={p.id} variants={fadeUp} whileHover={{ y: -5 }} className="bg-black/30 border border-gray-800 rounded-2xl overflow-hidden hover:border-purple-500/50 transition">
-                  <div className="h-44 overflow-hidden bg-gray-900">
-                    {p.photos?.[0] ? <img src={p.photos[0]} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-4xl">🏠</div>}
-                  </div>
-                  <div className="p-5">
-                    <h3 className="text-xl font-semibold">{p.name}</h3>
-                    <p className="text-gray-400 text-sm">{p.city}</p>
-                    <div className="flex justify-between items-center mt-3">
-                      <span className="text-purple-400 font-bold">₹{formatCurrency(p.rooms?.[0]?.monthly_rent||5000)}<span className="text-xs text-gray-500">/mo</span></span>
-                      <Link href={`/property/${p.id}`} className="text-cyan-400 text-sm hover:underline">modular view →</Link>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </motion.div>
-          )}
-        </div>
-      </Section>
-
-      {/* ========== GLOBAL SYSTEM STATUS (like the image: uptime, support locations) ========== */}
-      <Section className="border-t border-gray-800">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold">Global System Status</h2>
-            <p className="text-gray-400 mt-2">Real-time platform health across regions</p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            <div className="bg-black/40 border border-gray-800 rounded-2xl p-6 text-center">
-              <div className="text-2xl font-bold text-purple-400">Amsterdam</div>
-              <div className="flex justify-center gap-4 mt-3 text-sm">
-                <span>🟢 24/7 support</span>
-                <span className="text-green-400">99% Uptime</span>
-              </div>
-            </div>
-            <div className="bg-black/40 border border-gray-800 rounded-2xl p-6 text-center">
-              <div className="text-2xl font-bold text-cyan-400">New York</div>
-              <div className="flex justify-center gap-4 mt-3 text-sm">
-                <span>🟢 24/7 support</span>
-                <span className="text-green-400">99% Uptime</span>
-              </div>
-            </div>
-            <div className="bg-black/40 border border-gray-800 rounded-2xl p-6 text-center">
-              <div className="text-2xl font-bold text-emerald-400">Dubai</div>
-              <div className="flex justify-center gap-4 mt-3 text-sm">
-                <span>🟢 24/7 support</span>
-                <span className="text-green-400">99% Uptime</span>
-              </div>
-            </div>
-          </div>
-          <div className="mt-10 flex justify-center">
-            <div className="bg-black/40 border border-gray-800 rounded-full px-6 py-2 flex items-center gap-2">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-              </span>
-              <span className="text-sm text-gray-300">All systems operational</span>
-              <span className="text-xs text-gray-500 ml-2">Last check: {new Date().toLocaleTimeString()}</span>
-            </div>
-          </div>
-        </div>
-      </Section>
-
-      {/* ========== PERFORMANCE METRICS (cards) ========== */}
-      <Section>
-        <div className="container mx-auto px-6">
-          <div className="grid md:grid-cols-4 gap-6 max-w-3xl mx-auto text-center">
-            <div className="border border-gray-800 rounded-xl p-4">
-              <div className="text-2xl font-bold text-purple-400">100%</div>
-              <div className="text-gray-400 text-sm">Data accuracy</div>
-            </div>
-            <div className="border border-gray-800 rounded-xl p-4">
-              <div className="text-2xl font-bold text-cyan-400">100%</div>
-              <div className="text-gray-400 text-sm">Uptime SLA</div>
-            </div>
-            <div className="border border-gray-800 rounded-xl p-4">
-              <div className="text-2xl font-bold text-green-400">99.9%</div>
-              <div className="text-gray-400 text-sm">Payment success</div>
-            </div>
-            <div className="border border-gray-800 rounded-xl p-4">
-              <div className="text-2xl font-bold text-yellow-400">24/7</div>
-              <div className="text-gray-400 text-sm">Human support</div>
-            </div>
-          </div>
-        </div>
-      </Section>
-
-      {/* ========== CTA + BOOK A DEMO ========== */}
-      <section className="relative py-24 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-purple-900/30 via-transparent to-cyan-900/30" />
-        <div className="container mx-auto px-6 text-center">
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }}>
-            <h2 className="text-3xl md:text-5xl font-bold mb-4">modular by design</h2>
-            <p className="text-gray-400 mb-8 max-w-xl mx-auto">Ready to transform your PG business with a modular, future‑proof platform?</p>
-            <Link href="/register" className="inline-block bg-gradient-to-r from-purple-600 to-cyan-600 text-white px-8 py-3 rounded-full font-semibold hover:shadow-xl transition transform hover:scale-105">
-              book a demo →
-            </Link>
           </motion.div>
         </div>
       </section>
 
+      {/* ========== MODULAR BY DESIGN – tagline ========== */}
+      <div className="text-center py-12 border-y border-white/10">
+        <p className="text-2xl md:text-3xl font-light tracking-wider text-orange-300">modular by design</p>
+      </div>
+
+      {/* ========== OUR SERVICES – 4 cards with numbers ========== */}
+      <Section>
+        <div className="container mx-auto px-6">
+          <h2 className="text-4xl md:text-5xl font-bold text-center mb-4">Our Services</h2>
+          <p className="text-gray-400 text-center max-w-2xl mx-auto mb-12">Modular, flexible solutions for modern PG & hostel management.</p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 hover:border-orange-500/50 transition">
+              <div className="text-5xl font-black text-orange-500 mb-4">01</div>
+              <h3 className="text-xl font-semibold mb-2">Neural Rent Collection</h3>
+              <p className="text-gray-400">Self‑learning systems that optimise payment reminders and automate reconciliation.</p>
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 hover:border-orange-500/50 transition">
+              <div className="text-5xl font-black text-orange-500 mb-4">02</div>
+              <h3 className="text-xl font-semibold mb-2">Smart Analytics</h3>
+              <p className="text-gray-400">Real‑time occupancy, revenue forecasts, and AI‑driven insights.</p>
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 hover:border-orange-500/50 transition">
+              <div className="text-5xl font-black text-orange-500 mb-4">03</div>
+              <h3 className="text-xl font-semibold mb-2">Core Services</h3>
+              <p className="text-gray-400">Modular, flexible solutions for modern digital infrastructure.</p>
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 hover:border-orange-500/50 transition">
+              <div className="text-5xl font-black text-orange-500 mb-4">04</div>
+              <h3 className="text-xl font-semibold mb-2">Future‑proof Systems</h3>
+              <p className="text-gray-400">Scale seamlessly, adapt to your business needs. Platform by design.</p>
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      {/* ========== GLOBAL PRESENCE + SYSTEM HEALTH ========== */}
+      <div className="py-20 bg-white/5">
+        <div className="container mx-auto px-6">
+          <div className="grid md:grid-cols-2 gap-12">
+            {/* Left: Global offices */}
+            <div>
+              <h2 className="text-3xl font-bold mb-6">Global <span className="text-orange-400">presence</span></h2>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                  <div><span className="text-orange-400">📍</span> Delhi, India</div>
+                  <div className="text-gray-400">24/7 support • 99.9% uptime</div>
+                </div>
+                <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                  <div><span className="text-orange-400">📍</span> Bangalore, India</div>
+                  <div className="text-gray-400">24/7 support • 99.9% uptime</div>
+                </div>
+                <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                  <div><span className="text-orange-400">📍</span> Mumbai, India</div>
+                  <div className="text-gray-400">24/7 support • 99.9% uptime</div>
+                </div>
+                <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                  <div><span className="text-orange-400">📍</span> Dubai, UAE</div>
+                  <div className="text-gray-400">24/7 support • 99.9% uptime</div>
+                </div>
+              </div>
+            </div>
+            {/* Right: System health / metrics */}
+            <div>
+              <h2 className="text-3xl font-bold mb-6">System <span className="text-orange-400">health</span></h2>
+              <div className="space-y-4">
+                <div className="bg-black/30 rounded-xl p-4 border border-white/10">
+                  <div className="flex justify-between text-sm text-gray-400"><span>API Response</span><span>98.2ms</span></div>
+                  <div className="w-full bg-gray-800 rounded-full h-2 mt-2"><div className="bg-orange-500 rounded-full h-2" style={{ width: '98%' }}></div></div>
+                </div>
+                <div className="bg-black/30 rounded-xl p-4 border border-white/10">
+                  <div className="flex justify-between text-sm text-gray-400"><span>Database Uptime</span><span>99.99%</span></div>
+                  <div className="w-full bg-gray-800 rounded-full h-2 mt-2"><div className="bg-orange-500 rounded-full h-2" style={{ width: '99.99%' }}></div></div>
+                </div>
+                <div className="bg-black/30 rounded-xl p-4 border border-white/10">
+                  <div className="flex justify-between text-sm text-gray-400"><span>AI Model Accuracy</span><span>94.7%</span></div>
+                  <div className="w-full bg-gray-800 rounded-full h-2 mt-2"><div className="bg-orange-500 rounded-full h-2" style={{ width: '95%' }}></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ========== PLATFORM PARTNERS / METRICS ========== */}
+      <Section>
+        <div className="container mx-auto px-6">
+          <h2 className="text-3xl font-bold text-center mb-4">Platinum <span className="text-orange-400">Partners</span></h2>
+          <p className="text-gray-400 text-center mb-12">Trusted by the leading PG networks</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl mx-auto">
+            <div className="text-center p-6 border border-white/10 rounded-2xl bg-white/5">
+              <div className="text-3xl font-bold text-orange-400">97%</div>
+              <div className="text-gray-400">Uptime (SLA)</div>
+            </div>
+            <div className="text-center p-6 border border-white/10 rounded-2xl bg-white/5">
+              <div className="text-3xl font-bold text-orange-400">+51%</div>
+              <div className="text-gray-400">Performance gain</div>
+            </div>
+            <div className="text-center p-6 border border-white/10 rounded-2xl bg-white/5">
+              <div className="text-3xl font-bold text-orange-400">96%</div>
+              <div className="text-gray-400">Integration success</div>
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      {/* ========== BOOK A DEMO / FINAL CTA ========== */}
+      <section className="py-24 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-orange-600/20 to-transparent blur-3xl" />
+        <div className="container mx-auto px-6 text-center relative">
+          <h2 className="text-4xl md:text-5xl font-bold mb-4">Ready to lead <span className="text-orange-500">innovation?</span></h2>
+          <p className="text-gray-400 mb-8 max-w-xl mx-auto">Join our guided tour and explore all features live with a platform expert.</p>
+          <div className="flex flex-wrap gap-4 justify-center">
+            <Link href="/demo" className="bg-orange-600 text-white px-8 py-3 rounded-full font-semibold hover:bg-orange-500 transition shadow-lg">Book a demo →</Link>
+            <Link href="/register" className="border border-gray-600 text-gray-300 px-8 py-3 rounded-full font-semibold hover:border-orange-500 hover:text-orange-400 transition">Start free trial</Link>
+          </div>
+        </div>
+      </section>
+
       {/* ========== FOOTER ========== */}
-      <footer className="border-t border-gray-800 py-12">
+      <footer className="border-t border-white/10 py-12">
         <div className="container mx-auto px-6 text-center text-gray-500 text-sm">
-          <p>© {new Date().getFullYear()} HOSTELSET — modular platform for modern PG management.</p>
+          <p>© {new Date().getFullYear()} HOSTELSET — modular by design. All rights reserved.</p>
           <div className="flex justify-center gap-6 mt-4">
-            <Link href="/privacy" className="hover:text-purple-400 transition">Privacy</Link>
-            <Link href="/terms" className="hover:text-purple-400 transition">Terms</Link>
-            <Link href="/contact" className="hover:text-purple-400 transition">Contact</Link>
-            <span className="text-gray-600">|</span>
-            <span className="text-xs">System status: 🟢 operational</span>
+            <Link href="/privacy" className="hover:text-orange-400 transition">Privacy</Link>
+            <Link href="/terms" className="hover:text-orange-400 transition">Terms</Link>
+            <Link href="/contact" className="hover:text-orange-400 transition">Contact</Link>
+            <Link href="/status" className="hover:text-orange-400 transition">System Status</Link>
           </div>
         </div>
       </footer>
