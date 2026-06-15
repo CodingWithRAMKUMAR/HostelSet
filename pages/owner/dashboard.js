@@ -79,7 +79,7 @@ export default function OwnerDashboard() {
   const [tenantApplication, setTenantApplication] = useState(null)
   const [loadingProfile, setLoadingProfile] = useState(false)
 
-  // NEW: Add Tenant form file uploads
+  // Add Tenant form file uploads
   const [addTenantIdProof, setAddTenantIdProof] = useState(null)
   const [addTenantPhoto, setAddTenantPhoto] = useState(null)
 
@@ -656,7 +656,7 @@ export default function OwnerDashboard() {
     finally { setIsSubmitting(false) }
   }
 
-  // ========== UPDATED APPLICATION FUNCTIONS ==========
+  // ========== APPLICATION FUNCTIONS ==========
   const approveApplication = async (appId) => {
     if (isSubmitting) {
       toast.error('Please wait, already processing')
@@ -698,7 +698,6 @@ export default function OwnerDashboard() {
         }).catch(e => console.warn('Reset email not sent:', e))
       }
 
-      // Create tenant record (pending amount = full rent, they will pay after login)
       await supabase.from('tenants').insert({
         user_id: userId, property_id: app.property_id, room_id: app.room_id, name: app.name,
         phone: app.phone, email: app.email, rent_amount: room.monthly_rent,
@@ -753,7 +752,7 @@ export default function OwnerDashboard() {
     }
   }
 
-  // ========== ADD TENANT WITH DOCUMENTS & CAMERA ==========
+  // ========== ADD TENANT WITH DOCUMENTS ==========
   const uploadAddTenantFile = async (file, prefix) => {
     if (!file) return null
     const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${file.name.split('.').pop()}`
@@ -914,7 +913,7 @@ export default function OwnerDashboard() {
     setIsSubmitting(false)
   }
 
-  const addTenant = addTenantWithDocs // replace old addTenant
+  const addTenant = addTenantWithDocs
 
   const deleteTenantComplete = async (tenantId, roomId, userId) => {
     setIsSubmitting(true)
@@ -923,7 +922,6 @@ export default function OwnerDashboard() {
       if (userId) {
         await supabase.from('users').delete().eq('id', userId).catch(() => supabase.from('users').update({ is_active: false, role: 'inactive' }).eq('id', userId))
       }
-      // Recalculate occupancy correctly
       const { data: room } = await supabase.from('rooms').select('capacity').eq('id', roomId).single()
       const { count: newOccupants } = await supabase
         .from('tenants')
@@ -1271,10 +1269,10 @@ export default function OwnerDashboard() {
                     <td className="px-4 py-3 text-green-600 font-semibold">{formatCurrency(t.total_paid || 0)}</td>
                     <td className="px-4 py-3 text-red-500 font-semibold">{formatCurrency(t.pending_amount || t.rent_amount)}</td>
                     <td className="px-4 py-3">{dueStatus.status === 'overdue' && <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">⚠️ {dueStatus.message}</span>}{dueStatus.status === 'due_soon' && <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs">📢 {dueStatus.message}</span>}{dueStatus.status === 'pending' && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs">💰 {dueStatus.message}</span>}{dueStatus.status === 'paid' && <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">✅ {dueStatus.message}</span>}{isNoticePeriod && daysToVacate !== null && daysToVacate > 0 && <span className="ml-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs">🚪 Vacates in {daysToVacate} days</span>}{isNoticePeriod && daysToVacate !== null && daysToVacate <= 0 && <span className="ml-1 px-2 py-1 bg-red-200 text-red-800 rounded-full text-xs">⚠️ Vacate overdue</span>}{isPaymentPending && <span className="ml-1 px-2 py-1 bg-yellow-200 text-yellow-800 rounded-full text-xs">⏳ Awaiting approval</span>}</td>
-                    <td className="px-4 py-3">{isPaymentPending ? <button onClick={() => { setConfirmingTenant(t); setShowPaymentConfirmModal(true) }} className="bg-yellow-600 text-white px-3 py-1 rounded text-xs mr-2">Confirm Payment</button> : <><button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button><button onClick={() => fetchTenantPayments(t)} className="bg-blue-600 text-white px-3 py-1 rounded text-xs mr-2">📜 History</button><button onClick={() => fetchTenantApplication(t)} className="bg-purple-600 text-white px-3 py-1 rounded text-xs mr-2">👤 Profile</button></>}<button onClick={() => { setTenantToDelete(t); setShowConfirmDeleteModal(true) }} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition">Delete</button></td>
+                    <td className="px-4 py-3">{isPaymentPending ? <button onClick={() => { setConfirmingTenant(t); setShowPaymentConfirmModal(true) }} className="bg-yellow-600 text-white px-3 py-1 rounded text-xs mr-2">Confirm Payment</button> : <><button onClick={() => { setSelectedTenant(t); setShowPaymentModal(true) }} className="bg-slate-800 text-white px-3 py-1 rounded text-xs mr-2">Collect</button><button onClick={() => fetchTenantPayments(t)} className="bg-blue-600 text-white px-3 py-1 rounded text-xs mr-2">📜 History</button><button onClick={() => fetchTenantApplication(t)} className="bg-purple-600 text-white px-3 py-1 rounded text-xs mr-2">👤 Profile</button></>}<button onClick={() => { setTenantToDelete(t); setShowConfirmDeleteModal(true) }} className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition">Delete</button>}</td>
                   </tr>
                 })}
-                {filteredTenants.length === 0 && <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants match your search</td</table>}
+                {filteredTenants.length === 0 && <tr><td colSpan="8" className="text-center py-8 text-gray-500">No tenants match your search</td</tr>}
               </tbody>
             </div>
           </div>
@@ -1333,7 +1331,7 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Applications Tab – Click to open modal */}
+        {/* Applications Tab */}
         {activeTab === 'applications' && (
           <div className="space-y-4">
             {applications.map(app => (
