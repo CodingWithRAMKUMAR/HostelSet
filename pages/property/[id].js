@@ -60,24 +60,6 @@ export default function PropertyDetail() {
   const [prebookCheckingPhone, setPrebookCheckingPhone] = useState(false)
   const [prebookCheckingEmail, setPrebookCheckingEmail] = useState(false)
 
-  // Logged‑in user (for pre‑booking)
-  const [user, setUser] = useState(null)
-
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user) {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single()
-        setUser(userData)
-      }
-    }
-    checkUser()
-  }, [])
-
   useEffect(() => {
     if (id) loadData()
   }, [id])
@@ -618,13 +600,8 @@ export default function PropertyDetail() {
     }
   }
 
-  // ========== PRE‑BOOKING FLOW (Strict, login required, payment proof) ==========
+  // ========== PRE‑BOOKING FLOW (No login required – same as regular application) ==========
   const openPrebookModal = (roomId, vacateDate) => {
-    if (!user) {
-      toast.error('Please login to pre‑book a room', { duration: 5000 })
-      router.push('/login')
-      return
-    }
     setPrebookRoomId(roomId)
     setPrebookForm({
       name: '',
@@ -694,10 +671,46 @@ export default function PropertyDetail() {
       const photoUrl = await uploadFile(prebookPhoto, 'prebook_photo')
       const screenshotUrl = await uploadFile(prebookPaymentScreenshot, 'prebook_pay')
 
+      // Check if user already exists
+      let userId
+      const existingUser = await findExistingUser(cleanPhone, prebookForm.email)
+      if (existingUser) {
+        userId = existingUser.id
+        // Update user details if needed
+        await supabase.from('users').update({
+          full_name: prebookForm.name,
+          email: prebookForm.email,
+        }).eq('id', userId)
+      } else {
+        // Create new user account
+        const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).charAt(0).toUpperCase()
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: prebookForm.email,
+          password: tempPassword,
+          options: { data: { full_name: prebookForm.name, role: 'tenant', phone: cleanPhone } }
+        })
+        if (authError) throw authError
+        userId = authData.user.id
+        await supabase.from('users').insert({
+          id: userId,
+          email: prebookForm.email,
+          full_name: prebookForm.name,
+          phone: cleanPhone,
+          role: 'tenant',
+          is_active: true,
+          id_proof: idProofUrl,
+          photo: photoUrl
+        })
+        // Send password reset email so user can set password later
+        await supabase.auth.resetPasswordForEmail(prebookForm.email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        }).catch(e => console.warn('Reset email not sent:', e))
+      }
+
       const prebookData = {
         property_id: id,
         room_id: prebookRoomId,
-        user_id: user.id,
+        user_id: userId,
         name: prebookForm.name.trim(),
         phone: cleanPhone,
         email: prebookForm.email.trim(),
@@ -781,11 +794,7 @@ export default function PropertyDetail() {
               <span className="text-xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">HOSTELSET</span>
             </Link>
             <div className="flex items-center gap-4">
-              {!user ? (
-                <Link href="/login" className="text-gray-600 hover:text-slate-800 transition">Login / Signup</Link>
-              ) : (
-                <span className="text-sm text-gray-600">Hi, {user.full_name?.split(' ')[0]}</span>
-              )}
+              <Link href="/login" className="text-gray-600 hover:text-slate-800 transition">Login</Link>
               <Link href="/owner/register-property" className="bg-slate-800 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-slate-700 transition shadow-md">
                 List Property
               </Link>
@@ -1082,7 +1091,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Form Modal (Step 1) */}
+      {/* Pre‑booking Form Modal (Step 1 – full application, no login) */}
       <AnimatePresence>
         {showPrebookModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookModal(false)}>
@@ -1191,7 +1200,7 @@ export default function PropertyDetail() {
                   <input type="file" accept="image/*" onChange={e => handleFileChange(e, setPrebookPaymentScreenshot)} className="w-full" required />
                 </div>
                 <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
-                  After payment, upload the screenshot and submit. Owner will verify and approve your pre‑booking.
+                  After payment, your account will be created and owner will verify your pre‑booking.
                 </div>
                 <button onClick={submitPreBookingPayment} disabled={prebookPaymentSubmitting} className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-50">
                   {prebookPaymentSubmitting ? 'Submitting...' : 'Submit Payment Proof'}
