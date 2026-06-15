@@ -16,7 +16,6 @@ export default function Home() {
   const heroY = useTransform(scrollYProgress, [0, 0.5], [0, 150])
   const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0])
 
-  // Animate stats on load
   useEffect(() => {
     if (stats.properties > 0) {
       const duration = 2000
@@ -41,7 +40,6 @@ export default function Home() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // Fetch real data
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
@@ -101,18 +99,9 @@ export default function Home() {
     { name: 'Amit Patel', role: 'Owner', text: 'The analytics dashboard helps me track everything in real time.', rating: 5, avatar: '👨' },
   ]
 
-  // Animation variants
   const fadeUp = {
     hidden: { opacity: 0, y: 40 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: 'easeOut' } }
-  }
-  const fadeLeft = {
-    hidden: { opacity: 0, x: -50 },
-    visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: 'easeOut' } }
-  }
-  const fadeRight = {
-    hidden: { opacity: 0, x: 50 },
-    visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: 'easeOut' } }
   }
   const staggerContainer = {
     hidden: { opacity: 0 },
@@ -140,7 +129,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-white overflow-x-hidden">
+    <div className="min-h-screen overflow-x-hidden">
       {/* ========== NAVBAR ========== */}
       <motion.nav 
         initial={{ y: -100 }}
@@ -148,7 +137,7 @@ export default function Home() {
         transition={{ duration: 0.5 }}
         className={`fixed top-0 w-full z-50 transition-all duration-500 ${
           scrolled 
-            ? 'bg-white/90 backdrop-blur-xl shadow-lg py-3' 
+            ? 'bg-white/95 backdrop-blur-xl shadow-lg py-3' 
             : 'bg-transparent py-5'
         }`}
       >
@@ -210,13 +199,12 @@ export default function Home() {
       </AnimatePresence>
 
       {/* ========== HERO SECTION ========== */}
-      <section className="relative min-h-screen flex items-center overflow-hidden">
-        {/* Animated gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 via-white to-purple-50" />
+      <section className="relative min-h-screen flex items-center overflow-hidden bg-gradient-to-br from-stone-50 via-white to-stone-100">
+        {/* Abstract background shapes */}
         <div className="absolute inset-0">
-          <div className="absolute top-20 left-10 w-96 h-96 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse" />
-          <div className="absolute bottom-20 right-10 w-96 h-96 bg-yellow-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse delay-1000" />
-          <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse delay-500" />
+          <div className="absolute top-20 left-10 w-96 h-96 bg-amber-100 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse" />
+          <div className="absolute bottom-20 right-10 w-96 h-96 bg-emerald-100 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse delay-1000" />
+          <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-stone-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse delay-500" />
         </div>
 
         <div className="relative container mx-auto px-6 md:px-10 pt-32 pb-20">
@@ -230,33 +218,33 @@ export default function Home() {
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-                className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 mb-6 shadow-sm border border-gray-200"
+                className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 mb-6 shadow-sm border border-stone-200"
               >
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
-                <span className="text-sm font-medium text-gray-700">Trusted by 500+ Property Owners</span>
+                <span className="text-sm font-medium text-stone-700">Trusted by 500+ Property Owners</span>
               </motion.div>
               
               <motion.h1 
-                className="text-6xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight"
+                className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight"
                 variants={fadeUp}
               >
-                <span className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
-                  Modern PG &
+                <span className="bg-gradient-to-r from-stone-800 to-stone-600 bg-clip-text text-transparent">
+                  Find your
                 </span>
                 <br />
-                <span className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                  Hostel Management
+                <span className="bg-gradient-to-r from-emerald-700 to-teal-600 bg-clip-text text-transparent">
+                  perfect PG
                 </span>
               </motion.h1>
               
               <motion.p 
-                className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto leading-relaxed"
+                className="text-xl text-stone-500 mb-10 max-w-2xl mx-auto leading-relaxed"
                 variants={fadeUp}
               >
-                Set Your Hostel, Simplify Life. India's most trusted platform for PG and hostel management with modern tools and real-time insights.
+                Hostel management simplified. Connect with trusted properties, manage rent effortlessly, and grow your business — all in one place.
               </motion.p>
               
               <motion.div 
@@ -265,7 +253,7 @@ export default function Home() {
               >
                 <Link 
                   href="/register" 
-                  className="group relative bg-gradient-to-r from-slate-800 to-slate-700 text-white px-10 py-4 rounded-full font-semibold hover:shadow-2xl transition-all duration-300 hover:scale-105 overflow-hidden"
+                  className="group relative bg-gradient-to-r from-stone-800 to-stone-700 text-white px-10 py-4 rounded-full font-semibold hover:shadow-2xl transition-all duration-300 hover:scale-105 overflow-hidden"
                 >
                   <span className="relative z-10 flex items-center gap-2">
                     Start Free Trial
@@ -274,7 +262,7 @@ export default function Home() {
                 </Link>
                 <Link 
                   href="/properties" 
-                  className="border-2 border-gray-300 text-gray-700 px-10 py-4 rounded-full font-semibold hover:border-slate-800 hover:bg-white/50 transition-all duration-300 hover:scale-105 backdrop-blur-sm"
+                  className="border-2 border-stone-300 text-stone-700 px-10 py-4 rounded-full font-semibold hover:border-stone-800 hover:bg-stone-50 transition-all duration-300 hover:scale-105 backdrop-blur-sm"
                 >
                   Browse Properties
                 </Link>
@@ -299,11 +287,11 @@ export default function Home() {
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.6 + i * 0.1 }}
                   whileHover={{ y: -5, scale: 1.05 }}
-                  className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 text-center border border-gray-100 shadow-sm hover:shadow-xl transition-all"
+                  className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 text-center border border-stone-100 shadow-sm hover:shadow-xl transition-all"
                 >
                   <div className="text-4xl mb-2">{stat.icon}</div>
-                  <div className="text-3xl font-bold text-slate-800">{stat.value}+</div>
-                  <div className="text-gray-500 mt-1">{stat.label}</div>
+                  <div className="text-3xl font-bold text-stone-800">{stat.value}+</div>
+                  <div className="text-stone-500 mt-1">{stat.label}</div>
                 </motion.div>
               ))}
             </motion.div>
@@ -315,18 +303,18 @@ export default function Home() {
       <Section>
         <div className="container mx-auto px-6 md:px-10">
           <div className="text-center mb-12">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+            <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-stone-800 to-stone-600 bg-clip-text text-transparent">
               Featured Properties
             </h2>
-            <p className="text-xl text-gray-500 max-w-2xl mx-auto">Discover handpicked PG and hostels near you</p>
+            <p className="text-xl text-stone-500 max-w-2xl mx-auto">Discover handpicked PG and hostels near you</p>
           </div>
           {loading ? (
             <div className="flex justify-center py-12">
-              <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+              <div className="w-12 h-12 border-4 border-stone-200 border-t-stone-800 rounded-full animate-spin"></div>
             </div>
           ) : properties.length === 0 ? (
-            <div className="text-center py-12 bg-gray-50 rounded-2xl">
-              <p className="text-gray-500">No properties available yet. Check back soon!</p>
+            <div className="text-center py-12 bg-stone-50 rounded-2xl">
+              <p className="text-stone-500">No properties available yet. Check back soon!</p>
             </div>
           ) : (
             <motion.div
@@ -341,7 +329,7 @@ export default function Home() {
                   key={property.id}
                   variants={fadeUp}
                   whileHover={{ y: -10 }}
-                  className="group bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100"
+                  className="group bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-stone-100"
                 >
                   <div className="relative h-56 overflow-hidden">
                     {property.photos && property.photos[0] ? (
@@ -351,26 +339,26 @@ export default function Home() {
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-6xl bg-gradient-to-br from-gray-100 to-gray-200">
+                      <div className="w-full h-full flex items-center justify-center text-6xl bg-gradient-to-br from-stone-100 to-stone-200">
                         🏠
                       </div>
                     )}
-                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-semibold">
+                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-semibold text-stone-800">
                       {property.rooms?.length} rooms
                     </div>
                   </div>
                   <div className="p-6">
-                    <h3 className="text-xl font-bold text-slate-800 mb-1">{property.name}</h3>
-                    <p className="text-gray-500 text-sm mb-3 flex items-center gap-1">
+                    <h3 className="text-xl font-bold text-stone-800 mb-1">{property.name}</h3>
+                    <p className="text-stone-500 text-sm mb-3 flex items-center gap-1">
                       <span>📍</span> {property.city}
                     </p>
                     <div className="flex justify-between items-center">
-                      <span className="text-purple-600 font-bold">
+                      <span className="text-emerald-600 font-bold">
                         ₹{formatCurrency(property.rooms?.[0]?.monthly_rent || 5000)}/mo
                       </span>
                       <Link 
                         href={`/property/${property.id}`}
-                        className="text-slate-600 hover:text-slate-800 flex items-center gap-1 text-sm font-medium transition group-hover:gap-2"
+                        className="text-stone-600 hover:text-stone-800 flex items-center gap-1 text-sm font-medium transition group-hover:gap-2"
                       >
                         View Details <span>→</span>
                       </Link>
@@ -381,7 +369,7 @@ export default function Home() {
             </motion.div>
           )}
           <div className="text-center mt-10">
-            <Link href="/properties" className="inline-flex items-center gap-2 text-purple-600 font-semibold hover:gap-3 transition-all">
+            <Link href="/properties" className="inline-flex items-center gap-2 text-emerald-600 font-semibold hover:gap-3 transition-all">
               Browse All Properties <span>→</span>
             </Link>
           </div>
@@ -389,11 +377,11 @@ export default function Home() {
       </Section>
 
       {/* ========== FEATURES GRID ========== */}
-      <Section className="bg-gradient-to-br from-gray-50 to-white">
+      <Section className="bg-gradient-to-br from-stone-50 to-white">
         <div className="container mx-auto px-6 md:px-10">
           <div className="text-center mb-12">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">Why Choose HOSTELSET?</h2>
-            <p className="text-xl text-gray-500">Everything you need to manage your PG business efficiently</p>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4 text-stone-800">Why Choose HOSTELSET?</h2>
+            <p className="text-xl text-stone-500">Everything you need to manage your PG business efficiently</p>
           </div>
           <motion.div
             variants={staggerContainer}
@@ -407,13 +395,13 @@ export default function Home() {
                 key={idx}
                 variants={fadeUp}
                 whileHover={{ y: -8, scale: 1.02 }}
-                className="bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100"
+                className="bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all duration-300 border border-stone-100"
               >
                 <div className={`text-5xl mb-5 bg-gradient-to-r ${feature.gradient} bg-clip-text text-transparent`}>
                   {feature.icon}
                 </div>
-                <h3 className="text-xl font-bold text-slate-800 mb-3">{feature.title}</h3>
-                <p className="text-gray-500 leading-relaxed">{feature.desc}</p>
+                <h3 className="text-xl font-bold text-stone-800 mb-3">{feature.title}</h3>
+                <p className="text-stone-500 leading-relaxed">{feature.desc}</p>
               </motion.div>
             ))}
           </motion.div>
@@ -424,8 +412,8 @@ export default function Home() {
       <Section>
         <div className="container mx-auto px-6 md:px-10">
           <div className="text-center mb-12">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">What Our Users Say</h2>
-            <p className="text-xl text-gray-500">Join thousands of satisfied property owners and tenants</p>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4 text-stone-800">What Our Users Say</h2>
+            <p className="text-xl text-stone-500">Join thousands of satisfied property owners and tenants</p>
           </div>
           <motion.div
             variants={staggerContainer}
@@ -439,19 +427,19 @@ export default function Home() {
                 key={idx}
                 variants={fadeUp}
                 whileHover={{ y: -5 }}
-                className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100"
+                className="bg-white rounded-2xl p-6 shadow-lg border border-stone-100"
               >
                 <div className="flex items-center gap-3 mb-4">
                   <div className="text-3xl">{t.avatar}</div>
                   <div>
-                    <div className="font-semibold text-slate-800">{t.name}</div>
-                    <div className="text-sm text-gray-500">{t.role}</div>
+                    <div className="font-semibold text-stone-800">{t.name}</div>
+                    <div className="text-sm text-stone-500">{t.role}</div>
                   </div>
                 </div>
-                <div className="flex text-yellow-400 mb-3">
+                <div className="flex text-amber-400 mb-3">
                   {'★'.repeat(t.rating)}{'☆'.repeat(5-t.rating)}
                 </div>
-                <p className="text-gray-600 leading-relaxed">"{t.text}"</p>
+                <p className="text-stone-600 leading-relaxed">"{t.text}"</p>
               </motion.div>
             ))}
           </motion.div>
@@ -459,19 +447,18 @@ export default function Home() {
       </Section>
 
       {/* ========== CTA SECTION ========== */}
-      <section className="relative py-24 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-900 to-slate-800" />
+      <section className="relative py-24 overflow-hidden bg-gradient-to-r from-stone-900 to-stone-800">
         <div className="absolute inset-0 opacity-30">
-          <div className="absolute top-0 left-0 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl animate-pulse" />
-          <div className="absolute bottom-0 right-0 w-96 h-96 bg-pink-500 rounded-full mix-blend-multiply filter blur-3xl animate-pulse delay-1000" />
+          <div className="absolute top-0 left-0 w-96 h-96 bg-amber-500 rounded-full mix-blend-multiply filter blur-3xl animate-pulse" />
+          <div className="absolute bottom-0 right-0 w-96 h-96 bg-emerald-500 rounded-full mix-blend-multiply filter blur-3xl animate-pulse delay-1000" />
         </div>
         <div className="relative container mx-auto px-6 md:px-10 text-center">
           <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">Ready to Get Started?</h2>
-          <p className="text-xl text-gray-300 mb-10 max-w-2xl mx-auto">
+          <p className="text-xl text-stone-300 mb-10 max-w-2xl mx-auto">
             Join thousands of property owners who have streamlined their business with HOSTELSET.
           </p>
           <div className="flex flex-col sm:flex-row gap-5 justify-center">
-            <Link href="/register" className="bg-white text-slate-800 px-8 py-3 rounded-full font-semibold hover:shadow-xl transition hover:scale-105">
+            <Link href="/register" className="bg-white text-stone-800 px-8 py-3 rounded-full font-semibold hover:shadow-xl transition hover:scale-105">
               Start Free Trial
             </Link>
             <Link href="/properties" className="border-2 border-white/30 text-white px-8 py-3 rounded-full font-semibold hover:bg-white/10 transition">
@@ -482,7 +469,7 @@ export default function Home() {
       </section>
 
       {/* ========== FOOTER ========== */}
-      <footer className="bg-gray-900 text-gray-400 pt-16 pb-8">
+      <footer className="bg-stone-900 text-stone-400 pt-16 pb-8">
         <div className="container mx-auto px-6 md:px-10">
           <div className="grid md:grid-cols-4 gap-8 mb-12">
             <div>
@@ -516,7 +503,7 @@ export default function Home() {
               </ul>
             </div>
           </div>
-          <div className="border-t border-gray-800 pt-6 text-center text-sm">
+          <div className="border-t border-stone-800 pt-6 text-center text-sm">
             <p>&copy; {new Date().getFullYear()} HOSTELSET. All rights reserved.</p>
           </div>
         </div>
