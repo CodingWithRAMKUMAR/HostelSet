@@ -1,10 +1,15 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { motion, useScroll, useTransform } from 'framer-motion'
+import { supabase } from '../lib/supabase'
+import { formatCurrency } from '../lib/utils'
 
 export default function Home() {
   const [scrolled, setScrolled] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [properties, setProperties] = useState([])
+  const [stats, setStats] = useState({ properties: 0, rooms: 0, tenants: 0 })
+  const [loading, setLoading] = useState(true)
 
   const { scrollYProgress } = useScroll()
   const opacity = useTransform(scrollYProgress, [0, 0.2], [1, 0.8])
@@ -13,6 +18,54 @@ export default function Home() {
     const handleScroll = () => setScrolled(window.scrollY > 50)
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // Fetch real data
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true)
+      try {
+        // Fetch properties with at least one room
+        const { data: props } = await supabase
+          .from('properties')
+          .select(`
+            id,
+            name,
+            city,
+            address,
+            photos,
+            rooms (id, monthly_rent)
+          `)
+          .order('created_at', { ascending: false })
+          .limit(6)
+
+        // Filter properties that have rooms
+        const filtered = (props || []).filter(p => p.rooms && p.rooms.length > 0)
+        setProperties(filtered)
+
+        // Fetch stats
+        const { count: propertiesCount } = await supabase
+          .from('properties')
+          .select('*', { count: 'exact', head: true })
+        const { count: roomsCount } = await supabase
+          .from('rooms')
+          .select('*', { count: 'exact', head: true })
+        const { count: tenantsCount } = await supabase
+          .from('tenants')
+          .select('*', { count: 'exact', head: true })
+
+        setStats({
+          properties: propertiesCount || 0,
+          rooms: roomsCount || 0,
+          tenants: tenantsCount || 0,
+        })
+      } catch (error) {
+        console.error('Error loading data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
   }, [])
 
   const features = [
@@ -24,10 +77,10 @@ export default function Home() {
     { icon: '⭐', title: '24/7 Support', desc: 'Dedicated support team', color: 'from-yellow-500 to-orange-600' },
   ]
 
-  const stats = [
-    { value: '10,000+', label: 'Happy Tenants', icon: '👥', delay: 0 },
-    { value: '500+', label: 'Properties', icon: '🏢', delay: 0.1 },
-    { value: '₹50Cr+', label: 'Rent Collected', icon: '💰', delay: 0.2 },
+  const statsDisplay = [
+    { value: `${stats.properties}+`, label: 'Properties', icon: '🏢', delay: 0 },
+    { value: `${stats.rooms}+`, label: 'Rooms', icon: '🏠', delay: 0.1 },
+    { value: `${stats.tenants}+`, label: 'Happy Tenants', icon: '👥', delay: 0.2 },
     { value: '99.9%', label: 'Uptime', icon: '🔒', delay: 0.3 },
   ]
 
@@ -47,7 +100,6 @@ export default function Home() {
       }`}>
         <div className="container mx-auto px-4 md:px-8">
           <div className="flex justify-between items-center">
-            {/* Logo - Stays on home page */}
             <Link href="/" className="flex items-center gap-3 group">
               <motion.div 
                 whileHover={{ rotate: 360, scale: 1.1 }}
@@ -61,9 +113,8 @@ export default function Home() {
               </span>
             </Link>
             
-            {/* DESKTOP NAVIGATION - UPDATED WITH BROWSE PROPERTIES */}
+            {/* DESKTOP NAVIGATION */}
             <div className="hidden md:flex items-center gap-4">
-              {/* Browse Properties Link */}
               <Link 
                 href="/properties" 
                 className="px-5 py-2.5 rounded-full border-2 border-slate-300 text-slate-700 font-semibold hover:border-slate-800 hover:bg-slate-50 transition-all duration-300 flex items-center gap-2"
@@ -72,7 +123,6 @@ export default function Home() {
                 Browse Properties
               </Link>
               
-              {/* Login Button - Outline Style */}
               <Link 
                 href="/login" 
                 className="px-5 py-2.5 rounded-full border-2 border-slate-300 text-slate-700 font-semibold hover:border-slate-800 hover:bg-slate-50 transition-all duration-300 flex items-center gap-2"
@@ -81,7 +131,6 @@ export default function Home() {
                 Login
               </Link>
               
-              {/* List Property Button - Solid Gradient */}
               <Link 
                 href="/owner/register-property" 
                 className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105 flex items-center gap-2"
@@ -102,7 +151,7 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* MOBILE MENU - UPDATED WITH BROWSE PROPERTIES */}
+      {/* MOBILE MENU */}
       {mobileMenuOpen && (
         <motion.div 
           initial={{ opacity: 0, y: -20 }}
@@ -111,7 +160,6 @@ export default function Home() {
           className="fixed top-20 left-4 right-4 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl z-40 md:hidden border border-gray-100"
         >
           <div className="p-4">
-            {/* Browse Properties */}
             <Link 
               href="/properties" 
               className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-slate-300 text-slate-700 font-semibold hover:bg-gray-50 transition-all duration-300 mb-3"
@@ -120,7 +168,6 @@ export default function Home() {
               <span>🔍</span>
               Browse Properties
             </Link>
-            
             <Link 
               href="/login" 
               className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-slate-300 text-slate-700 font-semibold hover:bg-gray-50 transition-all duration-300 mb-3"
@@ -129,7 +176,6 @@ export default function Home() {
               <span>👤</span>
               Login
             </Link>
-            
             <Link 
               href="/owner/register-property" 
               className="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-slate-800 to-slate-700 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all duration-300"
@@ -142,9 +188,8 @@ export default function Home() {
         </motion.div>
       )}
 
-      {/* Hero Section - Modern Design */}
+      {/* Hero Section */}
       <section className="relative min-h-screen flex items-center overflow-hidden">
-        {/* Animated Background */}
         <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-gray-100" />
         <div className="absolute inset-0 opacity-30">
           <div className="absolute top-20 left-10 w-72 h-72 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl animate-pulse" />
@@ -206,14 +251,14 @@ export default function Home() {
               </div>
             </motion.div>
 
-            {/* Stats with Modern Cards */}
+            {/* LIVE STATS */}
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.4 }}
               className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto"
             >
-              {stats.map((stat, index) => (
+              {statsDisplay.map((stat, index) => (
                 <motion.div
                   key={index}
                   initial={{ opacity: 0, scale: 0.5 }}
@@ -232,8 +277,94 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Features Section with Modern Cards */}
+      {/* FEATURED PROPERTIES SECTION - REAL DATA */}
       <section className="py-24 bg-white relative">
+        <div className="container mx-auto px-4 md:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center max-w-3xl mx-auto mb-16"
+          >
+            <h2 className="text-4xl md:text-5xl font-bold mb-6">
+              Featured{' '}
+              <span className="bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+                Properties
+              </span>
+            </h2>
+            <p className="text-xl text-gray-500">Discover handpicked PG and hostels near you</p>
+          </motion.div>
+
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+            </div>
+          ) : properties.length === 0 ? (
+            <div className="text-center py-12 bg-gray-50 rounded-2xl">
+              <p className="text-gray-500">No properties available yet. Check back soon!</p>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {properties.map((property, index) => (
+                <motion.div
+                  key={property.id}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  viewport={{ once: true }}
+                  whileHover={{ y: -8 }}
+                  className="group bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100"
+                >
+                  <div className="relative h-56 overflow-hidden">
+                    {property.photos && property.photos[0] ? (
+                      <img 
+                        src={property.photos[0]} 
+                        alt={property.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-6xl bg-gradient-to-br from-slate-100 to-gray-200">
+                        🏠
+                      </div>
+                    )}
+                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-semibold text-slate-800">
+                      {property.rooms?.length || 0} rooms
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    <h3 className="text-xl font-bold text-slate-800 mb-2">{property.name}</h3>
+                    <p className="text-gray-500 text-sm mb-3 flex items-center gap-1">
+                      <span>📍</span> {property.address}, {property.city}
+                    </p>
+                    <div className="flex justify-between items-center">
+                      <span className="text-purple-600 font-bold">
+                        From ₹{formatCurrency(property.rooms?.[0]?.monthly_rent || 5000)}/mo
+                      </span>
+                      <Link 
+                        href={`/property/${property.id}`}
+                        className="text-slate-600 hover:text-slate-800 flex items-center gap-1 text-sm font-medium transition"
+                      >
+                        View Details <span>→</span>
+                      </Link>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+          <div className="text-center mt-10">
+            <Link 
+              href="/properties" 
+              className="inline-flex items-center gap-2 text-purple-600 font-semibold hover:gap-3 transition-all"
+            >
+              View All Properties <span>→</span>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="py-24 bg-gray-50 relative">
         <div className="container mx-auto px-4 md:px-8">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -249,7 +380,7 @@ export default function Home() {
               ?
             </h2>
             <p className="text-xl text-gray-500">
-              Everything you need to manage your PG business efficiently and professionally
+              Everything you need to manage your PG business efficiently
             </p>
           </motion.div>
 
@@ -276,8 +407,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* How It Works - Modern Timeline */}
-      <section className="py-24 bg-gradient-to-br from-gray-50 to-white">
+      {/* How It Works */}
+      <section className="py-24 bg-white">
         <div className="container mx-auto px-4 md:px-8">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -296,7 +427,6 @@ export default function Home() {
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-8 relative">
-            {/* Connecting Line - Desktop */}
             <div className="hidden md:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 -translate-y-1/2" />
             
             {steps.map((step, index) => (
@@ -307,7 +437,7 @@ export default function Home() {
                 transition={{ delay: index * 0.2 }}
                 viewport={{ once: true }}
                 whileHover={{ y: -8 }}
-                className="relative bg-white rounded-2xl p-8 text-center shadow-lg hover:shadow-2xl transition-all duration-300 z-10"
+                className="relative bg-white rounded-2xl p-8 text-center shadow-lg hover:shadow-2xl transition-all duration-300 z-10 border border-gray-100"
               >
                 <div className="absolute -top-6 left-1/2 -translate-x-1/2">
                   <div className={`w-14 h-14 bg-gradient-to-r ${step.color} rounded-2xl flex items-center justify-center shadow-lg`}>
@@ -327,7 +457,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CTA Section - Modern Gradient */}
+      {/* CTA Section */}
       <section className="py-24 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900" />
         <div className="absolute inset-0 opacity-30">
@@ -366,7 +496,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Modern Footer */}
+      {/* Footer */}
       <footer className="bg-white border-t border-gray-100 py-16">
         <div className="container mx-auto px-4 md:px-8">
           <div className="grid md:grid-cols-4 gap-12">
@@ -390,35 +520,34 @@ export default function Home() {
             <div>
               <h4 className="font-bold text-slate-800 mb-6 text-lg">Product</h4>
               <ul className="space-y-3 text-gray-500">
-                <li><a href="#" className="hover:text-slate-800 transition">Features</a></li>
+                <li><Link href="/features" className="hover:text-slate-800 transition">Features</Link></li>
                 <li><Link href="/owner/register-property" className="hover:text-slate-800 transition">List Property</Link></li>
                 <li><Link href="/login" className="hover:text-slate-800 transition">Login</Link></li>
                 <li><Link href="/register" className="hover:text-slate-800 transition">Register</Link></li>
-                {/* Added Browse Properties in footer */}
                 <li><Link href="/properties" className="hover:text-slate-800 transition">Browse Properties</Link></li>
               </ul>
             </div>
             <div>
               <h4 className="font-bold text-slate-800 mb-6 text-lg">Company</h4>
               <ul className="space-y-3 text-gray-500">
-                <li><a href="#" className="hover:text-slate-800 transition">About Us</a></li>
-                <li><a href="#" className="hover:text-slate-800 transition">Contact</a></li>
-                <li><a href="#" className="hover:text-slate-800 transition">Blog</a></li>
-                <li><a href="#" className="hover:text-slate-800 transition">Careers</a></li>
+                <li><Link href="/about" className="hover:text-slate-800 transition">About Us</Link></li>
+                <li><Link href="/contact" className="hover:text-slate-800 transition">Contact</Link></li>
+                <li><Link href="/blog" className="hover:text-slate-800 transition">Blog</Link></li>
+                <li><Link href="/careers" className="hover:text-slate-800 transition">Careers</Link></li>
               </ul>
             </div>
             <div>
               <h4 className="font-bold text-slate-800 mb-6 text-lg">Legal</h4>
               <ul className="space-y-3 text-gray-500">
-                <li><a href="#" className="hover:text-slate-800 transition">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-slate-800 transition">Terms of Service</a></li>
-                <li><a href="#" className="hover:text-slate-800 transition">Cookie Policy</a></li>
-                <li><a href="#" className="hover:text-slate-800 transition">Refund Policy</a></li>
+                <li><Link href="/privacy" className="hover:text-slate-800 transition">Privacy Policy</Link></li>
+                <li><Link href="/terms" className="hover:text-slate-800 transition">Terms of Service</Link></li>
+                <li><Link href="/cookies" className="hover:text-slate-800 transition">Cookie Policy</Link></li>
+                <li><Link href="/refund" className="hover:text-slate-800 transition">Refund Policy</Link></li>
               </ul>
             </div>
           </div>
           <div className="border-t border-gray-100 mt-12 pt-8 text-center text-gray-400">
-            <p>&copy; 2026 HOSTELSET. All rights reserved. Made with ❤️ for PG owners</p>
+            <p>&copy; {new Date().getFullYear()} HOSTELSET. All rights reserved. Made with ❤️ for PG owners</p>
           </div>
         </div>
       </footer>
