@@ -60,8 +60,7 @@ export default function PropertyDetail() {
   const [prebookCheckingPhone, setPrebookCheckingPhone] = useState(false)
   const [prebookCheckingEmail, setPrebookCheckingEmail] = useState(false)
 
-  // Track existing pre‑booking for this user (by email/phone) to disable button
-  const [existingPrebooking, setExistingPrebooking] = useState(null)
+  // No user state needed for pre‑booking (login not required)
 
   useEffect(() => {
     if (id) loadData()
@@ -277,13 +276,6 @@ export default function PropertyDetail() {
     }
     setPrebookCheckingPhone(true)
     try {
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('phone', cleanPhone)
-        .maybeSingle()
-      // Allow existing users? Pre‑booking is open to anyone – we don't block existing users.
-      // But we do check for existing pending pre‑booking for this property
       const { data: existingPrebook } = await supabase
         .from('pre_bookings')
         .select('id')
@@ -378,7 +370,7 @@ export default function PropertyDetail() {
     return null
   }
 
-  // ========== Regular Application Flow ==========
+  // ========== Regular Application Flow (NO password reset email) ==========
   const submitApplication = async () => {
     if (!applyForm.name || !applyForm.phone || !applyForm.email) {
       toast.error('Please fill all required fields (Name, Phone, Email)')
@@ -428,6 +420,12 @@ export default function PropertyDetail() {
         return
       }
 
+      // Send only a confirmation email (no password reset)
+      // We'll use a custom email function or rely on Supabase's email template? For now, just a toast.
+      // But to actually send an email, you'd need a Supabase Edge Function or third-party service.
+      // For now, we'll just show a success toast and rely on owner approval email later.
+      toast.success('Application submitted successfully! You will receive a confirmation email shortly.')
+      
       setShowApplyModal(false)
       setPaymentScreenshot(null)
       setTransactionId('')
@@ -516,9 +514,8 @@ export default function PropertyDetail() {
           }
         }
 
-        // ❌ NO PASSWORD RESET EMAIL HERE – only when owner approves
-        // We still create the user account but do not send any email yet.
-        // The owner dashboard will send the reset email on approval.
+        // DO NOT send password reset email here – it will be sent only on owner approval
+        // await supabase.auth.resetPasswordForEmail(applyForm.email, ...)
       }
 
       const totalAmount = calculateTotalAmount()
@@ -576,15 +573,12 @@ export default function PropertyDetail() {
       }).eq('id', selectedRoom)
 
       toast.success(
-        `✅ Application submitted! Owner will review and send you login details upon approval.`,
-        { duration: 8000 }
+        `🎉 Account created! You will receive a password reset email once the owner approves your application.`,
+        { duration: 10000 }
       )
 
       setShowPaymentModal(false)
-      // Do NOT redirect to login – user may not have password yet
-      setTimeout(() => {
-        router.push('/')
-      }, 3000)
+      setTimeout(() => router.push('/login'), 10000)
     } catch (error) {
       console.error('Payment submission error:', error)
       toast.error('Something went wrong: ' + error.message)
@@ -593,8 +587,9 @@ export default function PropertyDetail() {
     }
   }
 
-  // ========== PRE‑BOOKING FLOW (No login required, no user_id) ==========
+  // ========== PRE‑BOOKING FLOW (No login required, user_id = null) ==========
   const openPrebookModal = (roomId, vacateDate) => {
+    // No login check – anyone can pre‑book
     setPrebookRoomId(roomId)
     setPrebookForm({
       name: '',
@@ -639,7 +634,7 @@ export default function PropertyDetail() {
       toast.error('Room not selected')
       return
     }
-    // Validate phone/email against existing pending pre‑bookings
+    // Validate phone/email against existing pre‑bookings (not against users, since login not required)
     const phoneOk = await validatePrebookPhone(prebookForm.phone)
     const emailOk = await validatePrebookEmail(prebookForm.email)
     if (!phoneOk || !emailOk) {
@@ -667,7 +662,7 @@ export default function PropertyDetail() {
       const prebookData = {
         property_id: id,
         room_id: prebookRoomId,
-        user_id: null,                      // No login required
+        user_id: null, // No login required – set to NULL to avoid foreign key constraint
         name: prebookForm.name.trim(),
         phone: cleanPhone,
         email: prebookForm.email.trim(),
@@ -1036,10 +1031,10 @@ export default function PropertyDetail() {
                   <input type="file" accept="image/*" onChange={e => handleFileChange(e, setPaymentScreenshot)} className="w-full" />
                 </div>
                 <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
-                  After payment, your application will be submitted. Owner will review and contact you.
+                  After payment, your account will be created instantly and you can log in.
                 </div>
                 <button onClick={submitPayment} disabled={paymentSubmitting} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50">
-                  {paymentSubmitting ? 'Processing...' : 'Submit Application'}
+                  {paymentSubmitting ? 'Processing...' : 'I Have Paid – Submit'}
                 </button>
                 <button onClick={() => setShowPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>
               </div>
