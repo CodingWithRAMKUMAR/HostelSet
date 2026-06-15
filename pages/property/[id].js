@@ -1082,7 +1082,7 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Form Modal (Step 1 – full application form) */}
+      {/* Pre‑booking Form Modal (Step 1) */}
       <AnimatePresence>
         {showPrebookModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookModal(false)}>
