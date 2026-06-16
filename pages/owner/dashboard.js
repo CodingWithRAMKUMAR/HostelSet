@@ -287,15 +287,31 @@ export default function OwnerDashboard() {
     }
   }, [])
 
-  // Auto‑delete tenants whose notice period has expired
+  // ✅ ROBUST AUTO‑DELETE: fetch IDs first, then delete
   const autoDeleteExpiredNoticeTenants = async () => {
     const today = new Date().toISOString().split('T')[0]
-    const { error } = await supabase
+    // 1. get tenant IDs that should be removed
+    const { data: expired, error: fetchErr } = await supabase
       .from('tenants')
-      .delete()
+      .select('id')
       .eq('status', 'notice_period')
       .lte('notice_period_end', today)
-    if (error) console.error('Auto‑delete notice tenants error:', error)
+
+    if (fetchErr) {
+      console.error('Fetch expired notice tenants error:', fetchErr)
+      return
+    }
+
+    if (!expired || expired.length === 0) return
+
+    const ids = expired.map(t => t.id)
+    // 2. delete them (cascade handles the rest)
+    const { error: deleteErr } = await supabase
+      .from('tenants')
+      .delete()
+      .in('id', ids)
+
+    if (deleteErr) console.error('Auto‑delete notice tenants error:', deleteErr)
   }
 
   const loadData = async (isBackgroundRefresh = false) => {
