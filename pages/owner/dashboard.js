@@ -192,9 +192,31 @@ export default function OwnerDashboard() {
     removeAlert(alert.id)
   }
 
-  // ✅ NEW: Clear all alerts associated with a specific item (by type + linkId)
+  // ✅ Clear alerts for a specific item by type + linkId
   const clearAlertForItem = (type, itemId) => {
     setAlerts(prev => prev.filter(a => !(a.type === type && a.linkId === itemId)))
+  }
+
+  // ✅ Remove stale alerts whose underlying item no longer exists (e.g., approved vacate, deleted pre-booking)
+  const cleanStaleAlerts = (currentVacateRequests, currentPreBookings, currentRoomChangeRequests) => {
+    setAlerts(prev => {
+      return prev.filter(alert => {
+        if (alert.type === 'vacate') {
+          // keep only if the vacate request still exists and is still pending
+          const req = currentVacateRequests.find(v => v.id === alert.linkId)
+          return req && req.status === 'pending'
+        }
+        if (alert.type === 'prebooking') {
+          const booking = currentPreBookings.find(b => b.id === alert.linkId)
+          return booking && booking.status === 'pending' && booking.payment_status === 'pending'
+        }
+        if (alert.type === 'roomchange') {
+          const rc = currentRoomChangeRequests.find(r => r.id === alert.linkId)
+          return rc && rc.status === 'pending'
+        }
+        return true // keep other alert types
+      })
+    })
   }
 
   const detectNewItems = (newData, oldData, type, tab) => {
@@ -315,7 +337,6 @@ export default function OwnerDashboard() {
     if (deleteErr) {
       console.error('Auto‑delete notice tenants error:', deleteErr)
     } else {
-      // Notify owner
       expired.forEach(t => {
         toast.success(`✅ ${t.name} has been automatically removed (notice period ended).`, { duration: 4000 })
       })
@@ -324,10 +345,43 @@ export default function OwnerDashboard() {
     }
   }
 
+  // ✅ Force delete tenants whose approved vacate date has passed, regardless of notice_period_end
+  const forceDeleteOverdueVacateTenants = async () => {
+    const today = new Date().toISOString().split('T')[0]
+    // Get all approved vacate requests that are past the expected date
+    const { data: overdueVacates, error: fetchErr } = await supabase
+      .from('check_out_requests')
+      .select('id, tenant_id')
+      .eq('status', 'approved')
+      .lte('expected_check_out', today)
+
+    if (fetchErr) return
+
+    if (!overdueVacates || overdueVacates.length === 0) return
+
+    for (const vacate of overdueVacates) {
+      // Check if the tenant still exists and is on notice period
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select('id, status')
+        .eq('id', vacate.tenant_id)
+        .maybeSingle()
+      if (tenant && tenant.status === 'notice_period') {
+        // Delete the tenant – cascade handles the rest
+        const { error: deleteErr } = await supabase.from('tenants').delete().eq('id', tenant.id)
+        if (!deleteErr) {
+          toast.success('Tenant automatically removed (vacate date passed).', { duration: 4000 })
+        }
+      }
+    }
+  }
+
   const loadData = async (isBackgroundRefresh = false) => {
     if (!isBackgroundRefresh) setLoading(true)
     try {
+      // Run both cleanup functions
       await autoDeleteExpiredNoticeTenants()
+      await forceDeleteOverdueVacateTenants()
 
       const userId = localStorage.getItem('userId')
       const { data: propertyData } = await supabase
@@ -465,6 +519,9 @@ export default function OwnerDashboard() {
           .eq('property_id', propertyData.id)
           .order('created_at', { ascending: false })
         setNotices(noticesData || [])
+
+        // ✅ Clean up alerts that are no longer valid
+        cleanStaleAlerts(vacateData || [], preBookingsData || [], roomChangeRequests)
       }
     } catch (error) {
       console.error('Load error:', error)
@@ -787,7 +844,7 @@ export default function OwnerDashboard() {
       const { error } = await supabase.from('tenants').update({ status: 'active' }).eq('id', tenantId)
       if (error) throw error
       toast.success('✅ Payment confirmed! Tenant now active.')
-      clearAlertForItem('payment', tenantId) // clear any pending payment alert for this tenant
+      clearAlertForItem('payment', tenantId)
       setShowPaymentConfirmModal(false)
       setConfirmingTenant(null)
       await loadData()
@@ -807,7 +864,7 @@ export default function OwnerDashboard() {
         const newStatus = newPending <= 0 ? 'paid' : 'pending'
         await supabase.from('tenants').update({ total_paid: newTotalPaid, pending_amount: newPending, rent_status: newStatus, last_payment_date: new Date().toISOString().split('T')[0] }).eq('id', tenantId)
       }
-      clearAlertForItem('payment', paymentId) // clear alert for this specific payment proof
+      clearAlertForItem('payment', paymentId)
       toast.success('✅ Rent payment confirmed!')
       await loadData()
     } catch (error) { toast.error('Failed to confirm: ' + error.message) }
@@ -1230,7 +1287,7 @@ export default function OwnerDashboard() {
     finally { setIsSubmitting(false) }
   }
 
-  // ✅ FIXED: Use the tenant's selected checkout date as the notice period end, and clear related alert
+  // ✅ Approve vacate: use tenant's selected date, clear alert
   const approveVacateRequest = async (requestId, tenantId, roomId, expectedDate) => {
     if (isSubmitting) return
     if (!confirm('Approve vacate request? Tenant will be put on notice period.')) return
@@ -1240,9 +1297,9 @@ export default function OwnerDashboard() {
       await supabase.from('tenants').update({
         status: 'notice_period', check_out_requested: true,
         notice_period_start: new Date().toISOString().split('T')[0],
-        notice_period_end: expectedDate // use the date the tenant selected
+        notice_period_end: expectedDate
       }).eq('id', tenantId)
-      clearAlertForItem('vacate', requestId) // remove the "New vacate request" alert
+      clearAlertForItem('vacate', requestId)   // remove the "New vacate request" alert
       toast.success('Vacate request approved – tenant is now on notice period')
       await loadData()
     } catch (error) { toast.error('Failed to approve') }
@@ -1928,6 +1985,22 @@ export default function OwnerDashboard() {
         {/* Vacate Tab */}
         {activeTab === 'vacate' && (
           <div className="space-y-4">
+            {/* Optional manual cleanup button */}
+            <div className="flex justify-end">
+              <button
+                onClick={async () => {
+                  await forceDeleteOverdueVacateTenants()
+                  await autoDeleteExpiredNoticeTenants()
+                  toast.success('Cleanup complete. Dashboard will refresh.')
+                  loadData()
+                }}
+                disabled={isSubmitting}
+                className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-full transition"
+              >
+                🔄 Check Now
+              </button>
+            </div>
+            {vacateRequests.length === 0 && <div className="text-center py-12 bg-gray-50 rounded-xl"><div className="text-5xl mb-3">🚪</div><p className="text-gray-500">No vacate requests</p></div>}
             {vacateRequests.map(req => {
               const expectedDate = new Date(req.expected_check_out)
               const today = new Date()
@@ -1961,7 +2034,6 @@ export default function OwnerDashboard() {
                 </div>
               )
             })}
-            {vacateRequests.length === 0 && <div className="text-center py-12 bg-gray-50 rounded-xl"><div className="text-5xl mb-3">🚪</div><p className="text-gray-500">No vacate requests</p></div>}
           </div>
         )}
 
