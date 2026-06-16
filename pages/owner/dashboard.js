@@ -41,7 +41,7 @@ export default function OwnerDashboard() {
   const [stats, setStats] = useState({
     totalRooms: 0, occupied: 0, vacant: 0, totalCollected: 0, pendingAmount: 0,
     totalComplaints: 0, pendingVacate: 0, overdueCount: 0, noticePeriodCount: 0,
-    pendingPaymentCount: 0, pendingRentConfirmations: 0
+    pendingPaymentCount: 0, pendingRentConfirmations: 0, monthlyIncome: 0
   })
   const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false)
   const [tenantToDelete, setTenantToDelete] = useState(null)
@@ -129,6 +129,9 @@ export default function OwnerDashboard() {
   const getUpcomingVacateForRoom = (roomId) => {
     const vacate = vacateRequests.find(v => v.room_id === roomId && v.status === 'approved')
     if (!vacate) return null
+    // Ignore orphaned vacate requests (tenant no longer exists)
+    const tenant = tenants.find(t => t.id === vacate.tenant_id)
+    if (!tenant) return null
     const vacateDate = new Date(vacate.expected_check_out)
     const today = new Date()
     const daysLeft = Math.ceil((vacateDate - today) / (1000 * 60 * 60 * 24))
@@ -320,6 +323,20 @@ export default function OwnerDashboard() {
         const noticePeriodCount = tenantsWithRoomNumber.filter(t => t.status === 'notice_period').length
         const pendingPaymentCount = tenantsWithRoomNumber.filter(t => t.status === 'payment_pending').length
         const tenantIds = tenantsData?.map(t => t.id) || []
+
+        // Current month income
+        const now = new Date()
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]
+        const { data: monthlyPayments } = await supabase
+          .from('payment_history')
+          .select('amount')
+          .eq('status', 'success')
+          .gte('payment_date', startOfMonth)
+          .lte('payment_date', endOfMonth)
+          .in('tenant_id', tenantIds)
+        const monthlyIncome = monthlyPayments?.reduce((sum, p) => sum + p.amount, 0) || 0
+
         const { data: allPmts } = await supabase
           .from('payment_history')
           .select('*, tenants(name, room_id, rooms(room_number))')
@@ -338,7 +355,7 @@ export default function OwnerDashboard() {
         setStats({
           totalRooms: total, occupied, vacant, totalCollected, pendingAmount,
           totalComplaints: 0, pendingVacate: 0, overdueCount, noticePeriodCount,
-          pendingPaymentCount, pendingRentConfirmations
+          pendingPaymentCount, pendingRentConfirmations, monthlyIncome
         })
         await supabase.from('complaints').delete().lt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
         const { data: appsData } = await supabase
@@ -1331,8 +1348,8 @@ export default function OwnerDashboard() {
             <div className="text-xs text-gray-500">Collected</div>
           </div>
           <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
-            <div className="text-2xl font-bold text-red-600">{stats.overdueCount}</div>
-            <div className="text-xs text-gray-500">Overdue</div>
+            <div className="text-2xl font-bold text-green-600">₹{stats.monthlyIncome.toLocaleString()}</div>
+            <div className="text-xs text-gray-500">This Month</div>
           </div>
           <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
             <div className="text-2xl font-bold text-purple-600">{stats.noticePeriodCount}</div>
@@ -1511,6 +1528,9 @@ export default function OwnerDashboard() {
               const availableSlots = room.capacity - room.current_occupants
               const roomTenants = getTenantsInRoom(room.id)
               const upcomingVacate = getUpcomingVacateForRoom(room.id)
+              // Rent status for the room
+              const allPaid = roomTenants.length > 0 && roomTenants.every(t => t.rent_status === 'paid')
+              const hasPending = roomTenants.some(t => t.rent_status !== 'paid')
               return (
                 <div
                   key={room.id}
@@ -1528,8 +1548,17 @@ export default function OwnerDashboard() {
                         <h3 className="text-2xl font-bold text-slate-800">Room {room.room_number}</h3>
                         <p className="text-sm text-gray-500 mt-1">{sharing.label} {sharing.icon}</p>
                       </div>
-                      <div className={`px-3 py-1 rounded-full text-xs font-semibold ${isFull ? 'bg-green-500 text-white' : 'bg-orange-500 text-white'}`}>
-                        {isFull ? 'Full' : `${availableSlots} slot available`}
+                      <div className="flex flex-col items-end gap-1">
+                        <div className={`px-3 py-1 rounded-full text-xs font-semibold ${isFull ? 'bg-green-500 text-white' : 'bg-orange-500 text-white'}`}>
+                          {isFull ? 'Full' : `${availableSlots} slot available`}
+                        </div>
+                        {roomTenants.length > 0 && (
+                          <div className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            allPaid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                            {allPaid ? 'All Paid' : 'Pending'}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="mt-4">
