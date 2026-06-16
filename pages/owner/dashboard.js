@@ -126,12 +126,13 @@ export default function OwnerDashboard() {
     }
   }
 
+  // ✅ FIXED: Vacate badge only appears if the tenant is still in the same room
   const getUpcomingVacateForRoom = (roomId) => {
     const vacate = vacateRequests.find(v => v.room_id === roomId && v.status === 'approved')
     if (!vacate) return null
-    // Ignore orphaned vacate requests (tenant no longer exists)
     const tenant = tenants.find(t => t.id === vacate.tenant_id)
-    if (!tenant) return null
+    // tenant must exist and currently be in the same room the vacate was for
+    if (!tenant || tenant.room_id !== vacate.room_id) return null
     const vacateDate = new Date(vacate.expected_check_out)
     const today = new Date()
     const daysLeft = Math.ceil((vacateDate - today) / (1000 * 60 * 60 * 24))
@@ -286,9 +287,23 @@ export default function OwnerDashboard() {
     }
   }, [])
 
+  // ✅ NEW: Automatically remove tenants whose notice period has expired
+  const autoDeleteExpiredNoticeTenants = async () => {
+    const today = new Date().toISOString().split('T')[0]
+    const { error } = await supabase
+      .from('tenants')
+      .delete()
+      .eq('status', 'notice_period')
+      .lte('notice_period_end', today)
+    if (error) console.error('Auto‑delete notice tenants error:', error)
+  }
+
   const loadData = async (isBackgroundRefresh = false) => {
     if (!isBackgroundRefresh) setLoading(true)
     try {
+      // Remove tenants whose notice period is over (cascade cleans up everything)
+      await autoDeleteExpiredNoticeTenants()
+
       const userId = localStorage.getItem('userId')
       const { data: propertyData } = await supabase
         .from('properties')
@@ -437,6 +452,7 @@ export default function OwnerDashboard() {
     }
   }
 
+  // ✅ UPDATED: Also clear any vacate request when a tenant moves to another room
   const approveRoomChange = async (request) => {
     if (isSubmitting) {
       toast.error('Please wait, already processing')
@@ -464,6 +480,10 @@ export default function OwnerDashboard() {
       const newNewStatus = newNewOccupants >= targetRoom.capacity ? 'occupied' : 'vacant'
       await supabase.from('rooms').update({ current_occupants: newNewOccupants, status: newNewStatus }).eq('id', request.new_room_id)
       await supabase.from('room_change_requests').update({ status: 'approved', processed_at: new Date().toISOString() }).eq('id', request.id)
+
+      // Delete any existing vacate request for this tenant (they're no longer vacating from the old room)
+      await supabase.from('check_out_requests').delete().eq('tenant_id', request.tenant_id)
+
       toast.success('Room change approved! Tenant moved successfully.')
       await loadData()
     } catch (error) {
