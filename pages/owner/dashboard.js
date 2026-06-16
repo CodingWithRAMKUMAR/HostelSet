@@ -499,7 +499,7 @@ export default function OwnerDashboard() {
       await supabase.from('rooms').update({ current_occupants: newNewOccupants, status: newNewStatus }).eq('id', request.new_room_id)
       await supabase.from('room_change_requests').update({ status: 'approved', processed_at: new Date().toISOString() }).eq('id', request.id)
 
-      // Delete any existing vacate request for this tenant (they're no longer vacating from the old room)
+      // Delete any existing vacate request for this tenant
       await supabase.from('check_out_requests').delete().eq('tenant_id', request.tenant_id)
 
       toast.success('Room change approved! Tenant moved successfully.')
@@ -1198,7 +1198,8 @@ export default function OwnerDashboard() {
     finally { setIsSubmitting(false) }
   }
 
-  const approveVacateRequest = async (requestId, tenantId, roomId) => {
+  // ✅ FIXED: Use the tenant's selected checkout date as the notice period end
+  const approveVacateRequest = async (requestId, tenantId, roomId, expectedDate) => {
     if (isSubmitting) return
     if (!confirm('Approve vacate request? Tenant will be put on notice period.')) return
     setIsSubmitting(true)
@@ -1207,7 +1208,7 @@ export default function OwnerDashboard() {
       await supabase.from('tenants').update({
         status: 'notice_period', check_out_requested: true,
         notice_period_start: new Date().toISOString().split('T')[0],
-        notice_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        notice_period_end: expectedDate // use the date the tenant selected
       }).eq('id', tenantId)
       toast.success('Vacate request approved – tenant is now on notice period')
       await loadData()
@@ -1610,7 +1611,9 @@ export default function OwnerDashboard() {
                     </div>
                     <div className="mt-4">
                       <p className="text-2xl font-bold text-slate-800">{formatCurrency(room.monthly_rent)}<span className="text-sm text-gray-400">/month</span></p>
-                      <p className="text-sm text-gray-500 mt-1">This month: ₹{monthlyCollected.toLocaleString()}</p>
+                      <div className="mt-2 inline-block px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                        This month: ₹{monthlyCollected.toLocaleString()}
+                      </div>
                     </div>
                     <div className="mt-4">
                       <div className="flex justify-between text-sm mb-1">
@@ -1913,7 +1916,13 @@ export default function OwnerDashboard() {
                       {req.reason && <p className="text-sm text-gray-500 mt-1">Reason: {req.reason}</p>}
                     </div>
                     {isPending && (
-                      <button onClick={() => approveVacateRequest(req.id, req.tenant_id, req.room_id)} disabled={isSubmitting} className="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-700 transition disabled:opacity-50">Approve</button>
+                      <button
+                        onClick={() => approveVacateRequest(req.id, req.tenant_id, req.room_id, req.expected_check_out)}
+                        disabled={isSubmitting}
+                        className="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-700 transition disabled:opacity-50"
+                      >
+                        Approve
+                      </button>
                     )}
                   </div>
                 </div>
