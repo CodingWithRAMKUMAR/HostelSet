@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import Head from 'next/head'
 import Link from 'next/link'
+import Head from 'next/head'
 import { motion, useScroll, useTransform } from 'framer-motion'
 
 export default function Home() {
@@ -26,8 +26,8 @@ export default function Home() {
   ]
 
   const stats = [
-    { value: '2,000+', label: 'Happy Tenants', icon: '👥', delay: 0 },
-    { value: '150+', label: 'Properties', icon: '🏢', delay: 0.1 },
+    { value: '500+', label: 'Happy Tenants', icon: '👥', delay: 0 },
+    { value: '100+', label: 'Properties', icon: '🏢', delay: 0.1 },
     { value: '₹10Cr+', label: 'Rent Collected', icon: '💰', delay: 0.2 },
     { value: '99.9%', label: 'Uptime', icon: '🔒', delay: 0.3 },
   ]
@@ -41,20 +41,19 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>HOSTELSET – PG & Hostel Management Made Easy</title>
-        <meta name="description" content="Manage your PG or hostel with ease. Collect rent online, track tenants, and find the perfect accommodation. Join 2,000+ happy tenants." />
-        <meta name="keywords" content="PG management, hostel management, rent collection, tenant tracking, PG accommodation, hostel rental" />
-        <meta property="og:title" content="HOSTELSET – PG & Hostel Management Made Easy" />
-        <meta property="og:description" content="Manage your PG or hostel with ease. Collect rent online, track tenants, and find the perfect accommodation." />
+        <title>HOSTELSET – Find Your Perfect PG | Smart Hostel Management</title>
+        <meta name="description" content="India's most trusted platform for PG and hostel management. Browse properties, apply online, and pay rent directly to owners." />
+        <link rel="icon" href="/favicon.ico" />
+        <meta property="og:title" content="HOSTELSET – Find Your Perfect PG" />
+        <meta property="og:description" content="Set Your Hostel, Simplify Life. Browse PGs, apply instantly, and pay rent securely." />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://hostelset.com" />
         <meta property="og:image" content="https://hostelset.com/og-image.png" />
-        <link rel="icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" href="/logo192.png" />
+        <meta name="twitter:card" content="summary_large_image" />
       </Head>
 
       <div className="min-h-screen bg-black text-white">
-        {/* Modern Navbar */}
+        {/* Navbar */}
         <nav className={`fixed top-0 w-full z-50 transition-all duration-500 ${
           scrolled 
             ? 'bg-black/90 backdrop-blur-xl shadow-lg py-3 border-b border-gray-800' 
@@ -90,7 +89,13 @@ export default function Home() {
                   <span>👤</span>
                   Login
                 </Link>
-                {/* "List Property" removed */}
+                <Link 
+                  href="/register" 
+                  className="bg-gradient-to-r from-orange-600 to-amber-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:shadow-xl hover:shadow-orange-500/25 transition-all duration-300 hover:scale-105 flex items-center gap-2"
+                >
+                  <span>✨</span>
+                  Register
+                </Link>
               </div>
               
               <button 
@@ -128,6 +133,14 @@ export default function Home() {
                 <span>👤</span>
                 Login
               </Link>
+              <Link 
+                href="/register" 
+                className="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-orange-600 to-amber-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all duration-300"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <span>✨</span>
+                Register
+              </Link>
             </div>
           </motion.div>
         )}
@@ -158,7 +171,7 @@ export default function Home() {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
                   </span>
-                  <span className="text-sm font-medium text-gray-300">🚀 Trusted by 150+ Property Owners</span>
+                  <span className="text-sm font-medium text-gray-300">🚀 Trusted by 100+ Property Owners</span>
                 </motion.div>
                 
                 <h1 className="text-6xl md:text-7xl lg:text-8xl font-bold mb-8 leading-tight">
@@ -172,10 +185,10 @@ export default function Home() {
                 </h1>
                 
                 <p className="text-xl text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed">
-                  Set Your Hostel, Simplify Life. India's most trusted platform for PG and hostel management with modern tools and real-time insights.
+                  Set Your Hostel, Simplify Life. Browse PGs, apply instantly, and pay rent directly to the owner.
                 </p>
                 
-                {/* No CTA buttons here */}
+                {/* Removed Get Started Free and List Your Property */}
               </motion.div>
 
               {/* Stats Cards */}
@@ -204,8 +217,53 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Quick Access Section – Register, Browse, Login */}
+        <section className="py-20 bg-gray-950">
+          <div className="container mx-auto px-4">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center mb-12"
+            >
+              <h2 className="text-3xl md:text-4xl font-bold">
+                <span className="bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text text-transparent">
+                  Find Your Perfect PG
+                </span>
+              </h2>
+              <p className="text-gray-400 mt-4">Three simple ways to get started</p>
+            </motion.div>
+            <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+              <motion.div whileHover={{ y: -5 }} className="bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center hover:shadow-xl hover:shadow-orange-500/10 transition-all">
+                <div className="text-4xl mb-4">🔍</div>
+                <h3 className="text-xl font-bold text-white mb-3">Browse Properties</h3>
+                <p className="text-gray-400 mb-6">Explore available PGs and rooms in your city</p>
+                <Link href="/properties" className="inline-block bg-orange-600 text-white px-6 py-3 rounded-full font-semibold hover:bg-orange-700 transition">
+                  Browse Now
+                </Link>
+              </motion.div>
+              <motion.div whileHover={{ y: -5 }} className="bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center hover:shadow-xl hover:shadow-orange-500/10 transition-all">
+                <div className="text-4xl mb-4">📝</div>
+                <h3 className="text-xl font-bold text-white mb-3">Register</h3>
+                <p className="text-gray-400 mb-6">Create an account to manage your property or apply as a tenant</p>
+                <Link href="/register" className="inline-block bg-gradient-to-r from-orange-600 to-amber-600 text-white px-6 py-3 rounded-full font-semibold hover:shadow-lg transition">
+                  Register Free
+                </Link>
+              </motion.div>
+              <motion.div whileHover={{ y: -5 }} className="bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center hover:shadow-xl hover:shadow-orange-500/10 transition-all">
+                <div className="text-4xl mb-4">👤</div>
+                <h3 className="text-xl font-bold text-white mb-3">Login</h3>
+                <p className="text-gray-400 mb-6">Already have an account? Sign in to your dashboard</p>
+                <Link href="/login" className="inline-block border-2 border-orange-600 text-orange-400 px-6 py-3 rounded-full font-semibold hover:bg-orange-600 hover:text-white transition">
+                  Login
+                </Link>
+              </motion.div>
+            </div>
+          </div>
+        </section>
+
         {/* Features Section */}
-        <section className="py-24 bg-gray-950 relative">
+        <section className="py-24 bg-black relative">
           <div className="container mx-auto px-4 md:px-8">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
@@ -249,7 +307,7 @@ export default function Home() {
         </section>
 
         {/* How It Works */}
-        <section className="py-24 bg-black">
+        <section className="py-24 bg-gray-950">
           <div className="container mx-auto px-4 md:px-8">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
