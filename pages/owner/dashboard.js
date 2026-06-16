@@ -192,17 +192,15 @@ export default function OwnerDashboard() {
     removeAlert(alert.id)
   }
 
-  // ✅ Clear alerts for a specific item by type + linkId
   const clearAlertForItem = (type, itemId) => {
     setAlerts(prev => prev.filter(a => !(a.type === type && a.linkId === itemId)))
   }
 
-  // ✅ Remove stale alerts whose underlying item no longer exists (e.g., approved vacate, deleted pre-booking)
+  // ✅ Clean stale alerts after data refresh
   const cleanStaleAlerts = (currentVacateRequests, currentPreBookings, currentRoomChangeRequests) => {
     setAlerts(prev => {
       return prev.filter(alert => {
         if (alert.type === 'vacate') {
-          // keep only if the vacate request still exists and is still pending
           const req = currentVacateRequests.find(v => v.id === alert.linkId)
           return req && req.status === 'pending'
         }
@@ -214,7 +212,7 @@ export default function OwnerDashboard() {
           const rc = currentRoomChangeRequests.find(r => r.id === alert.linkId)
           return rc && rc.status === 'pending'
         }
-        return true // keep other alert types
+        return true
       })
     })
   }
@@ -312,12 +310,12 @@ export default function OwnerDashboard() {
     }
   }, [])
 
-  // ✅ Auto‑delete tenants whose notice period has expired – with toast feedback
+  // ✅ Auto‑delete tenants whose notice period has expired – keep payment history, remove user
   const autoDeleteExpiredNoticeTenants = async () => {
     const today = new Date().toISOString().split('T')[0]
     const { data: expired, error: fetchErr } = await supabase
       .from('tenants')
-      .select('id, name')
+      .select('id, name, user_id')
       .eq('status', 'notice_period')
       .lte('notice_period_end', today)
 
@@ -328,27 +326,26 @@ export default function OwnerDashboard() {
 
     if (!expired || expired.length === 0) return
 
-    const ids = expired.map(t => t.id)
-    const { error: deleteErr } = await supabase
-      .from('tenants')
-      .delete()
-      .in('id', ids)
-
-    if (deleteErr) {
-      console.error('Auto‑delete notice tenants error:', deleteErr)
-    } else {
-      expired.forEach(t => {
-        toast.success(`✅ ${t.name} has been automatically removed (notice period ended).`, { duration: 4000 })
-      })
-      // Clear any related vacate alerts
-      ids.forEach(id => clearAlertForItem('vacate', id))
+    for (const t of expired) {
+      // Delete the tenant record (trigger handles room occupancy, but keeps payment_history)
+      const { error: deleteErr } = await supabase.from('tenants').delete().eq('id', t.id)
+      if (!deleteErr) {
+        toast.success(`✅ ${t.name} has been removed (notice period ended).`, { duration: 4000 })
+        // Remove the user account so they cannot log in again
+        if (t.user_id) {
+          await supabase.from('users').delete().eq('id', t.user_id)
+        }
+      } else {
+        console.error('Failed to delete tenant:', deleteErr)
+      }
     }
+    // Refresh data after deletions
+    await loadData(true)
   }
 
-  // ✅ Force delete tenants whose approved vacate date has passed, regardless of notice_period_end
+  // ✅ Force delete tenants whose approved vacate date has passed
   const forceDeleteOverdueVacateTenants = async () => {
     const today = new Date().toISOString().split('T')[0]
-    // Get all approved vacate requests that are past the expected date
     const { data: overdueVacates, error: fetchErr } = await supabase
       .from('check_out_requests')
       .select('id, tenant_id')
@@ -356,30 +353,30 @@ export default function OwnerDashboard() {
       .lte('expected_check_out', today)
 
     if (fetchErr) return
-
     if (!overdueVacates || overdueVacates.length === 0) return
 
     for (const vacate of overdueVacates) {
-      // Check if the tenant still exists and is on notice period
       const { data: tenant } = await supabase
         .from('tenants')
-        .select('id, status')
+        .select('id, name, user_id')
         .eq('id', vacate.tenant_id)
         .maybeSingle()
-      if (tenant && tenant.status === 'notice_period') {
-        // Delete the tenant – cascade handles the rest
+      if (tenant) {
         const { error: deleteErr } = await supabase.from('tenants').delete().eq('id', tenant.id)
         if (!deleteErr) {
-          toast.success('Tenant automatically removed (vacate date passed).', { duration: 4000 })
+          toast.success(`✅ ${tenant.name} automatically removed (vacate date passed).`, { duration: 4000 })
+          if (tenant.user_id) {
+            await supabase.from('users').delete().eq('id', tenant.user_id)
+          }
         }
       }
     }
+    await loadData(true)
   }
 
   const loadData = async (isBackgroundRefresh = false) => {
     if (!isBackgroundRefresh) setLoading(true)
     try {
-      // Run both cleanup functions
       await autoDeleteExpiredNoticeTenants()
       await forceDeleteOverdueVacateTenants()
 
@@ -431,7 +428,7 @@ export default function OwnerDashboard() {
           .in('tenant_id', tenantIds)
         const monthlyIncome = monthlyPayments?.reduce((sum, p) => sum + p.amount, 0) || 0
 
-        // Monthly income per room (for room badges)
+        // Monthly income per room
         const { data: monthlyPaymentsWithTenant } = await supabase
           .from('payment_history')
           .select('amount, tenant_id, tenants!inner(room_id)')
@@ -520,7 +517,6 @@ export default function OwnerDashboard() {
           .order('created_at', { ascending: false })
         setNotices(noticesData || [])
 
-        // ✅ Clean up alerts that are no longer valid
         cleanStaleAlerts(vacateData || [], preBookingsData || [], roomChangeRequests)
       }
     } catch (error) {
@@ -553,7 +549,7 @@ export default function OwnerDashboard() {
     }
   }
 
-  // Approve room change: move tenant, update occupancy, delete vacate request if any
+  // Approve room change
   const approveRoomChange = async (request) => {
     if (isSubmitting) {
       toast.error('Please wait, already processing')
@@ -952,7 +948,7 @@ export default function OwnerDashboard() {
         .update({ current_occupants: newOccupants, status: newStatus })
         .eq('id', booking.room_id)
 
-      // Delete the pre‑booking record (approved, no longer needed)
+      // Delete the pre‑booking record
       await supabase.from('pre_bookings').delete().eq('id', bookingId)
       clearAlertForItem('prebooking', bookingId)
 
@@ -1015,7 +1011,7 @@ export default function OwnerDashboard() {
       const newOccupants = (room.current_occupants || 0) + 1
       await supabase.from('rooms').update({ current_occupants: newOccupants, status: newOccupants >= room.capacity ? 'occupied' : 'vacant' }).eq('id', app.room_id)
       await supabase.from('applications').update({ status: 'approved', processed_at: new Date() }).eq('id', appId)
-      clearAlertForItem('complaint', appId) // in case application was treated as a complaint
+      clearAlertForItem('complaint', appId)
       toast.success('Application approved!')
       await loadData()
     } catch (error) {
@@ -1181,6 +1177,7 @@ export default function OwnerDashboard() {
     if (isSubmitting) return
     setIsSubmitting(true)
     try {
+      // Delete tenant (trigger handles room occupancy, keeps payment_history)
       await supabase.from('tenants').delete().eq('id', tenantId)
       if (userId) {
         const { error: userError } = await supabase.from('users').delete().eq('id', userId)
@@ -1299,7 +1296,7 @@ export default function OwnerDashboard() {
         notice_period_start: new Date().toISOString().split('T')[0],
         notice_period_end: expectedDate
       }).eq('id', tenantId)
-      clearAlertForItem('vacate', requestId)   // remove the "New vacate request" alert
+      clearAlertForItem('vacate', requestId)
       toast.success('Vacate request approved – tenant is now on notice period')
       await loadData()
     } catch (error) { toast.error('Failed to approve') }
@@ -1985,7 +1982,6 @@ export default function OwnerDashboard() {
         {/* Vacate Tab */}
         {activeTab === 'vacate' && (
           <div className="space-y-4">
-            {/* Optional manual cleanup button */}
             <div className="flex justify-end">
               <button
                 onClick={async () => {
