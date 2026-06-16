@@ -192,6 +192,11 @@ export default function OwnerDashboard() {
     removeAlert(alert.id)
   }
 
+  // ✅ NEW: Clear all alerts associated with a specific item (by type + linkId)
+  const clearAlertForItem = (type, itemId) => {
+    setAlerts(prev => prev.filter(a => !(a.type === type && a.linkId === itemId)))
+  }
+
   const detectNewItems = (newData, oldData, type, tab) => {
     if (newData.length > oldData.length) {
       const newItems = newData.filter(n => !oldData.some(o => o.id === n.id))
@@ -260,7 +265,6 @@ export default function OwnerDashboard() {
       }
     })
 
-    // ---------- LEAVE PAGE WARNING ----------
     const handleBeforeUnload = (e) => {
       if (localStorage.getItem('userId')) {
         e.preventDefault()
@@ -276,7 +280,6 @@ export default function OwnerDashboard() {
       }
     }
     router.events?.on('routeChangeStart', handleRouteChange)
-    // ---------------------------------------
 
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
@@ -287,13 +290,12 @@ export default function OwnerDashboard() {
     }
   }, [])
 
-  // ✅ ROBUST AUTO‑DELETE: fetch IDs first, then delete
+  // ✅ Auto‑delete tenants whose notice period has expired – with toast feedback
   const autoDeleteExpiredNoticeTenants = async () => {
     const today = new Date().toISOString().split('T')[0]
-    // 1. get tenant IDs that should be removed
     const { data: expired, error: fetchErr } = await supabase
       .from('tenants')
-      .select('id')
+      .select('id, name')
       .eq('status', 'notice_period')
       .lte('notice_period_end', today)
 
@@ -305,13 +307,21 @@ export default function OwnerDashboard() {
     if (!expired || expired.length === 0) return
 
     const ids = expired.map(t => t.id)
-    // 2. delete them (cascade handles the rest)
     const { error: deleteErr } = await supabase
       .from('tenants')
       .delete()
       .in('id', ids)
 
-    if (deleteErr) console.error('Auto‑delete notice tenants error:', deleteErr)
+    if (deleteErr) {
+      console.error('Auto‑delete notice tenants error:', deleteErr)
+    } else {
+      // Notify owner
+      expired.forEach(t => {
+        toast.success(`✅ ${t.name} has been automatically removed (notice period ended).`, { duration: 4000 })
+      })
+      // Clear any related vacate alerts
+      ids.forEach(id => clearAlertForItem('vacate', id))
+    }
   }
 
   const loadData = async (isBackgroundRefresh = false) => {
@@ -777,6 +787,7 @@ export default function OwnerDashboard() {
       const { error } = await supabase.from('tenants').update({ status: 'active' }).eq('id', tenantId)
       if (error) throw error
       toast.success('✅ Payment confirmed! Tenant now active.')
+      clearAlertForItem('payment', tenantId) // clear any pending payment alert for this tenant
       setShowPaymentConfirmModal(false)
       setConfirmingTenant(null)
       await loadData()
@@ -796,6 +807,7 @@ export default function OwnerDashboard() {
         const newStatus = newPending <= 0 ? 'paid' : 'pending'
         await supabase.from('tenants').update({ total_paid: newTotalPaid, pending_amount: newPending, rent_status: newStatus, last_payment_date: new Date().toISOString().split('T')[0] }).eq('id', tenantId)
       }
+      clearAlertForItem('payment', paymentId) // clear alert for this specific payment proof
       toast.success('✅ Rent payment confirmed!')
       await loadData()
     } catch (error) { toast.error('Failed to confirm: ' + error.message) }
@@ -808,6 +820,7 @@ export default function OwnerDashboard() {
     setIsSubmitting(true)
     try {
       await supabase.from('payment_history').delete().eq('id', paymentId)
+      clearAlertForItem('payment', paymentId)
       toast.success('Payment rejected and removed.')
       await loadData()
     } catch (error) { toast.error('Failed to reject: ' + error.message) }
@@ -884,6 +897,7 @@ export default function OwnerDashboard() {
 
       // Delete the pre‑booking record (approved, no longer needed)
       await supabase.from('pre_bookings').delete().eq('id', bookingId)
+      clearAlertForItem('prebooking', bookingId)
 
       toast.success('Pre‑booking approved! Tenant created.')
       await loadData()
@@ -904,6 +918,7 @@ export default function OwnerDashboard() {
         .from('pre_bookings')
         .update({ status: 'rejected', updated_at: new Date().toISOString() })
         .eq('id', bookingId)
+      clearAlertForItem('prebooking', bookingId)
       toast.success('Pre‑booking rejected.')
       await loadData()
     } catch (error) {
@@ -943,6 +958,7 @@ export default function OwnerDashboard() {
       const newOccupants = (room.current_occupants || 0) + 1
       await supabase.from('rooms').update({ current_occupants: newOccupants, status: newOccupants >= room.capacity ? 'occupied' : 'vacant' }).eq('id', app.room_id)
       await supabase.from('applications').update({ status: 'approved', processed_at: new Date() }).eq('id', appId)
+      clearAlertForItem('complaint', appId) // in case application was treated as a complaint
       toast.success('Application approved!')
       await loadData()
     } catch (error) {
@@ -1214,7 +1230,7 @@ export default function OwnerDashboard() {
     finally { setIsSubmitting(false) }
   }
 
-  // ✅ FIXED: Use the tenant's selected checkout date as the notice period end
+  // ✅ FIXED: Use the tenant's selected checkout date as the notice period end, and clear related alert
   const approveVacateRequest = async (requestId, tenantId, roomId, expectedDate) => {
     if (isSubmitting) return
     if (!confirm('Approve vacate request? Tenant will be put on notice period.')) return
@@ -1226,6 +1242,7 @@ export default function OwnerDashboard() {
         notice_period_start: new Date().toISOString().split('T')[0],
         notice_period_end: expectedDate // use the date the tenant selected
       }).eq('id', tenantId)
+      clearAlertForItem('vacate', requestId) // remove the "New vacate request" alert
       toast.success('Vacate request approved – tenant is now on notice period')
       await loadData()
     } catch (error) { toast.error('Failed to approve') }
