@@ -327,11 +327,9 @@ export default function OwnerDashboard() {
     if (!expired || expired.length === 0) return
 
     for (const t of expired) {
-      // Delete the tenant record (trigger handles room occupancy, but keeps payment_history)
       const { error: deleteErr } = await supabase.from('tenants').delete().eq('id', t.id)
       if (!deleteErr) {
         toast.success(`✅ ${t.name} has been removed (notice period ended).`, { duration: 4000 })
-        // Remove the user account so they cannot log in again
         if (t.user_id) {
           await supabase.from('users').delete().eq('id', t.user_id)
         }
@@ -339,7 +337,6 @@ export default function OwnerDashboard() {
         console.error('Failed to delete tenant:', deleteErr)
       }
     }
-    // Refresh data after deletions
     await loadData(true)
   }
 
@@ -390,6 +387,10 @@ export default function OwnerDashboard() {
         setProperty(propertyData)
         setPropertyImages(propertyData.photos || [])
         updateMembershipFromProperty(propertyData)
+
+        // ✅ AUTO‑REPAIR: recalculate occupancy for all rooms of this property
+        await supabase.rpc('recalc_room_occupancy', { p_property_id: propertyData.id })
+
         const { data: roomsData } = await supabase
           .from('rooms')
           .select('*')
@@ -1177,7 +1178,6 @@ export default function OwnerDashboard() {
     if (isSubmitting) return
     setIsSubmitting(true)
     try {
-      // Delete tenant (trigger handles room occupancy, keeps payment_history)
       await supabase.from('tenants').delete().eq('id', tenantId)
       if (userId) {
         const { error: userError } = await supabase.from('users').delete().eq('id', userId)
