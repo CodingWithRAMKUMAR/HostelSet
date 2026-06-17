@@ -52,6 +52,9 @@ export default function PropertyDetail() {
   const [checkingPhone, setCheckingPhone] = useState(false)
   const [checkingEmail, setCheckingEmail] = useState(false)
 
+  // NEW: store pending application ID if found
+  const [existingPendingAppId, setExistingPendingAppId] = useState(null)
+
   // Pre‑booking form validation (same as apply)
   const [prebookPhoneError, setPrebookPhoneError] = useState('')
   const [prebookEmailError, setPrebookEmailError] = useState('')
@@ -186,6 +189,7 @@ export default function PropertyDetail() {
     }
     setCheckingPhone(true)
     try {
+      // Check for existing user with this phone
       const { data: existingUser } = await supabase
         .from('users')
         .select('id')
@@ -196,6 +200,8 @@ export default function PropertyDetail() {
         setPhoneValid(false)
         return false
       }
+
+      // Check for existing applications for this property
       const { data: existingApp } = await supabase
         .from('applications')
         .select('id, status')
@@ -203,11 +209,23 @@ export default function PropertyDetail() {
         .eq('property_id', id)
         .in('status', ['pending', 'approved'])
         .maybeSingle()
+
       if (existingApp) {
-        setPhoneError('You already have a pending application for this property.')
-        setPhoneValid(false)
-        return false
+        if (existingApp.status === 'approved') {
+          setPhoneError('You already have an approved application for this property.')
+          setPhoneValid(false)
+          return false
+        } else { // status === 'pending'
+          // Store the pending application ID so we can cancel it later
+          setExistingPendingAppId(existingApp.id)
+          // Allow the user to proceed; we will delete this pending app on submission
+          setPhoneError('')
+          setPhoneValid(true)
+          return true
+        }
       }
+
+      // No existing application
       setPhoneError('')
       setPhoneValid(true)
       return true
@@ -239,18 +257,28 @@ export default function PropertyDetail() {
         setEmailValid(false)
         return false
       }
+
       const { data: existingApp } = await supabase
         .from('applications')
-        .select('id')
+        .select('id, status')
         .eq('email', email)
         .eq('property_id', id)
         .in('status', ['pending', 'approved'])
         .maybeSingle()
+
       if (existingApp) {
-        setEmailError('An application with this email already exists.')
-        setEmailValid(false)
-        return false
+        if (existingApp.status === 'approved') {
+          setEmailError('You already have an approved application for this property.')
+          setEmailValid(false)
+          return false
+        } else { // pending
+          setExistingPendingAppId(existingApp.id)
+          setEmailError('')
+          setEmailValid(true)
+          return true
+        }
       }
+
       setEmailError('')
       setEmailValid(true)
       return true
@@ -308,9 +336,17 @@ export default function PropertyDetail() {
         .in('status', ['pending', 'approved'])
         .maybeSingle()
       if (existingPrebook) {
-        setPrebookPhoneError('You already have a pending pre‑booking for this property.')
-        setPrebookPhoneValid(false)
-        return false
+        if (existingPrebook.status === 'approved') {
+          setPrebookPhoneError('You already have an approved pre‑booking for this property.')
+          setPrebookPhoneValid(false)
+          return false
+        } else {
+          // For pending pre‑booking we could also auto-cancel, but for now we just block to keep it simple
+          // (or you could apply similar logic). We'll keep it as is.
+          setPrebookPhoneError('You already have a pending pre‑booking for this property.')
+          setPrebookPhoneValid(false)
+          return false
+        }
       }
       setPrebookPhoneError('')
       setPrebookPhoneValid(true)
@@ -351,9 +387,15 @@ export default function PropertyDetail() {
         .in('status', ['pending', 'approved'])
         .maybeSingle()
       if (existingPrebook) {
-        setPrebookEmailError('You already have a pending pre‑booking for this property.')
-        setPrebookEmailValid(false)
-        return false
+        if (existingPrebook.status === 'approved') {
+          setPrebookEmailError('You already have an approved pre‑booking for this property.')
+          setPrebookEmailValid(false)
+          return false
+        } else {
+          setPrebookEmailError('You already have a pending pre‑booking for this property.')
+          setPrebookEmailValid(false)
+          return false
+        }
       }
       setPrebookEmailError('')
       setPrebookEmailValid(true)
@@ -419,6 +461,7 @@ export default function PropertyDetail() {
       toast.error('Please upload ID proof and photo')
       return
     }
+    // Re-validate (in case state changed)
     const phoneOk = await validatePhone(applyForm.phone)
     const emailOk = await validateEmail(applyForm.email)
     if (!phoneOk || !emailOk) {
@@ -428,6 +471,22 @@ export default function PropertyDetail() {
 
     setApplySubmitting(true)
     try {
+      // If there is a pending application, delete it (or cancel it)
+      if (existingPendingAppId) {
+        const { error: deleteError } = await supabase
+          .from('applications')
+          .update({ status: 'cancelled' }) // or delete() – either is fine
+          .eq('id', existingPendingAppId)
+        if (deleteError) {
+          console.warn('Failed to cancel previous pending application:', deleteError)
+          // Continue anyway
+        } else {
+          toast.success('Previous pending application cancelled. Starting fresh.')
+        }
+        setExistingPendingAppId(null) // clear state
+      }
+
+      // Upload documents
       const idUrl = await uploadFile(idProof, 'id')
       const photoUrl = await uploadFile(photo, 'photo')
 
@@ -445,6 +504,7 @@ export default function PropertyDetail() {
       })
 
       if (error) {
+        // If duplicate key error (shouldn't happen now because we cancelled the old one), but handle gracefully
         if (error.message.includes('duplicate key value') || error.code === '23505') {
           toast.error('You already have a pending application or active tenancy in this property.')
         } else {
@@ -454,6 +514,7 @@ export default function PropertyDetail() {
         return
       }
 
+      // Close apply modal and open payment modal
       setShowApplyModal(false)
       setPaymentScreenshot(null)
       setTransactionId('')
@@ -729,6 +790,12 @@ export default function PropertyDetail() {
     }
   }
 
+  // Reset pending application state when modal closes
+  const closeApplyModal = () => {
+    setShowApplyModal(false)
+    setExistingPendingAppId(null) // clear any stored pending ID
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-white">
@@ -993,11 +1060,11 @@ export default function PropertyDetail() {
       {/* Apply Modal */}
       <AnimatePresence>
         {showApplyModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowApplyModal(false)}>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={closeApplyModal}>
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold text-slate-800">Apply for Room</h2>
-                <button onClick={() => setShowApplyModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+                <button onClick={closeApplyModal} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
               </div>
               <div className="space-y-4">
                 <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-400" value={applyForm.name} onChange={(e) => setApplyForm({...applyForm, name: e.target.value})} />
