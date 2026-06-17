@@ -52,9 +52,6 @@ export default function PropertyDetail() {
   const [checkingPhone, setCheckingPhone] = useState(false)
   const [checkingEmail, setCheckingEmail] = useState(false)
 
-  // NEW: store pending application ID if found
-  const [existingPendingAppId, setExistingPendingAppId] = useState(null)
-
   // Pre‑booking form validation (same as apply)
   const [prebookPhoneError, setPrebookPhoneError] = useState('')
   const [prebookEmailError, setPrebookEmailError] = useState('')
@@ -150,13 +147,12 @@ export default function PropertyDetail() {
     setApprovedPrebookings(map)
   }
 
+  // --- NEW: fixed security deposit amount ---
+  const SECURITY_DEPOSIT = 3000
+
   const calculateTotalAmount = () => {
-    if (!selectedRoom) return 0
-    const room = rooms.find(r => r.id === selectedRoom)
-    if (!room) return 0
-    const rent = room.monthly_rent
-    const advance = rent * ownerSettings.advance_months
-    return rent + advance + ownerSettings.joining_fee
+    // Only security deposit, no advance or joining fee
+    return SECURITY_DEPOSIT
   }
 
   const handleFileChange = (e, setter) => {
@@ -179,7 +175,7 @@ export default function PropertyDetail() {
     return publicUrl
   }
 
-  // ========== Apply Form Validation ==========
+  // ========== Apply Form Validation (simplified) ==========
   const validatePhone = async (phone) => {
     const cleanPhone = cleanPhoneNumber(phone)
     if (!cleanPhone || cleanPhone.length !== 10) {
@@ -201,31 +197,35 @@ export default function PropertyDetail() {
         return false
       }
 
-      // Check for existing applications for this property
-      const { data: existingApp } = await supabase
+      // Check for already approved applications (not pending)
+      const { data: approvedApp } = await supabase
         .from('applications')
-        .select('id, status')
+        .select('id')
         .eq('phone', cleanPhone)
         .eq('property_id', id)
-        .in('status', ['pending', 'approved'])
+        .eq('status', 'approved')
         .maybeSingle()
-
-      if (existingApp) {
-        if (existingApp.status === 'approved') {
-          setPhoneError('You already have an approved application for this property.')
-          setPhoneValid(false)
-          return false
-        } else { // status === 'pending'
-          // Store the pending application ID so we can cancel it later
-          setExistingPendingAppId(existingApp.id)
-          // Allow the user to proceed; we will delete this pending app on submission
-          setPhoneError('')
-          setPhoneValid(true)
-          return true
-        }
+      if (approvedApp) {
+        setPhoneError('You already have an approved application for this property.')
+        setPhoneValid(false)
+        return false
       }
 
-      // No existing application
+      // Check if the user is already a tenant (active) in this property
+      const { data: existingTenant } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('phone', cleanPhone)
+        .eq('property_id', id)
+        .eq('status', 'active')
+        .maybeSingle()
+      if (existingTenant) {
+        setPhoneError('You are already a tenant in this property.')
+        setPhoneValid(false)
+        return false
+      }
+
+      // No blocking record found
       setPhoneError('')
       setPhoneValid(true)
       return true
@@ -258,25 +258,30 @@ export default function PropertyDetail() {
         return false
       }
 
-      const { data: existingApp } = await supabase
+      const { data: approvedApp } = await supabase
         .from('applications')
-        .select('id, status')
+        .select('id')
         .eq('email', email)
         .eq('property_id', id)
-        .in('status', ['pending', 'approved'])
+        .eq('status', 'approved')
         .maybeSingle()
+      if (approvedApp) {
+        setEmailError('You already have an approved application for this property.')
+        setEmailValid(false)
+        return false
+      }
 
-      if (existingApp) {
-        if (existingApp.status === 'approved') {
-          setEmailError('You already have an approved application for this property.')
-          setEmailValid(false)
-          return false
-        } else { // pending
-          setExistingPendingAppId(existingApp.id)
-          setEmailError('')
-          setEmailValid(true)
-          return true
-        }
+      const { data: existingTenant } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('email', email)
+        .eq('property_id', id)
+        .eq('status', 'active')
+        .maybeSingle()
+      if (existingTenant) {
+        setEmailError('You are already a tenant in this property.')
+        setEmailValid(false)
+        return false
       }
 
       setEmailError('')
@@ -308,7 +313,7 @@ export default function PropertyDetail() {
     }
   }
 
-  // ========== Pre‑booking Form Validation ==========
+  // ========== Pre‑booking Form Validation (unchanged) ==========
   const validatePrebookPhone = async (phone) => {
     const cleanPhone = cleanPhoneNumber(phone)
     if (!cleanPhone || cleanPhone.length !== 10) {
@@ -341,8 +346,6 @@ export default function PropertyDetail() {
           setPrebookPhoneValid(false)
           return false
         } else {
-          // For pending pre‑booking we could also auto-cancel, but for now we just block to keep it simple
-          // (or you could apply similar logic). We'll keep it as is.
           setPrebookPhoneError('You already have a pending pre‑booking for this property.')
           setPrebookPhoneValid(false)
           return false
@@ -447,6 +450,7 @@ export default function PropertyDetail() {
   }
 
   // ========== Regular Application Flow ==========
+  // Step 1: Validate and open payment modal (no DB insert yet)
   const submitApplication = async () => {
     if (!applyForm.name || !applyForm.phone || !applyForm.email) {
       toast.error('Please fill all required fields (Name, Phone, Email)')
@@ -461,7 +465,6 @@ export default function PropertyDetail() {
       toast.error('Please upload ID proof and photo')
       return
     }
-    // Re-validate (in case state changed)
     const phoneOk = await validatePhone(applyForm.phone)
     const emailOk = await validateEmail(applyForm.email)
     if (!phoneOk || !emailOk) {
@@ -469,64 +472,14 @@ export default function PropertyDetail() {
       return
     }
 
-    setApplySubmitting(true)
-    try {
-      // If there is a pending application, delete it (or cancel it)
-      if (existingPendingAppId) {
-        const { error: deleteError } = await supabase
-          .from('applications')
-          .update({ status: 'cancelled' }) // or delete() – either is fine
-          .eq('id', existingPendingAppId)
-        if (deleteError) {
-          console.warn('Failed to cancel previous pending application:', deleteError)
-          // Continue anyway
-        } else {
-          toast.success('Previous pending application cancelled. Starting fresh.')
-        }
-        setExistingPendingAppId(null) // clear state
-      }
-
-      // Upload documents
-      const idUrl = await uploadFile(idProof, 'id')
-      const photoUrl = await uploadFile(photo, 'photo')
-
-      const { error } = await supabase.from('applications').insert({
-        property_id: id,
-        room_id: selectedRoom,
-        name: applyForm.name,
-        phone: cleanPhone,
-        email: applyForm.email,
-        message: applyForm.message,
-        status: 'pending',
-        id_proof: idUrl,
-        photo: photoUrl,
-        created_at: new Date(),
-      })
-
-      if (error) {
-        // If duplicate key error (shouldn't happen now because we cancelled the old one), but handle gracefully
-        if (error.message.includes('duplicate key value') || error.code === '23505') {
-          toast.error('You already have a pending application or active tenancy in this property.')
-        } else {
-          throw error
-        }
-        setApplySubmitting(false)
-        return
-      }
-
-      // Close apply modal and open payment modal
-      setShowApplyModal(false)
-      setPaymentScreenshot(null)
-      setTransactionId('')
-      setShowPaymentModal(true)
-    } catch (error) {
-      console.error('Application error:', error)
-      toast.error('Failed to submit application: ' + error.message)
-    } finally {
-      setApplySubmitting(false)
-    }
+    // Close apply modal and open payment modal
+    setShowApplyModal(false)
+    setPaymentScreenshot(null)
+    setTransactionId('')
+    setShowPaymentModal(true)
   }
 
+  // Step 2: After payment proof, insert application and tenant
   const submitPayment = async () => {
     if (!paymentScreenshot) {
       toast.error('Please upload payment screenshot')
@@ -537,6 +490,7 @@ export default function PropertyDetail() {
       const screenshotUrl = await uploadFile(paymentScreenshot, 'pay')
       const cleanPhone = cleanPhoneNumber(applyForm.phone)
 
+      // 1. Create/update user
       let userId
       const existingUser = await findExistingUser(cleanPhone, applyForm.email)
 
@@ -555,6 +509,7 @@ export default function PropertyDetail() {
         })
         if (authError) throw authError
 
+        // Check if user was already created by auth trigger (but we try to insert)
         const { data: newUserRows } = await supabase
           .from('users')
           .select('id')
@@ -581,6 +536,7 @@ export default function PropertyDetail() {
           })
           if (insertError) {
             if (insertError.message.includes('duplicate key value') || insertError.code === '23505') {
+              // Fallback: fetch by phone again
               const { data: conflictingUser } = await supabase
                 .from('users')
                 .select('id')
@@ -604,7 +560,31 @@ export default function PropertyDetail() {
         }
       }
 
-      const totalAmount = calculateTotalAmount()
+      // 2. Upload ID proof and photo (these were stored in state)
+      const idUrl = await uploadFile(idProof, 'id')
+      const photoUrl = await uploadFile(photo, 'photo')
+
+      // 3. Insert application record (status = 'pending' initially)
+      const { error: appError } = await supabase.from('applications').insert({
+        property_id: id,
+        room_id: selectedRoom,
+        name: applyForm.name,
+        phone: cleanPhone,
+        email: applyForm.email,
+        message: applyForm.message,
+        status: 'pending',
+        id_proof: idUrl,
+        photo: photoUrl,
+        created_at: new Date(),
+      })
+      if (appError) {
+        // If there's a duplicate, it might be from a previous attempt – we can ignore or cancel old one.
+        // For safety, we'll just throw.
+        throw new Error('Failed to create application: ' + appError.message)
+      }
+
+      // 4. Insert tenant record (status = 'payment_pending')
+      const totalAmount = calculateTotalAmount() // now 3000
       const room = rooms.find(r => r.id === selectedRoom)
 
       const { error: tenantError } = await supabase.from('tenants').insert({
@@ -624,15 +604,10 @@ export default function PropertyDetail() {
         upi_transaction_id: transactionId,
       })
       if (tenantError) {
-        if (tenantError.message.includes('duplicate key value') || tenantError.code === '23505') {
-          toast.error('You already have an active or pending tenancy in this property.')
-        } else {
-          throw tenantError
-        }
-        setPaymentSubmitting(false)
-        return
+        throw new Error('Failed to create tenant: ' + tenantError.message)
       }
 
+      // 5. Fetch the new tenant ID for payment history
       const { data: newTenant, error: fetchTenantError } = await supabase
         .from('tenants')
         .select('id')
@@ -644,13 +619,14 @@ export default function PropertyDetail() {
           tenant_id: newTenant.id,
           amount: totalAmount,
           payment_date: new Date().toISOString().split('T')[0],
-          payment_method: 'advance',
+          payment_method: 'advance', // or 'security_deposit'
           status: 'success',
           upi_transaction_id: transactionId || null,
           payment_screenshot: screenshotUrl,
         })
       }
 
+      // 6. Update room occupancy
       const newOccupants = room.current_occupants + 1
       const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
       await supabase.from('rooms').update({
@@ -664,6 +640,12 @@ export default function PropertyDetail() {
       )
 
       setShowPaymentModal(false)
+      // Reset form state
+      setApplyForm({ name: '', phone: '', email: '', message: '' })
+      setIdProof(null)
+      setPhoto(null)
+      setPaymentScreenshot(null)
+      setTransactionId('')
       setTimeout(() => router.push('/login'), 8000)
     } catch (error) {
       console.error('Payment submission error:', error)
@@ -673,7 +655,7 @@ export default function PropertyDetail() {
     }
   }
 
-  // ========== PRE‑BOOKING FLOW ==========
+  // ========== PRE‑BOOKING FLOW (unchanged) ==========
   const openPrebookModal = (roomId, vacateDate) => {
     setPrebookRoomId(roomId)
     setPrebookForm({
@@ -790,10 +772,10 @@ export default function PropertyDetail() {
     }
   }
 
-  // Reset pending application state when modal closes
-  const closeApplyModal = () => {
-    setShowApplyModal(false)
-    setExistingPendingAppId(null) // clear any stored pending ID
+  // Reset form when closing payment modal (optional)
+  const closePaymentModal = () => {
+    setShowPaymentModal(false)
+    // Optionally clear payment screenshot but keep form data? We'll keep it for retry.
   }
 
   if (loading) {
@@ -827,6 +809,7 @@ export default function PropertyDetail() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50">
+      {/* Header – unchanged */}
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
@@ -858,7 +841,7 @@ export default function PropertyDetail() {
           </div>
         </div>
 
-        {/* Gallery */}
+        {/* Gallery – unchanged */}
         <div className="mb-8 rounded-2xl overflow-hidden shadow-xl">
           <div className="relative bg-gray-900/5 backdrop-blur-sm">
             {property.photos && property.photos.length > 0 ? (
@@ -891,7 +874,7 @@ export default function PropertyDetail() {
           )}
         </div>
 
-        {/* Tabs */}
+        {/* Tabs – unchanged */}
         <div className="flex border-b border-gray-200 mb-6">
           <button onClick={() => setActiveTab('rooms')} className={`px-6 py-3 font-semibold transition relative ${activeTab === 'rooms' ? 'text-slate-800' : 'text-gray-500 hover:text-slate-600'}`}>
             🏠 Rooms & Availability
@@ -907,7 +890,7 @@ export default function PropertyDetail() {
           </button>
         </div>
 
-        {/* Rooms Tab */}
+        {/* Rooms Tab – unchanged except for the "Apply Now" button which now just opens apply modal */}
         {activeTab === 'rooms' && (
           <>
             {hasNoRooms ? (
@@ -1010,7 +993,7 @@ export default function PropertyDetail() {
           </>
         )}
 
-        {/* Amenities Tab */}
+        {/* Amenities Tab – unchanged */}
         {activeTab === 'amenities' && (
           <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-8 shadow-sm border border-gray-100">
             <h2 className="text-xl font-bold text-slate-800 mb-4">Amenities & Facilities</h2>
@@ -1025,7 +1008,7 @@ export default function PropertyDetail() {
           </div>
         )}
 
-        {/* About Tab */}
+        {/* About Tab – unchanged */}
         {activeTab === 'about' && (
           <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-8 shadow-sm border border-gray-100">
             <h2 className="text-xl font-bold text-slate-800 mb-4">About this Property</h2>
@@ -1057,14 +1040,14 @@ export default function PropertyDetail() {
 
       {/* ========== MODALS ========== */}
 
-      {/* Apply Modal */}
+      {/* Apply Modal – unchanged except for submitApplication handler */}
       <AnimatePresence>
         {showApplyModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={closeApplyModal}>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowApplyModal(false)}>
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold text-slate-800">Apply for Room</h2>
-                <button onClick={closeApplyModal} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+                <button onClick={() => setShowApplyModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
               </div>
               <div className="space-y-4">
                 <input type="text" placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-400" value={applyForm.name} onChange={(e) => setApplyForm({...applyForm, name: e.target.value})} />
@@ -1119,15 +1102,16 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Regular Payment Modal */}
+      {/* Payment Modal – updated to show security deposit only */}
       <AnimatePresence>
         {showPaymentModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={closePaymentModal}>
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-2xl font-bold mb-4">Complete Payment</h2>
+              <h2 className="text-2xl font-bold mb-4">Pay Security Deposit</h2>
               <div className="bg-gray-50 rounded-lg p-4 mb-4">
                 <p className="text-sm text-gray-600">Room {rooms.find(r => r.id === selectedRoom)?.room_number} – {getSharingDetails(rooms.find(r => r.id === selectedRoom)?.sharing_type)?.label}</p>
-                <p className="text-lg font-bold mt-1">Total Amount: {formatCurrency(calculateTotalAmount())}</p>
+                <p className="text-lg font-bold mt-1">Security Deposit: {formatCurrency(calculateTotalAmount())}</p>
+                <p className="text-xs text-gray-500 mt-1">(Refundable at move‑out)</p>
               </div>
               {ownerSettings.upi_id && (
                 <div className="bg-blue-50 p-3 rounded-lg mb-4">
@@ -1151,19 +1135,19 @@ export default function PropertyDetail() {
                   <input type="file" accept="image/*" onChange={e => handleFileChange(e, setPaymentScreenshot)} className="w-full" />
                 </div>
                 <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
-                  After payment, your application is submitted. You will receive an email once the owner approves.
+                  After payment, your application will be submitted. You will receive an email once the owner approves.
                 </div>
                 <button onClick={submitPayment} disabled={paymentSubmitting} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50">
                   {paymentSubmitting ? 'Processing...' : 'I Have Paid – Submit'}
                 </button>
-                <button onClick={() => setShowPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>
+                <button onClick={closePaymentModal} className="w-full text-center text-gray-500 text-sm">Cancel</button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Form Modal (Step 1) */}
+      {/* Pre‑booking modals – unchanged */}
       <AnimatePresence>
         {showPrebookModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookModal(false)}>
@@ -1236,7 +1220,6 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Pre‑booking Payment Modal (Step 2) */}
       <AnimatePresence>
         {showPrebookPaymentModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookPaymentModal(false)}>
