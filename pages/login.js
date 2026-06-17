@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { supabase, signInWithEmail, resetPassword } from '../lib/supabase'
+import { cleanPhoneNumber } from '../lib/utils'   // <-- import the normaliser
 import toast from 'react-hot-toast'
 
 export default function Login() {
@@ -30,10 +31,11 @@ export default function Login() {
 
       // If input is a 10‑digit phone number, find the associated email in users table
       if (isPhone(identifier)) {
+        const cleanPhone = cleanPhoneNumber(identifier)   // normalize
         const { data, error } = await supabase
           .from('users')
           .select('email')
-          .eq('phone', identifier)
+          .eq('phone', cleanPhone)
           .maybeSingle()
         if (error || !data || !data.email) {
           toast.error('No account found with this phone number. Please register.')
@@ -50,7 +52,7 @@ export default function Login() {
       const result = await signInWithEmail(emailToUse, password)
       if (result.success) {
         toast.success(`Welcome back, ${result.userData.full_name}!`)
-        // ✅ Redirect based on role (now includes admin)
+        // Redirect based on role
         if (result.role === 'admin') {
           router.push('/admin/dashboard')
         } else if (result.role === 'owner') {
@@ -122,6 +124,7 @@ export default function Login() {
                 onChange={(e) => setIdentifier(e.target.value)}
                 required
               />
+              <p className="text-xs text-gray-400 mt-1">Use the email you registered with (phone login only works if you stored your number).</p>
             </div>
             <div>
               <label className="block text-gray-700 font-semibold mb-2">Password</label>
