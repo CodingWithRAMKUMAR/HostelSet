@@ -1,7 +1,8 @@
-import { supabase } from '../../lib/supabase'
+import { supabaseAdmin } from '../../lib/supabase'
 import { cleanPhoneNumber } from '../../lib/utils'
 
 export default async function handler(req, res) {
+  // Only allow POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
@@ -31,21 +32,30 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid phone number' })
   }
 
+  // Ensure admin client is available
+  if (!supabaseAdmin) {
+    console.error('SUPABASE_SERVICE_ROLE_KEY is not set')
+    return res.status(500).json({ error: 'Server configuration error' })
+  }
+
   try {
-    // Step 1: Create auth user
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    // 1️⃣ Create Auth user (using admin client to auto‑confirm email)
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true,
+      email_confirm: true,   // email verified immediately
       user_metadata: { full_name, role: 'owner' },
     })
 
-    if (authError) throw authError
+    if (authError) {
+      console.error('Auth creation error:', authError)
+      throw new Error(authError.message)
+    }
 
     const userId = authData.user.id
 
-    // Step 2: Call the DB function
-    const { data, error: dbError } = await supabase.rpc('register_owner_and_property', {
+    // 2️⃣ Call the database function (atomic transaction)
+    const { data, error: dbError } = await supabaseAdmin.rpc('register_owner_and_property', {
       p_user_id: userId,
       p_phone: cleanPhone,
       p_email: email,
@@ -60,14 +70,16 @@ export default async function handler(req, res) {
       p_photos: photos || [],
     })
 
-    // If DB transaction failed, delete the auth user
-    if (dbError || !data.success) {
+    // 3️⃣ If the DB transaction failed, delete the auth user (rollback)
+    if (dbError || (data && !data.success)) {
       // Delete the auth user (cleanup)
-      await supabase.auth.admin.deleteUser(userId)
-      throw new Error(dbError?.message || data?.error || 'Database transaction failed')
+      await supabaseAdmin.auth.admin.deleteUser(userId)
+      const errorMsg = dbError?.message || data?.error || 'Database transaction failed'
+      console.error('DB function error:', errorMsg)
+      throw new Error(errorMsg)
     }
 
-    // Success
+    // ✅ Success – everything committed
     return res.status(200).json({
       success: true,
       message: 'Registration successful! Please login.',
