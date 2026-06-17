@@ -1,595 +1,86 @@
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/router'
 import { motion, AnimatePresence } from 'framer-motion'
-import { supabase } from '../../lib/supabase'
+import Link from 'next/link'
+import { useTenantDashboard } from '../../hooks/useTenantDashboard'
 import { formatCurrency, formatDate, getSharingDetails } from '../../lib/utils'
-import toast from 'react-hot-toast'
+
+// Components
+import PayRentModal from '../../components/tenant/modals/PayRentModal'
+import ComplaintModal from '../../components/tenant/modals/ComplaintModal'
+import VacateModal from '../../components/tenant/modals/VacateModal'
+import ProfileModal from '../../components/tenant/modals/ProfileModal'
+import RoomChangeModal from '../../components/tenant/modals/RoomChangeModal'
+import ScreenshotModal from '../../components/tenant/modals/ScreenshotModal'
 
 export default function TenantDashboard() {
-  const router = useRouter()
-  const [loading, setLoading] = useState(true)
-  const [tenant, setTenant] = useState(null)
-  const [room, setRoom] = useState(null)
-  const [property, setProperty] = useState(null)
-  const [owner, setOwner] = useState(null)
-  const [roommates, setRoommates] = useState([])
-  const [notices, setNotices] = useState([])
-  const [complaints, setComplaints] = useState([])
-  const [paymentHistory, setPaymentHistory] = useState([])
-  const [existingVacateRequest, setExistingVacateRequest] = useState(null)
-  const [roommateVacateAlert, setRoommateVacateAlert] = useState(null)
-  const [showComplaintModal, setShowComplaintModal] = useState(false)
-  const [showPaymentModal, setShowPaymentModal] = useState(false)
-  const [showVacateModal, setShowVacateModal] = useState(false)
-  const [showProfileModal, setShowProfileModal] = useState(false)
-  const [complaintForm, setComplaintForm] = useState({ title: '', description: '', priority: 'medium' })
-  const [vacateForm, setVacateForm] = useState({ expected_date: '', reason: '', rating: 0, review: '' })
-  const [paymentAmount, setPaymentAmount] = useState(0)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [activeTab, setActiveTab] = useState('overview')
-  const [editProfile, setEditProfile] = useState(false)
-  const [profileForm, setProfileForm] = useState({ name: '', phone: '', email: '' })
-  const [ratingHover, setRatingHover] = useState(0)
-  const [ownerUpiId, setOwnerUpiId] = useState('')
-  const [ownerUpiPhone, setOwnerUpiPhone] = useState('')
-  const [paymentScreenshot, setPaymentScreenshot] = useState(null)
-  const [paymentTransactionId, setPaymentTransactionId] = useState('')
-  const [paymentLoading, setPaymentLoading] = useState(false)
-
-  // Screenshot modal state
-  const [showScreenshotModal, setShowScreenshotModal] = useState(false)
-  const [screenshotUrl, setScreenshotUrl] = useState('')
-
-  // Room change request state
-  const [showRoomChangeModal, setShowRoomChangeModal] = useState(false)
-  const [availableRooms, setAvailableRooms] = useState([])
-  const [selectedNewRoom, setSelectedNewRoom] = useState('')
-  const [roomChangeReason, setRoomChangeReason] = useState('')
-  const [pendingRoomChangeRequest, setPendingRoomChangeRequest] = useState(null)
-
-  // Universal UPI intent
-  const initiateUPIPayment = (upiId, amount) => {
-    const cleanUpi = upiId.trim()
-    if (!cleanUpi) {
-      toast.error('Owner UPI ID not available')
-      return
-    }
-    const payee = encodeURIComponent(cleanUpi)
-    const payeeName = encodeURIComponent('HostelSet Rent')
-    const amt = encodeURIComponent(amount)
-    const cu = encodeURIComponent('INR')
-    const tr = encodeURIComponent(`RENT_${Date.now()}`)
-    const tn = encodeURIComponent(`Rent payment for ${tenant?.name || 'tenant'}`)
-    const upiUrl = `upi://pay?pa=${payee}&pn=${payeeName}&am=${amt}&cu=${cu}&tr=${tr}&tn=${tn}`
-    window.location.href = upiUrl
-    setTimeout(() => {
-      if (document.hasFocus()) {
-        navigator.clipboard.writeText(cleanUpi)
-        toast.error('Unable to open UPI app. UPI ID copied to clipboard.', { duration: 5000 })
-      }
-    }, 2500)
-  }
-
-  const copyUpiId = (upiId) => {
-    navigator.clipboard.writeText(upiId)
-    toast.success('UPI ID copied!')
-  }
-
-  const copyUpiPhone = (phone) => {
-    navigator.clipboard.writeText(phone)
-    toast.success('UPI Phone Number copied!')
-  }
-
-  // Helper functions
-  const calculateNextDueDate = () => {
-    if (!tenant) return null
-    const joinDate = new Date(tenant.move_in_date)
-    const today = new Date()
-    let nextDue = new Date(today.getFullYear(), today.getMonth(), joinDate.getDate())
-    if (today > nextDue) nextDue = new Date(today.getFullYear(), today.getMonth() + 1, joinDate.getDate())
-    return nextDue
-  }
-
-  const getRentStatus = () => {
-    if (!tenant) return { status: 'loading', message: '', daysUntilDue: null, dueDate: null }
-    const nextDueDate = calculateNextDueDate()
-    const today = new Date()
-    const daysUntilDue = Math.ceil((nextDueDate - today) / (1000 * 60 * 60 * 24))
-    const isPaidThisMonth = tenant.last_payment_date &&
-      new Date(tenant.last_payment_date) >= new Date(today.getFullYear(), today.getMonth(), 1)
-
-    if ((tenant.pending_amount > 0 && tenant.pending_amount >= tenant.rent_amount) || (!isPaidThisMonth && tenant.pending_amount > 0)) {
-      if (daysUntilDue < 0) return { status: 'overdue', message: `Overdue by ${Math.abs(daysUntilDue)} days`, daysUntilDue, dueDate: nextDueDate, urgent: true }
-      else if (daysUntilDue <= 5) return { status: 'due_soon', message: `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}`, daysUntilDue, dueDate: nextDueDate, urgent: true }
-      else return { status: 'pending', message: `Due on ${formatDate(nextDueDate)}`, daysUntilDue, dueDate: nextDueDate, urgent: false }
-    } else if (tenant.pending_amount > 0 && tenant.pending_amount < tenant.rent_amount) {
-      return { status: 'partial', message: `Partial paid. Due: ${formatCurrency(tenant.pending_amount)}`, daysUntilDue: null, dueDate: null, urgent: false }
-    }
-    return { status: 'paid', message: `Next due on ${formatDate(nextDueDate)}`, daysUntilDue, dueDate: nextDueDate, urgent: false }
-  }
-
-  const refreshData = () => {
-    loadTenantData(localStorage.getItem('userId'))
-  }
-
-  // Auth persistence
-  const checkAuthAndRedirect = async () => {
-    const { data: { user }, error } = await supabase.auth.getUser()
-    if (error || !user) {
-      localStorage.clear()
-      router.push('/login')
-      return null
-    }
-    const { data: userRecord, error: roleError } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-    if (roleError || !userRecord) {
-      localStorage.clear()
-      router.push('/login')
-      return null
-    }
-    return { user, role: userRecord.role }
-  }
-
-  useEffect(() => {
-    const init = async () => {
-      const auth = await checkAuthAndRedirect()
-      if (!auth) return
-      if (auth.role !== 'tenant') {
-        router.push('/login')
-        return
-      }
-      localStorage.setItem('userId', auth.user.id)
-      await loadTenantData(auth.user.id)
-    }
-    init()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        localStorage.clear()
-        router.push('/login')
-      } else if (event === 'TOKEN_REFRESHED') {
-        console.log('Session refreshed')
-      }
-    })
-
-    // Leave page warning
-    const handleBeforeUnload = (e) => {
-      if (localStorage.getItem('userId')) {
-        e.preventDefault()
-        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?'
-        return e.returnValue
-      }
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-
-    const handleRouteChange = (url) => {
-      if (localStorage.getItem('userId') && !confirm('You will lose any unsaved data. Do you want to leave the dashboard?')) {
-        throw 'Route change cancelled'
-      }
-    }
-    router.events?.on('routeChangeStart', handleRouteChange)
-
-    return () => {
-      subscription.unsubscribe()
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-      router.events?.off('routeChangeStart', handleRouteChange)
-    }
-  }, [])
-
-  const uploadFile = async (file, prefix) => {
-    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${file.name.split('.').pop()}`
-    const { data, error } = await supabase.storage
-      .from('tenant-documents')
-      .upload(fileName, file, { cacheControl: '3600' })
-    if (error) throw error
-    const { data: { publicUrl } } = supabase.storage.from('tenant-documents').getPublicUrl(fileName)
-    return publicUrl
-  }
-
-  const submitPaymentWithProof = async () => {
-    if (isSubmitting) return
-    if (!paymentScreenshot) {
-      toast.error('Please upload payment screenshot')
-      return
-    }
-    setPaymentLoading(true)
-    setIsSubmitting(true)
-    try {
-      const screenshotUrl = await uploadFile(paymentScreenshot, 'rent')
-      const amount = tenant.pending_amount || tenant.rent_amount
-      const { error: paymentError } = await supabase.from('payment_history').insert({
-        tenant_id: tenant.id,
-        amount: amount,
-        payment_date: new Date().toISOString().split('T')[0],
-        payment_method: 'upi',
-        status: 'payment_pending',
-        payment_screenshot: screenshotUrl,
-        upi_transaction_id: paymentTransactionId || null
-      })
-      if (paymentError) throw paymentError
-      toast.success('Payment proof submitted! Waiting for owner confirmation.')
-      setShowPaymentModal(false)
-      setPaymentScreenshot(null)
-      setPaymentTransactionId('')
-      await refreshData()
-    } catch (error) {
-      console.error('Payment error:', error)
-      toast.error('Failed to submit payment: ' + error.message)
-    } finally {
-      setPaymentLoading(false)
-      setIsSubmitting(false)
-    }
-  }
-
-  const loadTenantData = async (userId) => {
-    setLoading(true)
-    try {
-      const { data: tenantData, error: tenantError } = await supabase
-        .from('tenants')
-        .select('*, rooms:room_id(*), property:property_id(*)')
-        .eq('user_id', userId)
-        .maybeSingle()
-      if (tenantError) throw tenantError
-      if (!tenantData) {
-        toast.error('No tenant record found')
-        router.push('/login')
-        return
-      }
-      setTenant(tenantData)
-      setRoom(tenantData.rooms)
-      setProperty(tenantData.property)
-      setPaymentAmount(tenantData.pending_amount || tenantData.rent_amount)
-      setProfileForm({ name: tenantData.name || '', phone: tenantData.phone || '', email: tenantData.email || '' })
-
-      // Fetch owner settings (UPI ID and UPI phone number)
-      if (tenantData.property?.owner_id) {
-        const { data: settings } = await supabase
-          .from('owner_settings')
-          .select('upi_id, upi_phone')
-          .eq('owner_id', tenantData.property.owner_id)
-          .maybeSingle()
-        if (settings) {
-          setOwnerUpiId(settings.upi_id || '')
-          setOwnerUpiPhone(settings.upi_phone || '')
-        } else {
-          setOwnerUpiId(tenantData.property?.owner_upi_id || '')
-          setOwnerUpiPhone('')
-        }
-      } else {
-        setOwnerUpiId(tenantData.property?.owner_upi_id || '')
-        setOwnerUpiPhone('')
-      }
-
-      if (tenantData.property?.owner_id) {
-        const { data: ownerData } = await supabase
-          .from('users')
-          .select('full_name, phone, email')
-          .eq('id', tenantData.property.owner_id)
-          .single()
-        setOwner(ownerData)
-      }
-
-      let roommatesList = []
-      if (tenantData.room_id) {
-        const { data: roommatesData } = await supabase
-          .from('tenants')
-          .select('name, phone, email, move_in_date, id')
-          .eq('room_id', tenantData.room_id)
-          .neq('id', tenantData.id)
-        roommatesList = roommatesData || []
-        setRoommates(roommatesList)
-        if (roommatesList.length > 0) {
-          const roommateIds = roommatesList.map(r => r.id)
-          const { data: vacateRequests } = await supabase
-            .from('check_out_requests')
-            .select('tenant_id, tenant_name, expected_check_out')
-            .in('tenant_id', roommateIds)
-            .eq('status', 'approved')
-          if (vacateRequests && vacateRequests.length > 0) {
-            const upcoming = vacateRequests.find(v => new Date(v.expected_check_out) > new Date())
-            if (upcoming) {
-              const roommate = roommatesList.find(r => r.id === upcoming.tenant_id)
-              const daysLeft = Math.ceil((new Date(upcoming.expected_check_out) - new Date()) / (1000 * 60 * 60 * 24))
-              setRoommateVacateAlert({ name: roommate?.name || upcoming.tenant_name, daysLeft, date: upcoming.expected_check_out })
-            }
-          }
-        }
-      }
-
-      const { data: vacateData } = await supabase
-        .from('check_out_requests')
-        .select('*')
-        .eq('tenant_id', tenantData.id)
-        .in('status', ['pending', 'approved'])
-        .maybeSingle()
-      setExistingVacateRequest(vacateData)
-
-      const { data: noticesData } = await supabase
-        .from('notices')
-        .select('*')
-        .eq('property_id', tenantData.property_id)
-        .order('created_at', { ascending: false })
-        .limit(10)
-      setNotices(noticesData || [])
-
-      const { data: complaintsData } = await supabase
-        .from('complaints')
-        .select('*')
-        .eq('tenant_id', tenantData.id)
-        .order('created_at', { ascending: false })
-      setComplaints(complaintsData || [])
-
-      const { data: paymentsData } = await supabase
-        .from('payment_history')
-        .select('*')
-        .eq('tenant_id', tenantData.id)
-        .order('payment_date', { ascending: false })
-      setPaymentHistory(paymentsData || [])
-
-      // Load pending room change request
-      const { data: pendingChange } = await supabase
-        .from('room_change_requests')
-        .select('*')
-        .eq('tenant_id', tenantData.id)
-        .eq('status', 'pending')
-        .maybeSingle()
-      setPendingRoomChangeRequest(pendingChange)
-
-      const rentStatus = getRentStatus()
-      const lastAlertDate = localStorage.getItem('lastTenantAlertDate')
-      const today = new Date().toDateString()
-      if (lastAlertDate !== today) {
-        if (rentStatus.status === 'due_soon' && rentStatus.daysUntilDue <= 3 && rentStatus.daysUntilDue > 0) {
-          toast(`📢 Rent ${rentStatus.message}!`, { duration: 5000 })
-        } else if (rentStatus.status === 'overdue') {
-          toast.error(`⚠️ Rent ${rentStatus.message}! Please pay at earliest.`, { duration: 5000 })
-        }
-        localStorage.setItem('lastTenantAlertDate', today)
-      }
-    } catch (error) {
-      console.error('Load tenant data error:', error)
-      toast.error('Failed to load dashboard data')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const updateProfile = async () => {
-    if (isSubmitting) return
-    if (!profileForm.name) {
-      toast.error('Name is required')
-      return
-    }
-    setIsSubmitting(true)
-    try {
-      const { error } = await supabase
-        .from('tenants')
-        .update({ name: profileForm.name, phone: profileForm.phone, email: profileForm.email })
-        .eq('id', tenant.id)
-      if (error) throw error
-      toast.success('Profile updated successfully!')
-      setEditProfile(false)
-      await refreshData()
-    } catch (error) {
-      toast.error('Failed to update profile')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const submitComplaint = async () => {
-    if (isSubmitting) return
-    if (!complaintForm.title || !complaintForm.description) {
-      toast.error('Please fill all fields')
-      return
-    }
-    setIsSubmitting(true)
-    try {
-      const { error } = await supabase
-        .from('complaints')
-        .insert({
-          tenant_id: tenant.id,
-          property_id: tenant.property_id,
-          room_id: tenant.room_id,
-          tenant_name: tenant.name,
-          room_number: room?.room_number,
-          title: complaintForm.title,
-          description: complaintForm.description,
-          priority: complaintForm.priority,
-          status: 'open',
-          created_at: new Date().toISOString()
-        })
-      if (error) throw error
-      toast.success('Complaint submitted successfully!')
-      setShowComplaintModal(false)
-      setComplaintForm({ title: '', description: '', priority: 'medium' })
-      await refreshData()
-    } catch (error) {
-      console.error('Submit complaint error:', error)
-      toast.error('Failed to submit complaint: ' + error.message)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const deleteComplaint = async (complaintId) => {
-    if (isSubmitting) return
-    if (!confirm('Delete this complaint? This action cannot be undone.')) return
-    setIsSubmitting(true)
-    try {
-      const { error } = await supabase
-        .from('complaints')
-        .delete()
-        .eq('id', complaintId)
-        .eq('tenant_id', tenant.id)
-      if (error) throw error
-      toast.success('Complaint deleted.')
-      setComplaints(prev => prev.filter(c => c.id !== complaintId))
-      await refreshData()
-    } catch (error) {
-      console.error('Delete complaint error:', error)
-      toast.error('Failed to delete complaint: ' + error.message)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const requestVacate = async () => {
-    if (isSubmitting) return
-    if (!vacateForm.expected_date) {
-      toast.error('Please select expected check-out date')
-      return
-    }
-    if (vacateForm.rating === 0) {
-      toast.error('Please rate your experience (1-5 stars) before submitting vacate request')
-      return
-    }
-    setIsSubmitting(true)
-    try {
-      if (!tenant) throw new Error('Tenant data not loaded')
-      if (!tenant.property_id) throw new Error('Property ID not found')
-      if (!tenant.room_id) throw new Error('Room ID not found')
-      const vacateData = {
-        tenant_id: tenant.id,
-        tenant_name: tenant.name,
-        property_id: tenant.property_id,
-        room_id: tenant.room_id,
-        room_number: room?.room_number || 'N/A',
-        expected_check_out: vacateForm.expected_date,
-        reason: vacateForm.reason || null,
-        requested_date: new Date().toISOString().split('T')[0],
-        status: 'pending',
-        created_at: new Date().toISOString()
-      }
-      const { error } = await supabase.from('check_out_requests').insert(vacateData)
-      if (error) throw new Error(error.message)
-      const { error: ratingError } = await supabase
-        .from('ratings')
-        .insert({
-          tenant_id: tenant.id,
-          property_id: tenant.property_id,
-          rating: vacateForm.rating,
-          review: vacateForm.review || null,
-          created_at: new Date().toISOString()
-        })
-      if (ratingError) console.error('Rating submit error:', ratingError)
-      toast.success('Vacate request submitted! Owner will review it.')
-      setShowVacateModal(false)
-      setVacateForm({ expected_date: '', reason: '', rating: 0, review: '' })
-      await refreshData()
-    } catch (error) {
-      console.error('Vacate request error:', error)
-      toast.error('Failed to submit vacate request: ' + error.message)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const cancelVacateRequest = async () => {
-    if (isSubmitting) return
-    if (!existingVacateRequest) return
-    const { data: preBooking } = await supabase
-      .from('pre_bookings')
-      .select('id')
-      .eq('room_id', tenant.room_id)
-      .eq('status', 'approved')
-      .maybeSingle()
-    if (preBooking) {
-      toast.error('Cannot cancel vacate – a pre‑booking has already been approved for this room.')
-      return
-    }
-    if (!confirm('Cancel your vacate request? You will continue as a tenant.')) return
-    setIsSubmitting(true)
-    try {
-      await supabase.from('check_out_requests').delete().eq('id', existingVacateRequest.id)
-      await supabase.from('tenants').update({ status: 'active', check_out_requested: false, notice_period_start: null, notice_period_end: null }).eq('id', tenant.id)
-      toast.success('Vacate request cancelled. You remain as an active tenant.')
-      await refreshData()
-    } catch (error) {
-      toast.error('Failed to cancel request')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  // Room change request functions
-  const fetchAvailableRooms = async () => {
-    try {
-      const { data: allRooms, error } = await supabase
-        .from('rooms')
-        .select('id, room_number, sharing_type, monthly_rent, capacity, current_occupants')
-        .eq('property_id', tenant.property_id)
-        .neq('id', tenant.room_id)
-      if (error) throw error
-
-      const { data: pendingChanges } = await supabase
-        .from('room_change_requests')
-        .select('new_room_id')
-        .eq('property_id', tenant.property_id)
-        .eq('status', 'pending')
-      const pendingRoomIds = pendingChanges?.map(p => p.new_room_id) || []
-
-      const available = allRooms.filter(room => 
-        room.current_occupants < room.capacity && 
-        !pendingRoomIds.includes(room.id)
-      )
-      setAvailableRooms(available)
-    } catch (error) {
-      console.error('Fetch available rooms error:', error)
-      toast.error('Failed to load available rooms')
-    }
-  }
-
-  const openRoomChangeModal = () => {
-    fetchAvailableRooms()
-    setSelectedNewRoom('')
-    setRoomChangeReason('')
-    setShowRoomChangeModal(true)
-  }
-
-  const submitRoomChangeRequest = async () => {
-    if (isSubmitting) return
-    if (!selectedNewRoom) {
-      toast.error('Please select a room')
-      return
-    }
-    if (pendingRoomChangeRequest) {
-      toast.error('You already have a pending room change request')
-      return
-    }
-    setIsSubmitting(true)
-    try {
-      const { error } = await supabase
-        .from('room_change_requests')
-        .insert({
-          tenant_id: tenant.id,
-          property_id: tenant.property_id,
-          old_room_id: tenant.room_id,
-          new_room_id: selectedNewRoom,
-          reason: roomChangeReason || null,
-          status: 'pending',
-          requested_at: new Date().toISOString()
-        })
-      if (error) throw error
-      toast.success('Room change request submitted! Owner will review it.')
-      setShowRoomChangeModal(false)
-      await refreshData()
-    } catch (error) {
-      console.error('Room change request error:', error)
-      toast.error('Failed to submit request: ' + error.message)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    localStorage.clear()
-    router.push('/')
-  }
+  const {
+    loading,
+    tenant,
+    room,
+    property,
+    owner,
+    roommates,
+    notices,
+    complaints,
+    paymentHistory,
+    existingVacateRequest,
+    roommateVacateAlert,
+    showComplaintModal,
+    setShowComplaintModal,
+    showPaymentModal,
+    setShowPaymentModal,
+    showVacateModal,
+    setShowVacateModal,
+    showProfileModal,
+    setShowProfileModal,
+    complaintForm,
+    setComplaintForm,
+    vacateForm,
+    setVacateForm,
+    paymentAmount,
+    setPaymentAmount,
+    isSubmitting,
+    activeTab,
+    setActiveTab,
+    editProfile,
+    setEditProfile,
+    profileForm,
+    setProfileForm,
+    ratingHover,
+    setRatingHover,
+    ownerUpiId,
+    ownerUpiPhone,
+    paymentScreenshot,
+    setPaymentScreenshot,
+    paymentTransactionId,
+    setPaymentTransactionId,
+    paymentLoading,
+    showScreenshotModal,
+    setShowScreenshotModal,
+    screenshotUrl,
+    setScreenshotUrl,
+    showRoomChangeModal,
+    setShowRoomChangeModal,
+    availableRooms,
+    selectedNewRoom,
+    setSelectedNewRoom,
+    roomChangeReason,
+    setRoomChangeReason,
+    pendingRoomChangeRequest,
+    getRentStatus,
+    initiateUPIPayment,
+    copyUpiId,
+    copyUpiPhone,
+    refreshData,
+    updateProfile,
+    submitComplaint,
+    deleteComplaint,
+    requestVacate,
+    cancelVacateRequest,
+    submitPaymentWithProof,
+    openRoomChangeModal,
+    submitRoomChangeRequest,
+    handleLogout,
+  } = useTenantDashboard()
 
   const rentStatus = getRentStatus()
   const isUrgent = rentStatus.urgent && (rentStatus.status === 'due_soon' || rentStatus.status === 'overdue')
@@ -782,173 +273,94 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Payment Modal */}
+      {/* Modals */}
       <AnimatePresence>
         {showPaymentModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-2xl font-bold mb-4">💳 Pay Rent via UPI</h2>
-              <div className="bg-gray-50 rounded-xl p-4 mb-4">
-                <p className="font-semibold">{tenant?.name}</p>
-                <p className="text-sm text-gray-500">Room {room?.room_number}</p>
-                <p>Monthly Rent: {formatCurrency(tenant?.rent_amount)}</p>
-                <p className="text-red-500">Pending: {formatCurrency(tenant?.pending_amount || tenant?.rent_amount)}</p>
-              </div>
-              {(ownerUpiId || ownerUpiPhone) ? (
-                <div className="space-y-4">
-                  {ownerUpiId && (
-                    <div className="bg-blue-50 p-3 rounded-lg">
-                      <p className="text-sm font-semibold mb-2">Pay to UPI ID</p>
-                      <p className="font-mono text-sm break-all mb-2">{ownerUpiId}</p>
-                      <div className="flex flex-wrap gap-2">
-                        <button onClick={() => initiateUPIPayment(ownerUpiId, tenant?.pending_amount || tenant?.rent_amount)} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Pay Now</button>
-                        <button onClick={() => copyUpiId(ownerUpiId)} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy UPI ID</button>
-                      </div>
-                    </div>
-                  )}
-                  {ownerUpiPhone && (
-                    <div className="bg-green-50 p-3 rounded-lg">
-                      <p className="text-sm font-semibold mb-2">Pay to UPI Phone Number</p>
-                      <p className="font-mono text-sm break-all mb-2">{ownerUpiPhone}</p>
-                      <div className="flex flex-wrap gap-2">
-                        <button onClick={() => initiateUPIPayment(ownerUpiPhone, tenant?.pending_amount || tenant?.rent_amount)} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Pay Now</button>
-                        <button onClick={() => copyUpiPhone(ownerUpiPhone)} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy Phone</button>
-                      </div>
-                    </div>
-                  )}
-                  <div className="border-t pt-4 mt-2">
-                    <div><label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label><input type="text" className="w-full px-4 py-3 border rounded-xl" value={paymentTransactionId} onChange={e => setPaymentTransactionId(e.target.value)} /></div>
-                    <div className="mt-3"><label className="block text-sm font-semibold mb-1">Payment Screenshot *</label><input type="file" accept="image/*" onChange={e => { if (e.target.files[0]) setPaymentScreenshot(e.target.files[0]) }} className="w-full" /></div>
-                    <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800 mt-3">After payment, upload the screenshot and submit. Owner will verify.</div>
-                    <button onClick={submitPaymentWithProof} disabled={paymentLoading || isSubmitting} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold mt-4 disabled:opacity-50">{paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}</button>
-                    <button onClick={() => setShowPaymentModal(false)} className="w-full text-center text-gray-500 text-sm mt-3">Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-red-500">Owner has not set up UPI payment details. Please contact owner.</p>
-              )}
-            </motion.div>
-          </div>
+          <PayRentModal
+            tenant={tenant}
+            room={room}
+            ownerUpiId={ownerUpiId}
+            ownerUpiPhone={ownerUpiPhone}
+            paymentAmount={paymentAmount}
+            paymentTransactionId={paymentTransactionId}
+            setPaymentTransactionId={setPaymentTransactionId}
+            paymentScreenshot={paymentScreenshot}
+            setPaymentScreenshot={setPaymentScreenshot}
+            paymentLoading={paymentLoading}
+            isSubmitting={isSubmitting}
+            initiateUPIPayment={initiateUPIPayment}
+            copyUpiId={copyUpiId}
+            copyUpiPhone={copyUpiPhone}
+            submitPaymentWithProof={submitPaymentWithProof}
+            onCancel={() => setShowPaymentModal(false)}
+          />
         )}
       </AnimatePresence>
 
-      {/* Complaint Modal */}
       <AnimatePresence>
         {showComplaintModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComplaintModal(false)}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-2xl font-bold mb-4">📝 Raise Complaint</h2>
-              <div className="space-y-4">
-                <input type="text" placeholder="Title" className="w-full px-4 py-3 border rounded-xl" value={complaintForm.title} onChange={e => setComplaintForm({...complaintForm, title: e.target.value})} />
-                <textarea placeholder="Description" rows="4" className="w-full px-4 py-3 border rounded-xl" value={complaintForm.description} onChange={e => setComplaintForm({...complaintForm, description: e.target.value})} />
-                <select className="w-full px-4 py-3 border rounded-xl" value={complaintForm.priority} onChange={e => setComplaintForm({...complaintForm, priority: e.target.value})}>
-                  <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
-                </select>
-                <div className="flex gap-3 mt-6"><button onClick={submitComplaint} disabled={isSubmitting} className="flex-1 bg-orange-600 text-white py-3 rounded-xl">{isSubmitting ? 'Submitting...' : 'Submit Complaint'}</button><button onClick={() => setShowComplaintModal(false)} className="flex-1 border-2 border-gray-300 py-3 rounded-xl">Cancel</button></div>
-              </div>
-            </motion.div>
-          </div>
+          <ComplaintModal
+            complaintForm={complaintForm}
+            setComplaintForm={setComplaintForm}
+            isSubmitting={isSubmitting}
+            onSubmit={submitComplaint}
+            onCancel={() => setShowComplaintModal(false)}
+          />
         )}
       </AnimatePresence>
 
-      {/* Vacate Modal */}
       <AnimatePresence>
         {showVacateModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowVacateModal(false)}>
-            <div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-2xl font-bold mb-4">🚪 Request Vacate</h2>
-              <div className="space-y-4">
-                <div><label className="block text-sm font-semibold mb-2">Expected Check-out Date *</label><input type="date" className="w-full px-4 py-3 border rounded-xl" value={vacateForm.expected_date} onChange={e => setVacateForm({...vacateForm, expected_date: e.target.value})} min={new Date().toISOString().split('T')[0]} /></div>
-                <div><label className="block text-sm font-semibold mb-2">Reason (optional)</label><textarea placeholder="e.g., Moving to another city" rows="3" className="w-full px-4 py-3 border rounded-xl" value={vacateForm.reason} onChange={e => setVacateForm({...vacateForm, reason: e.target.value})} /></div>
-                <div className="bg-yellow-50 p-3 rounded-lg"><p className="text-xs text-yellow-700">⚠️ Please clear all pending dues before vacating</p>{tenant?.pending_amount > 0 && <p className="text-xs text-red-600 mt-1">⚠️ You have pending dues: {formatCurrency(tenant.pending_amount)}</p>}</div>
-                <div className="border-t pt-4">
-                  <label className="block text-sm font-semibold mb-2">Rate your experience *</label>
-                  <div className="flex gap-1 mb-2">{[...Array(5)].map((_, i) => (<button key={i} type="button" onClick={() => setVacateForm({...vacateForm, rating: i+1})} onMouseEnter={() => setRatingHover(i+1)} onMouseLeave={() => setRatingHover(0)} className="text-3xl"><span className={i+1 <= (vacateForm.rating || ratingHover) ? 'text-yellow-500' : 'text-gray-300'}>★</span></button>))}</div>
-                  <textarea placeholder="Optional review" rows="2" className="w-full px-4 py-3 border rounded-xl" value={vacateForm.review} onChange={e => setVacateForm({...vacateForm, review: e.target.value})} />
-                </div>
-                <div className="flex gap-3 mt-6"><button onClick={requestVacate} disabled={isSubmitting || !vacateForm.expected_date || vacateForm.rating === 0} className="flex-1 bg-red-600 text-white py-3 rounded-xl">{isSubmitting ? 'Submitting...' : 'Submit Request & Rating'}</button><button onClick={() => setShowVacateModal(false)} className="flex-1 border-2 border-gray-300 py-3 rounded-xl">Cancel</button></div>
-              </div>
-            </div>
-          </div>
+          <VacateModal
+            vacateForm={vacateForm}
+            setVacateForm={setVacateForm}
+            ratingHover={ratingHover}
+            setRatingHover={setRatingHover}
+            isSubmitting={isSubmitting}
+            tenant={tenant}
+            onSubmit={requestVacate}
+            onCancel={() => setShowVacateModal(false)}
+          />
         )}
       </AnimatePresence>
 
-      {/* Profile Modal */}
       <AnimatePresence>
         {showProfileModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
-            <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-              <div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold">👤 My Profile</h2><button onClick={() => setEditProfile(!editProfile)} className="text-sm">{editProfile ? 'Cancel' : 'Edit'}</button></div>
-              {!editProfile ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl"><div className="w-16 h-16 bg-gradient-to-r from-slate-600 to-slate-500 rounded-full flex items-center justify-center text-white text-2xl font-bold">{tenant?.name?.charAt(0) || 'U'}</div><div><p className="font-semibold">{tenant?.name}</p><p className="text-sm text-gray-500">Tenant</p></div></div>
-                  <div className="space-y-3"><div className="flex justify-between py-2 border-b"><span>📞 Phone:</span><span>{tenant?.phone}</span></div><div className="flex justify-between py-2 border-b"><span>📧 Email:</span><span>{tenant?.email || 'Not provided'}</span></div><div className="flex justify-between py-2 border-b"><span>🏠 Room:</span><span>{room?.room_number}</span></div><div className="flex justify-between py-2 border-b"><span>📅 Joined:</span><span>{formatDate(tenant?.move_in_date)}</span></div></div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <input type="text" placeholder="Full Name" className="w-full px-4 py-3 border rounded-xl" value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} />
-                  <input type="tel" placeholder="Phone Number" className="w-full px-4 py-3 border rounded-xl" value={profileForm.phone} onChange={e => setProfileForm({...profileForm, phone: e.target.value})} />
-                  <input type="email" placeholder="Email" className="w-full px-4 py-3 border rounded-xl" value={profileForm.email} onChange={e => setProfileForm({...profileForm, email: e.target.value})} />
-                  <div className="flex gap-3 mt-6"><button onClick={updateProfile} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl">{isSubmitting ? 'Saving...' : 'Save Changes'}</button><button onClick={() => setEditProfile(false)} className="flex-1 border-2 border-gray-300 py-3 rounded-xl">Cancel</button></div>
-                </div>
-              )}
-              <button onClick={() => setShowProfileModal(false)} className="w-full mt-4 py-2 text-gray-500">Close</button>
-            </div>
-          </div>
+          <ProfileModal
+            tenant={tenant}
+            room={room}
+            profileForm={profileForm}
+            setProfileForm={setProfileForm}
+            editProfile={editProfile}
+            setEditProfile={setEditProfile}
+            isSubmitting={isSubmitting}
+            onUpdate={updateProfile}
+            onCancel={() => setShowProfileModal(false)}
+          />
         )}
       </AnimatePresence>
 
-      {/* Room Change Request Modal */}
       <AnimatePresence>
         {showRoomChangeModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRoomChangeModal(false)}>
-            <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-2xl font-bold mb-4">🔄 Request Room Change</h2>
-              <p className="text-sm text-gray-600 mb-4">Select a new room from the same property. Owner will review and approve.</p>
-              <div className="space-y-4">
-                <select 
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl"
-                  value={selectedNewRoom}
-                  onChange={(e) => setSelectedNewRoom(e.target.value)}
-                >
-                  <option value="">Select a room</option>
-                  {availableRooms.map(room => (
-                    <option key={room.id} value={room.id}>
-                      Room {room.room_number} - {getSharingDetails(room.sharing_type)?.label} - ₹{formatCurrency(room.monthly_rent)}/month ({room.capacity - room.current_occupants} slots available)
-                    </option>
-                  ))}
-                </select>
-                <textarea
-                  placeholder="Reason for room change (optional)"
-                  rows="3"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl"
-                  value={roomChangeReason}
-                  onChange={(e) => setRoomChangeReason(e.target.value)}
-                />
-                <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
-                  ⚠️ Your request will be sent to the owner for approval. You will be notified when the owner responds.
-                </div>
-                <div className="flex gap-3 mt-6">
-                  <button onClick={submitRoomChangeRequest} disabled={isSubmitting || !selectedNewRoom} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
-                    {isSubmitting ? 'Submitting...' : 'Submit Request'}
-                  </button>
-                  <button onClick={() => setShowRoomChangeModal(false)} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <RoomChangeModal
+            availableRooms={availableRooms}
+            selectedNewRoom={selectedNewRoom}
+            setSelectedNewRoom={setSelectedNewRoom}
+            roomChangeReason={roomChangeReason}
+            setRoomChangeReason={setRoomChangeReason}
+            isSubmitting={isSubmitting}
+            onSubmit={submitRoomChangeRequest}
+            onCancel={() => setShowRoomChangeModal(false)}
+          />
         )}
       </AnimatePresence>
 
-      {/* Screenshot Preview Modal */}
       <AnimatePresence>
         {showScreenshotModal && screenshotUrl && (
-          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4" onClick={() => setShowScreenshotModal(false)}>
-            <div className="relative max-w-4xl w-full" onClick={e => e.stopPropagation()}>
-              <button onClick={() => setShowScreenshotModal(false)} className="absolute -top-10 right-0 text-white text-2xl hover:text-gray-300">✕</button>
-              <img src={screenshotUrl} alt="Payment Screenshot" className="w-full rounded-lg shadow-2xl" />
-            </div>
-          </div>
+          <ScreenshotModal
+            url={screenshotUrl}
+            onClose={() => setShowScreenshotModal(false)}
+          />
         )}
       </AnimatePresence>
     </div>
