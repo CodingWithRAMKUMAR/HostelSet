@@ -3,14 +3,16 @@ import dynamic from 'next/dynamic'
 import { useTenantDashboard } from '../../hooks/useTenantDashboard'
 import { formatCurrency, formatDate, getSharingDetails } from '../../lib/utils'
 
-// Content Components
+// Content Components (static)
 import OverviewSection from '../../components/tenant/OverviewSection'
 import RoommatesSection from '../../components/tenant/RoommatesSection'
 import NoticesSection from '../../components/tenant/NoticesSection'
 import ComplaintsSection from '../../components/tenant/ComplaintsSection'
 import PaymentsSection from '../../components/tenant/PaymentsSection'
 
+<<<<<<< HEAD
 // Lazy-load Modal Components for performance
+>>>>>>> e29d611230ebb94309171a1fb32cfe0ae11271b5
 const PayRentModal = dynamic(() => import('../../components/tenant/modals/PayRentModal'), { ssr: false })
 const ComplaintModal = dynamic(() => import('../../components/tenant/modals/ComplaintModal'), { ssr: false })
 const VacateModal = dynamic(() => import('../../components/tenant/modals/VacateModal'), { ssr: false })
@@ -43,8 +45,6 @@ export default function TenantDashboard() {
     setComplaintForm,
     vacateForm,
     setVacateForm,
-    paymentAmount,
-    setPaymentAmount,
     isSubmitting,
     activeTab,
     setActiveTab,
@@ -196,24 +196,16 @@ export default function TenantDashboard() {
             pendingRoomChangeRequest={pendingRoomChangeRequest}
           />
         )}
-
-        {activeTab === 'roommates' && (
-          <RoommatesSection roommates={roommates} />
-        )}
-
-        {activeTab === 'notices' && (
-          <NoticesSection notices={notices} />
-        )}
-
+        {activeTab === 'roommates' && <RoommatesSection roommates={roommates} />}
+        {activeTab === 'notices' && <NoticesSection notices={notices} />}
         {activeTab === 'complaints' && (
           <ComplaintsSection
             complaints={complaints}
             onDelete={deleteComplaint}
-            onRaiseNew={() => setShowComplaintModal(true)}
             isSubmitting={isSubmitting}
+            onRaiseComplaint={() => setShowComplaintModal(true)}
           />
         )}
-
         {activeTab === 'payments' && (
           <PaymentsSection
             payments={paymentHistory}
@@ -222,7 +214,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Modals */}
+      {/* Modals (lazy‑loaded) */}
       <AnimatePresence>
         {showPaymentModal && (
           <PayRentModal
@@ -230,7 +222,6 @@ export default function TenantDashboard() {
             room={room}
             ownerUpiId={ownerUpiId}
             ownerUpiPhone={ownerUpiPhone}
-            paymentAmount={paymentAmount}
             paymentTransactionId={paymentTransactionId}
             setPaymentTransactionId={setPaymentTransactionId}
             paymentScreenshot={paymentScreenshot}
