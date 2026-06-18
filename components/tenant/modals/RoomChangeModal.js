@@ -19,7 +19,7 @@ export default function RoomChangeModal({
           <select 
             className="w-full px-4 py-3 border border-gray-200 rounded-xl"
             value={selectedNewRoom}
-            onChange={(e) => setSelectedNewRoom(e.target.value ? parseInt(e.target.value, 10) : '')}
+            onChange={(e) => setSelectedNewRoom(e.target.value)}
           >
             <option value="">Select a room</option>
             {availableRooms.map(room => (
