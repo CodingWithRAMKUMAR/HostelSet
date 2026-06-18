@@ -21,7 +21,6 @@ export default async function handler(req, res) {
     photos,
   } = req.body
 
-  // Validate
   if (!email || !password || !phone || !full_name || !property_name || !address || !city) {
     return res.status(400).json({ error: 'Missing required fields' })
   }
@@ -32,8 +31,7 @@ export default async function handler(req, res) {
   }
 
   if (!supabaseAdmin) {
-    console.error('SUPABASE_SERVICE_ROLE_KEY is not set')
-    return res.status(500).json({ error: 'Server configuration error' })
+    return res.status(500).json({ error: 'Server configuration error: SUPABASE_SERVICE_ROLE_KEY missing' })
   }
 
   try {
@@ -44,30 +42,21 @@ export default async function handler(req, res) {
       email_confirm: true,
       user_metadata: { full_name, role: 'owner' },
     })
-    if (authError) throw new Error(authError.message)
 
-    const userId = authData.user.id
-
-    // 2. Insert into public.users using admin client (bypasses RLS)
-    const { error: userInsertError } = await supabaseAdmin
-      .from('users')
-      .insert({
-        id: userId,
-        phone: cleanPhone,
-        email: email.toLowerCase(),
-        full_name: full_name,
-        role: 'owner',
-        is_active: true,
-      })
-    if (userInsertError) {
-      // If user insert fails, delete the auth user (rollback)
-      await supabaseAdmin.auth.admin.deleteUser(userId)
-      throw new Error(userInsertError.message)
+    if (authError) {
+      console.error('Auth error:', authError)
+      return res.status(500).json({ error: 'Auth error: ' + authError.message })
     }
 
-    // 3. Call the function to insert property and settings
-    const { data, error: dbError } = await supabaseAdmin.rpc('register_owner_property', {
+    const userId = authData.user.id
+    console.log('Auth user created with ID:', userId)
+
+    // 2. Call the DB function
+    const { data, error: dbError } = await supabaseAdmin.rpc('register_owner_and_property', {
       p_user_id: userId,
+      p_phone: cleanPhone,
+      p_email: email,
+      p_full_name: full_name,
       p_property_name: property_name,
       p_description: description || '',
       p_address: address,
@@ -78,22 +67,33 @@ export default async function handler(req, res) {
       p_photos: photos || [],
     })
 
-    if (dbError || (data && !data.success)) {
-      // Rollback: delete auth user and public.user
+    console.log('Function result:', { data, dbError })
+
+    // 3. Check the function result
+    if (dbError) {
       await supabaseAdmin.auth.admin.deleteUser(userId)
-      await supabaseAdmin.from('users').delete().eq('id', userId)
-      throw new Error(dbError?.message || data?.error || 'Property insertion failed')
+      console.error('Database function error:', dbError)
+      return res.status(500).json({ error: 'Database function error: ' + dbError.message })
     }
 
+    if (!data || !data.success) {
+      await supabaseAdmin.auth.admin.deleteUser(userId)
+      console.error('Function returned error:', data)
+      return res.status(400).json({ error: data?.error || 'Registration failed' })
+    }
+
+    // Success
     return res.status(200).json({
       success: true,
       message: 'Registration successful! Please login.',
+      userId: userId,
+      propertyId: data.property_id
     })
   } catch (error) {
     console.error('Registration error:', error)
     return res.status(500).json({
-      success: false,
       error: error.message || 'Registration failed. Please try again.',
+      stack: error.stack
     })
   }
 }
