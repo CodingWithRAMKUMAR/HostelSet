@@ -43,7 +43,7 @@ export function useTenantDashboard() {
   const [roomChangeReason, setRoomChangeReason] = useState('')
   const [pendingRoomChangeRequest, setPendingRoomChangeRequest] = useState(null)
 
-  // ----- Helper functions (unchanged) -----
+  // ----- Helper functions -----
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -119,6 +119,7 @@ export function useTenantDashboard() {
     else setIsRefreshing(true)
 
     try {
+      console.log('🔄 loadTenantData called for userId:', userId)
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
         .select('*, rooms:room_id(*), property:property_id(*)')
@@ -190,12 +191,15 @@ export function useTenantDashboard() {
         }
       }
 
-      const { data: vacateData } = await supabase
+      // Load vacate request
+      const { data: vacateData, error: vacateError } = await supabase
         .from('check_out_requests')
         .select('*')
         .eq('tenant_id', tenantData.id)
         .in('status', ['pending', 'approved'])
         .maybeSingle()
+      if (vacateError) throw vacateError
+      console.log('📋 Vacate request loaded:', vacateData)
       setExistingVacateRequest(vacateData)
 
       const { data: noticesData } = await supabase
@@ -211,6 +215,7 @@ export function useTenantDashboard() {
         .select('*')
         .eq('tenant_id', tenantData.id)
         .order('created_at', { ascending: false })
+      console.log('📝 Complaints loaded:', complaintsData?.length)
       setComplaints(complaintsData || [])
 
       const { data: paymentsData } = await supabase
@@ -307,39 +312,35 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: deleteComplaint – permanently removes from UI and DB
+  // FIXED: deleteComplaint with aggressive sync
   // ==========================================================================
   const deleteComplaint = async (complaintId) => {
     if (isSubmitting) return
     if (!confirm('Delete this complaint? This action cannot be undone.')) return
     setIsSubmitting(true)
     try {
-      console.log('🔍 Deleting complaint ID:', complaintId)
+      console.log('🗑️ Attempting to delete complaint ID:', complaintId)
 
-      // Optimistic UI update
+      // Optimistic update
       setComplaints(prev => prev.filter(c => c.id !== complaintId))
 
-      // Perform deletion
+      // Delete from database
       const { error } = await supabase
         .from('complaints')
         .delete()
         .eq('id', complaintId)
         .eq('tenant_id', tenant.id)
 
-      if (error) {
-        // If error, revert optimistic update by re-fetching
-        await refreshData(true)
-        throw error
-      }
+      if (error) throw error
 
       toast.success('Complaint deleted.')
 
-      // Refresh in background to sync (ensures UI matches DB)
+      // Force refresh to confirm deletion
       await refreshData(true)
     } catch (error) {
       console.error('Delete complaint error:', error)
       toast.error('Failed to delete complaint: ' + error.message)
-      // Refresh to sync in case of error
+      // Re-fetch to restore consistency
       await refreshData(true)
     } finally {
       setIsSubmitting(false)
@@ -351,8 +352,12 @@ export function useTenantDashboard() {
   // ==========================================================================
   const cancelVacateRequest = async () => {
     if (isSubmitting) return
-    if (!existingVacateRequest) return
+    if (!existingVacateRequest) {
+      toast.error('No vacate request to cancel.')
+      return
+    }
 
+    // Check for pre‑booking conflict
     const { data: preBooking } = await supabase
       .from('pre_bookings')
       .select('id')
@@ -368,11 +373,17 @@ export function useTenantDashboard() {
 
     setIsSubmitting(true)
     try {
+      console.log('🚫 Cancelling vacate request:', existingVacateRequest.id)
+
       // Delete the vacate request
-      await supabase.from('check_out_requests').delete().eq('id', existingVacateRequest.id)
+      const { error: deleteError } = await supabase
+        .from('check_out_requests')
+        .delete()
+        .eq('id', existingVacateRequest.id)
+      if (deleteError) throw deleteError
 
       // Update tenant status to active and clear notice fields
-      await supabase
+      const { error: updateError } = await supabase
         .from('tenants')
         .update({
           status: 'active',
@@ -381,8 +392,9 @@ export function useTenantDashboard() {
           notice_period_end: null
         })
         .eq('id', tenant.id)
+      if (updateError) throw updateError
 
-      // Clear the local state
+      // Clear local state
       setExistingVacateRequest(null)
 
       toast.success('Vacate request cancelled. You remain as an active tenant.')
@@ -392,6 +404,8 @@ export function useTenantDashboard() {
     } catch (error) {
       console.error('Cancel vacate error:', error)
       toast.error('Failed to cancel request: ' + error.message)
+      // Re-fetch to restore consistency
+      await refreshData(true)
     } finally {
       setIsSubmitting(false)
     }
@@ -472,7 +486,7 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: fetchAvailableRooms and submitRoomChangeRequest – using UUIDs
+  // FIXED: Room change functions with UUID validation
   // ==========================================================================
   const fetchAvailableRooms = async () => {
     try {
@@ -519,8 +533,8 @@ export function useTenantDashboard() {
       toast.error('Please select a room')
       return
     }
-    // Ensure selectedNewRoom is a UUID (length 36, with hyphens)
-    if (selectedNewRoom.length !== 36 || !selectedNewRoom.includes('-')) {
+    // Validate UUID
+    if (!selectedNewRoom.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
       toast.error('Invalid room selection. Please try again.')
       console.error('Selected room is not a valid UUID:', selectedNewRoom)
       return
