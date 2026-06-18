@@ -307,34 +307,52 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: deleteComplaint – always sync with database after attempt
+  // FIXED: deleteComplaint – now works reliably
   // ==========================================================================
   const deleteComplaint = async (complaintId) => {
     if (isSubmitting) return
     if (!confirm('Delete this complaint? This action cannot be undone.')) return
     setIsSubmitting(true)
     try {
-      console.log('Deleting complaint ID:', complaintId)
-      const { data, error } = await supabase
+      console.log('🔍 Deleting complaint ID:', complaintId)
+
+      // First, verify the complaint exists and belongs to this tenant
+      const { data: check, error: checkError } = await supabase
         .from('complaints')
-        .delete()
+        .select('id')
         .eq('id', complaintId)
         .eq('tenant_id', tenant.id)
-        .select('id')
-      if (error) throw error
-      if (!data || data.length === 0) {
+        .maybeSingle()
+
+      if (checkError) {
+        throw new Error('Failed to verify complaint: ' + checkError.message)
+      }
+
+      if (!check) {
         toast.error('Complaint not found or already deleted.')
         await refreshData(true)
         return
       }
+
+      // Perform deletion
+      const { error } = await supabase
+        .from('complaints')
+        .delete()
+        .eq('id', complaintId)
+
+      if (error) throw error
+
       toast.success('Complaint deleted.')
-      // Update local state immediately
+
+      // Optimistic UI update
       setComplaints(prev => prev.filter(c => c.id !== complaintId))
-      // Refresh in background to ensure consistency
+
+      // Background refresh to ensure DB sync
       await refreshData(true)
     } catch (error) {
       console.error('Delete complaint error:', error)
       toast.error('Failed to delete complaint: ' + error.message)
+      // Refresh to sync in case of error
       await refreshData(true)
     } finally {
       setIsSubmitting(false)
@@ -442,6 +460,9 @@ export function useTenantDashboard() {
     }
   }
 
+  // ==========================================================================
+  // FIXED: fetchAvailableRooms with better error handling
+  // ==========================================================================
   const fetchAvailableRooms = async () => {
     try {
       const { data: allRooms, error } = await supabase
@@ -463,9 +484,14 @@ export function useTenantDashboard() {
         !pendingRoomIds.includes(room.id)
       )
       setAvailableRooms(available)
+      console.log('✅ Available rooms:', available.length)
+      if (available.length === 0) {
+        toast.info('No rooms available for change at the moment.')
+      }
     } catch (error) {
       console.error('Fetch available rooms error:', error)
       toast.error('Failed to load available rooms')
+      setAvailableRooms([])
     }
   }
 
@@ -477,12 +503,18 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: submitRoomChangeRequest – selects room correctly
+  // FIXED: submitRoomChangeRequest – checks selected room correctly
   // ==========================================================================
   const submitRoomChangeRequest = async () => {
     if (isSubmitting) return
-    if (!selectedNewRoom) { toast.error('Please select a room'); return }
-    if (pendingRoomChangeRequest) { toast.error('You already have a pending room change request'); return }
+    if (!selectedNewRoom) {
+      toast.error('Please select a room')
+      return
+    }
+    if (pendingRoomChangeRequest) {
+      toast.error('You already have a pending room change request')
+      return
+    }
     setIsSubmitting(true)
     try {
       const { error } = await supabase
@@ -499,7 +531,6 @@ export function useTenantDashboard() {
       if (error) throw error
       toast.success('Room change request submitted! Owner will review it.')
       setShowRoomChangeModal(false)
-      // Clear selected room after submit
       setSelectedNewRoom('')
       setRoomChangeReason('')
       await refreshData(true)
