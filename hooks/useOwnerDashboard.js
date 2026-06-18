@@ -471,16 +471,16 @@ export function useOwnerDashboard() {
       if (data) {
         setSettings({
           joining_fee: data.joining_fee || 0,
-          advance_months: data.advance_months || 1,
-          due_day: data.due_day || 5,
+          advance_months: data.advance_months || 0,
+          due_day: data.due_day || 3,
           upi_id: data.upi_id || '',
           upi_phone: data.upi_phone || ''
         })
       } else {
         setSettings({
           joining_fee: 0,
-          advance_months: 1,
-          due_day: 5,
+          advance_months: 0,
+          due_day: 3,
           upi_id: property?.owner_upi_id || '',
           upi_phone: ''
         })
