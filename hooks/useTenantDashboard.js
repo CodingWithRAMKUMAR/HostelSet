@@ -43,7 +43,7 @@ export function useTenantDashboard() {
   const [roomChangeReason, setRoomChangeReason] = useState('')
   const [pendingRoomChangeRequest, setPendingRoomChangeRequest] = useState(null)
 
-  // ----- Helper functions -----
+  // ----- Helper functions (unchanged) -----
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -258,7 +258,7 @@ export function useTenantDashboard() {
     if (userId) loadTenantData(userId, isBackground)
   }, [loadTenantData])
 
-  // ----- Handlers -----
+  // ----- Handlers (all) -----
   const updateProfile = async () => {
     if (isSubmitting) return
     if (!profileForm.name) { toast.error('Name is required'); return }
@@ -312,7 +312,7 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: deleteComplaint with aggressive sync
+  // FIXED: deleteComplaint with immediate UI update and forced reload
   // ==========================================================================
   const deleteComplaint = async (complaintId) => {
     if (isSubmitting) return
@@ -320,8 +320,9 @@ export function useTenantDashboard() {
     setIsSubmitting(true)
     try {
       console.log('🗑️ Attempting to delete complaint ID:', complaintId)
+      console.log('Tenant ID:', tenant.id)
 
-      // Optimistic update
+      // Optimistic update: remove from UI immediately
       setComplaints(prev => prev.filter(c => c.id !== complaintId))
 
       // Delete from database
@@ -331,12 +332,18 @@ export function useTenantDashboard() {
         .eq('id', complaintId)
         .eq('tenant_id', tenant.id)
 
-      if (error) throw error
+      if (error) {
+        console.error('Delete error:', error)
+        // Revert optimistic update on error
+        await refreshData(true)
+        throw error
+      }
 
       toast.success('Complaint deleted.')
 
-      // Force refresh to confirm deletion
-      await refreshData(true)
+      // Force full reload to ensure UI is in sync
+      const userId = localStorage.getItem('userId')
+      if (userId) await loadTenantData(userId, false)
     } catch (error) {
       console.error('Delete complaint error:', error)
       toast.error('Failed to delete complaint: ' + error.message)
@@ -348,7 +355,7 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: cancelVacateRequest – resets status and clears request
+  // FIXED: cancelVacateRequest with immediate UI update and forced reload
   // ==========================================================================
   const cancelVacateRequest = async () => {
     if (isSubmitting) return
@@ -374,6 +381,11 @@ export function useTenantDashboard() {
     setIsSubmitting(true)
     try {
       console.log('🚫 Cancelling vacate request:', existingVacateRequest.id)
+      console.log('Tenant ID:', tenant.id)
+
+      // Optimistic update: clear the request and update status immediately
+      setExistingVacateRequest(null)
+      setTenant(prev => ({ ...prev, status: 'active', check_out_requested: false, notice_period_start: null, notice_period_end: null }))
 
       // Delete the vacate request
       const { error: deleteError } = await supabase
@@ -394,13 +406,11 @@ export function useTenantDashboard() {
         .eq('id', tenant.id)
       if (updateError) throw updateError
 
-      // Clear local state
-      setExistingVacateRequest(null)
-
       toast.success('Vacate request cancelled. You remain as an active tenant.')
 
-      // Refresh data to sync the UI
-      await refreshData(true)
+      // Force full reload to ensure UI is in sync
+      const userId = localStorage.getItem('userId')
+      if (userId) await loadTenantData(userId, false)
     } catch (error) {
       console.error('Cancel vacate error:', error)
       toast.error('Failed to cancel request: ' + error.message)
@@ -486,7 +496,7 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: Room change functions with UUID validation
+  // Room change functions
   // ==========================================================================
   const fetchAvailableRooms = async () => {
     try {
