@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import { formatCurrency, formatDate, getSharingDetails, cleanPhoneNumber } from '../lib/utils'
@@ -8,6 +8,7 @@ export function useOwnerDashboard() {
   const router = useRouter()
   // ----- State -----
   const [loading, setLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [property, setProperty] = useState(null)
   const [rooms, setRooms] = useState([])
   const [tenants, setTenants] = useState([])
@@ -265,9 +266,11 @@ export function useOwnerDashboard() {
     await loadData(true)
   }
 
-  // ----- Data loading -----
-  const loadData = async (isBackgroundRefresh = false) => {
-    if (!isBackgroundRefresh) setLoading(true)
+  // ----- Optimized loadData (with background refresh) -----
+  const loadData = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true)
+    else setIsRefreshing(true)
+
     try {
       await autoDeleteExpiredNoticeTenants()
       await forceDeleteOverdueVacateTenants()
@@ -427,11 +430,12 @@ export function useOwnerDashboard() {
       }
     } catch (error) {
       console.error('Load error:', error)
-      if (!isBackgroundRefresh) toast.error('Failed to load data: ' + error.message)
+      if (!isBackground) toast.error('Failed to load data: ' + error.message)
     } finally {
-      if (!isBackgroundRefresh) setLoading(false)
+      if (!isBackground) setLoading(false)
+      else setIsRefreshing(false)
     }
-  }
+  }, [])
 
   const loadRoomChangeRequests = async (propertyId) => {
     try {
@@ -656,7 +660,7 @@ export function useOwnerDashboard() {
         window.open(data.paymentLink, '_blank')
         toast.success('Redirecting to payment gateway...')
         setTimeout(async () => {
-          await loadData()
+          await loadData(true)
           if (membershipActive) {
             setMembershipStatus('active')
             startAutoRefresh()
@@ -717,7 +721,7 @@ export function useOwnerDashboard() {
     try {
       await supabase.from('rooms').delete().eq('id', id)
       toast.success('Room deleted')
-      await loadData()
+      await loadData(true)
     } catch (error) { toast.error('Failed to delete room') }
     finally { setIsSubmitting(false) }
   }
@@ -742,7 +746,7 @@ export function useOwnerDashboard() {
       toast.success(`Room ${roomForm.room_number} added!`)
       setShowRoomModal(false)
       setRoomForm({ room_number: '', sharing_type: 'double', monthly_rent: 10000 })
-      loadData()
+      loadData(true)
     }
     setIsSubmitting(false)
   }
@@ -796,7 +800,7 @@ export function useOwnerDashboard() {
       toast.success(`Tenant "${formData.name}" added!`)
       setShowAddModal(false)
       setFormData({ name: '', phone: '', email: '', rent_amount: '', room_id: '', advance_amount: '0', joining_fee: '0' })
-      await loadData()
+      await loadData(true)
     } catch (error) { toast.error('Failed to add tenant: ' + error.message) }
     finally { setIsSubmitting(false) }
   }
@@ -811,7 +815,7 @@ export function useOwnerDashboard() {
         if (userError) await supabase.from('users').update({ is_active: false, role: 'inactive' }).eq('id', userId)
       }
       toast.success('✅ Tenant and all related data permanently deleted!')
-      await loadData()
+      await loadData(true)
     } catch (error) { toast.error('Failed to delete tenant: ' + error.message) }
     finally { setIsSubmitting(false); setShowConfirmDeleteModal(false); setTenantToDelete(null) }
   }
@@ -822,7 +826,7 @@ export function useOwnerDashboard() {
     try {
       await supabase.from('tenants').delete().eq('id', tenantId)
       toast.success('Tenant removed from room (history preserved)')
-      await loadData()
+      await loadData(true)
     } catch (error) { toast.error('Failed to remove tenant') }
     finally { setIsSubmitting(false); setShowConfirmDeleteModal(false); setTenantToDelete(null) }
   }
@@ -849,7 +853,7 @@ export function useOwnerDashboard() {
       toast.success(`₹${amount.toLocaleString()} collected!`)
       setShowPaymentModal(false)
       setPaymentAmount('')
-      await loadData()
+      await loadData(true)
     } catch (error) { toast.error('Failed to collect rent: ' + error.message) }
     finally { setIsSubmitting(false) }
   }
@@ -868,7 +872,7 @@ export function useOwnerDashboard() {
       }
       clearAlertForItem('payment', paymentId)
       toast.success('✅ Rent payment confirmed!')
-      await loadData()
+      await loadData(true)
     } catch (error) { toast.error('Failed to confirm: ' + error.message) }
     finally { setIsSubmitting(false) }
   }
@@ -881,7 +885,7 @@ export function useOwnerDashboard() {
       await supabase.from('payment_history').delete().eq('id', paymentId)
       clearAlertForItem('payment', paymentId)
       toast.success('Payment rejected and removed.')
-      await loadData()
+      await loadData(true)
     } catch (error) { toast.error('Failed to reject: ' + error.message) }
     finally { setIsSubmitting(false) }
   }
@@ -896,7 +900,7 @@ export function useOwnerDashboard() {
       clearAlertForItem('payment', tenantId)
       setShowPaymentConfirmModal(false)
       setConfirmingTenant(null)
-      await loadData()
+      await loadData(true)
     } catch (error) { toast.error('Failed to confirm payment: ' + error.message) }
     finally { setIsSubmitting(false) }
   }
@@ -912,7 +916,7 @@ export function useOwnerDashboard() {
       toast.success('Response sent')
       setShowComplaintResponseModal(false)
       setComplaintResponse('')
-      await loadData()
+      await loadData(true)
     } catch (error) { toast.error('Failed to send response') }
     finally { setIsSubmitting(false) }
   }
@@ -924,7 +928,7 @@ export function useOwnerDashboard() {
     try {
       await supabase.from('complaints').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', complaintId)
       toast.success('Complaint resolved')
-      await loadData()
+      await loadData(true)
     } catch (error) { toast.error('Failed to resolve') }
     finally { setIsSubmitting(false) }
   }
@@ -942,7 +946,7 @@ export function useOwnerDashboard() {
       }).eq('id', tenantId)
       clearAlertForItem('vacate', requestId)
       toast.success('Vacate request approved – tenant is now on notice period')
-      await loadData()
+      await loadData(true)
     } catch (error) { toast.error('Failed to approve') }
     finally { setIsSubmitting(false) }
   }
@@ -959,7 +963,7 @@ export function useOwnerDashboard() {
       toast.success('Notice posted!')
       setShowNoticeModal(false)
       setNoticeForm({ title: '', content: '', type: 'general', is_urgent: false })
-      await loadData()
+      await loadData(true)
     } catch (error) { toast.error('Failed to post notice: ' + error.message) }
     finally { setIsSubmitting(false) }
   }
@@ -971,7 +975,7 @@ export function useOwnerDashboard() {
     try {
       await supabase.from('notices').delete().eq('id', noticeId)
       toast.success('Notice deleted')
-      await loadData()
+      await loadData(true)
     } catch (error) { toast.error('Failed to delete notice') }
     finally { setIsSubmitting(false) }
   }
@@ -1044,7 +1048,7 @@ export function useOwnerDashboard() {
       clearAlertForItem('prebooking', bookingId)
 
       toast.success('Pre‑booking approved! Tenant created.')
-      await loadData()
+      await loadData(true)
     } catch (error) {
       console.error('Approve pre-booking error:', error)
       toast.error('Failed to approve pre‑booking: ' + error.message)
@@ -1064,7 +1068,7 @@ export function useOwnerDashboard() {
         .eq('id', bookingId)
       clearAlertForItem('prebooking', bookingId)
       toast.success('Pre‑booking rejected.')
-      await loadData()
+      await loadData(true)
     } catch (error) {
       console.error('Reject pre-booking error:', error)
       toast.error('Failed to reject pre‑booking')
@@ -1102,7 +1106,7 @@ export function useOwnerDashboard() {
       await supabase.from('room_change_requests').update({ status: 'approved', processed_at: new Date().toISOString() }).eq('id', request.id)
       await supabase.from('check_out_requests').delete().eq('tenant_id', request.tenant_id)
       toast.success('Room change approved! Tenant moved successfully.')
-      await loadData()
+      await loadData(true)
     } catch (error) {
       console.error('Approve room change error:', error)
       toast.error('Failed to approve room change: ' + error.message)
@@ -1131,7 +1135,7 @@ export function useOwnerDashboard() {
       setShowRoomChangeReasonModal(false)
       setRejectionReason('')
       setSelectedRoomChangeRequest(null)
-      await loadData()
+      await loadData(true)
     } catch (error) {
       console.error('Reject room change error:', error)
       toast.error('Failed to reject request')
@@ -1298,7 +1302,7 @@ export function useOwnerDashboard() {
       }
 
       clearAlertForItem('complaint', appId)
-      await loadData()
+      await loadData(true)
     } catch (error) {
       console.error('Approve error:', error)
       toast.error('Failed to approve: ' + error.message)
@@ -1332,7 +1336,7 @@ export function useOwnerDashboard() {
       localStorage.setItem('userId', auth.user.id)
       localStorage.setItem('userEmail', auth.user.email || '')
       localStorage.setItem('userName', auth.user.user_metadata?.full_name || '')
-      await loadData()
+      await loadData(false)
       await loadSettings()
       if (property) {
         if (!membershipActive && membershipStatus === 'expired') {
@@ -1384,113 +1388,78 @@ export function useOwnerDashboard() {
   useEffect(() => {
     if (!property?.id) return
 
-    // Subscribe to complaints
     const channelComplaints = supabase
       .channel('complaints-owner')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'complaints', filter: `property_id=eq.${property.id}` },
-        (payload) => {
-          console.log('🔧 New complaint:', payload)
-          loadData(true)
-        }
+        () => { console.log('🔧 New complaint'); loadData(true) }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') console.log('✅ Subscribed to complaints')
-      })
+      .subscribe()
 
-    // Subscribe to tenants
     const channelTenants = supabase
       .channel('tenants-owner')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'tenants', filter: `property_id=eq.${property.id}` },
-        (payload) => {
-          console.log('👤 New tenant:', payload)
-          loadData(true)
-        }
+        { event: '*', schema: 'public', table: 'tenants', filter: `property_id=eq.${property.id}` },
+        () => { console.log('👤 Tenant changed'); loadData(true) }
       )
       .subscribe()
 
-    // Subscribe to applications
     const channelApplications = supabase
       .channel('applications-owner')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'applications', filter: `property_id=eq.${property.id}` },
-        (payload) => {
-          console.log('📋 New application:', payload)
-          loadData(true)
-        }
+        { event: '*', schema: 'public', table: 'applications', filter: `property_id=eq.${property.id}` },
+        () => { console.log('📋 Application changed'); loadData(true) }
       )
       .subscribe()
 
-    // Subscribe to vacate requests
     const channelVacate = supabase
       .channel('vacate-owner')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'check_out_requests', filter: `property_id=eq.${property.id}` },
-        (payload) => {
-          console.log('🚪 New vacate request:', payload)
-          loadData(true)
-        }
+        { event: '*', schema: 'public', table: 'check_out_requests', filter: `property_id=eq.${property.id}` },
+        () => { console.log('🚪 Vacate changed'); loadData(true) }
       )
       .subscribe()
 
-    // Subscribe to payment_history (no filter, we refresh on any payment)
     const channelPayments = supabase
       .channel('payments-owner')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'payment_history' },
-        (payload) => {
-          console.log('💰 New payment:', payload)
-          loadData(true)
-        }
+        () => { console.log('💰 Payment changed'); loadData(true) }
       )
       .subscribe()
 
-    // Subscribe to room changes (for this property)
     const channelRooms = supabase
       .channel('rooms-owner')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'rooms', filter: `property_id=eq.${property.id}` },
-        (payload) => {
-          console.log('🏠 Room changed:', payload)
-          loadData(true)
-        }
+        () => { console.log('🏠 Room changed'); loadData(true) }
       )
       .subscribe()
 
-    // Subscribe to pre_bookings
     const channelPreBookings = supabase
       .channel('prebookings-owner')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'pre_bookings', filter: `property_id=eq.${property.id}` },
-        (payload) => {
-          console.log('📋 New pre‑booking:', payload)
-          loadData(true)
-        }
+        { event: '*', schema: 'public', table: 'pre_bookings', filter: `property_id=eq.${property.id}` },
+        () => { console.log('📋 Pre‑booking changed'); loadData(true) }
       )
       .subscribe()
 
-    // Subscribe to room_change_requests
     const channelRoomChanges = supabase
       .channel('roomchange-owner')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'room_change_requests', filter: `property_id=eq.${property.id}` },
-        (payload) => {
-          console.log('🔄 New room change request:', payload)
-          loadData(true)
-        }
+        { event: '*', schema: 'public', table: 'room_change_requests', filter: `property_id=eq.${property.id}` },
+        () => { console.log('🔄 Room change changed'); loadData(true) }
       )
       .subscribe()
 
-    // Unsubscribe cleanup
     return () => {
       supabase.removeChannel(channelComplaints)
       supabase.removeChannel(channelTenants)
@@ -1508,6 +1477,7 @@ export function useOwnerDashboard() {
   // ==========================================================================
   return {
     loading,
+    isRefreshing,
     property,
     rooms,
     tenants,
