@@ -475,7 +475,7 @@ export function useTenantDashboard() {
           tenant_id: tenant.id,
           property_id: tenant.property_id,
           old_room_id: tenant.room_id,
-          new_room_id: selectedNewRoom,
+          new_room_id: parseInt(selectedNewRoom, 10),
           reason: roomChangeReason || null,
           status: 'pending',
           requested_at: new Date().toISOString()
@@ -545,17 +545,10 @@ export function useTenantDashboard() {
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
 
-    const handleRouteChange = (url) => {
-      if (localStorage.getItem('userId') && !confirm('You will lose any unsaved data. Do you want to leave the dashboard?')) {
-        throw 'Route change cancelled'
-      }
-    }
-    router.events?.on('routeChangeStart', handleRouteChange)
-
+    // We avoid cancelling route changes programmatically; rely on beforeunload prompt only.
     return () => {
       subscription.unsubscribe()
       window.removeEventListener('beforeunload', handleBeforeUnload)
-      router.events?.off('routeChangeStart', handleRouteChange)
     }
   }, [])
 

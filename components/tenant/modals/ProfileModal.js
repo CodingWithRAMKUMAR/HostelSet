@@ -1,15 +1,15 @@
 import { formatDate } from '../../../lib/utils'
 
 export default function ProfileModal({
-  tenant,
-  room,
-  profileForm,
-  setProfileForm,
-  editProfile,
-  setEditProfile,
-  isSubmitting,
-  onUpdate,
-  onCancel,
+  tenant = {},
+  room = {},
+  profileForm = {},
+  setProfileForm = () => {},
+  editProfile = false,
+  setEditProfile = () => {},
+  isSubmitting = false,
+  onUpdate = () => {},
+  onCancel = () => {},
 }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onCancel}>

@@ -10,7 +10,7 @@ export default function SettingsModal({ settings, setSettings, onSave, onCancel,
               type="number"
               className="w-full px-4 py-3 border border-gray-200 rounded-xl"
               value={settings.joining_fee}
-              onChange={(e) => setSettings({...settings, joining_fee: parseInt(e.target.value) || 0})}
+              onChange={(e) => setSettings({...settings, joining_fee: parseInt(e.target.value || 0, 10) || 0})}
               min="0"
             />
           </div>
@@ -20,7 +20,7 @@ export default function SettingsModal({ settings, setSettings, onSave, onCancel,
               type="number"
               className="w-full px-4 py-3 border border-gray-200 rounded-xl"
               value={settings.advance_months}
-              onChange={(e) => setSettings({...settings, advance_months: parseInt(e.target.value) || 0})}
+              onChange={(e) => setSettings({...settings, advance_months: parseInt(e.target.value || 0, 10) || 0})}
               min="0"
               max="12"
             />
@@ -31,7 +31,7 @@ export default function SettingsModal({ settings, setSettings, onSave, onCancel,
               type="number"
               className="w-full px-4 py-3 border border-gray-200 rounded-xl"
               value={settings.due_day}
-              onChange={(e) => setSettings({...settings, due_day: parseInt(e.target.value) || 5})}
+              onChange={(e) => setSettings({...settings, due_day: parseInt(e.target.value || 5, 10) || 5})}
               min="1"
               max="30"
             />

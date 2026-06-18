@@ -1,6 +1,6 @@
 import { formatCurrency, formatDate } from '../../lib/utils'
 
-export default function PaymentHistoryTable({ payments, getRoomNumberById }) {
+export default function PaymentHistoryTable({ payments = [], getRoomNumberById = () => 'N/A' }) {
   if (!payments || payments.length === 0) {
     return <div className="text-center py-12 bg-gray-50 rounded-xl">No payment records</div>
   }

@@ -23,7 +23,7 @@ export default function AddRoomModal({ roomForm, setRoomForm, sharingTypes, onAd
           >
             {sharingTypes.map(type => (
               <option key={type.value} value={type.value}>
-                {type.label} {type.icon} - ₹{formatCurrency(type.price)}/month
+                {type.label} {type.icon} - {formatCurrency(type.price)}/month
               </option>
             ))}
           </select>
@@ -32,7 +32,7 @@ export default function AddRoomModal({ roomForm, setRoomForm, sharingTypes, onAd
             placeholder="Monthly Rent (₹) *"
             className="w-full px-4 py-3 border border-gray-200 rounded-xl"
             value={roomForm.monthly_rent}
-            onChange={(e) => setRoomForm({...roomForm, monthly_rent: e.target.value})}
+            onChange={(e) => setRoomForm({...roomForm, monthly_rent: parseInt(e.target.value || 0, 10)})}
           />
           <div className="flex gap-3 mt-6">
             <button onClick={onAdd} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">

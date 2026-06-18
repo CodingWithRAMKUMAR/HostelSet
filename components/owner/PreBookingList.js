@@ -1,6 +1,6 @@
 import { formatCurrency, formatDate } from '../../lib/utils'
 
-export default function PreBookingList({ bookings, onApprove, onReject, onViewScreenshot, isSubmitting }) {
+export default function PreBookingList({ bookings = [], onApprove = () => {}, onReject = () => {}, onViewScreenshot = () => {}, isSubmitting = false }) {
   const pending = bookings?.filter(b => b.status === 'pending' && b.payment_status === 'pending') || []
 
   if (pending.length === 0) {

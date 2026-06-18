@@ -1,21 +1,38 @@
 import '../styles/globals.css'
 import { Toaster } from 'react-hot-toast'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 
 export default function App({ Component, pageProps }) {
   const router = useRouter()
+  const [authorized, setAuthorized] = useState(false)
 
   useEffect(() => {
     const checkSession = () => {
-      const isLoggedIn = localStorage.getItem('isLoggedIn')
-      const protectedRoutes = ['/owner', '/tenant']
-      const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
-      
-      if (isProtectedRoute && !isLoggedIn && router.pathname !== '/login') {
-        router.push('/login')
+      try {
+        const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true'
+        const protectedRoutes = ['/owner', '/tenant']
+        const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
+
+        if (isProtectedRoute) {
+          if (isLoggedIn) {
+            setAuthorized(true)
+          } else if (router.pathname !== '/login') {
+            router.replace('/login')
+          }
+        } else {
+          setAuthorized(true)
+        }
+      } catch (e) {
+        // If accessing localStorage fails, treat as not authorized for protected routes
+        const protectedRoutes = ['/owner', '/tenant']
+        const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
+        if (isProtectedRoute && router.pathname !== '/login') router.replace('/login')
+        else setAuthorized(true)
       }
     }
+
+    setAuthorized(false)
     checkSession()
   }, [router.pathname])
 
@@ -30,7 +47,9 @@ export default function App({ Component, pageProps }) {
           error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
         }}
       />
-      <Component {...pageProps} />
+      {(!router.pathname.startsWith('/owner') && !router.pathname.startsWith('/tenant')) || authorized ? (
+        <Component {...pageProps} />
+      ) : null}
     </>
   )
 }

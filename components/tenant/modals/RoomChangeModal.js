@@ -1,7 +1,7 @@
 import { formatCurrency, getSharingDetails } from '../../../lib/utils'
 
 export default function RoomChangeModal({
-  availableRooms,
+  availableRooms = [],
   selectedNewRoom,
   setSelectedNewRoom,
   roomChangeReason,
@@ -19,12 +19,12 @@ export default function RoomChangeModal({
           <select 
             className="w-full px-4 py-3 border border-gray-200 rounded-xl"
             value={selectedNewRoom}
-            onChange={(e) => setSelectedNewRoom(e.target.value)}
+            onChange={(e) => setSelectedNewRoom(e.target.value ? parseInt(e.target.value, 10) : '')}
           >
             <option value="">Select a room</option>
             {availableRooms.map(room => (
               <option key={room.id} value={room.id}>
-                Room {room.room_number} - {getSharingDetails(room.sharing_type)?.label} - ₹{formatCurrency(room.monthly_rent)}/month ({room.capacity - room.current_occupants} slots available)
+                Room {room.room_number} - {getSharingDetails(room.sharing_type)?.label} - {formatCurrency(room.monthly_rent)}/month ({Math.max(0, (room.capacity || 0) - (room.current_occupants || 0))} slots available)
               </option>
             ))}
           </select>

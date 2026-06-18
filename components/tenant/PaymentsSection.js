@@ -1,7 +1,8 @@
+import { memo } from 'react'
 import { formatCurrency, formatDate } from '../../lib/utils'
 
-export default function PaymentsSection({ payments, onViewScreenshot }) {
-  if (payments.length === 0) {
+const PaymentsSection = ({ payments = [], onViewScreenshot = () => {} }) => {
+  if (!payments || payments.length === 0) {
     return (
       <div className="text-center py-12">
         <div className="text-5xl mb-3">💰</div>
@@ -62,3 +63,5 @@ export default function PaymentsSection({ payments, onViewScreenshot }) {
     </div>
   )
 }
+
+export default memo(PaymentsSection)

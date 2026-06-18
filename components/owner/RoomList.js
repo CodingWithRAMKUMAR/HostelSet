@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { formatCurrency, getSharingDetails } from '../../lib/utils'
 
-export default function RoomList({ rooms, tenants, vacateRequests, roomMonthlyIncome, onRoomClick, onDeleteRoom, isSubmitting }) {
+function RoomList({ rooms = [], tenants = [], vacateRequests = [], roomMonthlyIncome = {}, onRoomClick = () => {}, onDeleteRoom = () => {}, isSubmitting = false }) {
   const getRoomNumberById = (roomId) => {
     const room = rooms.find(r => r.id === roomId)
     return room ? room.room_number : 'N/A'
@@ -41,7 +41,7 @@ export default function RoomList({ rooms, tenants, vacateRequests, roomMonthlyIn
         const roomTenants = getTenantsInRoom(room.id)
         const upcomingVacate = getUpcomingVacateForRoom(room.id)
         const allPaid = roomTenants.length > 0 && roomTenants.every(t => t.rent_status === 'paid')
-        const monthlyCollected = roomMonthlyIncome[room.id] || 0
+        const monthlyCollected = Number(roomMonthlyIncome?.[room.id] || 0)
         return (
           <div
             key={room.id}
@@ -73,7 +73,7 @@ export default function RoomList({ rooms, tenants, vacateRequests, roomMonthlyIn
               <div className="mt-4">
                 <p className="text-2xl font-bold text-slate-800">{formatCurrency(room.monthly_rent)}<span className="text-sm text-gray-400">/month</span></p>
                 <div className="mt-2 inline-block px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
-                  This month: ₹{monthlyCollected.toLocaleString()}
+                  This month: {formatCurrency(monthlyCollected)}
                 </div>
               </div>
               <div className="mt-4">
@@ -82,7 +82,7 @@ export default function RoomList({ rooms, tenants, vacateRequests, roomMonthlyIn
                   <span className="text-slate-600">{room.current_occupants}/{room.capacity}</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                  <div className="h-2 rounded-full bg-gradient-to-r from-slate-600 to-slate-500" style={{ width: `${(room.current_occupants / room.capacity) * 100}%` }}></div>
+                  <div className="h-2 rounded-full bg-gradient-to-r from-slate-600 to-slate-500" style={{ width: `${room.capacity ? (room.current_occupants / room.capacity) * 100 : 0}%` }}></div>
                 </div>
               </div>
               {roomTenants.length > 0 && (
@@ -91,8 +91,8 @@ export default function RoomList({ rooms, tenants, vacateRequests, roomMonthlyIn
                   <div className="flex -space-x-2">
                     {roomTenants.slice(0,3).map((tenant, idx) => (
                       <div key={tenant.id} className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600 border-2 border-white">
-                        {tenant.name.charAt(0)}
-                      </div>
+                          {(tenant.name || 'U').charAt(0)}
+                        </div>
                     ))}
                     {roomTenants.length > 3 && (
                       <div className="w-8 h-8 rounded-full bg-slate-300 flex items-center justify-center text-xs font-bold text-slate-700 border-2 border-white">
@@ -114,3 +114,5 @@ export default function RoomList({ rooms, tenants, vacateRequests, roomMonthlyIn
     </div>
   )
 }
+
+export default memo(RoomList)

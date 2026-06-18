@@ -1,6 +1,6 @@
 import { formatCurrency, formatDate } from '../../lib/utils'
 
-export default function RentPaymentsList({ payments, onConfirm, onReject, onViewScreenshot, isSubmitting }) {
+export default function RentPaymentsList({ payments = [], onConfirm = () => {}, onReject = () => {}, onViewScreenshot = () => {}, isSubmitting = false }) {
   if (!payments || payments.length === 0) {
     return <div className="text-center py-12 bg-gray-50 rounded-xl">No pending rent payments.</div>
   }

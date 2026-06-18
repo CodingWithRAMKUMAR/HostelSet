@@ -1,7 +1,7 @@
 import { formatDate } from '../../lib/utils'
 
-export default function NoticesSection({ notices }) {
-  if (notices.length === 0) {
+export default function NoticesSection({ notices = [] }) {
+  if (!notices || notices.length === 0) {
     return (
       <div className="text-center py-12">
         <div className="text-5xl mb-3">📢</div>

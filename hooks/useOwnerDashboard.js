@@ -230,7 +230,7 @@ export function useOwnerDashboard() {
         if (t.user_id) await supabase.from('users').delete().eq('id', t.user_id)
       }
     }
-    await loadData(true)
+    // Do not call loadData here to avoid recursive refresh loops.
   }
 
   const forceDeleteOverdueVacateTenants = async () => {
@@ -256,7 +256,7 @@ export function useOwnerDashboard() {
         }
       }
     }
-    await loadData(true)
+    // Intentionally not re-calling loadData here to prevent recursion.
   }
 
   // ==========================================================================
@@ -737,7 +737,7 @@ export function useOwnerDashboard() {
       property_id: property.id,
       room_number: roomForm.room_number,
       sharing_type: roomForm.sharing_type,
-      monthly_rent: parseInt(roomForm.monthly_rent) || selectedType.price,
+      monthly_rent: parseInt(roomForm.monthly_rent, 10) || selectedType.price,
       capacity: selectedType.capacity,
       current_occupants: 0,
       status: 'vacant'
@@ -766,9 +766,9 @@ export function useOwnerDashboard() {
     setIsSubmitting(true)
     try {
       const tenantEmail = formData.email.trim()
-      const joiningFee = parseInt(formData.joining_fee) || 0
-      const advanceMonths = parseInt(formData.advance_amount) || 0
-      const monthlyRent = parseInt(formData.rent_amount)
+      const joiningFee = parseInt(formData.joining_fee, 10) || 0
+      const advanceMonths = parseInt(formData.advance_amount, 10) || 0
+      const monthlyRent = parseInt(formData.rent_amount, 10)
       const totalJoiningAmount = (monthlyRent * advanceMonths) + joiningFee
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: tenantEmail,
@@ -835,7 +835,7 @@ export function useOwnerDashboard() {
   const collectRent = async () => {
     if (isSubmitting) return
     if (!selectedTenant || !paymentAmount) { toast.error('Enter amount'); return }
-    const amount = parseInt(paymentAmount)
+    const amount = parseInt(paymentAmount, 10)
     const maxAmount = selectedTenant.pending_amount || selectedTenant.rent_amount
     if (amount > maxAmount) { toast.error(`Max payable: ₹${maxAmount.toLocaleString()}`); return }
     setIsSubmitting(true)
@@ -1369,19 +1369,15 @@ export function useOwnerDashboard() {
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
 
-    const handleRouteChange = (url) => {
-      if (localStorage.getItem('userId') && !confirm('You will lose any unsaved data. Do you want to leave the dashboard?')) {
-        throw 'Route change cancelled'
-      }
-    }
-    router.events?.on('routeChangeStart', handleRouteChange)
+    // Note: we avoid blocking client-side route changes programmatically.
+    // For unsaved-changes protection we rely on the `beforeunload` handler above.
 
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
       Object.values(alertTimeoutRef.current).forEach(clearTimeout)
       subscription.unsubscribe()
       window.removeEventListener('beforeunload', handleBeforeUnload)
-      router.events?.off('routeChangeStart', handleRouteChange)
+      // No routeChangeStart cleanup required
     }
   }, [])
 

@@ -35,7 +35,7 @@ export default function AddTenantModal({ formData, setFormData, rooms, onAdd, on
             placeholder="Monthly Rent (₹) *"
             className="w-full px-4 py-3 border border-gray-200 rounded-xl"
             value={formData.rent_amount}
-            onChange={(e) => setFormData({...formData, rent_amount: e.target.value})}
+            onChange={(e) => setFormData({...formData, rent_amount: parseInt(e.target.value || 0, 10)})}
           />
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -45,7 +45,7 @@ export default function AddTenantModal({ formData, setFormData, rooms, onAdd, on
                 placeholder="Advance Months"
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl"
                 value={formData.advance_amount}
-                onChange={(e) => setFormData({...formData, advance_amount: e.target.value})}
+                onChange={(e) => setFormData({...formData, advance_amount: parseInt(e.target.value || 0, 10)})}
                 min="0"
               />
               <p className="text-xs text-gray-400 mt-1">0 = no advance, due immediately</p>
@@ -57,7 +57,7 @@ export default function AddTenantModal({ formData, setFormData, rooms, onAdd, on
                 placeholder="Joining Fee (₹)"
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl"
                 value={formData.joining_fee}
-                onChange={(e) => setFormData({...formData, joining_fee: e.target.value})}
+                onChange={(e) => setFormData({...formData, joining_fee: parseInt(e.target.value || 0, 10)})}
                 min="0"
               />
             </div>
@@ -65,12 +65,12 @@ export default function AddTenantModal({ formData, setFormData, rooms, onAdd, on
           <select
             className="w-full px-4 py-3 border border-gray-200 rounded-xl"
             value={formData.room_id}
-            onChange={(e) => setFormData({...formData, room_id: e.target.value})}
+            onChange={(e) => setFormData({...formData, room_id: parseInt(e.target.value, 10)})}
           >
             <option value="">Select Room</option>
             {rooms.filter(r => r.current_occupants < r.capacity).map(room => (
               <option key={room.id} value={room.id}>
-                Room {room.room_number} - {getSharingDetails(room.sharing_type)?.label} - ₹{formatCurrency(room.monthly_rent)}/month ({room.capacity - room.current_occupants} slots left)
+                Room {room.room_number} - {getSharingDetails(room.sharing_type)?.label} - {formatCurrency(room.monthly_rent)}/month ({room.capacity - room.current_occupants} slots left)
               </option>
             ))}
           </select>

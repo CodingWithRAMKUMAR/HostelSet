@@ -4,8 +4,8 @@ export default function PaymentConfirmModal({ tenant, onConfirm, onCancel, isSub
       <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
         <h2 className="text-2xl font-bold mb-4">Confirm Payment</h2>
         <div className="bg-gray-50 rounded-xl p-4 mb-4">
-          <p className="font-semibold">{tenant?.name}</p>
-          <p className="text-sm text-gray-500">Room {tenant?.room_number}</p>
+          <p className="font-semibold">{tenant?.name || 'Tenant'}</p>
+          <p className="text-sm text-gray-500">Room {tenant?.room_number || 'N/A'}</p>
           <p className="text-sm text-gray-500 mt-2">UPI Transaction ID: {tenant?.upi_transaction_id || 'N/A'}</p>
           {tenant?.payment_screenshot && (
             <div className="mt-2">

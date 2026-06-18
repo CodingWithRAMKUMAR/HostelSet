@@ -1,6 +1,6 @@
 import { formatDate, formatCurrency, getSharingDetails } from '../../lib/utils'
 
-export default function OverviewSection({ tenant, room, property, owner, pendingRoomChangeRequest }) {
+export default function OverviewSection({ tenant = {}, room = {}, property = {}, owner = {}, pendingRoomChangeRequest = null }) {
   return (
     <div className="grid md:grid-cols-2 gap-6">
       <div className="bg-white rounded-xl border p-6">
@@ -12,11 +12,11 @@ export default function OverviewSection({ tenant, room, property, owner, pending
           </div>
           <div className="flex justify-between py-2 border-b">
             <span>Sharing Type:</span>
-            <span>{getSharingDetails(room?.sharing_type)?.label}</span>
+            <span>{getSharingDetails(room?.sharing_type || '')?.label || 'N/A'}</span>
           </div>
           <div className="flex justify-between py-2 border-b">
             <span>Monthly Rent:</span>
-            <span className="text-green-600 font-semibold">{formatCurrency(room?.monthly_rent)}</span>
+            <span className="text-green-600 font-semibold">{formatCurrency(room?.monthly_rent || 0)}</span>
           </div>
           <div className="flex justify-between py-2 border-b">
             <span>Move-in Date:</span>

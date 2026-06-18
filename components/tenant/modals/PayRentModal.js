@@ -2,23 +2,23 @@ import { motion } from 'framer-motion'
 import { formatCurrency } from '../../../lib/utils'
 
 export default function PayRentModal({
-  tenant,
-  room,
-  ownerUpiId,
-  ownerUpiPhone,
-  paymentTransactionId,
-  setPaymentTransactionId,
-  paymentScreenshot,
-  setPaymentScreenshot,
-  paymentLoading,
-  isSubmitting,
-  initiateUPIPayment,
-  copyUpiId,
-  copyUpiPhone,
-  submitPaymentWithProof,
-  onCancel,
+  tenant = {},
+  room = {},
+  ownerUpiId = '',
+  ownerUpiPhone = '',
+  paymentTransactionId = '',
+  setPaymentTransactionId = () => {},
+  paymentScreenshot = null,
+  setPaymentScreenshot = () => {},
+  paymentLoading = false,
+  isSubmitting = false,
+  initiateUPIPayment = () => {},
+  copyUpiId = () => {},
+  copyUpiPhone = () => {},
+  submitPaymentWithProof = () => {},
+  onCancel = () => {},
 }) {
-  const amount = tenant?.pending_amount || tenant?.rent_amount || 0
+  const amount = Number(tenant?.pending_amount ?? tenant?.rent_amount ?? 0)
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onCancel}>

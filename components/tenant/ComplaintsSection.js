@@ -1,12 +1,12 @@
 import { formatDate } from '../../lib/utils'
 
 export default function ComplaintsSection({
-  complaints,
-  onDelete,
-  onRaiseNew,
-  isSubmitting,
+  complaints = [],
+  onDelete = () => {},
+  onRaiseNew = () => {},
+  isSubmitting = false,
 }) {
-  if (complaints.length === 0) {
+  if (!complaints || complaints.length === 0) {
     return (
       <div className="text-center py-12">
         <div className="text-5xl mb-3">📝</div>

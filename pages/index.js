@@ -1,19 +1,40 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import Head from 'next/head'
 import { motion, useScroll, useTransform } from 'framer-motion'
+import { useRouter } from 'next/router'
 
 export default function Home() {
   const [scrolled, setScrolled] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const router = useRouter()
+  const ticking = useRef(false)
 
   const { scrollYProgress } = useScroll()
   const opacity = useTransform(scrollYProgress, [0, 0.2], [1, 0.8])
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 50)
-    window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
+    const handleScroll = () => {
+      const isScrolled = window.scrollY > 50
+      if (!ticking.current) {
+        window.requestAnimationFrame(() => {
+          setScrolled(isScrolled)
+          ticking.current = false
+        })
+        ticking.current = true
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+
+    // close mobile menu on navigation
+    const handleRouteChange = () => setMobileMenuOpen(false)
+    router.events.on('routeChangeComplete', handleRouteChange)
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      router.events.off('routeChangeComplete', handleRouteChange)
+    }
   }, [])
 
   const features = [

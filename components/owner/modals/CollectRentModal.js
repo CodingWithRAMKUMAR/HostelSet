@@ -16,7 +16,7 @@ export default function CollectRentModal({ tenant, paymentAmount, setPaymentAmou
           placeholder="Enter Amount (₹)"
           className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4"
           value={paymentAmount}
-          onChange={(e) => setPaymentAmount(e.target.value)}
+          onChange={(e) => setPaymentAmount(parseInt(e.target.value || 0, 10))}
         />
         <div className="flex gap-3">
           <button onClick={onCollect} disabled={isSubmitting} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">

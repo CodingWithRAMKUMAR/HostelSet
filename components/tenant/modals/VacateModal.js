@@ -1,14 +1,14 @@
 import { formatCurrency } from '../../../lib/utils'
 
 export default function VacateModal({
-  vacateForm,
-  setVacateForm,
-  ratingHover,
-  setRatingHover,
-  isSubmitting,
-  tenant,
-  onSubmit,
-  onCancel,
+  vacateForm = {},
+  setVacateForm = () => {},
+  ratingHover = 0,
+  setRatingHover = () => {},
+  isSubmitting = false,
+  tenant = {},
+  onSubmit = () => {},
+  onCancel = () => {},
 }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onCancel}>

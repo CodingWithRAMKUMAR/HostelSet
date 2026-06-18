@@ -1,11 +1,11 @@
 import { motion } from 'framer-motion'
 
 export default function ComplaintModal({
-  complaintForm,
-  setComplaintForm,
-  isSubmitting,
-  onSubmit,
-  onCancel,
+  complaintForm = {},
+  setComplaintForm = () => {},
+  isSubmitting = false,
+  onSubmit = () => {},
+  onCancel = () => {},
 }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onCancel}>

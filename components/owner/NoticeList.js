@@ -1,6 +1,6 @@
 import { formatDate } from '../../lib/utils'
 
-export default function NoticeList({ notices, onDelete, onPost, isSubmitting }) {
+export default function NoticeList({ notices = [], onDelete = () => {}, onPost = () => {}, isSubmitting = false }) {
   return (
     <div className="space-y-4">
       <button onClick={onPost} disabled={isSubmitting} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold mb-4 hover:bg-slate-700 transition disabled:opacity-50">+ Post New Notice</button>

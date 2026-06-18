@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
+import dynamic from 'next/dynamic'
 import { useTenantDashboard } from '../../hooks/useTenantDashboard'
 import { formatCurrency, formatDate, getSharingDetails } from '../../lib/utils'
 
@@ -9,13 +10,13 @@ import NoticesSection from '../../components/tenant/NoticesSection'
 import ComplaintsSection from '../../components/tenant/ComplaintsSection'
 import PaymentsSection from '../../components/tenant/PaymentsSection'
 
-// Modal Components
-import PayRentModal from '../../components/tenant/modals/PayRentModal'
-import ComplaintModal from '../../components/tenant/modals/ComplaintModal'
-import VacateModal from '../../components/tenant/modals/VacateModal'
-import ProfileModal from '../../components/tenant/modals/ProfileModal'
-import RoomChangeModal from '../../components/tenant/modals/RoomChangeModal'
-import ScreenshotModal from '../../components/tenant/modals/ScreenshotModal'
+// Lazy-load Modal Components for performance
+const PayRentModal = dynamic(() => import('../../components/tenant/modals/PayRentModal'), { ssr: false })
+const ComplaintModal = dynamic(() => import('../../components/tenant/modals/ComplaintModal'), { ssr: false })
+const VacateModal = dynamic(() => import('../../components/tenant/modals/VacateModal'), { ssr: false })
+const ProfileModal = dynamic(() => import('../../components/tenant/modals/ProfileModal'), { ssr: false })
+const RoomChangeModal = dynamic(() => import('../../components/tenant/modals/RoomChangeModal'), { ssr: false })
+const ScreenshotModal = dynamic(() => import('../../components/tenant/modals/ScreenshotModal'), { ssr: false })
 
 export default function TenantDashboard() {
   const {

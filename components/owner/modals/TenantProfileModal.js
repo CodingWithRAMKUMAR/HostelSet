@@ -17,7 +17,7 @@ export default function TenantProfileModal({ tenant, application, loading, onClo
                 <img src={application.photo} alt="Profile" className="w-32 h-32 rounded-full object-cover border-4 border-slate-200" />
               ) : (
                 <div className="w-32 h-32 rounded-full bg-slate-200 flex items-center justify-center text-4xl font-bold text-slate-500">
-                  {tenant?.name?.charAt(0).toUpperCase()}
+                  {(tenant?.name?.charAt(0) || 'U').toUpperCase()}
                 </div>
               )}
             </div>

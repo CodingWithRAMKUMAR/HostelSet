@@ -1,6 +1,6 @@
 import { formatDate } from '../../lib/utils'
 
-export default function ApplicationList({ applications, onApprove, onResendEmail, isSubmitting }) {
+export default function ApplicationList({ applications = [], onApprove = () => {}, onResendEmail = () => {}, isSubmitting = false }) {
   if (!applications || applications.length === 0) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-xl">

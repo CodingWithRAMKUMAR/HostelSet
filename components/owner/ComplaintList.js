@@ -1,6 +1,6 @@
 import { formatDate } from '../../lib/utils'
 
-export default function ComplaintList({ complaints, onRespond, onResolve, isSubmitting }) {
+export default function ComplaintList({ complaints = [], onRespond = () => {}, onResolve = () => {}, isSubmitting = false }) {
   if (!complaints || complaints.length === 0) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-xl">
