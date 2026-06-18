@@ -289,50 +289,56 @@ export default function OwnerDashboard() {
               <div className="bg-white rounded-xl border border-gray-100 p-6">
                 <h3 className="font-semibold text-slate-800 mb-4">📋 Recent Tenants</h3>
                 <div className="space-y-3">
-                  {safeTenants.slice(0,5).map(t => {
-                    let ds
-                    try {
-                      ds = calculateRentDueStatus(t)
-                    } catch {
-                      ds = { status: 'loading', message: '' }
-                    }
-                    return (
-                      <div key={t.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="font-medium text-slate-700">{t.name}</p>
-                          <p className="text-xs text-gray-400">Room {t.room_number || getRoomNumberById(t.room_id)}</p>
+                  {safeTenants.length > 0 ? (
+                    safeTenants.slice(0,5).map(t => {
+                      let ds
+                      try {
+                        ds = calculateRentDueStatus(t)
+                      } catch {
+                        ds = { status: 'loading', message: '' }
+                      }
+                      return (
+                        <div key={t.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                          <div>
+                            <p className="font-medium text-slate-700">{t.name}</p>
+                            <p className="text-xs text-gray-400">Room {t.room_number || getRoomNumberById(t.room_id)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</p>
+                            <p className={`text-xs ${ds.status === 'overdue' ? 'text-red-500' : ds.status === 'due_soon' ? 'text-orange-500' : 'text-green-500'}`}>{ds.message}</p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</p>
-                          <p className={`text-xs ${ds.status === 'overdue' ? 'text-red-500' : ds.status === 'due_soon' ? 'text-orange-500' : 'text-green-500'}`}>{ds.message}</p>
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {safeTenants.length === 0 && <p className="text-gray-400 text-center py-4">No tenants yet</p>}
+                      )
+                    })
+                  ) : (
+                    <p className="text-gray-400 text-center py-4">No tenants yet</p>
+                  )}
                 </div>
               </div>
               <div className="bg-white rounded-xl border border-gray-100 p-6">
                 <h3 className="font-semibold text-slate-800 mb-4">🔧 Recent Complaints</h3>
                 <div className="space-y-3">
-                  {safeComplaints.slice(0,5).map(c => (
-                    <div key={c.id} className="p-3 bg-orange-50 rounded-lg">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium text-orange-700">{c.title}</p>
-                          <p className="text-xs text-gray-500 mt-1">From: {c.tenant_name}</p>
+                  {safeComplaints.length > 0 ? (
+                    safeComplaints.slice(0,5).map(c => (
+                      <div key={c.id} className="p-3 bg-orange-50 rounded-lg">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium text-orange-700">{c.title}</p>
+                            <p className="text-xs text-gray-500 mt-1">From: {c.tenant_name}</p>
+                          </div>
+                          <button
+                            onClick={() => { setSelectedComplaint(c); setShowComplaintResponseModal(true) }}
+                            disabled={isSubmitting}
+                            className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700 disabled:opacity-50"
+                          >
+                            Respond
+                          </button>
                         </div>
-                        <button
-                          onClick={() => { setSelectedComplaint(c); setShowComplaintResponseModal(true) }}
-                          disabled={isSubmitting}
-                          className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700 disabled:opacity-50"
-                        >
-                          Respond
-                        </button>
                       </div>
-                    </div>
-                  ))}
-                  {safeComplaints.length === 0 && <p className="text-gray-400 text-center py-4">No complaints yet</p>}
+                    ))
+                  ) : (
+                    <p className="text-gray-400 text-center py-4">No complaints yet</p>
+                  )}
                 </div>
               </div>
             </div>
