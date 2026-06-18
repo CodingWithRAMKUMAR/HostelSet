@@ -306,20 +306,30 @@ export function useTenantDashboard() {
     }
   }
 
+  // ==========================================================================
+  // FIXED: deleteComplaint – confirms deletion before updating UI
+  // ==========================================================================
   const deleteComplaint = async (complaintId) => {
     if (isSubmitting) return
     if (!confirm('Delete this complaint? This action cannot be undone.')) return
     setIsSubmitting(true)
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('complaints')
         .delete()
         .eq('id', complaintId)
         .eq('tenant_id', tenant.id)
+        .select('id')
       if (error) throw error
+      if (!data || data.length === 0) {
+        toast.error('Complaint not found or already deleted.')
+        return
+      }
       toast.success('Complaint deleted.')
+      // Update local state immediately
       setComplaints(prev => prev.filter(c => c.id !== complaintId))
-      await refreshData(true)
+      // Optionally refresh in background to sync (but real-time will handle)
+      // refreshData(true) // we can skip to avoid flicker
     } catch (error) {
       console.error('Delete complaint error:', error)
       toast.error('Failed to delete complaint: ' + error.message)
@@ -328,6 +338,7 @@ export function useTenantDashboard() {
     }
   }
 
+  // ----- Other handlers (unchanged) -----
   const requestVacate = async () => {
     if (isSubmitting) return
     if (!vacateForm.expected_date) { toast.error('Please select expected check-out date'); return }
