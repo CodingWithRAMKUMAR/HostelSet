@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { useRouter }from 'next/router'
+import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 import { useOwnerDashboard } from '../../hooks/useOwnerDashboard'
 import { formatCurrency, formatDate } from '../../lib/utils'
@@ -89,25 +89,34 @@ export default function OwnerDashboard() {
   } = useOwnerDashboard()
 
   // ----- Safe arrays for rendering -----
-  const safeRooms = rooms || []
-  const safeTenants = tenants || []
-  const safeAllPayments = allPayments || []
-  const safeApplications = applications || []
-  const safeComplaints = complaints || []
-  const safeVacateRequests = vacateRequests || []
-  const safePreBookings = preBookings || []
-  const safeNotices = notices || []
-  const safeRoomChangeRequests = roomChangeRequests || []
+  const safeRooms = Array.isArray(rooms) ? rooms : []
+  const safeTenants = Array.isArray(tenants) ? tenants : []
+  const safeAllPayments = Array.isArray(allPayments) ? allPayments : []
+  const safeApplications = Array.isArray(applications) ? applications : []
+  const safeComplaints = Array.isArray(complaints) ? complaints : []
+  const safeVacateRequests = Array.isArray(vacateRequests) ? vacateRequests : []
+  const safePreBookings = Array.isArray(preBookings) ? preBookings : []
+  const safeNotices = Array.isArray(notices) ? notices : []
+  const safeRoomChangeRequests = Array.isArray(roomChangeRequests) ? roomChangeRequests : []
 
   const filteredTenants = safeTenants.filter(t =>
-    t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (t.room_number && t.room_number.toString().includes(searchTerm))
+    t?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (t?.room_number && t.room_number.toString().includes(searchTerm))
   )
 
   const filteredPayments = safeAllPayments.filter(p =>
-    p.tenants?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (p.tenants?.rooms?.room_number && p.tenants.rooms.room_number.toString().includes(searchTerm))
+    p?.tenants?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p?.tenants?.rooms?.room_number && p.tenants.rooms.room_number.toString().includes(searchTerm))
   )
+
+  // ----- Defensive helper for due today -----
+  const dueTodayTenants = safeTenants.filter(t => {
+    try {
+      return calculateRentDueStatus(t)?.daysUntilDue === 0
+    } catch {
+      return false
+    }
+  })
 
   if (loading) {
     return (
@@ -169,7 +178,7 @@ export default function OwnerDashboard() {
         </div>
       )}
 
-      {stats.pendingPaymentCount > 0 && (
+      {stats?.pendingPaymentCount > 0 && (
         <div className="bg-red-100 border-b border-red-300 px-4 py-3 text-center">
           <p className="text-red-800 font-semibold">
             ⚠️ You have {stats.pendingPaymentCount} pending payment{stats.pendingPaymentCount > 1 ? 's' : ''}. 
@@ -241,15 +250,15 @@ export default function OwnerDashboard() {
       <div className="container mx-auto px-4 py-8">
         <StatsCards stats={stats} />
 
-        {/* ========== OVERVIEW TAB – FIXED ========== */}
+        {/* ========== OVERVIEW TAB – DEFENSIVE ========== */}
         {activeTab === 'overview' && (
           <div>
-            {stats.pendingRentConfirmations > 0 && (
+            {stats?.pendingRentConfirmations > 0 && (
               <div className="bg-red-50 rounded-xl p-4 mb-6 border border-red-100">
                 <p className="font-semibold text-red-800">💸 {stats.pendingRentConfirmations} rent payment(s) awaiting confirmation. <button onClick={() => setActiveTab('rent-payments')} className="underline">Review</button></p>
               </div>
             )}
-            {stats.pendingPaymentCount > 0 && (
+            {stats?.pendingPaymentCount > 0 && (
               <div className="bg-red-50 rounded-xl p-4 mb-6 border border-red-100">
                 <p className="font-semibold text-red-800">⚠️ {stats.pendingPaymentCount} tenant(s) awaiting payment confirmation. <button onClick={() => setActiveTab('tenants')} className="underline">Review</button></p>
               </div>
@@ -258,11 +267,11 @@ export default function OwnerDashboard() {
             {/* Due Today */}
             <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
               <h3 className="font-semibold text-slate-800 mb-4">📅 Due Today</h3>
-              {safeTenants.filter(t => calculateRentDueStatus(t).daysUntilDue === 0).length === 0 ? (
+              {dueTodayTenants.length === 0 ? (
                 <p className="text-gray-500">No tenants due today.</p>
               ) : (
                 <div className="space-y-3">
-                  {safeTenants.filter(t => calculateRentDueStatus(t).daysUntilDue === 0).map(t => (
+                  {dueTodayTenants.map(t => (
                     <div key={t.id} className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
                       <div>
                         <p className="font-medium text-slate-700">{t.name}</p>
@@ -275,13 +284,18 @@ export default function OwnerDashboard() {
               )}
             </div>
 
-            {/* Recent Tenants & Complaints – using safe arrays */}
+            {/* Recent Tenants & Complaints */}
             <div className="grid md:grid-cols-2 gap-6">
               <div className="bg-white rounded-xl border border-gray-100 p-6">
                 <h3 className="font-semibold text-slate-800 mb-4">📋 Recent Tenants</h3>
                 <div className="space-y-3">
                   {safeTenants.slice(0,5).map(t => {
-                    const ds = calculateRentDueStatus(t)
+                    let ds
+                    try {
+                      ds = calculateRentDueStatus(t)
+                    } catch {
+                      ds = { status: 'loading', message: '' }
+                    }
                     return (
                       <div key={t.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                         <div>
