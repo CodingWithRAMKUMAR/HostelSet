@@ -3,11 +3,11 @@ import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import { formatCurrency, formatDate } from '../lib/utils'
 import toast from 'react-hot-toast'
+import { useRealtime } from './useRealtime'
 
 export function useAdminDashboard() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  // Data states
   const [properties, setProperties] = useState([])
   const [tenants, setTenants] = useState([])
   const [payments, setPayments] = useState([])
@@ -51,7 +51,7 @@ export function useAdminDashboard() {
   const [rejectionReason, setRejectionReason] = useState('')
   const autoRefreshRef = useRef(null)
 
-  // ---------- Load all data ----------
+  // ----- Load all data -----
   const loadAllData = async (isSilent = false) => {
     if (!isSilent) setLoading(true)
     try {
@@ -108,7 +108,6 @@ export function useAdminDashboard() {
       setAuditLogs(logs || [])
       setRoomChangeRequests(roomChanges || [])
 
-      // Stats
       const totalRevenue = tnts?.reduce((sum, t) => sum + (t.total_paid || 0), 0) || 0
       const totalProperties = props?.length || 0
       const totalTenants = tnts?.length || 0
@@ -171,7 +170,7 @@ export function useAdminDashboard() {
     }).catch(console.error)
   }
 
-  // ---------- Membership actions ----------
+  // ----- Handlers -----
   const handleMembershipAction = async (ownerId, action, durationDays = null) => {
     setGrantSubmitting(true)
     const token = (await supabase.auth.getSession()).data.session?.access_token
@@ -204,7 +203,6 @@ export function useAdminDashboard() {
     setGrantSubmitting(false)
   }
 
-  // ---------- Room change requests ----------
   const approveRoomChange = async (requestId) => {
     if (!confirm('Approve this room change? The tenant will be moved.')) return
     try {
@@ -231,7 +229,6 @@ export function useAdminDashboard() {
     loadAllData(true)
   }
 
-  // ---------- Pre‑booking approvals ----------
   const approvePreBooking = async (bookingId) => {
     if (!confirm('Approve this pre‑booking? The tenant will be created.')) return
     try {
@@ -253,7 +250,6 @@ export function useAdminDashboard() {
     loadAllData(true)
   }
 
-  // ---------- Application actions ----------
   const approveApplication = async (appId) => {
     if (!confirm('Approve this application? The tenant will be created.')) return
     try {
@@ -277,7 +273,6 @@ export function useAdminDashboard() {
     loadAllData(true)
   }
 
-  // ---------- Delete operations ----------
   const deleteProperty = async (propertyId) => {
     if (!confirm('⚠️ This will permanently delete the property and all related data. Cannot undo!')) return
     const { error } = await supabase.from('properties').delete().eq('id', propertyId)
@@ -312,7 +307,6 @@ export function useAdminDashboard() {
     }
   }
 
-  // ---------- Notices ----------
   const postNotice = async () => {
     const propertyId = prompt('Property ID:')
     const title = prompt('Title:')
@@ -338,7 +332,6 @@ export function useAdminDashboard() {
     loadAllData(true)
   }
 
-  // ---------- Settings updates ----------
   const updateSystemSettings = async () => {
     const { error } = await supabase.from('system_settings').upsert(systemSettings)
     if (error) toast.error('Failed to update')
@@ -372,7 +365,6 @@ export function useAdminDashboard() {
     setEditPlanModal({ show: false, plan: null })
   }
 
-  // ---------- Pagination & filtering ----------
   const filteredProperties = properties.filter(p =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.city.toLowerCase().includes(searchTerm.toLowerCase())
@@ -390,6 +382,7 @@ export function useAdminDashboard() {
     return items.slice(start, start + itemsPerPage)
   }
 
+  // ----- Initial useEffect -----
   useEffect(() => {
     const userRole = localStorage.getItem('userRole')
     const isLoggedIn = localStorage.getItem('isLoggedIn')
@@ -402,8 +395,35 @@ export function useAdminDashboard() {
     return () => clearInterval(autoRefreshRef.current)
   }, [])
 
+  // ==========================================================================
+  // REAL‑TIME SUBSCRIPTIONS (all admin tables)
+  // ==========================================================================
+  useEffect(() => {
+    const tables = ['properties', 'tenants', 'payment_history', 'complaints', 'applications', 'check_out_requests', 'pre_bookings', 'rooms', 'users', 'notices', 'room_change_requests']
+
+    const unsubscribers = tables.map(table => {
+      return useRealtime(
+        table,
+        () => {
+          console.log(`🔄 ${table} changed – refreshing admin data...`)
+          loadAllData(true)
+        },
+        null,
+        null
+      )
+    })
+
+    return () => {
+      unsubscribers.forEach(unsub => {
+        if (typeof unsub === 'function') unsub()
+      })
+    }
+  }, [])
+
+  // ==========================================================================
+  // RETURN
+  // ==========================================================================
   return {
-    // State
     loading,
     properties,
     tenants,
@@ -450,7 +470,6 @@ export function useAdminDashboard() {
     setRejectReasonModal,
     rejectionReason,
     setRejectionReason,
-    // Handlers
     loadAllData,
     getDaysUntilVacate,
     logAction,
