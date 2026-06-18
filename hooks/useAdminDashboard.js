@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import { formatCurrency, formatDate } from '../lib/utils'
@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 export function useAdminDashboard() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [properties, setProperties] = useState([])
   const [tenants, setTenants] = useState([])
   const [payments, setPayments] = useState([])
@@ -50,9 +51,11 @@ export function useAdminDashboard() {
   const [rejectionReason, setRejectionReason] = useState('')
   const autoRefreshRef = useRef(null)
 
-  // ----- Load all data -----
-  const loadAllData = async (isSilent = false) => {
-    if (!isSilent) setLoading(true)
+  // ----- Optimized loadAllData -----
+  const loadAllData = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true)
+    else setIsRefreshing(true)
+
     try {
       const [
         { data: props },
@@ -148,9 +151,10 @@ export function useAdminDashboard() {
       console.error('Admin load error:', error)
       toast.error('Failed to load data')
     } finally {
-      if (!isSilent) setLoading(false)
+      if (!isBackground) setLoading(false)
+      else setIsRefreshing(false)
     }
-  }
+  }, [])
 
   const getDaysUntilVacate = (expectedDate) => {
     const today = new Date()
@@ -389,7 +393,7 @@ export function useAdminDashboard() {
       router.push('/login')
       return
     }
-    loadAllData()
+    loadAllData(false)
     autoRefreshRef.current = setInterval(() => loadAllData(true), 30000)
     return () => clearInterval(autoRefreshRef.current)
   }, [])
@@ -400,26 +404,20 @@ export function useAdminDashboard() {
   useEffect(() => {
     const tables = ['properties', 'tenants', 'payment_history', 'complaints', 'applications', 'check_out_requests', 'pre_bookings', 'rooms', 'users', 'notices', 'room_change_requests']
 
-    // Subscribe to each table
     const channels = tables.map(table => {
       return supabase
         .channel(`admin-${table}`)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: table },
-          (payload) => {
+          () => {
             console.log(`🔄 ${table} changed – refreshing admin data`)
             loadAllData(true)
           }
         )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            console.log(`✅ Subscribed to ${table}`)
-          }
-        })
+        .subscribe()
     })
 
-    // Cleanup
     return () => {
       channels.forEach(channel => supabase.removeChannel(channel))
     }
@@ -430,6 +428,7 @@ export function useAdminDashboard() {
   // ==========================================================================
   return {
     loading,
+    isRefreshing,
     properties,
     tenants,
     payments,
