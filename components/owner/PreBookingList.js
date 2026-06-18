@@ -1,16 +1,25 @@
-import { formatCurrency, formatDate } from '../../lib/utils'
+import { formatCurrency, formatDate } from '../../lib/utils';
+import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function PreBookingList({ bookings = [], onApprove = () => {}, onReject = () => {}, onViewScreenshot = () => {}, isSubmitting = false }) {
-  const pending = bookings?.filter(b => b.status === 'pending' && b.payment_status === 'pending') || []
+export default function PreBookingList({ onApprove = () => {}, onReject = () => {}, onViewScreenshot = () => {}, isSubmitting = false }) {
+  // Fetch all pre-bookings in real-time
+  const { data: bookings, loading } = useRealtimeData('pre_bookings'); 
+
+  // Keep your existing filtering logic
+  const pending = bookings?.filter(b => b.status === 'pending' && b.payment_status === 'pending') || [];
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading pre-bookings...</div>;
+  }
 
   if (pending.length === 0) {
-    return <div className="text-center py-12 bg-gray-50 rounded-xl">No pending pre‑bookings waiting for payment verification.</div>
+    return <div className="text-center py-12 bg-gray-50 rounded-xl">No pending pre‑bookings waiting for payment verification.</div>;
   }
 
   return (
     <div className="space-y-4">
       {pending.map(booking => {
-        const amountPaid = booking.pre_booking_fee_amount || 0
+        const amountPaid = booking.pre_booking_fee_amount || 0;
         return (
           <div key={booking.id} className="bg-white rounded-xl border p-4 flex flex-col sm:flex-row justify-between items-start gap-4">
             <div>
@@ -45,8 +54,8 @@ export default function PreBookingList({ bookings = [], onApprove = () => {}, on
               </button>
             </div>
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }

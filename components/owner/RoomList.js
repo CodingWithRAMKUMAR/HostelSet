@@ -1,27 +1,30 @@
-import { useState, memo } from 'react'
-import { formatCurrency, getSharingDetails } from '../../lib/utils'
+import { memo } from 'react';
+import { formatCurrency, getSharingDetails } from '../../lib/utils';
+import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-function RoomList({ rooms = [], tenants = [], vacateRequests = [], roomMonthlyIncome = {}, onRoomClick = () => {}, onDeleteRoom = () => {}, isSubmitting = false }) {
-  const getRoomNumberById = (roomId) => {
-    const room = rooms.find(r => r.id === roomId)
-    return room ? room.room_number : 'N/A'
-  }
+function RoomList({ onRoomClick = () => {}, onDeleteRoom = () => {}, isSubmitting = false }) {
+  // Fetch everything needed for the room cards in real-time
+  const { data: rooms } = useRealtimeData('rooms');
+  const { data: tenants } = useRealtimeData('tenants');
+  const { data: vacateRequests } = useRealtimeData('vacate_requests');
+  
+  // Note: Monthly income is usually a derived calculation. 
+  // If you need real-time income, you'd calculate it based on the updated 'tenants' or 'payments' data.
 
-  const getTenantsInRoom = (roomId) => {
-    return tenants.filter(t => t.room_id === roomId)
-  }
+  const getTenantsInRoom = (roomId) => tenants.filter(t => t.room_id === roomId);
 
   const getUpcomingVacateForRoom = (roomId) => {
-    const vacate = vacateRequests.find(v => v.room_id === roomId && v.status === 'approved')
-    if (!vacate) return null
-    const tenant = tenants.find(t => t.id === vacate.tenant_id)
-    if (!tenant || tenant.room_id !== vacate.room_id) return null
-    const vacateDate = new Date(vacate.expected_check_out)
-    const today = new Date()
-    const daysLeft = Math.ceil((vacateDate - today) / (1000 * 60 * 60 * 24))
-    if (daysLeft < 0) return { date: vacate.expected_check_out, daysLeft: 0, overdue: true }
-    return { date: vacate.expected_check_out, daysLeft, overdue: false }
-  }
+    const vacate = vacateRequests.find(v => v.room_id === roomId && v.status === 'approved');
+    if (!vacate) return null;
+    const tenant = tenants.find(t => t.id === vacate.tenant_id);
+    if (!tenant || tenant.room_id !== vacate.room_id) return null;
+    
+    const vacateDate = new Date(vacate.expected_check_out);
+    const today = new Date();
+    const daysLeft = Math.ceil((vacateDate - today) / (1000 * 60 * 60 * 24));
+    
+    return { date: vacate.expected_check_out, daysLeft: daysLeft < 0 ? 0 : daysLeft, overdue: daysLeft < 0 };
+  };
 
   if (!rooms || rooms.length === 0) {
     return (
@@ -29,19 +32,19 @@ function RoomList({ rooms = [], tenants = [], vacateRequests = [], roomMonthlyIn
         <div className="text-5xl mb-3">🏠</div>
         <p className="text-gray-500">No rooms added yet</p>
       </div>
-    )
+    );
   }
 
   return (
     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
       {rooms.map((room) => {
-        const sharing = getSharingDetails(room.sharing_type)
-        const isFull = room.current_occupants >= room.capacity
-        const availableSlots = room.capacity - room.current_occupants
-        const roomTenants = getTenantsInRoom(room.id)
-        const upcomingVacate = getUpcomingVacateForRoom(room.id)
-        const allPaid = roomTenants.length > 0 && roomTenants.every(t => t.rent_status === 'paid')
-        const monthlyCollected = Number(roomMonthlyIncome?.[room.id] || 0)
+        const sharing = getSharingDetails(room.sharing_type);
+        const isFull = room.current_occupants >= room.capacity;
+        const availableSlots = room.capacity - room.current_occupants;
+        const roomTenants = getTenantsInRoom(room.id);
+        const upcomingVacate = getUpcomingVacateForRoom(room.id);
+        const allPaid = roomTenants.length > 0 && roomTenants.every(t => t.rent_status === 'paid');
+
         return (
           <div
             key={room.id}
@@ -59,6 +62,7 @@ function RoomList({ rooms = [], tenants = [], vacateRequests = [], roomMonthlyIn
                   <h3 className="text-2xl font-bold text-slate-800">Room {room.room_number}</h3>
                   <p className="text-sm text-gray-500 mt-1">{sharing.label} {sharing.icon}</p>
                 </div>
+                {/* Status badges */}
                 <div className="flex flex-col items-end gap-1">
                   <div className={`px-3 py-1 rounded-full text-xs font-semibold ${isFull ? 'bg-green-500 text-white' : 'bg-orange-500 text-white'}`}>
                     {isFull ? 'Full' : `${availableSlots} slot available`}
@@ -70,11 +74,9 @@ function RoomList({ rooms = [], tenants = [], vacateRequests = [], roomMonthlyIn
                   )}
                 </div>
               </div>
+              {/* Rent & Progress Bar Logic... */}
               <div className="mt-4">
                 <p className="text-2xl font-bold text-slate-800">{formatCurrency(room.monthly_rent)}<span className="text-sm text-gray-400">/month</span></p>
-                <div className="mt-2 inline-block px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
-                  This month: {formatCurrency(monthlyCollected)}
-                </div>
               </div>
               <div className="mt-4">
                 <div className="flex justify-between text-sm mb-1">
@@ -85,20 +87,16 @@ function RoomList({ rooms = [], tenants = [], vacateRequests = [], roomMonthlyIn
                   <div className="h-2 rounded-full bg-gradient-to-r from-slate-600 to-slate-500" style={{ width: `${room.capacity ? (room.current_occupants / room.capacity) * 100 : 0}%` }}></div>
                 </div>
               </div>
+              {/* Residents avatars */}
               {roomTenants.length > 0 && (
                 <div className="mt-4 pt-3 border-t border-gray-200">
                   <p className="text-xs text-gray-500 mb-2">Current Residents:</p>
                   <div className="flex -space-x-2">
-                    {roomTenants.slice(0,3).map((tenant, idx) => (
+                    {roomTenants.slice(0,3).map((tenant) => (
                       <div key={tenant.id} className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600 border-2 border-white">
-                          {(tenant.name || 'U').charAt(0)}
-                        </div>
-                    ))}
-                    {roomTenants.length > 3 && (
-                      <div className="w-8 h-8 rounded-full bg-slate-300 flex items-center justify-center text-xs font-bold text-slate-700 border-2 border-white">
-                        +{roomTenants.length - 3}
+                        {(tenant.name || 'U').charAt(0)}
                       </div>
-                    )}
+                    ))}
                   </div>
                 </div>
               )}

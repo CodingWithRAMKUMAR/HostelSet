@@ -1,31 +1,31 @@
-import { formatDate } from '../../lib/utils'
+import { formatDate } from '../../lib/utils';
+import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function VacateRequestList({ requests, onApprove, onCleanup, isSubmitting }) {
+export default function VacateRequestList({ onApprove = () => {}, isSubmitting = false }) {
+  // Fetch and listen to vacate requests in real-time
+  const { data: requests, loading } = useRealtimeData('vacate_requests');
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading requests...</div>;
+  }
+
   if (!requests || requests.length === 0) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-xl">
         <div className="text-5xl mb-3">🚪</div>
         <p className="text-gray-500">No vacate requests</p>
       </div>
-    )
+    );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <button
-          onClick={onCleanup}
-          disabled={isSubmitting}
-          className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-full transition"
-        >
-          🔄 Check Now
-        </button>
-      </div>
       {requests.map(req => {
-        const expectedDate = new Date(req.expected_check_out)
-        const today = new Date()
-        const daysUntilVacate = Math.ceil((expectedDate - today) / (1000 * 60 * 60 * 24))
-        const isPending = req.status === 'pending'
+        const expectedDate = new Date(req.expected_check_out);
+        const today = new Date();
+        const daysUntilVacate = Math.ceil((expectedDate - today) / (1000 * 60 * 60 * 24));
+        const isPending = req.status === 'pending';
+        
         return (
           <div key={req.id} className={`bg-white rounded-xl border p-4 ${daysUntilVacate <= 7 ? 'border-red-200 bg-red-50' : 'border-yellow-100'}`}>
             <div className="flex justify-between items-start">
@@ -52,8 +52,8 @@ export default function VacateRequestList({ requests, onApprove, onCleanup, isSu
               )}
             </div>
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }

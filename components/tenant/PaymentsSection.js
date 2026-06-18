@@ -1,14 +1,25 @@
-import { memo } from 'react'
-import { formatCurrency, formatDate } from '../../lib/utils'
+import { memo } from 'react';
+import { formatCurrency, formatDate } from '../../lib/utils';
+import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-const PaymentsSection = ({ payments = [], onViewScreenshot = () => {} }) => {
-  if (!payments || payments.length === 0) {
+const PaymentsSection = ({ onViewScreenshot = () => {}, tenantId }) => {
+  // Subscribe to 'payments' table. 
+  // We use the hook and then filter by tenantId to show only their history.
+  const { data: allPayments, loading } = useRealtimeData('payments');
+  
+  const payments = allPayments?.filter(p => p.tenant_id === tenantId) || [];
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading payment history...</div>;
+  }
+
+  if (payments.length === 0) {
     return (
       <div className="text-center py-12">
         <div className="text-5xl mb-3">💰</div>
         <p>No payment history yet</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -61,7 +72,7 @@ const PaymentsSection = ({ payments = [], onViewScreenshot = () => {} }) => {
         </table>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default memo(PaymentsSection)
+export default memo(PaymentsSection);

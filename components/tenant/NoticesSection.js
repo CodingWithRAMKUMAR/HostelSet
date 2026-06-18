@@ -1,13 +1,22 @@
-import { formatDate } from '../../lib/utils'
+import { formatDate } from '../../lib/utils';
+import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function NoticesSection({ notices = [] }) {
+export default function NoticesSection() {
+  // Subscribe to 'notices' table. Real-time updates ensure 
+  // urgent notices appear the moment they are posted.
+  const { data: notices, loading } = useRealtimeData('notices');
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading notices...</div>;
+  }
+
   if (!notices || notices.length === 0) {
     return (
       <div className="text-center py-12">
         <div className="text-5xl mb-3">📢</div>
         <p>No notices yet</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -24,5 +33,5 @@ export default function NoticesSection({ notices = [] }) {
         </div>
       ))}
     </div>
-  )
+  );
 }

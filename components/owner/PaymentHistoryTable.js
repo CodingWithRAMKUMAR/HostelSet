@@ -1,8 +1,18 @@
-import { formatCurrency, formatDate } from '../../lib/utils'
+import { formatCurrency, formatDate } from '../../lib/utils';
+import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function PaymentHistoryTable({ payments = [], getRoomNumberById = () => 'N/A' }) {
+export default function PaymentHistoryTable({ getRoomNumberById = () => 'N/A' }) {
+  // Use the hook to fetch and listen to 'payments'
+  // Note: Depending on your schema, you might need to ensure your 
+  // 'payments' table contains the necessary join data or is joined properly.
+  const { data: payments, loading } = useRealtimeData('payments');
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading payment history...</div>;
+  }
+
   if (!payments || payments.length === 0) {
-    return <div className="text-center py-12 bg-gray-50 rounded-xl">No payment records</div>
+    return <div className="text-center py-12 bg-gray-50 rounded-xl">No payment records</div>;
   }
 
   return (
@@ -23,7 +33,9 @@ export default function PaymentHistoryTable({ payments = [], getRoomNumberById =
             <tr key={p.id} className="border-b hover:bg-gray-50">
               <td className="px-4 py-3 text-sm text-gray-500">{formatDate(p.payment_date)}</td>
               <td className="px-4 py-3 font-medium">{p.tenants?.name || 'N/A'}</td>
-              <td className="px-4 py-3 text-gray-600">{p.tenants?.rooms?.room_number || getRoomNumberById(p.tenants?.room_id)}</td>
+              <td className="px-4 py-3 text-gray-600">
+                {p.tenants?.rooms?.room_number || getRoomNumberById(p.tenants?.room_id)}
+              </td>
               <td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(p.amount)}</td>
               <td className="px-4 py-3 capitalize text-gray-500">{p.payment_method}</td>
               <td className="px-4 py-3">
@@ -40,5 +52,5 @@ export default function PaymentHistoryTable({ payments = [], getRoomNumberById =
         </tbody>
       </table>
     </div>
-  )
+  );
 }

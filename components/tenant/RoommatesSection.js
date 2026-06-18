@@ -1,7 +1,18 @@
-import { memo } from 'react'
-import { formatDate } from '../../lib/utils'
+import { memo } from 'react';
+import { formatDate } from '../../lib/utils';
+import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-const RoommatesSection = ({ roommates = [] }) => {
+const RoommatesSection = ({ currentTenantId, roomId }) => {
+  // Subscribe to all tenants to find roommates
+  const { data: allTenants, loading } = useRealtimeData('tenants');
+
+  // Filter for roommates: same room, but not the current user
+  const roommates = allTenants.filter(t => t.room_id === roomId && t.id !== currentTenantId);
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading roommates...</div>;
+  }
+
   if (!roommates || roommates.length === 0) {
     return (
       <div className="bg-white rounded-xl border p-6 text-center py-12">
@@ -9,15 +20,15 @@ const RoommatesSection = ({ roommates = [] }) => {
         <p>You're the only person in this room</p>
         <p className="text-xs text-gray-400">Enjoy the privacy!</p>
       </div>
-    )
+    );
   }
 
   return (
     <div className="bg-white rounded-xl border p-6">
       <h3 className="font-semibold mb-4">👥 Your Roommates <span className="text-xs text-gray-400 ml-2">(Same Room Only)</span></h3>
       <div className="grid md:grid-cols-2 gap-4">
-        {roommates.map((mate, idx) => (
-          <div key={mate.id || idx} className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+        {roommates.map((mate) => (
+          <div key={mate.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
             <div className="w-12 h-12 bg-gradient-to-r from-slate-600 to-slate-500 rounded-full flex items-center justify-center text-white text-lg font-bold">
               {(mate.name || 'User').charAt(0)}
             </div>
@@ -30,7 +41,7 @@ const RoommatesSection = ({ roommates = [] }) => {
         ))}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default memo(RoommatesSection)
+export default memo(RoommatesSection);

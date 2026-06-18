@@ -1,21 +1,32 @@
-import { formatCurrency, formatDate } from '../../lib/utils'
+import { formatCurrency, formatDate } from '../../lib/utils';
+import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function RoomChangeRequestList({ requests, onApprove, onReject, isSubmitting }) {
-  if (!requests || requests.length === 0) {
+export default function RoomChangeRequestList({ onApprove = () => {}, onReject = () => {}, isSubmitting = false }) {
+  // Fetch real-time room change requests
+  // Filter for only 'pending' requests if your table stores history too
+  const { data: allRequests, loading } = useRealtimeData('room_change_requests');
+
+  const requests = allRequests?.filter(r => r.status === 'pending') || [];
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading requests...</div>;
+  }
+
+  if (requests.length === 0) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-xl">
         <div className="text-5xl mb-3">🔄</div>
         <p className="text-gray-500">No pending room change requests</p>
       </div>
-    )
+    );
   }
 
   return (
     <div className="space-y-4">
       {requests.map(request => {
-        const tenant = request.tenants
-        const oldRoom = request.old_room
-        const newRoom = request.new_room
+        const tenant = request.tenants;
+        const oldRoom = request.old_room;
+        const newRoom = request.new_room;
         return (
           <div key={request.id} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition">
             <div className="flex flex-col md:flex-row justify-between items-start gap-4">
@@ -52,8 +63,8 @@ export default function RoomChangeRequestList({ requests, onApprove, onReject, i
               </div>
             </div>
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }

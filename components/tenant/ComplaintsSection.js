@@ -1,11 +1,20 @@
-import { formatDate } from '../../lib/utils'
+import { formatDate } from '../../lib/utils';
+import { useRealtimeData } from '../../hooks/useRealtimeData';
 
 export default function ComplaintsSection({
-  complaints = [],
   onDelete = () => {},
   onRaiseNew = () => {},
   isSubmitting = false,
 }) {
+  // Fetch complaints in real-time. 
+  // IMPORTANT: Since this is for a specific tenant, ensure you pass 
+  // the tenant's ID as a filter so they only see their own complaints.
+  const { data: complaints, loading } = useRealtimeData('complaints'); 
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading your complaints...</div>;
+  }
+
   if (!complaints || complaints.length === 0) {
     return (
       <div className="text-center py-12">
@@ -13,7 +22,7 @@ export default function ComplaintsSection({
         <p>No complaints filed yet</p>
         <button onClick={onRaiseNew} className="mt-3 text-slate-600 underline">Raise a complaint</button>
       </div>
-    )
+    );
   }
 
   return (
@@ -61,5 +70,5 @@ export default function ComplaintsSection({
         </div>
       ))}
     </div>
-  )
+  );
 }

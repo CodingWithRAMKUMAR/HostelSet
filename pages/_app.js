@@ -2,39 +2,66 @@ import '../styles/globals.css'
 import { Toaster } from 'react-hot-toast'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
+import { supabase } from '../lib/supabase'
 
 export default function App({ Component, pageProps }) {
   const router = useRouter()
   const [authorized, setAuthorized] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const checkSession = () => {
+    // ✅ SECURITY FIX: Validate session with Supabase on app load
+    const checkSession = async () => {
       try {
-        const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true'
-        const protectedRoutes = ['/owner', '/tenant']
-        const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
+        // First, check if we have a Supabase session
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (session) {
+          // Session exists - user is logged in
+          localStorage.setItem('userId', session.user.id)
+          localStorage.setItem('isLoggedIn', 'true')
+          setAuthorized(true)
+        } else {
+          // No Supabase session - clear localStorage
+          localStorage.removeItem('userId')
+          localStorage.removeItem('isLoggedIn')
+          setAuthorized(false)
 
-        if (isProtectedRoute) {
-          if (isLoggedIn) {
-            setAuthorized(true)
-          } else if (router.pathname !== '/login') {
+          // Redirect to login if on protected route
+          const protectedRoutes = ['/owner', '/tenant', '/admin']
+          if (protectedRoutes.some(route => router.pathname.startsWith(route))) {
             router.replace('/login')
           }
-        } else {
-          setAuthorized(true)
         }
-      } catch (e) {
-        // If accessing localStorage fails, treat as not authorized for protected routes
-        const protectedRoutes = ['/owner', '/tenant']
-        const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
-        if (isProtectedRoute && router.pathname !== '/login') router.replace('/login')
-        else setAuthorized(true)
+      } catch (error) {
+        console.error('Session check error:', error)
+        setAuthorized(false)
+      } finally {
+        setLoading(false)
       }
     }
 
-    setAuthorized(false)
     checkSession()
-  }, [router.pathname])
+
+    // ✅ Listen for auth state changes (logout in other tabs, etc.)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (session) {
+          localStorage.setItem('userId', session.user.id)
+          localStorage.setItem('isLoggedIn', 'true')
+          setAuthorized(true)
+        } else {
+          localStorage.removeItem('userId')
+          localStorage.removeItem('isLoggedIn')
+          setAuthorized(false)
+        }
+      }
+    )
+
+    return () => {
+      subscription?.unsubscribe()
+    }
+  }, [])
 
   return (
     <>
@@ -47,7 +74,11 @@ export default function App({ Component, pageProps }) {
           error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
         }}
       />
-      {(!router.pathname.startsWith('/owner') && !router.pathname.startsWith('/tenant')) || authorized ? (
+      {loading ? (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : (!router.pathname.startsWith('/owner') && !router.pathname.startsWith('/tenant') && !router.pathname.startsWith('/admin')) || authorized ? (
         <Component {...pageProps} />
       ) : null}
     </>

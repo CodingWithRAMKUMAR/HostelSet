@@ -1,13 +1,21 @@
-import { formatDate } from '../../lib/utils'
+import { formatDate } from '../../lib/utils';
+import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function ComplaintList({ complaints = [], onRespond = () => {}, onResolve = () => {}, isSubmitting = false }) {
+export default function ComplaintList({ onRespond = () => {}, onResolve = () => {}, isSubmitting = false }) {
+  // Use the hook to fetch and listen to 'complaints' in real-time
+  const { data: complaints, loading } = useRealtimeData('complaints');
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading complaints...</div>;
+  }
+
   if (!complaints || complaints.length === 0) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-xl">
         <div className="text-5xl mb-3">✅</div>
         <p className="text-gray-500">No complaints to review</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -42,5 +50,5 @@ export default function ComplaintList({ complaints = [], onRespond = () => {}, o
         </div>
       ))}
     </div>
-  )
+  );
 }

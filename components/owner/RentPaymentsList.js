@@ -1,8 +1,21 @@
-import { formatCurrency, formatDate } from '../../lib/utils'
+import { formatCurrency, formatDate } from '../../lib/utils';
+import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function RentPaymentsList({ payments = [], onConfirm = () => {}, onReject = () => {}, onViewScreenshot = () => {}, isSubmitting = false }) {
-  if (!payments || payments.length === 0) {
-    return <div className="text-center py-12 bg-gray-50 rounded-xl">No pending rent payments.</div>
+export default function RentPaymentsList({ onConfirm = () => {}, onReject = () => {}, onViewScreenshot = () => {}, isSubmitting = false }) {
+  // Fetch pending rent payments in real-time
+  // Note: If you only want to show 'pending' payments, 
+  // you might filter the results like we did for the pre-bookings:
+  const { data: allPayments, loading } = useRealtimeData('payments');
+
+  // Filter for only pending payments
+  const payments = allPayments?.filter(p => p.status === 'payment_pending') || [];
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading rent payments...</div>;
+  }
+
+  if (payments.length === 0) {
+    return <div className="text-center py-12 bg-gray-50 rounded-xl">No pending rent payments.</div>;
   }
 
   return (
@@ -22,11 +35,23 @@ export default function RentPaymentsList({ payments = [], onConfirm = () => {}, 
             )}
           </div>
           <div className="flex gap-2">
-            <button onClick={() => onConfirm(p.id, p.tenant_id, p.amount)} disabled={isSubmitting} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50">Received</button>
-            <button onClick={() => onReject(p.id)} disabled={isSubmitting} className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition disabled:opacity-50">Not Received</button>
+            <button 
+              onClick={() => onConfirm(p.id, p.tenant_id, p.amount)} 
+              disabled={isSubmitting} 
+              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50"
+            >
+              Received
+            </button>
+            <button 
+              onClick={() => onReject(p.id)} 
+              disabled={isSubmitting} 
+              className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition disabled:opacity-50"
+            >
+              Not Received
+            </button>
           </div>
         </div>
       ))}
     </div>
-  )
+  );
 }

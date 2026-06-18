@@ -1,21 +1,32 @@
-import { memo } from 'react'
-import { formatCurrency, formatDate } from '../../lib/utils'
+import { memo } from 'react';
+import { formatCurrency, formatDate } from '../../lib/utils';
+import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-function TenantTable({ tenants, vacateRequests = [], onCollect = () => {}, onHistory = () => {}, onProfile = () => {}, onDelete = () => {}, onConfirmPayment = () => {}, isSubmitting = false, getRoomNumberById = () => 'N/A', calculateRentDueStatus }) {
+function TenantTable({ onCollect = () => {}, onHistory = () => {}, onProfile = () => {}, onDelete = () => {}, onConfirmPayment = () => {}, isSubmitting = false, getRoomNumberById = () => 'N/A', calculateRentDueStatus }) {
+  // Subscribe to changes in tenants and vacate requests
+  const { data: tenants, loading } = useRealtimeData('tenants');
+  const { data: vacateRequests } = useRealtimeData('vacate_requests');
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading tenants...</div>;
+  }
+
   if (!tenants || tenants.length === 0) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-xl">
         <div className="text-5xl mb-3">👥</div>
         <p className="text-gray-500">No tenants found</p>
       </div>
-    )
+    );
   }
 
   return (
     <div className="space-y-4">
       {tenants.map(t => {
-        const due = calculateRentDueStatus ? calculateRentDueStatus(t) : { status: t.rent_status, message: '', daysUntilDue: null }
-        const vacate = vacateRequests.find(v => v.tenant_id === t.id && v.status === 'approved')
+        // Calculate status using the passed function, or default logic
+        const due = calculateRentDueStatus ? calculateRentDueStatus(t) : { status: t.rent_status, message: '', daysUntilDue: null };
+        const vacate = vacateRequests.find(v => v.tenant_id === t.id && v.status === 'approved');
+        
         return (
           <div key={t.id} className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col md:flex-row md:justify-between md:items-center hover:shadow-md transition">
             <div>
@@ -36,10 +47,10 @@ function TenantTable({ tenants, vacateRequests = [], onCollect = () => {}, onHis
               </div>
             </div>
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
 
-export default memo(TenantTable)
+export default memo(TenantTable);
