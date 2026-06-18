@@ -3,7 +3,6 @@ import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import { formatCurrency, formatDate, getSharingDetails } from '../lib/utils'
 import toast from 'react-hot-toast'
-import { useRealtime } from './useRealtime'
 
 export function useTenantDashboard() {
   const router = useRouter()
@@ -43,7 +42,7 @@ export function useTenantDashboard() {
   const [roomChangeReason, setRoomChangeReason] = useState('')
   const [pendingRoomChangeRequest, setPendingRoomChangeRequest] = useState(null)
 
-  // ----- Helper functions -----
+  // --- Helpers ---
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -113,7 +112,7 @@ export function useTenantDashboard() {
     toast.success('UPI Phone Number copied!')
   }
 
-  // ----- Data loading -----
+  // --- Data Loading ---
   const loadTenantData = async (userId) => {
     setLoading(true)
     try {
@@ -134,6 +133,7 @@ export function useTenantDashboard() {
       setPaymentAmount(tenantData.pending_amount || tenantData.rent_amount)
       setProfileForm({ name: tenantData.name || '', phone: tenantData.phone || '', email: tenantData.email || '' })
 
+      // Fetch owner settings
       if (tenantData.property?.owner_id) {
         const { data: settings } = await supabase
           .from('owner_settings')
@@ -161,6 +161,7 @@ export function useTenantDashboard() {
         setOwner(ownerData)
       }
 
+      // roommates
       let roommatesList = []
       if (tenantData.room_id) {
         const { data: roommatesData } = await supabase
@@ -218,6 +219,7 @@ export function useTenantDashboard() {
         .order('payment_date', { ascending: false })
       setPaymentHistory(paymentsData || [])
 
+      // Pending room change
       const { data: pendingChange } = await supabase
         .from('room_change_requests')
         .select('*')
@@ -226,6 +228,7 @@ export function useTenantDashboard() {
         .maybeSingle()
       setPendingRoomChangeRequest(pendingChange)
 
+      // Rent alert (once per day)
       const rentStatus = getRentStatus()
       const lastAlertDate = localStorage.getItem('lastTenantAlertDate')
       const today = new Date().toDateString()
@@ -250,7 +253,7 @@ export function useTenantDashboard() {
     if (userId) loadTenantData(userId)
   }
 
-  // ----- Handlers -----
+  // --- Handlers ---
   const updateProfile = async () => {
     if (isSubmitting) return
     if (!profileForm.name) { toast.error('Name is required'); return }
@@ -472,7 +475,7 @@ export function useTenantDashboard() {
           tenant_id: tenant.id,
           property_id: tenant.property_id,
           old_room_id: tenant.room_id,
-          new_room_id: selectedNewRoom,
+          new_room_id: parseInt(selectedNewRoom, 10),
           reason: roomChangeReason || null,
           status: 'pending',
           requested_at: new Date().toISOString()
@@ -489,7 +492,7 @@ export function useTenantDashboard() {
     }
   }
 
-  // ----- Auth check -----
+  // --- Auth check ---
   const checkAuthAndRedirect = async () => {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) {
@@ -510,7 +513,7 @@ export function useTenantDashboard() {
     return { user, role: userRecord.role }
   }
 
-  // ----- Initial useEffect -----
+  // --- Effect ---
   useEffect(() => {
     const init = async () => {
       const auth = await checkAuthAndRedirect()
@@ -542,99 +545,15 @@ export function useTenantDashboard() {
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
 
-    const handleRouteChange = (url) => {
-      if (localStorage.getItem('userId') && !confirm('You will lose any unsaved data. Do you want to leave the dashboard?')) {
-        throw 'Route change cancelled'
-      }
-    }
-    router.events?.on('routeChangeStart', handleRouteChange)
-
+    // We avoid cancelling route changes programmatically; rely on beforeunload prompt only.
     return () => {
       subscription.unsubscribe()
       window.removeEventListener('beforeunload', handleBeforeUnload)
-      router.events?.off('routeChangeStart', handleRouteChange)
     }
   }, [])
 
-  // ==========================================================================
-  // REAL‑TIME SUBSCRIPTIONS
-  // ==========================================================================
-  useEffect(() => {
-    if (!tenant?.id) return
-
-    const unsubscribePayments = useRealtime(
-      'payment_history',
-      (payload) => {
-        if (payload.new && payload.new.tenant_id === tenant.id) {
-          console.log('💰 Payment updated – refreshing tenant data...')
-          refreshData()
-        }
-      },
-      null,
-      null
-    )
-
-    const unsubscribeComplaints = useRealtime(
-      'complaints',
-      (payload) => {
-        if (payload.new && payload.new.tenant_id === tenant.id) {
-          console.log('🔧 Complaint updated – refreshing tenant data...')
-          refreshData()
-        }
-      },
-      null,
-      null
-    )
-
-    const unsubscribeNotices = useRealtime(
-      'notices',
-      (payload) => {
-        if (payload.new && payload.new.property_id === tenant.property_id) {
-          console.log('📢 Notice posted – refreshing tenant data...')
-          refreshData()
-        }
-      },
-      null,
-      null
-    )
-
-    const unsubscribeVacate = useRealtime(
-      'check_out_requests',
-      (payload) => {
-        if (payload.new && payload.new.tenant_id === tenant.id) {
-          console.log('🚪 Vacate request changed – refreshing tenant data...')
-          refreshData()
-        }
-      },
-      null,
-      null
-    )
-
-    const unsubscribeRoomChange = useRealtime(
-      'room_change_requests',
-      (payload) => {
-        if (payload.new && payload.new.tenant_id === tenant.id) {
-          console.log('🔄 Room change request – refreshing tenant data...')
-          refreshData()
-        }
-      },
-      null,
-      null
-    )
-
-    return () => {
-      if (typeof unsubscribePayments === 'function') unsubscribePayments()
-      if (typeof unsubscribeComplaints === 'function') unsubscribeComplaints()
-      if (typeof unsubscribeNotices === 'function') unsubscribeNotices()
-      if (typeof unsubscribeVacate === 'function') unsubscribeVacate()
-      if (typeof unsubscribeRoomChange === 'function') unsubscribeRoomChange()
-    }
-  }, [tenant?.id])
-
-  // ==========================================================================
-  // RETURN
-  // ==========================================================================
   return {
+    // state
     loading,
     tenant,
     room,
@@ -688,11 +607,13 @@ export function useTenantDashboard() {
     roomChangeReason,
     setRoomChangeReason,
     pendingRoomChangeRequest,
+    // helpers
     calculateNextDueDate,
     getRentStatus,
     initiateUPIPayment,
     copyUpiId,
     copyUpiPhone,
+    // handlers
     refreshData,
     updateProfile,
     submitComplaint,
@@ -702,6 +623,7 @@ export function useTenantDashboard() {
     submitPaymentWithProof,
     openRoomChangeModal,
     submitRoomChangeRequest,
+    // log out
     handleLogout: async () => {
       await supabase.auth.signOut()
       localStorage.clear()
