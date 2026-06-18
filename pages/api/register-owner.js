@@ -2,7 +2,6 @@ import { supabaseAdmin } from '../../lib/supabase'
 import { cleanPhoneNumber } from '../../lib/utils'
 
 export default async function handler(req, res) {
-  // Only allow POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
@@ -22,7 +21,6 @@ export default async function handler(req, res) {
     photos,
   } = req.body
 
-  // Validate required fields
   if (!email || !password || !phone || !full_name || !property_name || !address || !city) {
     return res.status(400).json({ error: 'Missing required fields' })
   }
@@ -32,29 +30,28 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid phone number' })
   }
 
-  // Ensure admin client is available
   if (!supabaseAdmin) {
-    console.error('SUPABASE_SERVICE_ROLE_KEY is not set')
-    return res.status(500).json({ error: 'Server configuration error' })
+    return res.status(500).json({ error: 'Server configuration error: SUPABASE_SERVICE_ROLE_KEY missing' })
   }
 
   try {
-    // 1️⃣ Create Auth user (using admin client to auto‑confirm email)
+    // 1. Create Auth user
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true,   // email verified immediately
+      email_confirm: true,
       user_metadata: { full_name, role: 'owner' },
     })
 
     if (authError) {
-      console.error('Auth creation error:', authError)
-      throw new Error(authError.message)
+      console.error('Auth error:', authError)
+      return res.status(500).json({ error: 'Auth error: ' + authError.message })
     }
 
     const userId = authData.user.id
+    console.log('Auth user created with ID:', userId)
 
-    // 2️⃣ Call the database function (atomic transaction)
+    // 2. Call the DB function
     const { data, error: dbError } = await supabaseAdmin.rpc('register_owner_and_property', {
       p_user_id: userId,
       p_phone: cleanPhone,
@@ -70,25 +67,33 @@ export default async function handler(req, res) {
       p_photos: photos || [],
     })
 
-    // 3️⃣ If the DB transaction failed, delete the auth user (rollback)
-    if (dbError || (data && !data.success)) {
-      // Delete the auth user (cleanup)
+    console.log('Function result:', { data, dbError })
+
+    // 3. Check the function result
+    if (dbError) {
       await supabaseAdmin.auth.admin.deleteUser(userId)
-      const errorMsg = dbError?.message || data?.error || 'Database transaction failed'
-      console.error('DB function error:', errorMsg)
-      throw new Error(errorMsg)
+      console.error('Database function error:', dbError)
+      return res.status(500).json({ error: 'Database function error: ' + dbError.message })
     }
 
-    // ✅ Success – everything committed
+    if (!data || !data.success) {
+      await supabaseAdmin.auth.admin.deleteUser(userId)
+      console.error('Function returned error:', data)
+      return res.status(400).json({ error: data?.error || 'Registration failed' })
+    }
+
+    // Success
     return res.status(200).json({
       success: true,
       message: 'Registration successful! Please login.',
+      userId: userId,
+      propertyId: data.property_id
     })
   } catch (error) {
     console.error('Registration error:', error)
     return res.status(500).json({
-      success: false,
       error: error.message || 'Registration failed. Please try again.',
+      stack: error.stack
     })
   }
 }

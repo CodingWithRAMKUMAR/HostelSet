@@ -17,7 +17,8 @@ export default function RegisterProperty() {
     ownerName: '',
     phone: '',
     email: '',
-    password: '', // NEW: password field
+    password: '',
+    confirmPassword: '',
     address: '',
     city: '',
     pincode: '',
@@ -74,9 +75,13 @@ export default function RegisterProperty() {
   }
 
   const handleSubmit = async () => {
-    // Basic client-side validation
+    // Validate password
     if (!formData.password || formData.password.length < 6) {
       toast.error('Password must be at least 6 characters')
+      return
+    }
+    if (formData.password !== formData.confirmPassword) {
+      toast.error('Passwords do not match')
       return
     }
 
@@ -89,25 +94,24 @@ export default function RegisterProperty() {
         return
       }
 
-      const payload = {
-        email: formData.email,
-        password: formData.password,
-        phone: cleanPhone,
-        full_name: formData.ownerName,
-        property_name: formData.name,
-        description: formData.description,
-        address: formData.address,
-        city: formData.city,
-        pincode: formData.pincode,
-        property_type: formData.propertyType,
-        amenities: formData.amenities,
-        photos: propertyImages,
-      }
-
+      // Call the API route
       const response = await fetch('/api/register-owner', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          phone: cleanPhone,
+          full_name: formData.ownerName,
+          property_name: formData.name,
+          description: formData.description,
+          address: formData.address,
+          city: formData.city,
+          pincode: formData.pincode,
+          property_type: formData.propertyType,
+          amenities: formData.amenities,
+          photos: propertyImages,
+        }),
       })
 
       const result = await response.json()
@@ -173,6 +177,7 @@ export default function RegisterProperty() {
                 </div>
                 <input name="email" type="email" placeholder="Email *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
                 <input name="password" type="password" placeholder="Password * (min 6 characters)" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                <input name="confirmPassword" type="password" placeholder="Confirm Password *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
               </div>
             )}
 
