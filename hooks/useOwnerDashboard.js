@@ -495,7 +495,7 @@ export function useOwnerDashboard() {
   }
 
   // ==========================================================================
-  // SAVE SETTINGS – Simplified with upsert
+  // FIXED: saveSettings with check-then-update/insert (no ON CONFLICT)
   // ==========================================================================
   const saveSettings = async () => {
     if (isSubmitting) return
@@ -507,21 +507,42 @@ export function useOwnerDashboard() {
     try {
       const userId = localStorage.getItem('userId')
 
-      // Use upsert – inserts a new row or updates if owner_id already exists
-      const { error } = await supabase
+      // Check if settings exist for this owner
+      const { data: existing, error: fetchError } = await supabase
         .from('owner_settings')
-        .upsert(
-          {
+        .select('id')
+        .eq('owner_id', userId)
+        .maybeSingle()
+
+      if (fetchError) throw fetchError
+
+      const updateData = {
+        joining_fee: settings.joining_fee,
+        advance_months: settings.advance_months,
+        due_day: settings.due_day,
+        upi_id: settings.upi_id,
+        upi_phone: settings.upi_phone,
+        updated_at: new Date().toISOString(),
+      }
+
+      let error
+      if (existing) {
+        // Update existing row
+        const { error: updateError } = await supabase
+          .from('owner_settings')
+          .update(updateData)
+          .eq('owner_id', userId)
+        error = updateError
+      } else {
+        // Insert new row
+        const { error: insertError } = await supabase
+          .from('owner_settings')
+          .insert({
             owner_id: userId,
-            joining_fee: settings.joining_fee,
-            advance_months: settings.advance_months,
-            due_day: settings.due_day,
-            upi_id: settings.upi_id,
-            upi_phone: settings.upi_phone,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'owner_id' } // assumes owner_id is unique
-        )
+            ...updateData,
+          })
+        error = insertError
+      }
 
       if (error) throw error
 
