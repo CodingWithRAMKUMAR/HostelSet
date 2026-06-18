@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { supabase, signInWithEmail, resetPassword } from '../lib/supabase'
-import { cleanPhoneNumber } from '../lib/utils'   // <-- import the normaliser
+import { cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
 
 export default function Login() {
@@ -29,14 +29,14 @@ export default function Login() {
     try {
       let emailToUse = identifier
 
-      // If input is a 10‑digit phone number, find the associated email in users table
       if (isPhone(identifier)) {
-        const cleanPhone = cleanPhoneNumber(identifier)   // normalize
+        const cleanPhone = cleanPhoneNumber(identifier)
         const { data, error } = await supabase
           .from('users')
           .select('email')
           .eq('phone', cleanPhone)
           .maybeSingle()
+
         if (error || !data || !data.email) {
           toast.error('No account found with this phone number. Please register.')
           setLoading(false)
@@ -50,9 +50,10 @@ export default function Login() {
       }
 
       const result = await signInWithEmail(emailToUse, password)
+
       if (result.success) {
         toast.success(`Welcome back, ${result.userData.full_name}!`)
-        // Redirect based on role
+
         if (result.role === 'admin') {
           router.push('/admin/dashboard')
         } else if (result.role === 'owner') {
@@ -61,16 +62,21 @@ export default function Login() {
             .select('id')
             .eq('owner_id', result.userData.id)
             .maybeSingle()
-          if (property) {
-            router.push('/owner/dashboard')
-          } else {
-            router.push('/owner/register-property')
-          }
+          router.push(property ? '/owner/dashboard' : '/owner/register-property')
         } else {
           router.push('/tenant/dashboard')
         }
       } else {
-        toast.error(result.error || 'Invalid email or password')
+        // ✅ Better error messages based on error type
+        if (result.error?.includes('Email not confirmed')) {
+          toast.error('Please confirm your email first. Check your inbox!')
+        } else if (result.error?.includes('Invalid login credentials')) {
+          toast.error('Wrong email or password. Please try again.')
+        } else if (result.error?.includes('deactivated')) {
+          toast.error('Your account has been deactivated. Contact support.')
+        } else {
+          toast.error(result.error || 'Login failed. Please try again.')
+        }
       }
     } catch (error) {
       console.error('Login error:', error)
@@ -124,7 +130,7 @@ export default function Login() {
                 onChange={(e) => setIdentifier(e.target.value)}
                 required
               />
-              <p className="text-xs text-gray-400 mt-1">Use the email you registered with (phone login only works if you stored your number).</p>
+              <p className="text-xs text-gray-400 mt-1">Use the email or phone you registered with.</p>
             </div>
             <div>
               <label className="block text-gray-700 font-semibold mb-2">Password</label>
