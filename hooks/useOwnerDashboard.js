@@ -3,11 +3,9 @@ import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import { formatCurrency, formatDate, getSharingDetails, cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
-import { useRealtime } from './useRealtime'
 
 export function useOwnerDashboard() {
   const router = useRouter()
-  // ----- State -----
   const [loading, setLoading] = useState(true)
   const [property, setProperty] = useState(null)
   const [rooms, setRooms] = useState([])
@@ -104,7 +102,9 @@ export function useOwnerDashboard() {
     { value: 'five', label: 'Five Sharing', capacity: 5, icon: '👥👥👤', price: 6000 },
   ]
 
-  // ----- Helper functions -----
+  // ==========================================================================
+  // HELPER FUNCTIONS
+  // ==========================================================================
   const getRoomNumberById = (roomId) => {
     if (!rooms || !Array.isArray(rooms)) return 'N/A'
     const room = rooms.find(r => r.id === roomId)
@@ -123,28 +123,17 @@ export function useOwnerDashboard() {
     const monthsSinceJoin = (today.getFullYear() - joinDate.getFullYear()) * 12 + (today.getMonth() - joinDate.getMonth())
     const monthsPaid = Math.floor((tenant.total_paid || 0) / tenant.rent_amount)
     const isCurrentMonthPaid = monthsPaid > monthsSinceJoin
-
-    if (isCurrentMonthPaid || (tenant.pending_amount === 0 && tenant.rent_status === 'paid')) {
+    if (isCurrentMonthPaid && (tenant.pending_amount === 0 || tenant.pending_amount < tenant.rent_amount)) {
       const nextDueDate = new Date(today.getFullYear(), today.getMonth() + 1, joinDate.getDate())
       const daysUntilDue = Math.ceil((nextDueDate - today) / (1000 * 60 * 60 * 24))
-      return {
-        status: 'paid',
-        message: `Paid ✓ | Next due on ${formatDate(nextDueDate)}`,
-        daysUntilDue: daysUntilDue,
-        dueAmount: 0
-      }
-    }
-
-    const expectedDate = new Date(today.getFullYear(), today.getMonth(), joinDate.getDate())
-    const daysUntilDue = Math.ceil((expectedDate - today) / (1000 * 60 * 60 * 24))
-    const pendingAmount = tenant.pending_amount || tenant.rent_amount
-
-    if (daysUntilDue < 0) {
-      return { status: 'overdue', message: `Overdue by ${Math.abs(daysUntilDue)} days`, daysUntilDue, dueAmount: pendingAmount }
-    } else if (daysUntilDue <= 5) {
-      return { status: 'due_soon', message: `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}`, daysUntilDue, dueAmount: pendingAmount }
+      return { status: 'paid', message: `Paid ✓ | Next due on ${formatDate(nextDueDate)}`, daysUntilDue, dueAmount: 0 }
     } else {
-      return { status: 'pending', message: `Due on ${formatDate(expectedDate)}`, daysUntilDue, dueAmount: pendingAmount }
+      const expectedDate = new Date(today.getFullYear(), today.getMonth(), joinDate.getDate())
+      const daysUntilDue = Math.ceil((expectedDate - today) / (1000 * 60 * 60 * 24))
+      const pendingAmount = tenant.pending_amount || tenant.rent_amount
+      if (daysUntilDue < 0) return { status: 'overdue', message: `Overdue by ${Math.abs(daysUntilDue)} days`, daysUntilDue, dueAmount: pendingAmount }
+      else if (daysUntilDue <= 5) return { status: 'due_soon', message: `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}`, daysUntilDue, dueAmount: pendingAmount }
+      else return { status: 'pending', message: `Due on ${formatDate(expectedDate)}`, daysUntilDue, dueAmount: pendingAmount }
     }
   }
 
@@ -160,7 +149,9 @@ export function useOwnerDashboard() {
     return { date: vacate.expected_check_out, daysLeft, overdue: false }
   }
 
-  // ----- Alert functions -----
+  // ==========================================================================
+  // ALERT FUNCTIONS
+  // ==========================================================================
   const addAlert = (message, type, linkTab, linkId = null) => {
     const id = Date.now() + Math.random()
     const newAlert = { id, message, type, linkTab, linkId, createdAt: Date.now() }
@@ -220,7 +211,9 @@ export function useOwnerDashboard() {
     }
   }
 
-  // ----- Auto-delete functions -----
+  // ==========================================================================
+  // AUTO-DELETE & CLEANUP
+  // ==========================================================================
   const autoDeleteExpiredNoticeTenants = async () => {
     const today = new Date().toISOString().split('T')[0]
     const { data: expired, error: fetchErr } = await supabase
@@ -237,7 +230,7 @@ export function useOwnerDashboard() {
         if (t.user_id) await supabase.from('users').delete().eq('id', t.user_id)
       }
     }
-    await loadData(true)
+    // Do not call loadData here to avoid recursive refresh loops.
   }
 
   const forceDeleteOverdueVacateTenants = async () => {
@@ -263,10 +256,12 @@ export function useOwnerDashboard() {
         }
       }
     }
-    await loadData(true)
+    // Intentionally not re-calling loadData here to prevent recursion.
   }
 
-  // ----- Data loading -----
+  // ==========================================================================
+  // DATA LOADING
+  // ==========================================================================
   const loadData = async (isBackgroundRefresh = false) => {
     if (!isBackgroundRefresh) setLoading(true)
     try {
@@ -614,7 +609,9 @@ export function useOwnerDashboard() {
     }
   }
 
-  // ----- Membership -----
+  // ==========================================================================
+  // MEMBERSHIP
+  // ==========================================================================
   const updateMembershipFromProperty = (propertyData) => {
     if (!propertyData) {
       setMembershipActive(false)
@@ -679,7 +676,9 @@ export function useOwnerDashboard() {
     }
   }
 
-  // ----- Auto-refresh -----
+  // ==========================================================================
+  // AUTO-REFRESH
+  // ==========================================================================
   const startAutoRefresh = () => {
     if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
     autoRefreshRef.current = setInterval(() => {
@@ -687,7 +686,9 @@ export function useOwnerDashboard() {
     }, 15000)
   }
 
-  // ----- Auth check -----
+  // ==========================================================================
+  // AUTH CHECK
+  // ==========================================================================
   const checkAuthAndRedirect = async () => {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) {
@@ -708,7 +709,10 @@ export function useOwnerDashboard() {
     return { user, role: userRecord.role }
   }
 
-  // ----- Handlers (all) -----
+  // ==========================================================================
+  // HANDLERS
+  // ==========================================================================
+
   const deleteRoom = async (id) => {
     if (isSubmitting) return
     const room = rooms.find(r => r.id === id)
@@ -733,7 +737,7 @@ export function useOwnerDashboard() {
       property_id: property.id,
       room_number: roomForm.room_number,
       sharing_type: roomForm.sharing_type,
-      monthly_rent: parseInt(roomForm.monthly_rent) || selectedType.price,
+      monthly_rent: parseInt(roomForm.monthly_rent, 10) || selectedType.price,
       capacity: selectedType.capacity,
       current_occupants: 0,
       status: 'vacant'
@@ -762,9 +766,9 @@ export function useOwnerDashboard() {
     setIsSubmitting(true)
     try {
       const tenantEmail = formData.email.trim()
-      const joiningFee = parseInt(formData.joining_fee) || 0
-      const advanceMonths = parseInt(formData.advance_amount) || 0
-      const monthlyRent = parseInt(formData.rent_amount)
+      const joiningFee = parseInt(formData.joining_fee, 10) || 0
+      const advanceMonths = parseInt(formData.advance_amount, 10) || 0
+      const monthlyRent = parseInt(formData.rent_amount, 10)
       const totalJoiningAmount = (monthlyRent * advanceMonths) + joiningFee
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: tenantEmail,
@@ -831,7 +835,7 @@ export function useOwnerDashboard() {
   const collectRent = async () => {
     if (isSubmitting) return
     if (!selectedTenant || !paymentAmount) { toast.error('Enter amount'); return }
-    const amount = parseInt(paymentAmount)
+    const amount = parseInt(paymentAmount, 10)
     const maxAmount = selectedTenant.pending_amount || selectedTenant.rent_amount
     if (amount > maxAmount) { toast.error(`Max payable: ₹${maxAmount.toLocaleString()}`); return }
     setIsSubmitting(true)
@@ -1321,7 +1325,9 @@ export function useOwnerDashboard() {
     }
   }
 
-  // ----- Initial useEffect -----
+  // ==========================================================================
+  // EFFECTS
+  // ==========================================================================
   useEffect(() => {
     const init = async () => {
       const auth = await checkAuthAndRedirect()
@@ -1363,95 +1369,17 @@ export function useOwnerDashboard() {
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
 
-    const handleRouteChange = (url) => {
-      if (localStorage.getItem('userId') && !confirm('You will lose any unsaved data. Do you want to leave the dashboard?')) {
-        throw 'Route change cancelled'
-      }
-    }
-    router.events?.on('routeChangeStart', handleRouteChange)
+    // Note: we avoid blocking client-side route changes programmatically.
+    // For unsaved-changes protection we rely on the `beforeunload` handler above.
 
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
       Object.values(alertTimeoutRef.current).forEach(clearTimeout)
       subscription.unsubscribe()
       window.removeEventListener('beforeunload', handleBeforeUnload)
-      router.events?.off('routeChangeStart', handleRouteChange)
+      // No routeChangeStart cleanup required
     }
   }, [])
-
-  // ==========================================================================
-  // REAL‑TIME SUBSCRIPTIONS (auto‑refresh on any change)
-  // ==========================================================================
-  useEffect(() => {
-    if (!property?.id) return
-
-    const unsubscribeTenants = useRealtime(
-      'tenants',
-      () => { console.log('🔄 Tenant changed – refreshing owner data...'); loadData(true) },
-      'property_id',
-      property.id
-    )
-    const unsubscribePayments = useRealtime(
-      'payment_history',
-      () => { console.log('💰 Payment changed – refreshing owner data...'); loadData(true) },
-      null,
-      null
-    )
-    const unsubscribeApplications = useRealtime(
-      'applications',
-      () => { console.log('📋 Application changed – refreshing owner data...'); loadData(true) },
-      'property_id',
-      property.id
-    )
-    const unsubscribeComplaints = useRealtime(
-      'complaints',
-      () => { console.log('🔧 Complaint changed – refreshing owner data...'); loadData(true) },
-      'property_id',
-      property.id
-    )
-    const unsubscribeVacate = useRealtime(
-      'check_out_requests',
-      () => { console.log('🚪 Vacate request changed – refreshing owner data...'); loadData(true) },
-      'property_id',
-      property.id
-    )
-    const unsubscribeNotices = useRealtime(
-      'notices',
-      () => { console.log('📢 Notice changed – refreshing owner data...'); loadData(true) },
-      'property_id',
-      property.id
-    )
-    const unsubscribeRooms = useRealtime(
-      'rooms',
-      () => { console.log('🏠 Room changed – refreshing owner data...'); loadData(true) },
-      'property_id',
-      property.id
-    )
-    const unsubscribePreBookings = useRealtime(
-      'pre_bookings',
-      () => { console.log('📋 Pre‑booking changed – refreshing owner data...'); loadData(true) },
-      'property_id',
-      property.id
-    )
-    const unsubscribeRoomChanges = useRealtime(
-      'room_change_requests',
-      () => { console.log('🔄 Room change request – refreshing owner data...'); loadData(true) },
-      'property_id',
-      property.id
-    )
-
-    return () => {
-      if (typeof unsubscribeTenants === 'function') unsubscribeTenants()
-      if (typeof unsubscribePayments === 'function') unsubscribePayments()
-      if (typeof unsubscribeApplications === 'function') unsubscribeApplications()
-      if (typeof unsubscribeComplaints === 'function') unsubscribeComplaints()
-      if (typeof unsubscribeVacate === 'function') unsubscribeVacate()
-      if (typeof unsubscribeNotices === 'function') unsubscribeNotices()
-      if (typeof unsubscribeRooms === 'function') unsubscribeRooms()
-      if (typeof unsubscribePreBookings === 'function') unsubscribePreBookings()
-      if (typeof unsubscribeRoomChanges === 'function') unsubscribeRoomChanges()
-    }
-  }, [property?.id])
 
   // ==========================================================================
   // RETURN
