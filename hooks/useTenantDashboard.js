@@ -324,26 +324,23 @@ export function useTenantDashboard() {
       if (error) throw error
       if (!data || data.length === 0) {
         toast.error('Complaint not found or already deleted.')
-        // Refresh to sync UI with DB
         await refreshData(true)
         return
       }
       toast.success('Complaint deleted.')
       // Update local state immediately
       setComplaints(prev => prev.filter(c => c.id !== complaintId))
-      // Refresh in background to ensure consistency (real-time will also help)
+      // Refresh in background to ensure consistency
       await refreshData(true)
     } catch (error) {
       console.error('Delete complaint error:', error)
       toast.error('Failed to delete complaint: ' + error.message)
-      // Refresh to sync in case of error
       await refreshData(true)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  // ----- Other handlers (unchanged) -----
   const requestVacate = async () => {
     if (isSubmitting) return
     if (!vacateForm.expected_date) { toast.error('Please select expected check-out date'); return }
@@ -479,6 +476,9 @@ export function useTenantDashboard() {
     setShowRoomChangeModal(true)
   }
 
+  // ==========================================================================
+  // FIXED: submitRoomChangeRequest – selects room correctly
+  // ==========================================================================
   const submitRoomChangeRequest = async () => {
     if (isSubmitting) return
     if (!selectedNewRoom) { toast.error('Please select a room'); return }
@@ -499,6 +499,9 @@ export function useTenantDashboard() {
       if (error) throw error
       toast.success('Room change request submitted! Owner will review it.')
       setShowRoomChangeModal(false)
+      // Clear selected room after submit
+      setSelectedNewRoom('')
+      setRoomChangeReason('')
       await refreshData(true)
     } catch (error) {
       console.error('Room change request error:', error)
