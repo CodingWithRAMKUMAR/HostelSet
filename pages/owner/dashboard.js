@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase'
 import { useOwnerDashboard } from '../../hooks/useOwnerDashboard'
 import { formatCurrency, formatDate } from '../../lib/utils'
 
-// Content Components (static)
+// Content Components
 import StatsCards from '../../components/owner/StatsCards'
 import RoomList from '../../components/owner/RoomList'
 import TenantTable from '../../components/owner/TenantTable'
@@ -88,7 +88,7 @@ export default function OwnerDashboard() {
     settings, setSettings, roomMonthlyIncome, membershipLoading,
   } = useOwnerDashboard()
 
-  // ----- Safe arrays for rendering -----
+  // ----- Safe arrays (defensive) -----
   const safeRooms = Array.isArray(rooms) ? rooms : []
   const safeTenants = Array.isArray(tenants) ? tenants : []
   const safeAllPayments = Array.isArray(allPayments) ? allPayments : []
@@ -99,14 +99,65 @@ export default function OwnerDashboard() {
   const safeNotices = Array.isArray(notices) ? notices : []
   const safeRoomChangeRequests = Array.isArray(roomChangeRequests) ? roomChangeRequests : []
 
+  // ----- SEARCH: filtered data for each tab (partial, case‑insensitive) -----
+  const searchLower = searchTerm.toLowerCase().trim()
+
+  // Tenants & Payments (already in use)
   const filteredTenants = safeTenants.filter(t =>
-    t?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (t?.room_number && t.room_number.toString().includes(searchTerm))
+    t?.name?.toLowerCase().includes(searchLower) ||
+    (t?.room_number && t.room_number.toString().includes(searchLower)) ||
+    (t?.phone && t.phone.includes(searchLower))
   )
 
   const filteredPayments = safeAllPayments.filter(p =>
-    p?.tenants?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (p?.tenants?.rooms?.room_number && p.tenants.rooms.room_number.toString().includes(searchTerm))
+    p?.tenants?.name?.toLowerCase().includes(searchLower) ||
+    (p?.tenants?.rooms?.room_number && p.tenants.rooms.room_number.toString().includes(searchLower))
+  )
+
+  // Rooms
+  const filteredRooms = safeRooms.filter(room =>
+    room?.room_number?.toString().includes(searchLower) ||
+    (room?.property?.name && room.property.name.toLowerCase().includes(searchLower))
+  )
+
+  // Applications
+  const filteredApplications = safeApplications.filter(app =>
+    app?.name?.toLowerCase().includes(searchLower) ||
+    (app?.phone && app.phone.includes(searchLower)) ||
+    (app?.email && app.email.toLowerCase().includes(searchLower))
+  )
+
+  // Complaints
+  const filteredComplaints = safeComplaints.filter(c =>
+    c?.title?.toLowerCase().includes(searchLower) ||
+    (c?.tenant_name && c.tenant_name.toLowerCase().includes(searchLower)) ||
+    (c?.description && c.description.toLowerCase().includes(searchLower))
+  )
+
+  // Vacate Requests
+  const filteredVacateRequests = safeVacateRequests.filter(v =>
+    v?.tenant_name?.toLowerCase().includes(searchLower) ||
+    (v?.room_number && v.room_number.toString().includes(searchLower))
+  )
+
+  // Pre‑bookings
+  const filteredPreBookings = safePreBookings.filter(b =>
+    b?.name?.toLowerCase().includes(searchLower) ||
+    (b?.phone && b.phone.includes(searchLower)) ||
+    (b?.email && b.email.toLowerCase().includes(searchLower))
+  )
+
+  // Notices
+  const filteredNotices = safeNotices.filter(n =>
+    n?.title?.toLowerCase().includes(searchLower) ||
+    (n?.content && n.content.toLowerCase().includes(searchLower))
+  )
+
+  // Room Change Requests
+  const filteredRoomChanges = safeRoomChangeRequests.filter(rc =>
+    rc?.tenants?.name?.toLowerCase().includes(searchLower) ||
+    (rc?.old_room?.room_number && rc.old_room.room_number.toString().includes(searchLower)) ||
+    (rc?.new_room?.room_number && rc.new_room.room_number.toString().includes(searchLower))
   )
 
   // ----- Defensive helper for due today -----
@@ -149,7 +200,7 @@ export default function OwnerDashboard() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Subscription Banner & Alerts */}
+      {/* Subscription Banner & Alerts (unchanged) */}
       {!membershipActive && (
         <div className="bg-yellow-100 border-b border-yellow-300 px-4 py-3 text-center sticky top-0 z-50">
           <p className="text-yellow-800 font-semibold">
@@ -222,7 +273,7 @@ export default function OwnerDashboard() {
           <div className="flex items-center gap-4 flex-wrap">
             <input
               type="text"
-              placeholder="🔍 Search by name or room..."
+              placeholder="🔍 Search by name, room, phone, title..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="border border-gray-300 rounded-lg px-4 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-slate-500"
@@ -250,7 +301,7 @@ export default function OwnerDashboard() {
       <div className="container mx-auto px-4 py-8">
         <StatsCards stats={stats} />
 
-        {/* ========== OVERVIEW TAB – DEFENSIVE ========== */}
+        {/* ========== OVERVIEW TAB ========== */}
         {activeTab === 'overview' && (
           <div>
             {stats?.pendingRentConfirmations > 0 && (
@@ -263,8 +314,6 @@ export default function OwnerDashboard() {
                 <p className="font-semibold text-red-800">⚠️ {stats.pendingPaymentCount} tenant(s) awaiting payment confirmation. <button onClick={() => setActiveTab('tenants')} className="underline">Review</button></p>
               </div>
             )}
-
-            {/* Due Today */}
             <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
               <h3 className="font-semibold text-slate-800 mb-4">📅 Due Today</h3>
               {dueTodayTenants.length === 0 ? (
@@ -283,8 +332,6 @@ export default function OwnerDashboard() {
                 </div>
               )}
             </div>
-
-            {/* Recent Tenants & Complaints */}
             <div className="grid md:grid-cols-2 gap-6">
               <div className="bg-white rounded-xl border border-gray-100 p-6">
                 <h3 className="font-semibold text-slate-800 mb-4">📋 Recent Tenants</h3>
@@ -425,10 +472,10 @@ export default function OwnerDashboard() {
           )})}
         </div>
 
-        {/* Tab Content */}
+        {/* ========== TAB CONTENT WITH SEARCH FILTERS ========== */}
         {activeTab === 'rooms' && (
           <RoomList
-            rooms={safeRooms}
+            rooms={filteredRooms}
             tenants={safeTenants}
             vacateRequests={safeVacateRequests}
             roomMonthlyIncome={roomMonthlyIncome}
@@ -455,7 +502,7 @@ export default function OwnerDashboard() {
 
         {activeTab === 'rent-payments' && (
           <RentPaymentsList
-            payments={pendingRentPayments}
+            payments={filteredPayments}
             onConfirm={confirmRentPayment}
             onReject={rejectRentPayment}
             onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }}
@@ -472,7 +519,7 @@ export default function OwnerDashboard() {
 
         {activeTab === 'pre-bookings' && (
           <PreBookingList
-            bookings={safePreBookings}
+            bookings={filteredPreBookings}
             onApprove={approvePreBooking}
             onReject={rejectPreBooking}
             onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }}
@@ -482,7 +529,7 @@ export default function OwnerDashboard() {
 
         {activeTab === 'complaints' && (
           <ComplaintList
-            complaints={safeComplaints}
+            complaints={filteredComplaints}
             onRespond={(complaint) => { setSelectedComplaint(complaint); setShowComplaintResponseModal(true) }}
             onResolve={resolveComplaint}
             isSubmitting={isSubmitting}
@@ -491,7 +538,7 @@ export default function OwnerDashboard() {
 
         {activeTab === 'vacate' && (
           <VacateRequestList
-            requests={safeVacateRequests}
+            requests={filteredVacateRequests}
             onApprove={approveVacateRequest}
             onCleanup={async () => {
               await forceDeleteOverdueVacateTenants()
@@ -505,7 +552,7 @@ export default function OwnerDashboard() {
 
         {activeTab === 'room-change' && (
           <RoomChangeRequestList
-            requests={safeRoomChangeRequests}
+            requests={filteredRoomChanges}
             onApprove={approveRoomChange}
             onReject={(request) => {
               setSelectedRoomChangeRequest(request)
@@ -518,7 +565,7 @@ export default function OwnerDashboard() {
 
         {activeTab === 'applications' && (
           <ApplicationList
-            applications={safeApplications}
+            applications={filteredApplications}
             onApprove={approveApplication}
             onResendEmail={resendPasswordEmail}
             isSubmitting={isSubmitting}
@@ -527,7 +574,7 @@ export default function OwnerDashboard() {
 
         {activeTab === 'notices' && (
           <NoticeList
-            notices={safeNotices}
+            notices={filteredNotices}
             onDelete={deleteNotice}
             onPost={() => setShowNoticeModal(true)}
             isSubmitting={isSubmitting}
@@ -535,7 +582,7 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* ========== MODALS ========== */}
+      {/* ========== MODALS (unchanged) ========== */}
       <AnimatePresence>
         {showConfirmDeleteModal && tenantToDelete && (
           <ConfirmDeleteModal
