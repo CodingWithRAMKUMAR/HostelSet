@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase'
 import { useOwnerDashboard } from '../../hooks/useOwnerDashboard'
 import { formatCurrency, formatDate } from '../../lib/utils'
 
-// Content Components
+// Content Components (static – always needed)
 import StatsCards from '../../components/owner/StatsCards'
 import RoomList from '../../components/owner/RoomList'
 import TenantTable from '../../components/owner/TenantTable'
@@ -19,7 +19,7 @@ import NoticeList from '../../components/owner/NoticeList'
 import ApplicationList from '../../components/owner/ApplicationList'
 import RoomChangeRequestList from '../../components/owner/RoomChangeRequestList'
 
-// Lazy-load Modal Components for performance
+// Modal Components (lazy‑loaded)
 const ConfirmDeleteModal = dynamic(() => import('../../components/owner/modals/ConfirmDeleteModal'), { ssr: false })
 const AddTenantModal = dynamic(() => import('../../components/owner/modals/AddTenantModal'), { ssr: false })
 const AddRoomModal = dynamic(() => import('../../components/owner/modals/AddRoomModal'), { ssr: false })
@@ -85,14 +85,15 @@ export default function OwnerDashboard() {
     forceDeleteOverdueVacateTenants, autoDeleteExpiredNoticeTenants, loadData,
     sharingTypes, roomForm, setRoomForm, noticeForm, setNoticeForm,
     formData, setFormData, paymentAmount, setPaymentAmount,
-    settings, roomMonthlyIncome, membershipLoading
+    settings, setSettings,   // ✅ setSettings is now destructured
+    roomMonthlyIncome, membershipLoading,
   } = useOwnerDashboard()
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin mx-auto mb-4" />
           <p className="text-gray-500">Loading dashboard...</p>
         </div>
       </div>
@@ -424,6 +425,7 @@ export default function OwnerDashboard() {
             onCleanup={async () => {
               await forceDeleteOverdueVacateTenants()
               await autoDeleteExpiredNoticeTenants()
+              toast.success('Cleanup complete. Dashboard will refresh.')
               loadData()
             }}
             isSubmitting={isSubmitting}
@@ -531,7 +533,7 @@ export default function OwnerDashboard() {
         {showSettingsModal && (
           <SettingsModal
             settings={settings}
-            setSettings={setSettings}
+            setSettings={setSettings}   // ✅ setSettings passed correctly
             onSave={saveSettings}
             onCancel={() => setShowSettingsModal(false)}
             isSubmitting={isSubmitting}
