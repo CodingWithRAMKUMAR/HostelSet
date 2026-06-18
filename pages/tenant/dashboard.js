@@ -10,9 +10,7 @@ import NoticesSection from '../../components/tenant/NoticesSection'
 import ComplaintsSection from '../../components/tenant/ComplaintsSection'
 import PaymentsSection from '../../components/tenant/PaymentsSection'
 
-<<<<<<< HEAD
 // Lazy-load Modal Components for performance
->>>>>>> e29d611230ebb94309171a1fb32cfe0ae11271b5
 const PayRentModal = dynamic(() => import('../../components/tenant/modals/PayRentModal'), { ssr: false })
 const ComplaintModal = dynamic(() => import('../../components/tenant/modals/ComplaintModal'), { ssr: false })
 const VacateModal = dynamic(() => import('../../components/tenant/modals/VacateModal'), { ssr: false })
