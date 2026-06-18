@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
+import dynamic from 'next/dynamic'
 import { supabase } from '../../lib/supabase'
 import { useOwnerDashboard } from '../../hooks/useOwnerDashboard'
 import { formatCurrency, formatDate } from '../../lib/utils'
@@ -18,22 +19,22 @@ import NoticeList from '../../components/owner/NoticeList'
 import ApplicationList from '../../components/owner/ApplicationList'
 import RoomChangeRequestList from '../../components/owner/RoomChangeRequestList'
 
-// Modal Components
-import ConfirmDeleteModal from '../../components/owner/modals/ConfirmDeleteModal'
-import AddTenantModal from '../../components/owner/modals/AddTenantModal'
-import AddRoomModal from '../../components/owner/modals/AddRoomModal'
-import CollectRentModal from '../../components/owner/modals/CollectRentModal'
-import PostNoticeModal from '../../components/owner/modals/PostNoticeModal'
-import SettingsModal from '../../components/owner/modals/SettingsModal'
-import ComplaintResponseModal from '../../components/owner/modals/ComplaintResponseModal'
-import RoomDetailsModal from '../../components/owner/modals/RoomDetailsModal'
-import MembershipModal from '../../components/owner/modals/MembershipModal'
-import PaymentConfirmModal from '../../components/owner/modals/PaymentConfirmModal'
-import ApplicationDetailModal from '../../components/owner/modals/ApplicationDetailModal'
-import TenantPaymentsModal from '../../components/owner/modals/TenantPaymentsModal'
-import TenantProfileModal from '../../components/owner/modals/TenantProfileModal'
-import RoomChangeReasonModal from '../../components/owner/modals/RoomChangeReasonModal'
-import ScreenshotModal from '../../components/owner/modals/ScreenshotModal'
+// Lazy-loaded Modal Components
+const ConfirmDeleteModal = dynamic(() => import('../../components/owner/modals/ConfirmDeleteModal'), { ssr: false });
+const AddTenantModal = dynamic(() => import('../../components/owner/modals/AddTenantModal'), { ssr: false });
+const AddRoomModal = dynamic(() => import('../../components/owner/modals/AddRoomModal'), { ssr: false });
+const CollectRentModal = dynamic(() => import('../../components/owner/modals/CollectRentModal'), { ssr: false });
+const PostNoticeModal = dynamic(() => import('../../components/owner/modals/PostNoticeModal'), { ssr: false });
+const SettingsModal = dynamic(() => import('../../components/owner/modals/SettingsModal'), { ssr: false });
+const ComplaintResponseModal = dynamic(() => import('../../components/owner/modals/ComplaintResponseModal'), { ssr: false });
+const RoomDetailsModal = dynamic(() => import('../../components/owner/modals/RoomDetailsModal'), { ssr: false });
+const MembershipModal = dynamic(() => import('../../components/owner/modals/MembershipModal'), { ssr: false });
+const PaymentConfirmModal = dynamic(() => import('../../components/owner/modals/PaymentConfirmModal'), { ssr: false });
+const ApplicationDetailModal = dynamic(() => import('../../components/owner/modals/ApplicationDetailModal'), { ssr: false });
+const TenantPaymentsModal = dynamic(() => import('../../components/owner/modals/TenantPaymentsModal'), { ssr: false });
+const TenantProfileModal = dynamic(() => import('../../components/owner/modals/TenantProfileModal'), { ssr: false });
+const RoomChangeReasonModal = dynamic(() => import('../../components/owner/modals/RoomChangeReasonModal'), { ssr: false });
+const ScreenshotModal = dynamic(() => import('../../components/owner/modals/ScreenshotModal'), { ssr: false });
 
 export default function OwnerDashboard() {
   const router = useRouter()
@@ -84,7 +85,7 @@ export default function OwnerDashboard() {
     forceDeleteOverdueVacateTenants, autoDeleteExpiredNoticeTenants, loadData,
     sharingTypes, roomForm, setRoomForm, noticeForm, setNoticeForm,
     formData, setFormData, paymentAmount, setPaymentAmount,
-    settings, roomMonthlyIncome,
+    settings, roomMonthlyIncome, membershipLoading
   } = useOwnerDashboard()
 
   if (loading) {
@@ -423,7 +424,6 @@ export default function OwnerDashboard() {
             onCleanup={async () => {
               await forceDeleteOverdueVacateTenants()
               await autoDeleteExpiredNoticeTenants()
-              toast.success('Cleanup complete. Dashboard will refresh.')
               loadData()
             }}
             isSubmitting={isSubmitting}
