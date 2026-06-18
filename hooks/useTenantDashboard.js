@@ -312,7 +312,7 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: deleteComplaint with immediate UI update and forced reload
+  // FIXED: deleteComplaint with detailed error logging
   // ==========================================================================
   const deleteComplaint = async (complaintId) => {
     if (isSubmitting) return
@@ -325,18 +325,27 @@ export function useTenantDashboard() {
       // Optimistic update: remove from UI immediately
       setComplaints(prev => prev.filter(c => c.id !== complaintId))
 
-      // Delete from database
-      const { error } = await supabase
+      // Delete from database and return the deleted rows to verify
+      const { data, error } = await supabase
         .from('complaints')
         .delete()
         .eq('id', complaintId)
         .eq('tenant_id', tenant.id)
+        .select('id') // this will return the deleted rows if any
 
       if (error) {
         console.error('Delete error:', error)
         // Revert optimistic update on error
         await refreshData(true)
         throw error
+      }
+
+      // Check if any rows were actually deleted
+      if (!data || data.length === 0) {
+        console.warn('⚠️ No rows deleted. The complaint might not exist or you may not have permission.')
+        toast.warning('Complaint not found or already deleted.')
+        await refreshData(true)
+        return
       }
 
       toast.success('Complaint deleted.')
@@ -355,7 +364,7 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: cancelVacateRequest with immediate UI update and forced reload
+  // FIXED: cancelVacateRequest with detailed error logging
   // ==========================================================================
   const cancelVacateRequest = async () => {
     if (isSubmitting) return
@@ -387,15 +396,30 @@ export function useTenantDashboard() {
       setExistingVacateRequest(null)
       setTenant(prev => ({ ...prev, status: 'active', check_out_requested: false, notice_period_start: null, notice_period_end: null }))
 
-      // Delete the vacate request
-      const { error: deleteError } = await supabase
+      // Delete the vacate request and get the deleted rows
+      const { data: deleteData, error: deleteError } = await supabase
         .from('check_out_requests')
         .delete()
         .eq('id', existingVacateRequest.id)
-      if (deleteError) throw deleteError
+        .eq('tenant_id', tenant.id)
+        .select('id')
+
+      if (deleteError) {
+        console.error('Delete vacate error:', deleteError)
+        // Revert optimistic update
+        await refreshData(true)
+        throw deleteError
+      }
+
+      if (!deleteData || deleteData.length === 0) {
+        console.warn('⚠️ No vacate request deleted. Check permissions.')
+        toast.warning('Vacate request not found or already cancelled.')
+        await refreshData(true)
+        return
+      }
 
       // Update tenant status to active and clear notice fields
-      const { error: updateError } = await supabase
+      const { data: updateData, error: updateError } = await supabase
         .from('tenants')
         .update({
           status: 'active',
@@ -404,7 +428,19 @@ export function useTenantDashboard() {
           notice_period_end: null
         })
         .eq('id', tenant.id)
-      if (updateError) throw updateError
+        .select('id')
+
+      if (updateError) {
+        console.error('Update tenant error:', updateError)
+        throw updateError
+      }
+
+      if (!updateData || updateData.length === 0) {
+        console.warn('⚠️ Tenant record not updated. Check permissions.')
+        toast.warning('Tenant status could not be updated.')
+        await refreshData(true)
+        return
+      }
 
       toast.success('Vacate request cancelled. You remain as an active tenant.')
 
@@ -496,7 +532,7 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // Room change functions
+  // Room change functions (unchanged)
   // ==========================================================================
   const fetchAvailableRooms = async () => {
     try {
