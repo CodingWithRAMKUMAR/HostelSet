@@ -88,7 +88,7 @@ export default function OwnerDashboard() {
     settings, setSettings, roomMonthlyIncome, membershipLoading,
   } = useOwnerDashboard()
 
-  // ----- Safe arrays (defensive) -----
+  // ----- Defensive: ensure arrays -----
   const safeRooms = Array.isArray(rooms) ? rooms : []
   const safeTenants = Array.isArray(tenants) ? tenants : []
   const safeAllPayments = Array.isArray(allPayments) ? allPayments : []
@@ -99,14 +99,14 @@ export default function OwnerDashboard() {
   const safeNotices = Array.isArray(notices) ? notices : []
   const safeRoomChangeRequests = Array.isArray(roomChangeRequests) ? roomChangeRequests : []
 
-  // ----- SEARCH: filtered data for each tab (partial, case‑insensitive) -----
-  const searchLower = searchTerm.toLowerCase().trim()
+  // ----- Search (case‑insensitive, partial, across multiple fields) -----
+  const searchLower = searchTerm.trim().toLowerCase()
 
-  // Tenants & Payments (already in use)
   const filteredTenants = safeTenants.filter(t =>
     t?.name?.toLowerCase().includes(searchLower) ||
+    (t?.phone && t.phone.includes(searchLower)) ||
     (t?.room_number && t.room_number.toString().includes(searchLower)) ||
-    (t?.phone && t.phone.includes(searchLower))
+    (t?.email && t.email.toLowerCase().includes(searchLower))
   )
 
   const filteredPayments = safeAllPayments.filter(p =>
@@ -114,53 +114,46 @@ export default function OwnerDashboard() {
     (p?.tenants?.rooms?.room_number && p.tenants.rooms.room_number.toString().includes(searchLower))
   )
 
-  // Rooms
   const filteredRooms = safeRooms.filter(room =>
     room?.room_number?.toString().includes(searchLower) ||
     (room?.property?.name && room.property.name.toLowerCase().includes(searchLower))
   )
 
-  // Applications
   const filteredApplications = safeApplications.filter(app =>
     app?.name?.toLowerCase().includes(searchLower) ||
     (app?.phone && app.phone.includes(searchLower)) ||
     (app?.email && app.email.toLowerCase().includes(searchLower))
   )
 
-  // Complaints
   const filteredComplaints = safeComplaints.filter(c =>
     c?.title?.toLowerCase().includes(searchLower) ||
     (c?.tenant_name && c.tenant_name.toLowerCase().includes(searchLower)) ||
     (c?.description && c.description.toLowerCase().includes(searchLower))
   )
 
-  // Vacate Requests
   const filteredVacateRequests = safeVacateRequests.filter(v =>
     v?.tenant_name?.toLowerCase().includes(searchLower) ||
     (v?.room_number && v.room_number.toString().includes(searchLower))
   )
 
-  // Pre‑bookings
   const filteredPreBookings = safePreBookings.filter(b =>
     b?.name?.toLowerCase().includes(searchLower) ||
     (b?.phone && b.phone.includes(searchLower)) ||
     (b?.email && b.email.toLowerCase().includes(searchLower))
   )
 
-  // Notices
   const filteredNotices = safeNotices.filter(n =>
     n?.title?.toLowerCase().includes(searchLower) ||
     (n?.content && n.content.toLowerCase().includes(searchLower))
   )
 
-  // Room Change Requests
   const filteredRoomChanges = safeRoomChangeRequests.filter(rc =>
     rc?.tenants?.name?.toLowerCase().includes(searchLower) ||
     (rc?.old_room?.room_number && rc.old_room.room_number.toString().includes(searchLower)) ||
     (rc?.new_room?.room_number && rc.new_room.room_number.toString().includes(searchLower))
   )
 
-  // ----- Defensive helper for due today -----
+  // ----- Due Today (safe) -----
   const dueTodayTenants = safeTenants.filter(t => {
     try {
       return calculateRentDueStatus(t)?.daysUntilDue === 0
@@ -169,6 +162,7 @@ export default function OwnerDashboard() {
     }
   })
 
+  // ----- Loading & no property states -----
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -198,9 +192,10 @@ export default function OwnerDashboard() {
     )
   }
 
+  // ----- Render -----
   return (
     <div className="min-h-screen bg-white">
-      {/* Subscription Banner & Alerts (unchanged) */}
+      {/* Subscription Banner & Alerts */}
       {!membershipActive && (
         <div className="bg-yellow-100 border-b border-yellow-300 px-4 py-3 text-center sticky top-0 z-50">
           <p className="text-yellow-800 font-semibold">
@@ -301,7 +296,7 @@ export default function OwnerDashboard() {
       <div className="container mx-auto px-4 py-8">
         <StatsCards stats={stats} />
 
-        {/* ========== OVERVIEW TAB ========== */}
+        {/* ========== OVERVIEW TAB (safe) ========== */}
         {activeTab === 'overview' && (
           <div>
             {stats?.pendingRentConfirmations > 0 && (
@@ -472,7 +467,7 @@ export default function OwnerDashboard() {
           )})}
         </div>
 
-        {/* ========== TAB CONTENT WITH SEARCH FILTERS ========== */}
+        {/* ========== TAB CONTENT (with search filters) ========== */}
         {activeTab === 'rooms' && (
           <RoomList
             rooms={filteredRooms}
@@ -582,7 +577,7 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* ========== MODALS (unchanged) ========== */}
+      {/* ========== MODALS ========== */}
       <AnimatePresence>
         {showConfirmDeleteModal && tenantToDelete && (
           <ConfirmDeleteModal
