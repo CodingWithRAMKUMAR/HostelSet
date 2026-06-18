@@ -43,7 +43,7 @@ export function useTenantDashboard() {
   const [roomChangeReason, setRoomChangeReason] = useState('')
   const [pendingRoomChangeRequest, setPendingRoomChangeRequest] = useState(null)
 
-  // ----- Helper functions (unchanged) -----
+  // ----- Helper functions -----
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -137,21 +137,47 @@ export function useTenantDashboard() {
       setPaymentAmount(tenantData.pending_amount || tenantData.rent_amount)
       setProfileForm({ name: tenantData.name || '', phone: tenantData.phone || '', email: tenantData.email || '' })
 
+      // ----- Fetch owner UPI details with logging -----
+      console.log('🔍 Fetching UPI for owner_id:', tenantData.property?.owner_id)
+
       if (tenantData.property?.owner_id) {
-        const { data: settings } = await supabase
+        const { data: settings, error: settingsError } = await supabase
           .from('owner_settings')
           .select('upi_id, upi_phone')
           .eq('owner_id', tenantData.property.owner_id)
           .maybeSingle()
-        if (settings) {
-          setOwnerUpiId(settings.upi_id || '')
-          setOwnerUpiPhone(settings.upi_phone || '')
+
+        if (settingsError) {
+          console.warn('⚠️ Error fetching owner_settings:', settingsError)
+        }
+
+        console.log('📦 owner_settings row:', settings)
+
+        if (settings && settings.upi_id) {
+          setOwnerUpiId(settings.upi_id)
+          console.log('✅ Using UPI from owner_settings:', settings.upi_id)
+        } else if (tenantData.property?.owner_upi_id) {
+          setOwnerUpiId(tenantData.property.owner_upi_id)
+          console.log('✅ Using UPI from property.owner_upi_id:', tenantData.property.owner_upi_id)
         } else {
-          setOwnerUpiId(tenantData.property?.owner_upi_id || '')
+          setOwnerUpiId('')
+          console.warn('❌ No UPI ID found in either owner_settings or property')
+        }
+
+        if (settings && settings.upi_phone) {
+          setOwnerUpiPhone(settings.upi_phone)
+          console.log('✅ Using UPI phone:', settings.upi_phone)
+        } else {
           setOwnerUpiPhone('')
         }
       } else {
-        setOwnerUpiId(tenantData.property?.owner_upi_id || '')
+        if (tenantData.property?.owner_upi_id) {
+          setOwnerUpiId(tenantData.property.owner_upi_id)
+          console.log('✅ Using UPI from property (no owner_id):', tenantData.property.owner_upi_id)
+        } else {
+          setOwnerUpiId('')
+          console.warn('❌ No owner_id on property and no owner_upi_id')
+        }
         setOwnerUpiPhone('')
       }
 
@@ -258,7 +284,7 @@ export function useTenantDashboard() {
     if (userId) loadTenantData(userId, isBackground)
   }, [loadTenantData])
 
-  // ----- Handlers (all) -----
+  // ----- Handlers -----
   const updateProfile = async () => {
     if (isSubmitting) return
     if (!profileForm.name) { toast.error('Name is required'); return }
@@ -312,7 +338,7 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: deleteComplaint with detailed error logging
+  // FIXED: deleteComplaint with detailed logging
   // ==========================================================================
   const deleteComplaint = async (complaintId) => {
     if (isSubmitting) return
@@ -322,41 +348,31 @@ export function useTenantDashboard() {
       console.log('🗑️ Attempting to delete complaint ID:', complaintId)
       console.log('Tenant ID:', tenant.id)
 
-      // Optimistic update: remove from UI immediately
+      // Optimistic update
       setComplaints(prev => prev.filter(c => c.id !== complaintId))
 
-      // Delete from database and return the deleted rows to verify
       const { data, error } = await supabase
         .from('complaints')
         .delete()
         .eq('id', complaintId)
         .eq('tenant_id', tenant.id)
-        .select('id') // this will return the deleted rows if any
+        .select('id')
 
-      if (error) {
-        console.error('Delete error:', error)
-        // Revert optimistic update on error
-        await refreshData(true)
-        throw error
-      }
+      if (error) throw error
 
-      // Check if any rows were actually deleted
       if (!data || data.length === 0) {
-        console.warn('⚠️ No rows deleted. The complaint might not exist or you may not have permission.')
+        console.warn('⚠️ No rows deleted.')
         toast.warning('Complaint not found or already deleted.')
         await refreshData(true)
         return
       }
 
       toast.success('Complaint deleted.')
-
-      // Force full reload to ensure UI is in sync
       const userId = localStorage.getItem('userId')
       if (userId) await loadTenantData(userId, false)
     } catch (error) {
       console.error('Delete complaint error:', error)
       toast.error('Failed to delete complaint: ' + error.message)
-      // Re-fetch to restore consistency
       await refreshData(true)
     } finally {
       setIsSubmitting(false)
@@ -364,7 +380,7 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: cancelVacateRequest with detailed error logging
+  // FIXED: cancelVacateRequest with detailed logging
   // ==========================================================================
   const cancelVacateRequest = async () => {
     if (isSubmitting) return
@@ -373,7 +389,6 @@ export function useTenantDashboard() {
       return
     }
 
-    // Check for pre‑booking conflict
     const { data: preBooking } = await supabase
       .from('pre_bookings')
       .select('id')
@@ -392,11 +407,10 @@ export function useTenantDashboard() {
       console.log('🚫 Cancelling vacate request:', existingVacateRequest.id)
       console.log('Tenant ID:', tenant.id)
 
-      // Optimistic update: clear the request and update status immediately
+      // Optimistic update
       setExistingVacateRequest(null)
       setTenant(prev => ({ ...prev, status: 'active', check_out_requested: false, notice_period_start: null, notice_period_end: null }))
 
-      // Delete the vacate request and get the deleted rows
       const { data: deleteData, error: deleteError } = await supabase
         .from('check_out_requests')
         .delete()
@@ -404,21 +418,15 @@ export function useTenantDashboard() {
         .eq('tenant_id', tenant.id)
         .select('id')
 
-      if (deleteError) {
-        console.error('Delete vacate error:', deleteError)
-        // Revert optimistic update
-        await refreshData(true)
-        throw deleteError
-      }
+      if (deleteError) throw deleteError
 
       if (!deleteData || deleteData.length === 0) {
-        console.warn('⚠️ No vacate request deleted. Check permissions.')
+        console.warn('⚠️ No vacate request deleted.')
         toast.warning('Vacate request not found or already cancelled.')
         await refreshData(true)
         return
       }
 
-      // Update tenant status to active and clear notice fields
       const { data: updateData, error: updateError } = await supabase
         .from('tenants')
         .update({
@@ -430,27 +438,21 @@ export function useTenantDashboard() {
         .eq('id', tenant.id)
         .select('id')
 
-      if (updateError) {
-        console.error('Update tenant error:', updateError)
-        throw updateError
-      }
+      if (updateError) throw updateError
 
       if (!updateData || updateData.length === 0) {
-        console.warn('⚠️ Tenant record not updated. Check permissions.')
+        console.warn('⚠️ Tenant record not updated.')
         toast.warning('Tenant status could not be updated.')
         await refreshData(true)
         return
       }
 
       toast.success('Vacate request cancelled. You remain as an active tenant.')
-
-      // Force full reload to ensure UI is in sync
       const userId = localStorage.getItem('userId')
       if (userId) await loadTenantData(userId, false)
     } catch (error) {
       console.error('Cancel vacate error:', error)
       toast.error('Failed to cancel request: ' + error.message)
-      // Re-fetch to restore consistency
       await refreshData(true)
     } finally {
       setIsSubmitting(false)
@@ -532,7 +534,7 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // Room change functions (unchanged)
+  // Room change functions (fixed)
   // ==========================================================================
   const fetchAvailableRooms = async () => {
     try {
