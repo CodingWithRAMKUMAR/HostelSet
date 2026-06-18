@@ -307,13 +307,14 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: deleteComplaint – confirms deletion before updating UI
+  // FIXED: deleteComplaint – always sync with database after attempt
   // ==========================================================================
   const deleteComplaint = async (complaintId) => {
     if (isSubmitting) return
     if (!confirm('Delete this complaint? This action cannot be undone.')) return
     setIsSubmitting(true)
     try {
+      console.log('Deleting complaint ID:', complaintId)
       const { data, error } = await supabase
         .from('complaints')
         .delete()
@@ -323,16 +324,20 @@ export function useTenantDashboard() {
       if (error) throw error
       if (!data || data.length === 0) {
         toast.error('Complaint not found or already deleted.')
+        // Refresh to sync UI with DB
+        await refreshData(true)
         return
       }
       toast.success('Complaint deleted.')
       // Update local state immediately
       setComplaints(prev => prev.filter(c => c.id !== complaintId))
-      // Optionally refresh in background to sync (but real-time will handle)
-      // refreshData(true) // we can skip to avoid flicker
+      // Refresh in background to ensure consistency (real-time will also help)
+      await refreshData(true)
     } catch (error) {
       console.error('Delete complaint error:', error)
       toast.error('Failed to delete complaint: ' + error.message)
+      // Refresh to sync in case of error
+      await refreshData(true)
     } finally {
       setIsSubmitting(false)
     }
