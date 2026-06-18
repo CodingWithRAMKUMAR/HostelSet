@@ -1,12 +1,12 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { useRouter } from 'next/router'
+import { useRouter }from 'next/router'
 import { supabase } from '../../lib/supabase'
 import { useOwnerDashboard } from '../../hooks/useOwnerDashboard'
 import { formatCurrency, formatDate } from '../../lib/utils'
 
-// Content Components (static – always needed)
+// Content Components (static)
 import StatsCards from '../../components/owner/StatsCards'
 import RoomList from '../../components/owner/RoomList'
 import TenantTable from '../../components/owner/TenantTable'
@@ -85,9 +85,29 @@ export default function OwnerDashboard() {
     forceDeleteOverdueVacateTenants, autoDeleteExpiredNoticeTenants, loadData,
     sharingTypes, roomForm, setRoomForm, noticeForm, setNoticeForm,
     formData, setFormData, paymentAmount, setPaymentAmount,
-    settings, setSettings,   // ✅ setSettings is now destructured
-    roomMonthlyIncome, membershipLoading,
+    settings, setSettings, roomMonthlyIncome, membershipLoading,
   } = useOwnerDashboard()
+
+  // ----- Safe arrays for rendering -----
+  const safeRooms = rooms || []
+  const safeTenants = tenants || []
+  const safeAllPayments = allPayments || []
+  const safeApplications = applications || []
+  const safeComplaints = complaints || []
+  const safeVacateRequests = vacateRequests || []
+  const safePreBookings = preBookings || []
+  const safeNotices = notices || []
+  const safeRoomChangeRequests = roomChangeRequests || []
+
+  const filteredTenants = safeTenants.filter(t =>
+    t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (t.room_number && t.room_number.toString().includes(searchTerm))
+  )
+
+  const filteredPayments = safeAllPayments.filter(p =>
+    p.tenants?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.tenants?.rooms?.room_number && p.tenants.rooms.room_number.toString().includes(searchTerm))
+  )
 
   if (loading) {
     return (
@@ -117,26 +137,6 @@ export default function OwnerDashboard() {
       </div>
     )
   }
-
-  const safeRooms = rooms || []
-  const safeTenants = tenants || []
-  const safeAllPayments = allPayments || []
-  const safeApplications = applications || []
-  const safeComplaints = complaints || []
-  const safeVacateRequests = vacateRequests || []
-  const safePreBookings = preBookings || []
-  const safeNotices = notices || []
-  const safeRoomChangeRequests = roomChangeRequests || []
-
-  const filteredTenants = safeTenants.filter(t =>
-    t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (t.room_number && t.room_number.toString().includes(searchTerm))
-  )
-
-  const filteredPayments = safeAllPayments.filter(p =>
-    p.tenants?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (p.tenants?.rooms?.room_number && p.tenants.rooms.room_number.toString().includes(searchTerm))
-  )
 
   return (
     <div className="min-h-screen bg-white">
@@ -241,6 +241,7 @@ export default function OwnerDashboard() {
       <div className="container mx-auto px-4 py-8">
         <StatsCards stats={stats} />
 
+        {/* ========== OVERVIEW TAB – FIXED ========== */}
         {activeTab === 'overview' && (
           <div>
             {stats.pendingRentConfirmations > 0 && (
@@ -253,13 +254,15 @@ export default function OwnerDashboard() {
                 <p className="font-semibold text-red-800">⚠️ {stats.pendingPaymentCount} tenant(s) awaiting payment confirmation. <button onClick={() => setActiveTab('tenants')} className="underline">Review</button></p>
               </div>
             )}
+
+            {/* Due Today */}
             <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
               <h3 className="font-semibold text-slate-800 mb-4">📅 Due Today</h3>
-              {tenants.filter(t => calculateRentDueStatus(t).daysUntilDue === 0).length === 0 ? (
+              {safeTenants.filter(t => calculateRentDueStatus(t).daysUntilDue === 0).length === 0 ? (
                 <p className="text-gray-500">No tenants due today.</p>
               ) : (
                 <div className="space-y-3">
-                  {tenants.filter(t => calculateRentDueStatus(t).daysUntilDue === 0).map(t => (
+                  {safeTenants.filter(t => calculateRentDueStatus(t).daysUntilDue === 0).map(t => (
                     <div key={t.id} className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
                       <div>
                         <p className="font-medium text-slate-700">{t.name}</p>
@@ -270,6 +273,54 @@ export default function OwnerDashboard() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Recent Tenants & Complaints – using safe arrays */}
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="bg-white rounded-xl border border-gray-100 p-6">
+                <h3 className="font-semibold text-slate-800 mb-4">📋 Recent Tenants</h3>
+                <div className="space-y-3">
+                  {safeTenants.slice(0,5).map(t => {
+                    const ds = calculateRentDueStatus(t)
+                    return (
+                      <div key={t.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <p className="font-medium text-slate-700">{t.name}</p>
+                          <p className="text-xs text-gray-400">Room {t.room_number || getRoomNumberById(t.room_id)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-slate-700">{formatCurrency(t.rent_amount)}</p>
+                          <p className={`text-xs ${ds.status === 'overdue' ? 'text-red-500' : ds.status === 'due_soon' ? 'text-orange-500' : 'text-green-500'}`}>{ds.message}</p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {safeTenants.length === 0 && <p className="text-gray-400 text-center py-4">No tenants yet</p>}
+                </div>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-100 p-6">
+                <h3 className="font-semibold text-slate-800 mb-4">🔧 Recent Complaints</h3>
+                <div className="space-y-3">
+                  {safeComplaints.slice(0,5).map(c => (
+                    <div key={c.id} className="p-3 bg-orange-50 rounded-lg">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-medium text-orange-700">{c.title}</p>
+                          <p className="text-xs text-gray-500 mt-1">From: {c.tenant_name}</p>
+                        </div>
+                        <button
+                          onClick={() => { setSelectedComplaint(c); setShowComplaintResponseModal(true) }}
+                          disabled={isSubmitting}
+                          className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700 disabled:opacity-50"
+                        >
+                          Respond
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {safeComplaints.length === 0 && <p className="text-gray-400 text-center py-4">No complaints yet</p>}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -464,7 +515,7 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* Modals */}
+      {/* ========== MODALS ========== */}
       <AnimatePresence>
         {showConfirmDeleteModal && tenantToDelete && (
           <ConfirmDeleteModal
@@ -533,7 +584,7 @@ export default function OwnerDashboard() {
         {showSettingsModal && (
           <SettingsModal
             settings={settings}
-            setSettings={setSettings}   // ✅ setSettings passed correctly
+            setSettings={setSettings}
             onSave={saveSettings}
             onCancel={() => setShowSettingsModal(false)}
             isSubmitting={isSubmitting}
