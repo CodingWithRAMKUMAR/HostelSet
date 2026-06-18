@@ -43,7 +43,7 @@ export function useTenantDashboard() {
   const [roomChangeReason, setRoomChangeReason] = useState('')
   const [pendingRoomChangeRequest, setPendingRoomChangeRequest] = useState(null)
 
-  // ----- Helper functions -----
+  // ----- Helper functions (unchanged) -----
   const calculateNextDueDate = () => {
     if (!tenant) return null
     const joinDate = new Date(tenant.move_in_date)
@@ -307,7 +307,7 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: deleteComplaint – now works reliably
+  // FIXED: deleteComplaint – permanently removes from UI and DB
   // ==========================================================================
   const deleteComplaint = async (complaintId) => {
     if (isSubmitting) return
@@ -316,44 +316,82 @@ export function useTenantDashboard() {
     try {
       console.log('🔍 Deleting complaint ID:', complaintId)
 
-      // First, verify the complaint exists and belongs to this tenant
-      const { data: check, error: checkError } = await supabase
-        .from('complaints')
-        .select('id')
-        .eq('id', complaintId)
-        .eq('tenant_id', tenant.id)
-        .maybeSingle()
-
-      if (checkError) {
-        throw new Error('Failed to verify complaint: ' + checkError.message)
-      }
-
-      if (!check) {
-        toast.error('Complaint not found or already deleted.')
-        await refreshData(true)
-        return
-      }
+      // Optimistic UI update
+      setComplaints(prev => prev.filter(c => c.id !== complaintId))
 
       // Perform deletion
       const { error } = await supabase
         .from('complaints')
         .delete()
         .eq('id', complaintId)
+        .eq('tenant_id', tenant.id)
 
-      if (error) throw error
+      if (error) {
+        // If error, revert optimistic update by re-fetching
+        await refreshData(true)
+        throw error
+      }
 
       toast.success('Complaint deleted.')
 
-      // Optimistic UI update
-      setComplaints(prev => prev.filter(c => c.id !== complaintId))
-
-      // Background refresh to ensure DB sync
+      // Refresh in background to sync (ensures UI matches DB)
       await refreshData(true)
     } catch (error) {
       console.error('Delete complaint error:', error)
       toast.error('Failed to delete complaint: ' + error.message)
       // Refresh to sync in case of error
       await refreshData(true)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // ==========================================================================
+  // FIXED: cancelVacateRequest – resets status and clears request
+  // ==========================================================================
+  const cancelVacateRequest = async () => {
+    if (isSubmitting) return
+    if (!existingVacateRequest) return
+
+    const { data: preBooking } = await supabase
+      .from('pre_bookings')
+      .select('id')
+      .eq('room_id', tenant.room_id)
+      .eq('status', 'approved')
+      .maybeSingle()
+    if (preBooking) {
+      toast.error('Cannot cancel vacate – a pre‑booking has already been approved for this room.')
+      return
+    }
+
+    if (!confirm('Cancel your vacate request? You will continue as a tenant.')) return
+
+    setIsSubmitting(true)
+    try {
+      // Delete the vacate request
+      await supabase.from('check_out_requests').delete().eq('id', existingVacateRequest.id)
+
+      // Update tenant status to active and clear notice fields
+      await supabase
+        .from('tenants')
+        .update({
+          status: 'active',
+          check_out_requested: false,
+          notice_period_start: null,
+          notice_period_end: null
+        })
+        .eq('id', tenant.id)
+
+      // Clear the local state
+      setExistingVacateRequest(null)
+
+      toast.success('Vacate request cancelled. You remain as an active tenant.')
+
+      // Refresh data to sync the UI
+      await refreshData(true)
+    } catch (error) {
+      console.error('Cancel vacate error:', error)
+      toast.error('Failed to cancel request: ' + error.message)
     } finally {
       setIsSubmitting(false)
     }
@@ -401,33 +439,6 @@ export function useTenantDashboard() {
     }
   }
 
-  const cancelVacateRequest = async () => {
-    if (isSubmitting) return
-    if (!existingVacateRequest) return
-    const { data: preBooking } = await supabase
-      .from('pre_bookings')
-      .select('id')
-      .eq('room_id', tenant.room_id)
-      .eq('status', 'approved')
-      .maybeSingle()
-    if (preBooking) {
-      toast.error('Cannot cancel vacate – a pre‑booking has already been approved for this room.')
-      return
-    }
-    if (!confirm('Cancel your vacate request? You will continue as a tenant.')) return
-    setIsSubmitting(true)
-    try {
-      await supabase.from('check_out_requests').delete().eq('id', existingVacateRequest.id)
-      await supabase.from('tenants').update({ status: 'active', check_out_requested: false, notice_period_start: null, notice_period_end: null }).eq('id', tenant.id)
-      toast.success('Vacate request cancelled. You remain as an active tenant.')
-      await refreshData(true)
-    } catch (error) {
-      toast.error('Failed to cancel request')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
   const submitPaymentWithProof = async () => {
     if (isSubmitting) return
     if (!paymentScreenshot) { toast.error('Please upload payment screenshot'); return }
@@ -461,7 +472,7 @@ export function useTenantDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: fetchAvailableRooms with better error handling
+  // FIXED: fetchAvailableRooms and submitRoomChangeRequest – using UUIDs
   // ==========================================================================
   const fetchAvailableRooms = async () => {
     try {
@@ -484,7 +495,7 @@ export function useTenantDashboard() {
         !pendingRoomIds.includes(room.id)
       )
       setAvailableRooms(available)
-      console.log('✅ Available rooms:', available.length)
+      console.log('✅ Available rooms:', available)
       if (available.length === 0) {
         toast.info('No rooms available for change at the moment.')
       }
@@ -502,13 +513,16 @@ export function useTenantDashboard() {
     setShowRoomChangeModal(true)
   }
 
-  // ==========================================================================
-  // FIXED: submitRoomChangeRequest – checks selected room correctly
-  // ==========================================================================
   const submitRoomChangeRequest = async () => {
     if (isSubmitting) return
     if (!selectedNewRoom) {
       toast.error('Please select a room')
+      return
+    }
+    // Ensure selectedNewRoom is a UUID (length 36, with hyphens)
+    if (selectedNewRoom.length !== 36 || !selectedNewRoom.includes('-')) {
+      toast.error('Invalid room selection. Please try again.')
+      console.error('Selected room is not a valid UUID:', selectedNewRoom)
       return
     }
     if (pendingRoomChangeRequest) {
