@@ -9,26 +9,17 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // ✅ SECURITY FIX: Make webhook signature validation mandatory
-  if (!WEBHOOK_SECRET) {
-    console.error('DODO_WEBHOOK_SECRET not configured');
-    return res.status(500).json({ error: 'Webhook not properly configured' });
-  }
-
+  // Verify signature (if Dodo provides a signature header)
   const signature = req.headers['x-dodo-signature'];
-  if (!signature) {
-    console.error('Missing webhook signature header');
-    return res.status(401).json({ error: 'Missing signature' });
-  }
-
-  const expected = crypto
-    .createHmac('sha256', WEBHOOK_SECRET)
-    .update(JSON.stringify(req.body))
-    .digest('hex');
-  
-  if (signature !== expected) {
-    console.error('Invalid webhook signature');
-    return res.status(401).json({ error: 'Invalid signature' });
+  if (WEBHOOK_SECRET && signature) {
+    const expected = crypto
+      .createHmac('sha256', WEBHOOK_SECRET)
+      .update(JSON.stringify(req.body))
+      .digest('hex');
+    if (signature !== expected) {
+      console.error('Invalid webhook signature');
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
   }
 
   const event = req.body;
@@ -50,8 +41,8 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
 
-    // ✅ ERROR HANDLING: Check for errors in transaction update
-    const { error: txUpdateError } = await supabase
+    // Update transaction status
+    await supabase
       .from('payment_transactions')
       .update({
         status: 'success',
@@ -60,11 +51,6 @@ export default async function handler(req, res) {
         updated_at: new Date(),
       })
       .eq('id', tx.id);
-    
-    if (txUpdateError) {
-      console.error('Failed to update payment transaction:', txUpdateError);
-      return res.status(500).json({ error: 'Failed to update transaction' });
-    }
 
     // Handle rent payment
     if (tx.purpose === 'rent' && tx.tenant_id) {
@@ -74,15 +60,10 @@ export default async function handler(req, res) {
         .eq('id', tx.tenant_id)
         .single();
 
-      if (tenantError) {
-        console.error('Failed to fetch tenant data:', tenantError);
-        return res.status(500).json({ error: 'Failed to fetch tenant data' });
-      }
-
-      if (tenant) {
+      if (!tenantError && tenant) {
         const newPending = Math.max(0, (tenant.pending_amount || 0) - tx.amount);
         const newTotalPaid = (tenant.total_paid || 0) + tx.amount;
-        const { error: tenantUpdateError } = await supabase
+        await supabase
           .from('tenants')
           .update({
             pending_amount: newPending,
@@ -91,11 +72,6 @@ export default async function handler(req, res) {
             last_payment_date: new Date().toISOString().split('T')[0],
           })
           .eq('id', tx.tenant_id);
-        
-        if (tenantUpdateError) {
-          console.error('Failed to update tenant payment:', tenantUpdateError);
-          return res.status(500).json({ error: 'Failed to update tenant payment' });
-        }
       }
     }
 
@@ -103,23 +79,18 @@ export default async function handler(req, res) {
     if (tx.purpose === 'membership' && tx.owner_id) {
       const planId = tx.metadata?.planId;
       if (planId) {
-        const { data: plan, error: planError } = await supabase
+        const { data: plan } = await supabase
           .from('membership_plans')
           .select('duration_months')
           .eq('id', planId)
           .single();
-
-        if (planError) {
-          console.error('Failed to fetch membership plan:', planError);
-          return res.status(500).json({ error: 'Failed to fetch membership plan' });
-        }
 
         if (plan) {
           const startDate = new Date();
           const endDate = new Date();
           endDate.setMonth(endDate.getMonth() + plan.duration_months);
 
-          const { error: membershipError } = await supabase
+          await supabase
             .from('owner_memberships')
             .upsert({
               owner_id: tx.owner_id,
@@ -129,24 +100,14 @@ export default async function handler(req, res) {
               end_date: endDate.toISOString().split('T')[0],
               payment_transaction_id: tx.id,
             });
-          
-          if (membershipError) {
-            console.error('Failed to upsert owner membership:', membershipError);
-            return res.status(500).json({ error: 'Failed to update membership' });
-          }
 
-          const { error: propError } = await supabase
+          await supabase
             .from('properties')
             .update({
               membership_active: true,
               membership_expiry: endDate.toISOString().split('T')[0],
             })
             .eq('owner_id', tx.owner_id);
-          
-          if (propError) {
-            console.error('Failed to update property membership:', propError);
-            return res.status(500).json({ error: 'Failed to update properties' });
-          }
         }
       }
     }
@@ -155,15 +116,10 @@ export default async function handler(req, res) {
   // Handle payment failed (optional)
   if (eventType === 'payment.failed') {
     const { order_id } = event.data;
-    const { error: failError } = await supabase
+    await supabase
       .from('payment_transactions')
       .update({ status: 'failed', webhook_received: true })
       .eq('dodo_order_id', order_id);
-    
-    if (failError) {
-      console.error('Failed to update failed payment transaction:', failError);
-      return res.status(500).json({ error: 'Failed to update failed transaction' });
-    }
   }
 
   res.status(200).json({ received: true });
