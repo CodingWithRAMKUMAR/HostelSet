@@ -494,50 +494,9 @@ export function useOwnerDashboard() {
     }
   }
 
-  const ensureSingleOwnerSettingsRow = async (ownerId) => {
-    const { data: rows, error } = await supabase
-      .from('owner_settings')
-      .select('*')
-      .eq('owner_id', ownerId)
-      .order('updated_at', { ascending: false, nullsLast: true })
-      .order('id', { ascending: false })
-    if (error) throw error
-    if (!rows || rows.length <= 1) return rows?.[0] || null
-
-    const keep = rows[0]
-    const merge = rows.slice(1)
-    const mergedData = {
-      joining_fee: keep.joining_fee,
-      advance_months: keep.advance_months,
-      due_day: keep.due_day,
-      upi_id: keep.upi_id,
-      upi_phone: keep.upi_phone,
-      updated_at: keep.updated_at || new Date().toISOString()
-    }
-    for (const row of merge) {
-      if (row.joining_fee !== null && row.joining_fee !== undefined) mergedData.joining_fee = row.joining_fee
-      if (row.advance_months !== null && row.advance_months !== undefined) mergedData.advance_months = row.advance_months
-      if (row.due_day !== null && row.due_day !== undefined) mergedData.due_day = row.due_day
-      if (row.upi_id) mergedData.upi_id = row.upi_id
-      if (row.upi_phone) mergedData.upi_phone = row.upi_phone
-      if (row.updated_at && (!mergedData.updated_at || new Date(row.updated_at) > new Date(mergedData.updated_at))) {
-        mergedData.updated_at = row.updated_at
-      }
-    }
-    const { error: updateError } = await supabase
-      .from('owner_settings')
-      .update(mergedData)
-      .eq('id', keep.id)
-    if (updateError) throw updateError
-    const deleteIds = merge.map(r => r.id)
-    const { error: deleteError } = await supabase
-      .from('owner_settings')
-      .delete()
-      .in('id', deleteIds)
-    if (deleteError) throw deleteError
-    return { id: keep.id, ...mergedData }
-  }
-
+  // ==========================================================================
+  // SAVE SETTINGS – Simplified with upsert
+  // ==========================================================================
   const saveSettings = async () => {
     if (isSubmitting) return
     if (!settings.upi_id.trim() && !settings.upi_phone.trim()) {
@@ -547,67 +506,37 @@ export function useOwnerDashboard() {
     setIsSubmitting(true)
     try {
       const userId = localStorage.getItem('userId')
-      await ensureSingleOwnerSettingsRow(userId)
-      
-      let { data: existing, error: fetchError } = await supabase
+
+      // Use upsert – inserts a new row or updates if owner_id already exists
+      const { error } = await supabase
         .from('owner_settings')
-        .select('id')
-        .eq('owner_id', userId)
-        .maybeSingle()
-      
-      if (fetchError && fetchError.message.includes('multiple')) {
-        const { data: anyRow } = await supabase
-          .from('owner_settings')
-          .select('id')
-          .eq('owner_id', userId)
-          .limit(1)
-          .maybeSingle()
-        existing = anyRow
-        fetchError = null
-      }
-      if (fetchError) throw fetchError
-      
-      let error
-      if (existing) {
-        const { error: updateError } = await supabase
-          .from('owner_settings')
-          .update({
-            joining_fee: settings.joining_fee,
-            advance_months: settings.advance_months,
-            due_day: settings.due_day,
-            upi_id: settings.upi_id,
-            upi_phone: settings.upi_phone,
-            updated_at: new Date().toISOString()
-          })
-          .eq('owner_id', userId)
-        error = updateError
-      } else {
-        const { error: insertError } = await supabase
-          .from('owner_settings')
-          .insert({
+        .upsert(
+          {
             owner_id: userId,
             joining_fee: settings.joining_fee,
             advance_months: settings.advance_months,
             due_day: settings.due_day,
             upi_id: settings.upi_id,
             upi_phone: settings.upi_phone,
-            updated_at: new Date().toISOString()
-          })
-        error = insertError
-      }
-      
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'owner_id' } // assumes owner_id is unique
+        )
+
       if (error) throw error
 
+      // Also update the property's owner_upi_id if changed
       if (property && settings.upi_id) {
-        const { error: propError } = await supabase
+        await supabase
           .from('properties')
           .update({ owner_upi_id: settings.upi_id })
           .eq('id', property.id)
-        if (propError) console.warn('Property UPI update failed:', propError)
       }
 
       toast.success('Settings saved successfully!')
       setShowSettingsModal(false)
+
+      // Refresh settings and dashboard data in the background
       await loadSettings()
       await loadData(true)
     } catch (error) {
@@ -969,9 +898,6 @@ export function useOwnerDashboard() {
     finally { setIsSubmitting(false) }
   }
 
-  // ==========================================================================
-  // FIXED deleteNotice – optimistic update
-  // ==========================================================================
   const deleteNotice = async (noticeId) => {
     if (isSubmitting) return
     if (!confirm('Delete this notice?')) return
