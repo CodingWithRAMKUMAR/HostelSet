@@ -580,7 +580,7 @@ export function useTenantDashboard() {
   }, [])
 
   // ==========================================================================
-  // SURGICAL REAL‑TIME SUBSCRIPTIONS (FIXED NOTICE DELETION)
+  // SURGICAL REAL‑TIME SUBSCRIPTIONS (FIXED NOTICE DELETION + RLS COMPATIBILITY)
   // ==========================================================================
   useEffect(() => {
     if (!tenant?.id) return
@@ -666,7 +666,8 @@ export function useTenantDashboard() {
           if (payload.old?.property_id === tenant.property_id) {
             console.log('🗑️ Notice deleted:', payload.old)
             setNotices(prev => prev.filter(n => n.id !== payload.old.id))
-            refreshData(true) // Fallback to force a refresh in case socket drops
+            // Reload fallback in case socket duplicates
+            refreshData(true)
           }
         }
       )
