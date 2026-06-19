@@ -50,6 +50,7 @@ export function useOwnerDashboard() {
   const [membershipLoading, setMembershipLoading] = useState(false)
   const [membershipStatus, setMembershipStatus] = useState('loading')
   const autoRefreshRef = useRef(null)
+  const refreshTimeoutRef = useRef(null) // ADDED for debounce
 
   const [membershipExpiry, setMembershipExpiry] = useState(null)
   const [daysLeft, setDaysLeft] = useState(null)
@@ -116,17 +117,27 @@ export function useOwnerDashboard() {
     return tenants.filter(t => t.room_id === roomId)
   }
 
+  // ----- IMPROVED Rent Calculation -----
   const calculateRentDueStatus = (tenant) => {
     if (!tenant) return { status: 'paid', message: '', daysUntilDue: null, dueAmount: 0 }
 
-    const joinDate = new Date(tenant.move_in_date)
     const today = new Date()
-    const monthsSinceJoin = (today.getFullYear() - joinDate.getFullYear()) * 12 + (today.getMonth() - joinDate.getMonth())
+    const joinDate = new Date(tenant.move_in_date)
+    
+    // Calculate months since join, adjusted for day-of-month
+    let monthsSinceJoin = (today.getFullYear() - joinDate.getFullYear()) * 12 + (today.getMonth() - joinDate.getMonth())
+    if (today.getDate() < joinDate.getDate()) monthsSinceJoin -= 1
+
+    // Calculate how many full months have been paid for
     const monthsPaid = Math.floor((tenant.total_paid || 0) / tenant.rent_amount)
     const isCurrentMonthPaid = monthsPaid > monthsSinceJoin
 
     if (isCurrentMonthPaid || (tenant.pending_amount === 0 && tenant.rent_status === 'paid')) {
       const nextDueDate = new Date(today.getFullYear(), today.getMonth() + 1, joinDate.getDate())
+      // Adjust for months with fewer days (e.g., Jan 31 to Feb 28)
+      if (nextDueDate.getDate() !== joinDate.getDate()) {
+        nextDueDate.setDate(0)
+      }
       const daysUntilDue = Math.ceil((nextDueDate - today) / (1000 * 60 * 60 * 24))
       return {
         status: 'paid',
@@ -136,7 +147,11 @@ export function useOwnerDashboard() {
       }
     }
 
+    // Determine expected due date for the current month
     const expectedDate = new Date(today.getFullYear(), today.getMonth(), joinDate.getDate())
+    if (expectedDate.getDate() !== joinDate.getDate()) {
+      expectedDate.setDate(0)
+    }
     const daysUntilDue = Math.ceil((expectedDate - today) / (1000 * 60 * 60 * 24))
     const pendingAmount = tenant.pending_amount || tenant.rent_amount
 
@@ -195,7 +210,7 @@ export function useOwnerDashboard() {
     return { date: vacate.expected_check_out, daysLeft, overdue: false }
   }
 
-  // ----- Alert functions -----
+  // ----- Alert functions (unchanged) -----
   const addAlert = (message, type, linkTab, linkId = null) => {
     const id = Date.now() + Math.random()
     const newAlert = { id, message, type, linkTab, linkId, createdAt: Date.now() }
@@ -255,7 +270,7 @@ export function useOwnerDashboard() {
     }
   }
 
-  // ----- Auto-delete functions -----
+  // ----- Auto-delete functions (unchanged) -----
   const autoDeleteExpiredNoticeTenants = async () => {
     const today = new Date().toISOString().split('T')[0]
     const { data: expired, error: fetchErr } = await supabase
@@ -617,7 +632,7 @@ export function useOwnerDashboard() {
     }
   }
 
-  // ----- Membership -----
+  // ----- Membership (unchanged) -----
   const updateMembershipFromProperty = (propertyData) => {
     if (!propertyData) {
       setMembershipActive(false)
@@ -690,7 +705,7 @@ export function useOwnerDashboard() {
     }, 15000)
   }
 
-  // ----- Auth check -----
+  // ----- Auth check (unchanged) -----
   const checkAuthAndRedirect = async () => {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) {
@@ -711,7 +726,7 @@ export function useOwnerDashboard() {
     return { user, role: userRecord.role }
   }
 
-  // ----- Handlers -----
+  // ----- Handlers (unchanged) -----
   const deleteRoom = async (id) => {
     if (isSubmitting) return
     const room = rooms.find(r => r.id === id)
@@ -1344,7 +1359,9 @@ export function useOwnerDashboard() {
     }
   }
 
-  // ----- Initial useEffect (removed beforeunload and routeChange handlers) -----
+  // ==========================================================================
+  // Initial useEffect (Your existing logout fix is preserved)
+  // ==========================================================================
   useEffect(() => {
     const init = async () => {
       const auth = await checkAuthAndRedirect()
@@ -1377,18 +1394,27 @@ export function useOwnerDashboard() {
       }
     })
 
-    // Removed beforeunload and routeChange listeners
-    // Only cleanup subscriptions
+    // Cleanup all timeouts and subscriptions
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
+      if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current) // Added cleanup
       Object.values(alertTimeoutRef.current).forEach(clearTimeout)
       subscription.unsubscribe()
     }
   }, [])
 
   // ==========================================================================
-  // REAL‑TIME SUBSCRIPTIONS (without filter, check in callback)
+  // FIXED: REAL‑TIME SUBSCRIPTIONS (Debounced + No-op filter)
   // ==========================================================================
+  // 1. Create a debounced refresh to prevent infinite loops
+  const triggerRefresh = useCallback((isBackground = true) => {
+    if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
+    refreshTimeoutRef.current = setTimeout(() => {
+      loadData(isBackground);
+      refreshTimeoutRef.current = null;
+    }, 1500); // Wait 1.5 seconds before reloading
+  }, [loadData]);
+
   useEffect(() => {
     if (!property?.id) return
 
@@ -1401,7 +1427,7 @@ export function useOwnerDashboard() {
         (payload) => {
           if (payload.new && payload.new.property_id === property.id) {
             console.log('🔧 New complaint:', payload)
-            loadData(true)
+            triggerRefresh(true)
           }
         }
       )
@@ -1415,7 +1441,7 @@ export function useOwnerDashboard() {
         (payload) => {
           if (payload.new && payload.new.property_id === property.id) {
             console.log('👤 Tenant changed:', payload)
-            loadData(true)
+            triggerRefresh(true)
           }
         }
       )
@@ -1429,7 +1455,7 @@ export function useOwnerDashboard() {
         (payload) => {
           if (payload.new && payload.new.property_id === property.id) {
             console.log('📋 Application changed:', payload)
-            loadData(true)
+            triggerRefresh(true)
           }
         }
       )
@@ -1443,7 +1469,7 @@ export function useOwnerDashboard() {
         (payload) => {
           if (payload.new && payload.new.property_id === property.id) {
             console.log('🚪 Vacate changed:', payload)
-            loadData(true)
+            triggerRefresh(true)
           }
         }
       )
@@ -1456,21 +1482,28 @@ export function useOwnerDashboard() {
         { event: 'INSERT', schema: 'public', table: 'payment_history' },
         (payload) => {
           console.log('💰 Payment changed:', payload)
-          loadData(true)
+          triggerRefresh(true)
         }
       )
       .subscribe()
 
+    // ----- FIX: Rooms channel (no-op filter + debounce) -----
     const channelRooms = supabase
       .channel('rooms-owner')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'rooms' },
         (payload) => {
-          if (payload.new && payload.new.property_id === property.id) {
-            console.log('🏠 Room changed:', payload)
-            loadData(true)
+          // Only react to our property
+          if (payload.new && payload.new.property_id !== property.id) return;
+          
+          // CRITICAL: Skip if data hasn't actually changed (stops infinite loop)
+          if (payload.old && payload.new && JSON.stringify(payload.old) === JSON.stringify(payload.new)) {
+            return;
           }
+          
+          // Use debounced refresh instead of direct loadData
+          triggerRefresh(true);
         }
       )
       .subscribe()
@@ -1483,7 +1516,7 @@ export function useOwnerDashboard() {
         (payload) => {
           if (payload.new && payload.new.property_id === property.id) {
             console.log('📋 Pre‑booking changed:', payload)
-            loadData(true)
+            triggerRefresh(true)
           }
         }
       )
@@ -1497,7 +1530,7 @@ export function useOwnerDashboard() {
         (payload) => {
           if (payload.new && payload.new.property_id === property.id) {
             console.log('🔄 Room change changed:', payload)
-            loadData(true)
+            triggerRefresh(true)
           }
         }
       )
@@ -1513,10 +1546,10 @@ export function useOwnerDashboard() {
       supabase.removeChannel(channelPreBookings)
       supabase.removeChannel(channelRoomChanges)
     }
-  }, [property?.id])
+  }, [property?.id, triggerRefresh])
 
   // ==========================================================================
-  // RETURN (unchanged, but includes setSettings)
+  // RETURN (unchanged)
   // ==========================================================================
   return {
     loading,
