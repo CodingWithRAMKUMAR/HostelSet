@@ -113,7 +113,7 @@ export function useTenantDashboard() {
     toast.success('UPI Phone Number copied!')
   }
 
-  // ----- Data loading (optimized) -----
+  // ----- Data loading -----
   const loadTenantData = useCallback(async (userId, isBackground = false) => {
     if (!isBackground) setLoading(true)
     else setIsRefreshing(true)
@@ -137,7 +137,7 @@ export function useTenantDashboard() {
       setPaymentAmount(tenantData.pending_amount || tenantData.rent_amount)
       setProfileForm({ name: tenantData.name || '', phone: tenantData.phone || '', email: tenantData.email || '' })
 
-      // ----- Fetch owner UPI details with logging -----
+      // Fetch UPI details
       console.log('🔍 Fetching UPI for owner_id:', tenantData.property?.owner_id)
 
       if (tenantData.property?.owner_id) {
@@ -337,9 +337,6 @@ export function useTenantDashboard() {
     }
   }
 
-  // ==========================================================================
-  // FIXED: deleteComplaint with detailed logging
-  // ==========================================================================
   const deleteComplaint = async (complaintId) => {
     if (isSubmitting) return
     if (!confirm('Delete this complaint? This action cannot be undone.')) return
@@ -379,9 +376,6 @@ export function useTenantDashboard() {
     }
   }
 
-  // ==========================================================================
-  // FIXED: cancelVacateRequest with detailed logging
-  // ==========================================================================
   const cancelVacateRequest = async () => {
     if (isSubmitting) return
     if (!existingVacateRequest) {
@@ -533,9 +527,6 @@ export function useTenantDashboard() {
     }
   }
 
-  // ==========================================================================
-  // Room change functions (fixed)
-  // ==========================================================================
   const fetchAvailableRooms = async () => {
     try {
       const { data: allRooms, error } = await supabase
@@ -639,7 +630,7 @@ export function useTenantDashboard() {
     return { user, role: userRecord.role }
   }
 
-  // ----- Initial useEffect -----
+  // ----- Initial useEffect (removed beforeunload and routeChange) -----
   useEffect(() => {
     const init = async () => {
       const auth = await checkAuthAndRedirect()
@@ -662,31 +653,14 @@ export function useTenantDashboard() {
       }
     })
 
-    const handleBeforeUnload = (e) => {
-      if (localStorage.getItem('userId')) {
-        e.preventDefault()
-        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?'
-        return e.returnValue
-      }
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-
-    const handleRouteChange = (url) => {
-      if (localStorage.getItem('userId') && !confirm('You will lose any unsaved data. Do you want to leave the dashboard?')) {
-        throw 'Route change cancelled'
-      }
-    }
-    router.events?.on('routeChangeStart', handleRouteChange)
-
+    // Removed beforeunload and routeChange listeners
     return () => {
       subscription.unsubscribe()
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-      router.events?.off('routeChangeStart', handleRouteChange)
     }
   }, [])
 
   // ==========================================================================
-  // REAL‑TIME SUBSCRIPTIONS
+  // REAL‑TIME SUBSCRIPTIONS (without filter, check in callback)
   // ==========================================================================
   useEffect(() => {
     if (!tenant?.id) return
@@ -695,8 +669,13 @@ export function useTenantDashboard() {
       .channel('payments-tenant')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'payment_history', filter: `tenant_id=eq.${tenant.id}` },
-        () => { console.log('💰 Payment updated'); refreshData(true) }
+        { event: '*', schema: 'public', table: 'payment_history' },
+        (payload) => {
+          if (payload.new && payload.new.tenant_id === tenant.id) {
+            console.log('💰 Payment updated:', payload)
+            refreshData(true)
+          }
+        }
       )
       .subscribe()
 
@@ -704,8 +683,13 @@ export function useTenantDashboard() {
       .channel('complaints-tenant')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'complaints', filter: `tenant_id=eq.${tenant.id}` },
-        () => { console.log('🔧 Complaint updated'); refreshData(true) }
+        { event: '*', schema: 'public', table: 'complaints' },
+        (payload) => {
+          if (payload.new && payload.new.tenant_id === tenant.id) {
+            console.log('🔧 Complaint updated:', payload)
+            refreshData(true)
+          }
+        }
       )
       .subscribe()
 
@@ -713,8 +697,13 @@ export function useTenantDashboard() {
       .channel('notices-tenant')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'notices', filter: `property_id=eq.${tenant.property_id}` },
-        () => { console.log('📢 Notice posted'); refreshData(true) }
+        { event: '*', schema: 'public', table: 'notices' },
+        (payload) => {
+          if (payload.new && payload.new.property_id === tenant.property_id) {
+            console.log('📢 Notice posted:', payload)
+            refreshData(true)
+          }
+        }
       )
       .subscribe()
 
@@ -722,8 +711,13 @@ export function useTenantDashboard() {
       .channel('vacate-tenant')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'check_out_requests', filter: `tenant_id=eq.${tenant.id}` },
-        () => { console.log('🚪 Vacate changed'); refreshData(true) }
+        { event: '*', schema: 'public', table: 'check_out_requests' },
+        (payload) => {
+          if (payload.new && payload.new.tenant_id === tenant.id) {
+            console.log('🚪 Vacate changed:', payload)
+            refreshData(true)
+          }
+        }
       )
       .subscribe()
 
@@ -731,8 +725,13 @@ export function useTenantDashboard() {
       .channel('roomchange-tenant')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'room_change_requests', filter: `tenant_id=eq.${tenant.id}` },
-        () => { console.log('🔄 Room change changed'); refreshData(true) }
+        { event: '*', schema: 'public', table: 'room_change_requests' },
+        (payload) => {
+          if (payload.new && payload.new.tenant_id === tenant.id) {
+            console.log('🔄 Room change changed:', payload)
+            refreshData(true)
+          }
+        }
       )
       .subscribe()
 
@@ -746,7 +745,7 @@ export function useTenantDashboard() {
   }, [tenant?.id])
 
   // ==========================================================================
-  // RETURN
+  // RETURN (unchanged)
   // ==========================================================================
   return {
     loading,
