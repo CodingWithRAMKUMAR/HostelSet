@@ -1167,7 +1167,6 @@ export function useOwnerDashboard() {
           if (payload.new?.property_id === property.id) {
             console.log('🔧 New complaint:', payload.new)
             setComplaints(prev => [payload.new, ...prev])
-            // FIXED: Update the stats count so the badge shows correctly
             setStats(prev => ({ ...prev, totalComplaints: (prev.totalComplaints || 0) + 1 }))
             addAlert(`🔧 New complaint: ${payload.new.title}`, 'complaint', 'complaints', payload.new.id)
           }
@@ -1224,7 +1223,7 @@ export function useOwnerDashboard() {
       )
       .subscribe()
 
-    // ADDED: Vacate Requests (Surgical Updates)
+    // Vacate Requests (Surgical Updates)
     const channelVacate = supabase
       .channel('vacate-owner')
       .on(
@@ -1234,9 +1233,16 @@ export function useOwnerDashboard() {
           if (payload.new?.property_id !== property.id) return;
           if (payload.eventType === 'INSERT') {
             setVacateRequests(prev => [payload.new, ...prev])
+            setStats(prev => ({ ...prev, pendingVacate: prev.pendingVacate + 1 }))
             addAlert(`🚪 New vacate request from ${payload.new.tenant_name}`, 'vacate', 'vacate', payload.new.id)
           } else if (payload.eventType === 'UPDATE') {
             setVacateRequests(prev => prev.map(v => v.id === payload.new.id ? payload.new : v))
+            // Update badge count
+            if (payload.old.status === 'pending' && payload.new.status !== 'pending') {
+              setStats(prev => ({ ...prev, pendingVacate: Math.max(0, prev.pendingVacate - 1) }))
+            } else if (payload.old.status !== 'pending' && payload.new.status === 'pending') {
+              setStats(prev => ({ ...prev, pendingVacate: prev.pendingVacate + 1 }))
+            }
           } else if (payload.eventType === 'DELETE') {
             setVacateRequests(prev => prev.filter(v => v.id !== payload.old.id))
           }
@@ -1244,7 +1250,7 @@ export function useOwnerDashboard() {
       )
       .subscribe()
 
-    // ADDED: Room Change Requests (Surgical Updates)
+    // Room Change Requests (Surgical Updates)
     const channelRoomChange = supabase
       .channel('roomchange-owner')
       .on(
@@ -1256,7 +1262,12 @@ export function useOwnerDashboard() {
             setRoomChangeRequests(prev => [payload.new, ...prev])
             addAlert(`🔄 New room change request`, 'roomchange', 'room-change', payload.new.id)
           } else if (payload.eventType === 'UPDATE') {
-            setRoomChangeRequests(prev => prev.map(r => r.id === payload.new.id ? payload.new : r))
+            // Fix: Remove from list immediately if no longer pending to fix the tab count glitch
+            if (payload.new.status !== 'pending') {
+              setRoomChangeRequests(prev => prev.filter(r => r.id !== payload.new.id))
+            } else {
+              setRoomChangeRequests(prev => prev.map(r => r.id === payload.new.id ? payload.new : r))
+            }
           } else if (payload.eventType === 'DELETE') {
             setRoomChangeRequests(prev => prev.filter(r => r.id !== payload.old.id))
           }
@@ -1408,7 +1419,7 @@ export function useOwnerDashboard() {
     resendPasswordEmail,
     sharingTypes,
     startAutoRefresh,
-    forceDeleteOverdueVacateTenants: async () => {}, // Deprecated, handled by SQL
-    autoDeleteExpiredNoticeTenants: async () => {}, // Deprecated, handled by SQL
+    forceDeleteOverdueVacateTenants: async () => {},
+    autoDeleteExpiredNoticeTenants: async () => {},
   }
 }
