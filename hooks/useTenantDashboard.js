@@ -580,7 +580,7 @@ export function useTenantDashboard() {
   }, [])
 
   // ==========================================================================
-  // SURGICAL REAL‑TIME SUBSCRIPTIONS (FULLY UPDATED)
+  // SURGICAL REAL‑TIME SUBSCRIPTIONS (FIXED NOTICE DELETION)
   // ==========================================================================
   useEffect(() => {
     if (!tenant?.id) return
@@ -636,7 +636,7 @@ export function useTenantDashboard() {
       )
       .subscribe()
 
-    // Notices (Surgical Insert, Update, Delete) - Fixed for Real-time
+    // Notices (Surgical Insert, Update, Delete) - FIXED FOR REALTIME DELETION
     const channelNotices = supabase
       .channel('notices-tenant')
       .on(
@@ -664,7 +664,9 @@ export function useTenantDashboard() {
         { event: 'DELETE', schema: 'public', table: 'notices' },
         (payload) => {
           if (payload.old?.property_id === tenant.property_id) {
+            console.log('🗑️ Notice deleted:', payload.old)
             setNotices(prev => prev.filter(n => n.id !== payload.old.id))
+            refreshData(true) // Fallback to force a refresh in case socket drops
           }
         }
       )
@@ -683,7 +685,6 @@ export function useTenantDashboard() {
             } else if (payload.eventType === 'UPDATE') {
               setExistingVacateRequest(payload.new)
               if (payload.new.status === 'approved') {
-                // FIXED: Update tenant status to show Notice Period immediately
                 setTenant(prev => ({
                   ...prev,
                   status: 'notice_period',
@@ -715,7 +716,6 @@ export function useTenantDashboard() {
               setPendingRoomChangeRequest(payload.new)
             } else if (payload.eventType === 'UPDATE') {
               if (payload.new.status === 'approved' || payload.new.status === 'rejected') {
-                // FIXED: Clear state so the button activates immediately
                 setPendingRoomChangeRequest(null)
                 if (payload.new.status === 'approved') toast.success('✅ Your room change request was approved!');
                 else toast.error('❌ Your room change request was rejected.');
