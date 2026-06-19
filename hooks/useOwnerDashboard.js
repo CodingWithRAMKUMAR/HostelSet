@@ -189,9 +189,6 @@ export function useOwnerDashboard() {
     }
   }
 
-  // ==========================================
-  // FIXED: loadData WITHOUT Cleanup
-  // ==========================================
   const loadData = useCallback(async (isBackground = false) => {
     if (!isBackground) setLoading(true)
     else setIsRefreshing(true)
@@ -290,7 +287,7 @@ export function useOwnerDashboard() {
           overdueCount,
           noticePeriodCount,
           pendingPaymentCount,
-          pendingRentConfirmations,
+          pendingRentConfirmations, // Ensure this is synced
           monthlyIncome
         })
 
@@ -1144,7 +1141,7 @@ export function useOwnerDashboard() {
   }, [])
 
   // ==========================================================================
-  // SURGICAL REAL‑TIME SUBSCRIPTIONS (FULLY UPDATED)
+  // SURGICAL REAL‑TIME SUBSCRIPTIONS (FIXED PAYMENT BADGE)
   // ==========================================================================
   const triggerRefresh = useCallback((isBackground = true) => {
     if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
@@ -1191,7 +1188,7 @@ export function useOwnerDashboard() {
       )
       .subscribe()
 
-    // Payments (SURGICAL UPDATE FOR BADGE COUNT)
+    // Payments (SURGICAL UPDATE FOR BADGE COUNT - FIXED)
     const channelPayments = supabase
       .channel('payments-owner')
       .on(
@@ -1202,7 +1199,8 @@ export function useOwnerDashboard() {
           if (payload.new?.tenant_id) {
              setAllPayments(prev => [payload.new, ...prev])
              setPendingRentPayments(prev => [payload.new, ...prev])
-             setStats(prev => ({ ...prev, pendingRentConfirmations: prev.pendingRentConfirmations + 1 }))
+             // CRITICAL: Increment the badge count immediately
+             setStats(prev => ({ ...prev, pendingRentConfirmations: (prev.pendingRentConfirmations || 0) + 1 }))
           }
         }
       )
@@ -1215,7 +1213,7 @@ export function useOwnerDashboard() {
              // If status changed to success, remove from pending list and decrement count
              if (payload.old.status === 'payment_pending' && payload.new.status === 'success') {
                setPendingRentPayments(prev => prev.filter(p => p.id !== payload.new.id))
-               setStats(prev => ({ ...prev, pendingRentConfirmations: Math.max(0, prev.pendingRentConfirmations - 1) }))
+               setStats(prev => ({ ...prev, pendingRentConfirmations: Math.max(0, (prev.pendingRentConfirmations || 0) - 1) }))
              }
           }
         }
@@ -1227,7 +1225,7 @@ export function useOwnerDashboard() {
           if (payload.old?.tenant_id) {
              setAllPayments(prev => prev.filter(p => p.id !== payload.old.id))
              setPendingRentPayments(prev => prev.filter(p => p.id !== payload.old.id))
-             setStats(prev => ({ ...prev, pendingRentConfirmations: Math.max(0, prev.pendingRentConfirmations - 1) }))
+             setStats(prev => ({ ...prev, pendingRentConfirmations: Math.max(0, (prev.pendingRentConfirmations || 0) - 1) }))
           }
         }
       )
