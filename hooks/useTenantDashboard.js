@@ -580,12 +580,12 @@ export function useTenantDashboard() {
   }, [])
 
   // ==========================================================================
-  // SURGICAL REAL‑TIME SUBSCRIPTIONS (Tenant Side)
+  // SURGICAL REAL‑TIME SUBSCRIPTIONS (FULLY UPDATED)
   // ==========================================================================
   useEffect(() => {
     if (!tenant?.id) return
 
-    // Complaint (Surgical Insert/Delete)
+    // Complaint (Surgical Insert, Update & Delete)
     const channelComplaints = supabase
       .channel('complaints-tenant')
       .on(
@@ -593,8 +593,20 @@ export function useTenantDashboard() {
         { event: 'INSERT', schema: 'public', table: 'complaints' },
         (payload) => {
           if (payload.new?.tenant_id === tenant.id) {
-            console.log('🔧 New complaint:', payload.new)
             setComplaints(prev => [payload.new, ...prev])
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'complaints' },
+        (payload) => {
+          if (payload.new?.tenant_id === tenant.id) {
+            setComplaints(prev => prev.map(c => c.id === payload.new.id ? payload.new : c))
+            // FIXED: Alert tenant of owner response
+            if (payload.new.status !== payload.old?.status) {
+              toast.success(`📝 Complaint status updated to: ${payload.new.status}`)
+            }
           }
         }
       )
@@ -603,7 +615,6 @@ export function useTenantDashboard() {
         { event: 'DELETE', schema: 'public', table: 'complaints' },
         (payload) => {
           if (payload.old?.tenant_id === tenant.id) {
-            console.log('🗑️ Complaint deleted:', payload.old)
             setComplaints(prev => prev.filter(c => c.id !== payload.old.id))
           }
         }
@@ -626,7 +637,7 @@ export function useTenantDashboard() {
       )
       .subscribe()
 
-    // Notices (Surgical Insert)
+    // Notices (Surgical Insert, Update, Delete)
     const channelNotices = supabase
       .channel('notices-tenant')
       .on(
@@ -640,12 +651,82 @@ export function useTenantDashboard() {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'notices' },
+        (payload) => {
+          if (payload.new?.property_id === tenant.property_id) {
+            setNotices(prev => prev.map(n => n.id === payload.new.id ? payload.new : n))
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'notices' },
+        (payload) => {
+          if (payload.old?.property_id === tenant.property_id) {
+            setNotices(prev => prev.filter(n => n.id !== payload.old.id))
+          }
+        }
+      )
+      .subscribe()
+
+    // ADDED: Vacate Requests for Tenant (Surgical)
+    const channelVacate = supabase
+      .channel('vacate-tenant')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'check_out_requests' },
+        (payload) => {
+          if (payload.new?.tenant_id === tenant.id) {
+            if (payload.eventType === 'INSERT') {
+              setExistingVacateRequest(payload.new)
+            } else if (payload.eventType === 'UPDATE') {
+              setExistingVacateRequest(payload.new)
+              if (payload.new.status === 'approved') {
+                toast.success('✅ Your vacate request was approved by the owner!')
+              } else if (payload.new.status === 'rejected') {
+                toast.error('❌ Your vacate request was rejected.')
+              }
+            } else if (payload.eventType === 'DELETE') {
+              setExistingVacateRequest(null)
+            }
+          }
+        }
+      )
+      .subscribe()
+
+    // ADDED: Room Change Requests for Tenant (Surgical)
+    const channelRoomChange = supabase
+      .channel('roomchange-tenant')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'room_change_requests' },
+        (payload) => {
+          if (payload.new?.tenant_id === tenant.id) {
+            if (payload.eventType === 'INSERT') {
+              setPendingRoomChangeRequest(payload.new)
+            } else if (payload.eventType === 'UPDATE') {
+              setPendingRoomChangeRequest(payload.new)
+              if (payload.new.status === 'approved') {
+                toast.success('✅ Your room change request was approved!')
+              } else if (payload.new.status === 'rejected') {
+                toast.error('❌ Your room change request was rejected.')
+              }
+            } else if (payload.eventType === 'DELETE') {
+              setPendingRoomChangeRequest(null)
+            }
+          }
+        }
+      )
       .subscribe()
 
     return () => {
       supabase.removeChannel(channelComplaints)
       supabase.removeChannel(channelPayments)
       supabase.removeChannel(channelNotices)
+      supabase.removeChannel(channelVacate)
+      supabase.removeChannel(channelRoomChange)
     }
   }, [tenant?.id])
 
