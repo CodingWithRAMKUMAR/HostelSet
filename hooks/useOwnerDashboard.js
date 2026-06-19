@@ -190,7 +190,7 @@ export function useOwnerDashboard() {
   }
 
   // ==========================================
-  // FIXED: loadData WITHOUT Cleanup + NO recalc_room_occupancy
+  // FIXED: loadData WITHOUT Cleanup
   // ==========================================
   const loadData = useCallback(async (isBackground = false) => {
     if (!isBackground) setLoading(true)
@@ -1191,17 +1191,43 @@ export function useOwnerDashboard() {
       )
       .subscribe()
 
-    // Payments (Light Background Refresh for financial stats)
+    // Payments (SURGICAL UPDATE FOR BADGE COUNT)
     const channelPayments = supabase
       .channel('payments-owner')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'payment_history' },
         (payload) => {
-          console.log('💰 Payment changed:', payload)
+          console.log('💰 New pending payment:', payload.new)
           if (payload.new?.tenant_id) {
              setAllPayments(prev => [payload.new, ...prev])
-             triggerRefresh(true)
+             setPendingRentPayments(prev => [payload.new, ...prev])
+             setStats(prev => ({ ...prev, pendingRentConfirmations: prev.pendingRentConfirmations + 1 }))
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'payment_history' },
+        (payload) => {
+          if (payload.new?.tenant_id) {
+             setAllPayments(prev => prev.map(p => p.id === payload.new.id ? payload.new : p))
+             // If status changed to success, remove from pending list and decrement count
+             if (payload.old.status === 'payment_pending' && payload.new.status === 'success') {
+               setPendingRentPayments(prev => prev.filter(p => p.id !== payload.new.id))
+               setStats(prev => ({ ...prev, pendingRentConfirmations: Math.max(0, prev.pendingRentConfirmations - 1) }))
+             }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'payment_history' },
+        (payload) => {
+          if (payload.old?.tenant_id) {
+             setAllPayments(prev => prev.filter(p => p.id !== payload.old.id))
+             setPendingRentPayments(prev => prev.filter(p => p.id !== payload.old.id))
+             setStats(prev => ({ ...prev, pendingRentConfirmations: Math.max(0, prev.pendingRentConfirmations - 1) }))
           }
         }
       )
@@ -1237,7 +1263,6 @@ export function useOwnerDashboard() {
             addAlert(`🚪 New vacate request from ${payload.new.tenant_name}`, 'vacate', 'vacate', payload.new.id)
           } else if (payload.eventType === 'UPDATE') {
             setVacateRequests(prev => prev.map(v => v.id === payload.new.id ? payload.new : v))
-            // Update badge count
             if (payload.old.status === 'pending' && payload.new.status !== 'pending') {
               setStats(prev => ({ ...prev, pendingVacate: Math.max(0, prev.pendingVacate - 1) }))
             } else if (payload.old.status !== 'pending' && payload.new.status === 'pending') {
@@ -1262,7 +1287,6 @@ export function useOwnerDashboard() {
             setRoomChangeRequests(prev => [payload.new, ...prev])
             addAlert(`🔄 New room change request`, 'roomchange', 'room-change', payload.new.id)
           } else if (payload.eventType === 'UPDATE') {
-            // Fix: Remove from list immediately if no longer pending to fix the tab count glitch
             if (payload.new.status !== 'pending') {
               setRoomChangeRequests(prev => prev.filter(r => r.id !== payload.new.id))
             } else {
