@@ -603,7 +603,6 @@ export function useTenantDashboard() {
         (payload) => {
           if (payload.new?.tenant_id === tenant.id) {
             setComplaints(prev => prev.map(c => c.id === payload.new.id ? payload.new : c))
-            // FIXED: Alert tenant of owner response
             if (payload.new.status !== payload.old?.status) {
               toast.success(`📝 Complaint status updated to: ${payload.new.status}`)
             }
@@ -637,7 +636,7 @@ export function useTenantDashboard() {
       )
       .subscribe()
 
-    // Notices (Surgical Insert, Update, Delete)
+    // Notices (Surgical Insert, Update, Delete) - Fixed for Real-time
     const channelNotices = supabase
       .channel('notices-tenant')
       .on(
@@ -671,7 +670,7 @@ export function useTenantDashboard() {
       )
       .subscribe()
 
-    // ADDED: Vacate Requests for Tenant (Surgical)
+    // Vacate Requests for Tenant (Surgical)
     const channelVacate = supabase
       .channel('vacate-tenant')
       .on(
@@ -684,8 +683,16 @@ export function useTenantDashboard() {
             } else if (payload.eventType === 'UPDATE') {
               setExistingVacateRequest(payload.new)
               if (payload.new.status === 'approved') {
+                // FIXED: Update tenant status to show Notice Period immediately
+                setTenant(prev => ({
+                  ...prev,
+                  status: 'notice_period',
+                  notice_period_start: new Date().toISOString().split('T')[0],
+                  notice_period_end: payload.new.expected_check_out
+                }))
                 toast.success('✅ Your vacate request was approved by the owner!')
               } else if (payload.new.status === 'rejected') {
+                setTenant(prev => ({ ...prev, status: 'active' }))
                 toast.error('❌ Your vacate request was rejected.')
               }
             } else if (payload.eventType === 'DELETE') {
@@ -696,7 +703,7 @@ export function useTenantDashboard() {
       )
       .subscribe()
 
-    // ADDED: Room Change Requests for Tenant (Surgical)
+    // Room Change Requests for Tenant (Surgical)
     const channelRoomChange = supabase
       .channel('roomchange-tenant')
       .on(
@@ -707,11 +714,13 @@ export function useTenantDashboard() {
             if (payload.eventType === 'INSERT') {
               setPendingRoomChangeRequest(payload.new)
             } else if (payload.eventType === 'UPDATE') {
-              setPendingRoomChangeRequest(payload.new)
-              if (payload.new.status === 'approved') {
-                toast.success('✅ Your room change request was approved!')
-              } else if (payload.new.status === 'rejected') {
-                toast.error('❌ Your room change request was rejected.')
+              if (payload.new.status === 'approved' || payload.new.status === 'rejected') {
+                // FIXED: Clear state so the button activates immediately
+                setPendingRoomChangeRequest(null)
+                if (payload.new.status === 'approved') toast.success('✅ Your room change request was approved!');
+                else toast.error('❌ Your room change request was rejected.');
+              } else {
+                setPendingRoomChangeRequest(payload.new)
               }
             } else if (payload.eventType === 'DELETE') {
               setPendingRoomChangeRequest(null)
@@ -788,7 +797,7 @@ export function useTenantDashboard() {
     roomChangeReason,
     setRoomChangeReason,
     pendingRoomChangeRequest,
-    getRentStatus: () => calculateRentDueStatus(tenant), // Uses shared util
+    getRentStatus: () => calculateRentDueStatus(tenant),
     initiateUPIPayment,
     copyUpiId,
     copyUpiPhone,
