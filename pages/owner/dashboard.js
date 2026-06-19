@@ -82,7 +82,6 @@ export default function OwnerDashboard() {
     approveApplication, resendPasswordEmail,
     initiateMembershipPayment,
     saveSettings, handleAlertClick, removeAlert,
-    forceDeleteOverdueVacateTenants, autoDeleteExpiredNoticeTenants, loadData,
     sharingTypes, roomForm, setRoomForm, noticeForm, setNoticeForm,
     formData, setFormData, paymentAmount, setPaymentAmount,
     settings, setSettings, roomMonthlyIncome, membershipLoading,
@@ -536,10 +535,8 @@ export default function OwnerDashboard() {
             requests={filteredVacateRequests}
             onApprove={approveVacateRequest}
             onCleanup={async () => {
-              await forceDeleteOverdueVacateTenants()
-              await autoDeleteExpiredNoticeTenants()
-              toast.success('Cleanup complete. Dashboard will refresh.')
-              loadData()
+              // Cleanup now handled completely by SQL cron
+              toast.success('Database cleanup runs automatically every hour.')
             }}
             isSubmitting={isSubmitting}
           />
