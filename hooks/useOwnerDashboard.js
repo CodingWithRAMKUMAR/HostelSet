@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
-import { formatCurrency, formatDate, getSharingDetails, cleanPhoneNumber } from '../lib/utils'
+import { formatCurrency, formatDate, getSharingDetails, cleanPhoneNumber, calculateRentDueStatus } from '../lib/utils'
 import toast from 'react-hot-toast'
 
 export function useOwnerDashboard() {
@@ -50,7 +50,7 @@ export function useOwnerDashboard() {
   const [membershipLoading, setMembershipLoading] = useState(false)
   const [membershipStatus, setMembershipStatus] = useState('loading')
   const autoRefreshRef = useRef(null)
-  const refreshTimeoutRef = useRef(null) // ADDED for debounce
+  const refreshTimeoutRef = useRef(null)
 
   const [membershipExpiry, setMembershipExpiry] = useState(null)
   const [daysLeft, setDaysLeft] = useState(null)
@@ -115,87 +115,6 @@ export function useOwnerDashboard() {
   const getTenantsInRoom = (roomId) => {
     if (!tenants || !Array.isArray(tenants)) return []
     return tenants.filter(t => t.room_id === roomId)
-  }
-
-  // ----- IMPROVED Rent Calculation -----
-  const calculateRentDueStatus = (tenant) => {
-    if (!tenant) return { status: 'paid', message: '', daysUntilDue: null, dueAmount: 0 }
-
-    const today = new Date()
-    const joinDate = new Date(tenant.move_in_date)
-    
-    // Calculate months since join, adjusted for day-of-month
-    let monthsSinceJoin = (today.getFullYear() - joinDate.getFullYear()) * 12 + (today.getMonth() - joinDate.getMonth())
-    if (today.getDate() < joinDate.getDate()) monthsSinceJoin -= 1
-
-    // Calculate how many full months have been paid for
-    const monthsPaid = Math.floor((tenant.total_paid || 0) / tenant.rent_amount)
-    const isCurrentMonthPaid = monthsPaid > monthsSinceJoin
-
-    if (isCurrentMonthPaid || (tenant.pending_amount === 0 && tenant.rent_status === 'paid')) {
-      const nextDueDate = new Date(today.getFullYear(), today.getMonth() + 1, joinDate.getDate())
-      // Adjust for months with fewer days (e.g., Jan 31 to Feb 28)
-      if (nextDueDate.getDate() !== joinDate.getDate()) {
-        nextDueDate.setDate(0)
-      }
-      const daysUntilDue = Math.ceil((nextDueDate - today) / (1000 * 60 * 60 * 24))
-      return {
-        status: 'paid',
-        message: `Paid ✓ | Next due on ${formatDate(nextDueDate)}`,
-        daysUntilDue: daysUntilDue,
-        dueAmount: 0
-      }
-    }
-
-    // Determine expected due date for the current month
-    const expectedDate = new Date(today.getFullYear(), today.getMonth(), joinDate.getDate())
-    if (expectedDate.getDate() !== joinDate.getDate()) {
-      expectedDate.setDate(0)
-    }
-    const daysUntilDue = Math.ceil((expectedDate - today) / (1000 * 60 * 60 * 24))
-    const pendingAmount = tenant.pending_amount || tenant.rent_amount
-
-    if (daysUntilDue < 0) {
-      return {
-        status: 'overdue',
-        message: `Overdue by ${Math.abs(daysUntilDue)} days`,
-        daysUntilDue: daysUntilDue,
-        dueAmount: pendingAmount,
-        urgent: true
-      }
-    } else if (daysUntilDue === 0) {
-      return {
-        status: 'due_today',
-        message: 'Due today!',
-        daysUntilDue: 0,
-        dueAmount: pendingAmount,
-        urgent: true
-      }
-    } else if (daysUntilDue === 1) {
-      return {
-        status: 'due_tomorrow',
-        message: 'Due tomorrow',
-        daysUntilDue: 1,
-        dueAmount: pendingAmount,
-        urgent: false
-      }
-    } else if (daysUntilDue <= 5) {
-      return {
-        status: 'due_soon',
-        message: `Due in ${daysUntilDue} days`,
-        daysUntilDue: daysUntilDue,
-        dueAmount: pendingAmount,
-        urgent: false
-      }
-    } else {
-      return {
-        status: 'pending',
-        message: `Due on ${formatDate(expectedDate)}`,
-        daysUntilDue: daysUntilDue,
-        dueAmount: pendingAmount,
-        urgent: false
-      }
-    }
   }
 
   const getUpcomingVacateForRoom = (roomId) => {
@@ -270,87 +189,14 @@ export function useOwnerDashboard() {
     }
   }
 
-  // ----- Auto-delete functions (unchanged) -----
-  const autoDeleteExpiredNoticeTenants = async () => {
-    const today = new Date().toISOString().split('T')[0]
-    const { data: expired, error: fetchErr } = await supabase
-      .from('tenants')
-      .select('id, name, user_id, room_id')
-      .eq('status', 'notice_period')
-      .lte('notice_period_end', today)
-
-    if (fetchErr) {
-      console.error('Fetch expired notice tenants error:', fetchErr)
-      return
-    }
-
-    if (!expired || expired.length === 0) return
-
-    for (const t of expired) {
-      const { error: deleteErr } = await supabase.from('tenants').delete().eq('id', t.id)
-      if (!deleteErr) {
-        toast.success(`✅ ${t.name} has been removed (notice period ended).`, { duration: 4000 })
-        if (t.user_id) {
-          await supabase.from('users').delete().eq('id', t.user_id)
-        }
-        const room = rooms.find(r => r.id === t.room_id)
-        if (room) {
-          const newOccupants = Math.max(0, room.current_occupants - 1)
-          const newStatus = newOccupants === 0 ? 'vacant' : (newOccupants >= room.capacity ? 'occupied' : 'vacant')
-          await supabase.from('rooms').update({ current_occupants: newOccupants, status: newStatus }).eq('id', room.id)
-        }
-      } else {
-        console.error('Failed to delete tenant:', deleteErr)
-      }
-    }
-    await loadData(true)
-  }
-
-  const forceDeleteOverdueVacateTenants = async () => {
-    const today = new Date().toISOString().split('T')[0]
-    const { data: overdueVacates, error: fetchErr } = await supabase
-      .from('check_out_requests')
-      .select('id, tenant_id')
-      .eq('status', 'approved')
-      .lte('expected_check_out', today)
-
-    if (fetchErr) return
-    if (!overdueVacates || overdueVacates.length === 0) return
-
-    for (const vacate of overdueVacates) {
-      const { data: tenant } = await supabase
-        .from('tenants')
-        .select('id, name, user_id, room_id')
-        .eq('id', vacate.tenant_id)
-        .maybeSingle()
-      if (tenant) {
-        const { error: deleteErr } = await supabase.from('tenants').delete().eq('id', tenant.id)
-        if (!deleteErr) {
-          toast.success(`✅ ${tenant.name} automatically removed (vacate date passed).`, { duration: 4000 })
-          if (tenant.user_id) {
-            await supabase.from('users').delete().eq('id', tenant.user_id)
-          }
-          const room = rooms.find(r => r.id === tenant.room_id)
-          if (room) {
-            const newOccupants = Math.max(0, room.current_occupants - 1)
-            const newStatus = newOccupants === 0 ? 'vacant' : (newOccupants >= room.capacity ? 'occupied' : 'vacant')
-            await supabase.from('rooms').update({ current_occupants: newOccupants, status: newStatus }).eq('id', room.id)
-          }
-        }
-      }
-    }
-    await loadData(true)
-  }
-
-  // ----- loadData (unchanged) -----
+  // ==========================================
+  // FIXED: loadData WITHOUT Cleanup + NO recalc_room_occupancy
+  // ==========================================
   const loadData = useCallback(async (isBackground = false) => {
     if (!isBackground) setLoading(true)
     else setIsRefreshing(true)
 
     try {
-      await autoDeleteExpiredNoticeTenants()
-      await forceDeleteOverdueVacateTenants()
-
       const userId = localStorage.getItem('userId')
       const { data: propertyData } = await supabase
         .from('properties')
@@ -362,7 +208,9 @@ export function useOwnerDashboard() {
         setPropertyImages(propertyData.photos || [])
         updateMembershipFromProperty(propertyData)
 
-        await supabase.rpc('recalc_room_occupancy', { p_property_id: propertyData.id })
+        // Removed: await supabase.rpc('recalc_room_occupancy', ...)
+        // Removed: await autoDeleteExpiredNoticeTenants()
+        // Removed: await forceDeleteOverdueVacateTenants()
 
         const { data: roomsData } = await supabase
           .from('rooms')
@@ -705,7 +553,7 @@ export function useOwnerDashboard() {
     }, 15000)
   }
 
-  // ----- Auth check (unchanged) -----
+  // ----- Auth check -----
   const checkAuthAndRedirect = async () => {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) {
@@ -726,7 +574,7 @@ export function useOwnerDashboard() {
     return { user, role: userRecord.role }
   }
 
-  // ----- Handlers (unchanged) -----
+  // ----- Handlers (Your original handlers, unchanged) -----
   const deleteRoom = async (id) => {
     if (isSubmitting) return
     const room = rooms.find(r => r.id === id)
@@ -1198,149 +1046,46 @@ export function useOwnerDashboard() {
   }
 
   // ==========================================================================
-  // FIXED: approveApplication with robust error handling and rollback
+  // ATOMIC APPROVAL (Uses SQL function to prevent duplicate errors)
   // ==========================================================================
   const approveApplication = async (appId) => {
     if (isSubmitting) {
       toast.error('Please wait, already processing')
       return
     }
+    const app = applications.find(a => a.id === appId)
+    if (!app || app.status !== 'pending') {
+      toast.error('Application already processed or not found')
+      return
+    }
     setIsSubmitting(true)
     try {
-      const { data: app, error: appErr } = await supabase
-        .from('applications')
-        .select('*')
-        .eq('id', appId)
-        .single()
-      if (appErr || !app || app.status !== 'pending') {
-        toast.error('This application has already been processed')
-        return
-      }
+      const room = rooms.find(r => r.id === app.room_id)
+      if (!room) throw new Error('Room not found')
 
-      const { data: room } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('id', app.room_id)
-        .single()
-
-      let userId = null
-      const cleanPhone = cleanPhoneNumber(app.phone)
-
-      // Check for existing user
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id, email')
-        .or(`phone.eq.${cleanPhone},email.eq.${app.email}`)
-        .maybeSingle()
-
-      if (existingUser) {
-        userId = existingUser.id
-        // Update user record
-        await supabase
-          .from('users')
-          .update({
-            full_name: app.name,
-            email: app.email,
-            phone: cleanPhone,
-            role: 'tenant',
-            is_active: true,
-          })
-          .eq('id', userId)
-
-        // Ensure auth user exists (try signUp; if already exists, ignore error)
-        try {
-          await supabase.auth.signUp({
-            email: app.email,
-            password: Math.random().toString(36).slice(-8) + Math.random().toString(36).charAt(0).toUpperCase(),
-            options: { data: { full_name: app.name, role: 'tenant', phone: cleanPhone } },
-          })
-        } catch (signUpError) {
-          if (!signUpError.message.includes('already registered') && !signUpError.message.includes('already exists')) {
-            console.warn('SignUp error (may be safe):', signUpError)
-          }
-        }
-      } else {
-        // No user – create auth and public user
-        const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).charAt(0).toUpperCase()
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: app.email,
-          password: tempPassword,
-          options: { data: { full_name: app.name, role: 'tenant', phone: cleanPhone } },
-        })
-        if (authError) throw authError
-        userId = authData.user.id
-
-        const { error: userInsertError } = await supabase
-          .from('users')
-          .insert({
-            id: userId,
-            email: app.email,
-            full_name: app.name,
-            phone: cleanPhone,
-            role: 'tenant',
-            is_active: true,
-          })
-        if (userInsertError) {
-          if (!userInsertError.message.includes('duplicate key value') && userInsertError.code !== '23505') {
-            console.warn('User insert warning:', userInsertError)
-          }
-        }
-      }
-
-      // Create tenant record
-      const { error: tenantError } = await supabase
-        .from('tenants')
-        .insert({
-          user_id: userId,
-          property_id: app.property_id,
-          room_id: app.room_id,
-          name: app.name,
-          phone: cleanPhone,
-          email: app.email,
-          rent_amount: room.monthly_rent,
-          pending_amount: room.monthly_rent,
-          total_paid: 0,
-          rent_status: 'pending',
-          move_in_date: app.expected_move_in || new Date().toISOString().split('T')[0],
-          status: 'active',
-        })
-      if (tenantError) throw tenantError
-
-      // Update room occupancy
-      const newOccupants = (room.current_occupants || 0) + 1
-      const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
-      await supabase
-        .from('rooms')
-        .update({ current_occupants: newOccupants, status: newStatus })
-        .eq('id', app.room_id)
-
-      // Mark application as approved
-      await supabase
-        .from('applications')
-        .update({ status: 'approved', processed_at: new Date() })
-        .eq('id', appId)
-
-      // Send password‑set email
-      const { error: emailError } = await supabase.auth.resetPasswordForEmail(app.email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+      const { data, error } = await supabase.rpc('create_tenant_from_application', {
+        p_user_id: app.user_id || null,
+        p_app_id: app.id,
+        p_property_id: app.property_id,
+        p_room_id: app.room_id,
+        p_name: app.name,
+        p_phone: app.phone,
+        p_email: app.email,
+        p_rent_amount: room.monthly_rent,
+        p_move_in_date: app.expected_move_in || new Date().toISOString().split('T')[0]
       })
-
-      if (emailError) {
-        console.error('Password reset email error:', emailError)
-        toast.error(
-          `⚠️ Application approved, but password email could not be sent: ${emailError.message}. Use the "Resend" button if needed.`
-        )
+      
+      if (error) throw error
+      if (!data?.success) {
+        toast.error(data?.message || 'Failed to create tenant')
       } else {
-        toast.success('✅ Application approved! Password‑set email sent to tenant.')
+        toast.success('Application approved successfully!')
+        setApplications(prev => prev.filter(a => a.id !== appId))
+        await loadData(true)
       }
-
-      clearAlertForItem('complaint', appId)
-      await loadData(true)
     } catch (error) {
       console.error('Approve error:', error)
       toast.error('Failed to approve: ' + error.message)
-      // Re-fetch to ensure UI is in sync
-      await loadData(true)
     } finally {
       setIsSubmitting(false)
     }
@@ -1360,7 +1105,7 @@ export function useOwnerDashboard() {
   }
 
   // ==========================================================================
-  // Initial useEffect (Your existing logout fix is preserved)
+  // Initial useEffect (Preserved, no beforeunload)
   // ==========================================================================
   useEffect(() => {
     const init = async () => {
@@ -1394,87 +1139,62 @@ export function useOwnerDashboard() {
       }
     })
 
-    // Cleanup all timeouts and subscriptions
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
-      if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current) // Added cleanup
+      if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current)
       Object.values(alertTimeoutRef.current).forEach(clearTimeout)
       subscription.unsubscribe()
     }
   }, [])
 
   // ==========================================================================
-  // FIXED: REAL‑TIME SUBSCRIPTIONS (Debounced + No-op filter)
+  // SURGICAL REAL‑TIME SUBSCRIPTIONS
   // ==========================================================================
-  // 1. Create a debounced refresh to prevent infinite loops
   const triggerRefresh = useCallback((isBackground = true) => {
     if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
     refreshTimeoutRef.current = setTimeout(() => {
       loadData(isBackground);
       refreshTimeoutRef.current = null;
-    }, 1500); // Wait 1.5 seconds before reloading
+    }, 1500);
   }, [loadData]);
 
   useEffect(() => {
     if (!property?.id) return
 
-    // Subscribe to complaints
+    // Complaints (Surgical Insert)
     const channelComplaints = supabase
       .channel('complaints-owner')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'complaints' },
         (payload) => {
-          if (payload.new && payload.new.property_id === property.id) {
-            console.log('🔧 New complaint:', payload)
-            triggerRefresh(true)
+          if (payload.new?.property_id === property.id) {
+            console.log('🔧 New complaint:', payload.new)
+            setComplaints(prev => [payload.new, ...prev])
+            addAlert(`🔧 New complaint: ${payload.new.title}`, 'complaint', 'complaints', payload.new.id)
           }
         }
       )
       .subscribe()
 
+    // Tenants (Surgical Insert)
     const channelTenants = supabase
       .channel('tenants-owner')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'tenants' },
+        { event: 'INSERT', schema: 'public', table: 'tenants' },
         (payload) => {
-          if (payload.new && payload.new.property_id === property.id) {
-            console.log('👤 Tenant changed:', payload)
-            triggerRefresh(true)
+          if (payload.new?.property_id === property.id) {
+            console.log('👤 New tenant:', payload.new)
+            const tenantWithStatus = { ...payload.new, dueStatus: calculateRentDueStatus(payload.new) }
+            setTenants(prev => [...prev, tenantWithStatus])
+            setStats(prev => ({ ...prev, occupied: prev.occupied + 1, vacant: prev.vacant - 1 }))
           }
         }
       )
       .subscribe()
 
-    const channelApplications = supabase
-      .channel('applications-owner')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'applications' },
-        (payload) => {
-          if (payload.new && payload.new.property_id === property.id) {
-            console.log('📋 Application changed:', payload)
-            triggerRefresh(true)
-          }
-        }
-      )
-      .subscribe()
-
-    const channelVacate = supabase
-      .channel('vacate-owner')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'check_out_requests' },
-        (payload) => {
-          if (payload.new && payload.new.property_id === property.id) {
-            console.log('🚪 Vacate changed:', payload)
-            triggerRefresh(true)
-          }
-        }
-      )
-      .subscribe()
-
+    // Payments (Light Background Refresh for financial stats)
     const channelPayments = supabase
       .channel('payments-owner')
       .on(
@@ -1482,56 +1202,26 @@ export function useOwnerDashboard() {
         { event: 'INSERT', schema: 'public', table: 'payment_history' },
         (payload) => {
           console.log('💰 Payment changed:', payload)
-          triggerRefresh(true)
+          if (payload.new?.tenant_id) {
+             setAllPayments(prev => [payload.new, ...prev])
+             triggerRefresh(true)
+          }
         }
       )
       .subscribe()
 
-    // ----- FIX: Rooms channel (no-op filter + debounce) -----
+    // Rooms (Debounced + No-op filter)
     const channelRooms = supabase
       .channel('rooms-owner')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'rooms' },
         (payload) => {
-          // Only react to our property
-          if (payload.new && payload.new.property_id !== property.id) return;
-          
-          // CRITICAL: Skip if data hasn't actually changed (stops infinite loop)
-          if (payload.old && payload.new && JSON.stringify(payload.old) === JSON.stringify(payload.new)) {
-            return;
-          }
-          
-          // Use debounced refresh instead of direct loadData
-          triggerRefresh(true);
-        }
-      )
-      .subscribe()
-
-    const channelPreBookings = supabase
-      .channel('prebookings-owner')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'pre_bookings' },
-        (payload) => {
-          if (payload.new && payload.new.property_id === property.id) {
-            console.log('📋 Pre‑booking changed:', payload)
-            triggerRefresh(true)
-          }
-        }
-      )
-      .subscribe()
-
-    const channelRoomChanges = supabase
-      .channel('roomchange-owner')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'room_change_requests' },
-        (payload) => {
-          if (payload.new && payload.new.property_id === property.id) {
-            console.log('🔄 Room change changed:', payload)
-            triggerRefresh(true)
-          }
+          if (payload.new?.property_id !== property.id) return;
+          if (payload.old && payload.new && JSON.stringify(payload.old) === JSON.stringify(payload.new)) return;
+          console.log('🏠 Room changed:', payload.new)
+          setRooms(prev => prev.map(r => r.id === payload.new.id ? payload.new : r))
+          triggerRefresh(true)
         }
       )
       .subscribe()
@@ -1539,17 +1229,13 @@ export function useOwnerDashboard() {
     return () => {
       supabase.removeChannel(channelComplaints)
       supabase.removeChannel(channelTenants)
-      supabase.removeChannel(channelApplications)
-      supabase.removeChannel(channelVacate)
       supabase.removeChannel(channelPayments)
       supabase.removeChannel(channelRooms)
-      supabase.removeChannel(channelPreBookings)
-      supabase.removeChannel(channelRoomChanges)
     }
   }, [property?.id, triggerRefresh])
 
   // ==========================================================================
-  // RETURN (unchanged)
+  // RETURN (Unchanged)
   // ==========================================================================
   return {
     loading,
@@ -1682,7 +1368,7 @@ export function useOwnerDashboard() {
     resendPasswordEmail,
     sharingTypes,
     startAutoRefresh,
-    forceDeleteOverdueVacateTenants,
-    autoDeleteExpiredNoticeTenants,
+    forceDeleteOverdueVacateTenants: async () => {}, // Deprecated, handled by SQL
+    autoDeleteExpiredNoticeTenants: async () => {}, // Deprecated, handled by SQL
   }
 }
