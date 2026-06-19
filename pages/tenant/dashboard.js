@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion'
+  import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { useTenantDashboard } from '../../hooks/useTenantDashboard'
 import { formatCurrency, formatDate, getSharingDetails } from '../../lib/utils'
@@ -87,7 +87,8 @@ export default function TenantDashboard() {
     handleLogout,
   } = useTenantDashboard()
 
-  const rentStatus = getRentStatus()
+  // ADDED: Safe fallback in case tenant data hasn't fully loaded
+  const rentStatus = getRentStatus() || { message: 'Loading...' }
   const isUrgent = rentStatus.urgent && (rentStatus.status === 'due_soon' || rentStatus.status === 'overdue')
 
   if (loading) {
