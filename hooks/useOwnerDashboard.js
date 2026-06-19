@@ -208,10 +208,6 @@ export function useOwnerDashboard() {
         setPropertyImages(propertyData.photos || [])
         updateMembershipFromProperty(propertyData)
 
-        // Removed: await supabase.rpc('recalc_room_occupancy', ...)
-        // Removed: await autoDeleteExpiredNoticeTenants()
-        // Removed: await forceDeleteOverdueVacateTenants()
-
         const { data: roomsData } = await supabase
           .from('rooms')
           .select('*')
@@ -1148,7 +1144,7 @@ export function useOwnerDashboard() {
   }, [])
 
   // ==========================================================================
-  // SURGICAL REAL‑TIME SUBSCRIPTIONS
+  // SURGICAL REAL‑TIME SUBSCRIPTIONS (FULLY UPDATED)
   // ==========================================================================
   const triggerRefresh = useCallback((isBackground = true) => {
     if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
@@ -1161,7 +1157,7 @@ export function useOwnerDashboard() {
   useEffect(() => {
     if (!property?.id) return
 
-    // Complaints (Surgical Insert)
+    // Complaints (Surgical Insert + Stats Update)
     const channelComplaints = supabase
       .channel('complaints-owner')
       .on(
@@ -1171,6 +1167,8 @@ export function useOwnerDashboard() {
           if (payload.new?.property_id === property.id) {
             console.log('🔧 New complaint:', payload.new)
             setComplaints(prev => [payload.new, ...prev])
+            // FIXED: Update the stats count so the badge shows correctly
+            setStats(prev => ({ ...prev, totalComplaints: (prev.totalComplaints || 0) + 1 }))
             addAlert(`🔧 New complaint: ${payload.new.title}`, 'complaint', 'complaints', payload.new.id)
           }
         }
@@ -1226,11 +1224,53 @@ export function useOwnerDashboard() {
       )
       .subscribe()
 
+    // ADDED: Vacate Requests (Surgical Updates)
+    const channelVacate = supabase
+      .channel('vacate-owner')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'check_out_requests' },
+        (payload) => {
+          if (payload.new?.property_id !== property.id) return;
+          if (payload.eventType === 'INSERT') {
+            setVacateRequests(prev => [payload.new, ...prev])
+            addAlert(`🚪 New vacate request from ${payload.new.tenant_name}`, 'vacate', 'vacate', payload.new.id)
+          } else if (payload.eventType === 'UPDATE') {
+            setVacateRequests(prev => prev.map(v => v.id === payload.new.id ? payload.new : v))
+          } else if (payload.eventType === 'DELETE') {
+            setVacateRequests(prev => prev.filter(v => v.id !== payload.old.id))
+          }
+        }
+      )
+      .subscribe()
+
+    // ADDED: Room Change Requests (Surgical Updates)
+    const channelRoomChange = supabase
+      .channel('roomchange-owner')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'room_change_requests' },
+        (payload) => {
+          if (payload.new?.property_id !== property.id) return;
+          if (payload.eventType === 'INSERT') {
+            setRoomChangeRequests(prev => [payload.new, ...prev])
+            addAlert(`🔄 New room change request`, 'roomchange', 'room-change', payload.new.id)
+          } else if (payload.eventType === 'UPDATE') {
+            setRoomChangeRequests(prev => prev.map(r => r.id === payload.new.id ? payload.new : r))
+          } else if (payload.eventType === 'DELETE') {
+            setRoomChangeRequests(prev => prev.filter(r => r.id !== payload.old.id))
+          }
+        }
+      )
+      .subscribe()
+
     return () => {
       supabase.removeChannel(channelComplaints)
       supabase.removeChannel(channelTenants)
       supabase.removeChannel(channelPayments)
       supabase.removeChannel(channelRooms)
+      supabase.removeChannel(channelVacate)
+      supabase.removeChannel(channelRoomChange)
     }
   }, [property?.id, triggerRefresh])
 
