@@ -757,3 +757,18 @@ export default function OwnerDashboard() {
     </div>
   )
 }
+// ==========================================
+// SAFETY NET: Defines resendPasswordEmail if the hook fails to export it
+// ==========================================
+const resendPasswordEmail = async (email) => {
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+    if (error) throw error
+    toast.success(`Password reset email resent to ${email}`)
+  } catch (error) {
+    console.error('Resend error:', error)
+    toast.error('Failed to resend: ' + error.message)
+  }
+}
