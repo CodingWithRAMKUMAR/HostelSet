@@ -287,7 +287,7 @@ export function useOwnerDashboard() {
           overdueCount,
           noticePeriodCount,
           pendingPaymentCount,
-          pendingRentConfirmations, // Ensure this is synced
+          pendingRentConfirmations,
           monthlyIncome
         })
 
@@ -1141,7 +1141,7 @@ export function useOwnerDashboard() {
   }, [])
 
   // ==========================================================================
-  // SURGICAL REAL‑TIME SUBSCRIPTIONS (FIXED PAYMENT BADGE)
+  // SURGICAL REAL‑TIME SUBSCRIPTIONS (FULLY PATCHED)
   // ==========================================================================
   const triggerRefresh = useCallback((isBackground = true) => {
     if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
@@ -1188,7 +1188,7 @@ export function useOwnerDashboard() {
       )
       .subscribe()
 
-    // Payments (SURGICAL UPDATE FOR BADGE COUNT - FIXED)
+    // Payments (SURGICAL UPDATE FOR BADGE COUNT)
     const channelPayments = supabase
       .channel('payments-owner')
       .on(
@@ -1199,7 +1199,6 @@ export function useOwnerDashboard() {
           if (payload.new?.tenant_id) {
              setAllPayments(prev => [payload.new, ...prev])
              setPendingRentPayments(prev => [payload.new, ...prev])
-             // CRITICAL: Increment the badge count immediately
              setStats(prev => ({ ...prev, pendingRentConfirmations: (prev.pendingRentConfirmations || 0) + 1 }))
           }
         }
@@ -1210,7 +1209,6 @@ export function useOwnerDashboard() {
         (payload) => {
           if (payload.new?.tenant_id) {
              setAllPayments(prev => prev.map(p => p.id === payload.new.id ? payload.new : p))
-             // If status changed to success, remove from pending list and decrement count
              if (payload.old.status === 'payment_pending' && payload.new.status === 'success') {
                setPendingRentPayments(prev => prev.filter(p => p.id !== payload.new.id))
                setStats(prev => ({ ...prev, pendingRentConfirmations: Math.max(0, (prev.pendingRentConfirmations || 0) - 1) }))
@@ -1247,19 +1245,20 @@ export function useOwnerDashboard() {
       )
       .subscribe()
 
-    // Vacate Requests (Surgical Updates)
+    // Vacate Requests (Surgical Updates - FIXED DELETE)
     const channelVacate = supabase
       .channel('vacate-owner')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'check_out_requests' },
         (payload) => {
-          if (payload.new?.property_id !== property.id) return;
           if (payload.eventType === 'INSERT') {
+            if (payload.new?.property_id !== property.id) return;
             setVacateRequests(prev => [payload.new, ...prev])
             setStats(prev => ({ ...prev, pendingVacate: prev.pendingVacate + 1 }))
             addAlert(`🚪 New vacate request from ${payload.new.tenant_name}`, 'vacate', 'vacate', payload.new.id)
           } else if (payload.eventType === 'UPDATE') {
+            if (payload.new?.property_id !== property.id) return;
             setVacateRequests(prev => prev.map(v => v.id === payload.new.id ? payload.new : v))
             if (payload.old.status === 'pending' && payload.new.status !== 'pending') {
               setStats(prev => ({ ...prev, pendingVacate: Math.max(0, prev.pendingVacate - 1) }))
@@ -1273,7 +1272,7 @@ export function useOwnerDashboard() {
       )
       .subscribe()
 
-    // Room Change Requests (Surgical Updates)
+    // Room Change Requests (Surgical Updates - FIXED INSERT)
     const channelRoomChange = supabase
       .channel('roomchange-owner')
       .on(
@@ -1281,17 +1280,27 @@ export function useOwnerDashboard() {
         { event: '*', schema: 'public', table: 'room_change_requests' },
         (payload) => {
           if (payload.new?.property_id !== property.id) return;
+
           if (payload.eventType === 'INSERT') {
-            setRoomChangeRequests(prev => [payload.new, ...prev])
-            addAlert(`🔄 New room change request`, 'roomchange', 'room-change', payload.new.id)
+            // Fetch nested data because INSERT payload is flat
+            supabase.from('room_change_requests')
+              .select(`*, tenants:tenant_id (*), old_room:old_room_id (*), new_room:new_room_id (*)`)
+              .eq('id', payload.new.id)
+              .single()
+              .then(({ data, error }) => {
+                if (!error && data) {
+                  setRoomChangeRequests(prev => [data, ...prev]);
+                  addAlert(`🔄 New room change request`, 'roomchange', 'room-change', data.id);
+                }
+              });
           } else if (payload.eventType === 'UPDATE') {
             if (payload.new.status !== 'pending') {
-              setRoomChangeRequests(prev => prev.filter(r => r.id !== payload.new.id))
+              setRoomChangeRequests(prev => prev.filter(r => r.id !== payload.new.id));
             } else {
-              setRoomChangeRequests(prev => prev.map(r => r.id === payload.new.id ? payload.new : r))
+              setRoomChangeRequests(prev => prev.map(r => r.id === payload.new.id ? payload.new : r));
             }
           } else if (payload.eventType === 'DELETE') {
-            setRoomChangeRequests(prev => prev.filter(r => r.id !== payload.old.id))
+            setRoomChangeRequests(prev => prev.filter(r => r.id !== payload.old.id));
           }
         }
       )
