@@ -212,7 +212,6 @@ export function useTenantDashboard() {
         .maybeSingle()
       setPendingRoomChangeRequest(pendingChange)
 
-      // Rent Status using SHARED function
       const rentStatus = calculateRentDueStatus(tenantData)
       const lastAlertDate = localStorage.getItem('lastTenantAlertDate')
       const today = new Date().toDateString()
@@ -580,7 +579,7 @@ export function useTenantDashboard() {
   }, [])
 
   // ==========================================================================
-  // SURGICAL REAL‑TIME SUBSCRIPTIONS (FIXED NOTICE DELETION + RLS COMPATIBILITY)
+  // SURGICAL REAL‑TIME SUBSCRIPTIONS (PATCHED FOR NOTICES & VACATE)
   // ==========================================================================
   useEffect(() => {
     if (!tenant?.id) return
@@ -630,13 +629,13 @@ export function useTenantDashboard() {
           if (payload.new?.tenant_id === tenant.id) {
             console.log('💰 New payment record:', payload.new)
             setPaymentHistory(prev => [payload.new, ...prev])
-            loadTenantData(tenant.user_id, true) // Light background refresh for total paid
+            loadTenantData(tenant.user_id, true) 
           }
         }
       )
       .subscribe()
 
-    // Notices (Surgical Insert, Update, Delete) - FIXED FOR REALTIME DELETION
+    // Notices (Surgical Insert, Update, DELETE - PATCHED)
     const channelNotices = supabase
       .channel('notices-tenant')
       .on(
@@ -663,17 +662,15 @@ export function useTenantDashboard() {
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'notices' },
         (payload) => {
-          if (payload.old?.property_id === tenant.property_id) {
-            console.log('🗑️ Notice deleted:', payload.old)
-            setNotices(prev => prev.filter(n => n.id !== payload.old.id))
-            // Reload fallback in case socket duplicates
-            refreshData(true)
-          }
+          // Removed property_id check. Since we are bound to the property, just delete by ID.
+          console.log('🗑️ Notice deleted:', payload.old)
+          setNotices(prev => prev.filter(n => n.id !== payload.old.id))
+          refreshData(true) // Fallback to make absolutely sure it's gone
         }
       )
       .subscribe()
 
-    // Vacate Requests for Tenant (Surgical)
+    // Vacate Requests for Tenant (Surgical - PATCHED STATUS UPDATE)
     const channelVacate = supabase
       .channel('vacate-tenant')
       .on(
@@ -689,6 +686,7 @@ export function useTenantDashboard() {
                 setTenant(prev => ({
                   ...prev,
                   status: 'notice_period',
+                  check_out_requested: true,
                   notice_period_start: new Date().toISOString().split('T')[0],
                   notice_period_end: payload.new.expected_check_out
                 }))
