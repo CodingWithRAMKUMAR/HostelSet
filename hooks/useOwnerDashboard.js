@@ -160,6 +160,19 @@ export function useOwnerDashboard() {
   const fetchTenantPayments = async (tenant) => { setSelectedTenantForPayments(tenant); try { const { data, error } = await supabase.from('payment_history').select('*').eq('tenant_id', tenant.id).order('payment_date', { ascending:false }); if (error) throw error; setTenantPayments(data || []); setShowTenantPaymentsModal(true) } catch (error) { toast.error('Failed to load payment history') } }
   const fetchTenantApplication = async (tenant) => { setLoadingProfile(true); try { const { data, error } = await supabase.from('applications').select('*').or(`phone.eq.${tenant.phone},email.eq.${tenant.email}`).eq('property_id', property.id).order('created_at', { ascending:false }).limit(1); if (error) throw error; setTenantApplication(data?.[0] || null); setSelectedProfileTenant(tenant); setShowTenantProfileModal(true) } catch (error) { console.error(error); toast.error('Could not fetch documents') } finally { setLoadingProfile(false) } }
 
+  const resendPasswordEmail = async (email) => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+      if (error) throw error
+      toast.success(`Password reset email resent to ${email}`)
+    } catch (error) {
+      console.error('Resend error:', error)
+      toast.error('Failed to resend: ' + error.message)
+    }
+  }
+
   useEffect(() => { const init = async () => { const auth = await checkAuthAndRedirect(); if (!auth) return; if (auth.role !== 'owner') { router.push('/login'); return } localStorage.setItem('userId', auth.user.id); localStorage.setItem('userEmail', auth.user.email || ''); localStorage.setItem('userName', auth.user.user_metadata?.full_name || ''); await loadData(false); await loadSettings(); if (property) { if (!membershipActive && membershipStatus === 'expired') { router.push('/owner/subscribe?reason=expired'); return } startAutoRefresh() } }; init(); const { data:{subscription} } = supabase.auth.onAuthStateChange((event, session) => { if (event === 'SIGNED_OUT') { localStorage.clear(); router.push('/login') } else if (event === 'TOKEN_REFRESHED') { console.log('Session refreshed') } }); return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current); Object.values(alertTimeoutRef.current).forEach(clearTimeout); if (subscription) subscription.unsubscribe() } }, [])
 
   const triggerRefresh = useCallback((isBackground = true) => { if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current); refreshTimeoutRef.current = setTimeout(() => { loadData(isBackground); refreshTimeoutRef.current = null }, 1500) }, [loadData]);
