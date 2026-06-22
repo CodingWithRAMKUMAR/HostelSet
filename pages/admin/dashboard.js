@@ -17,6 +17,7 @@ import { useAdminRoomChange } from '../../hooks/useAdminRoomChange';
 import { useAdminNotices } from '../../hooks/useAdminNotices';
 import { useAdminMembership } from '../../hooks/useAdminMembership';
 import { useAdminRoles } from '../../hooks/useAdminRoles';
+import { useAdminModals } from '../../hooks/useAdminModals'; // <-- NEW IMPORT
 import toast from 'react-hot-toast';
 
 // ----------------- UTILITY TABLE COMPONENT -----------------
@@ -39,6 +40,29 @@ const AdminTable = ({ headers, data, renderRow, emptyMessage }) => (
   </div>
 );
 
+// ----------------- DETAIL MODAL COMPONENT -----------------
+const DetailModal = ({ isOpen, onClose, title, data }) => {
+  if (!isOpen || !data) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl border border-orange-500/20">
+        <div className="bg-[#1a1a1a] p-5 flex justify-between items-center border-b border-orange-500/30">
+          <h3 className="text-white text-lg font-bold tracking-wide">{title}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl font-bold">&times;</button>
+        </div>
+        <div className="p-6 overflow-y-auto max-h-[60vh]">
+          <pre className="text-sm bg-gray-50 p-4 rounded-lg border border-gray-200 overflow-x-auto">
+            {JSON.stringify(data, null, 2)}
+          </pre>
+        </div>
+        <div className="p-4 border-t border-gray-100 flex justify-end">
+          <button onClick={onClose} className="bg-gray-200 hover:bg-gray-300 px-6 py-2 rounded-lg font-medium transition">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ----------------- MAIN DASHBOARD CONTENT -----------------
 function AdminDashboardContent() {
   const router = useRouter();
@@ -59,6 +83,7 @@ function AdminDashboardContent() {
   const { notices, postNotice, deleteNotice } = useAdminNotices();
   const { grantMembership, revokeMembership, loading: membershipLoading } = useAdminMembership();
   const { changeUserRole, loading: roleLoading } = useAdminRoles();
+  const { selectedProperty, selectedOwner, viewPropertyDetails, viewOwnerDetails, closeModals } = useAdminModals(); // <-- NEW HOOK
 
   const [activeTab, setActiveTab] = useState('overview');
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
@@ -100,7 +125,7 @@ function AdminDashboardContent() {
   return (
     <div className="min-h-screen bg-[#f8f9fa] font-sans selection:bg-orange-500 selection:text-white">
       
-      {/* ----- NAVBAR (Onyx + Gold Gradient) ----- */}
+      {/* ----- NAVBAR ----- */}
       <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-6 py-4 shadow-md border-b-2 border-orange-500/80">
         <div className="container mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -116,7 +141,7 @@ function AdminDashboardContent() {
 
       <div className="container mx-auto px-4 py-8">
         
-        {/* ----- STATS CARDS (Glassmorphism Gold Accents) ----- */}
+        {/* ----- STATS CARDS ----- */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           {statsData.map((stat, index) => (
             <div key={index} className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-gray-200/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-4">
@@ -131,7 +156,7 @@ function AdminDashboardContent() {
           ))}
         </div>
 
-        {/* ----- TABS (Premium Onyx Style) ----- */}
+        {/* ----- TABS ----- */}
         <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto">
           {tabs.map((tab) => (
             <button
@@ -158,18 +183,18 @@ function AdminDashboardContent() {
           </div>
         )}
 
-        {/* ----- PROPERTIES ----- */}
+        {/* ----- PROPERTIES (Now shows UUID & View Details) ----- */}
         {activeTab === 'properties' && (
           <AdminTable
-            headers={['Property Name', 'Owner', 'Address', 'Rooms', 'Actions']}
+            headers={['Property Name', 'Owner', 'Property ID (UUID)', 'Actions']}
             data={properties}
             renderRow={(p) => (
               <tr key={p.id} className="hover:bg-orange-50/50 transition">
                 <td className="px-6 py-4 font-semibold text-gray-800">{p.name}</td>
                 <td className="px-6 py-4">{p.users?.full_name || 'N/A'}</td>
-                <td className="px-6 py-4 text-gray-500">{p.address || 'N/A'}</td>
-                <td className="px-6 py-4 text-gray-500">{p.total_rooms || 0}</td>
-                <td className="px-6 py-4">
+                <td className="px-6 py-4 font-mono text-xs text-orange-600 bg-orange-50 rounded px-2 py-1 inline-block">{p.id}</td>
+                <td className="px-6 py-4 flex gap-2">
+                  <button onClick={() => viewPropertyDetails(p)} className="text-blue-600 hover:text-blue-800 font-semibold text-xs uppercase tracking-wider">View</button>
                   <button onClick={() => deleteProperty(p.id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Delete</button>
                 </td>
               </tr>
@@ -198,22 +223,23 @@ function AdminDashboardContent() {
           />
         )}
 
-        {/* ----- OWNERS ----- */}
+        {/* ----- OWNERS (Now shows UUID & View Details) ----- */}
         {activeTab === 'owners' && (
           <AdminTable
-            headers={['Owner Name', 'Email', 'Phone', 'Status', 'Actions']}
+            headers={['Owner Name', 'Email', 'Owner ID (UUID)', 'Status', 'Actions']}
             data={owners}
             renderRow={(o) => (
               <tr key={o.id} className="hover:bg-orange-50/50 transition">
                 <td className="px-6 py-4 font-semibold text-gray-800">{o.full_name}</td>
                 <td className="px-6 py-4 text-gray-500">{o.email}</td>
-                <td className="px-6 py-4 text-gray-500">{o.phone || 'N/A'}</td>
+                <td className="px-6 py-4 font-mono text-xs text-orange-600 bg-orange-50 rounded px-2 py-1 inline-block">{o.id}</td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${o.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                     {o.is_active ? 'Active' : 'Suspended'}
                   </span>
                 </td>
                 <td className="px-6 py-4 flex gap-2">
+                  <button onClick={() => viewOwnerDetails(o)} className="text-blue-600 hover:text-blue-800 font-semibold text-xs uppercase tracking-wider">View</button>
                   <button onClick={() => toggleOwnerStatus(o.id, o.is_active)} className={`font-semibold text-xs uppercase tracking-wider ${o.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-500 hover:text-green-700'}`}>
                     {o.is_active ? 'Suspend' : 'Activate'}
                   </button>
@@ -224,7 +250,7 @@ function AdminDashboardContent() {
           />
         )}
 
-        {/* ----- USERS (Includes Role Management) ----- */}
+        {/* ----- USERS ----- */}
         {activeTab === 'users' && (
           <AdminTable
             headers={['Full Name', 'Email', 'Role', 'Status', 'Actions']}
@@ -460,7 +486,7 @@ function AdminDashboardContent() {
           </div>
         )}
 
-        {/* ----- 💎 MEMBERSHIP PANEL (NEW) ----- */}
+        {/* ----- 💎 MEMBERSHIP PANEL ----- */}
         {activeTab === 'membership' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="mb-6 border-b border-gray-100 pb-4">
@@ -505,6 +531,20 @@ function AdminDashboardContent() {
           </div>
         )}
       </div>
+
+      {/* ----- DETAIL MODALS (Modular) ----- */}
+      <DetailModal 
+        isOpen={!!selectedProperty} 
+        onClose={closeModals} 
+        title="Property Details" 
+        data={selectedProperty} 
+      />
+      <DetailModal 
+        isOpen={!!selectedOwner} 
+        onClose={closeModals} 
+        title="Owner Details" 
+        data={selectedOwner} 
+      />
     </div>
   );
 }
