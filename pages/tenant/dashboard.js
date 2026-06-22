@@ -1,6 +1,7 @@
-  import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
-import { useTenantDashboard } from '../../hooks/useTenantDashboard'
+import { TenantProvider, useTenant } from '../../context/TenantContext' // <-- NEW LINE 1
+import { useNotices } from '../../hooks/useNotices' // <-- NEW LINE 2
 import { formatCurrency, formatDate, getSharingDetails } from '../../lib/utils'
 
 // Content Components (static)
