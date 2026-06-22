@@ -1,52 +1,50 @@
-import { useState, useEffect, useRef } from 'react'; // <-- Must include useRef
-import { useRouter } from 'next/router';
-
-import { motion, AnimatePresence } from 'framer-motion'
-import Link from 'next/link'
-import dynamic from 'next/dynamic'
-import { useRouter } from 'next/router'
-import { supabase } from '../../lib/supabase'
-import { formatCurrency, formatDate } from '../../lib/utils'
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/router'; // Only imported once here
+import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
+import dynamic from 'next/dynamic';
+import { supabase } from '../../lib/supabase';
+import { formatCurrency, formatDate } from '../../lib/utils';
 
 // Modular Imports
-import { useOwner, OwnerProvider } from '../../context/OwnerContext'
-import { useOwnerRooms } from '../../hooks/useOwnerRooms'
-import { useOwnerTenants } from '../../hooks/useOwnerTenants'
-import { useOwnerComplaints } from '../../hooks/useOwnerComplaints'
-import { useOwnerVacate } from '../../hooks/useOwnerVacate'
-import { useOwnerPayments } from '../../hooks/useOwnerPayments'
-import { useOwnerNotices } from '../../hooks/useOwnerNotices'
-import { useOwnerRoomChange } from '../../hooks/useOwnerRoomChange'
+import { useOwner, OwnerProvider } from '../../context/OwnerContext';
+import { useOwnerRooms } from '../../hooks/useOwnerRooms';
+import { useOwnerTenants } from '../../hooks/useOwnerTenants';
+import { useOwnerComplaints } from '../../hooks/useOwnerComplaints';
+import { useOwnerVacate } from '../../hooks/useOwnerVacate';
+import { useOwnerPayments } from '../../hooks/useOwnerPayments';
+import { useOwnerNotices } from '../../hooks/useOwnerNotices';
+import { useOwnerRoomChange } from '../../hooks/useOwnerRoomChange';
 
 // Content Components
-import StatsCards from '../../components/owner/StatsCards'
-import RoomList from '../../components/owner/RoomList'
-import TenantTable from '../../components/owner/TenantTable'
-import RentPaymentsList from '../../components/owner/RentPaymentsList'
-import PaymentHistoryTable from '../../components/owner/PaymentHistoryTable'
-import PreBookingList from '../../components/owner/PreBookingList'
-import ComplaintList from '../../components/owner/ComplaintList'
-import VacateRequestList from '../../components/owner/VacateRequestList'
-import NoticeList from '../../components/owner/NoticeList'
-import ApplicationList from '../../components/owner/ApplicationList'
-import RoomChangeRequestList from '../../components/owner/RoomChangeRequestList'
+import StatsCards from '../../components/owner/StatsCards';
+import RoomList from '../../components/owner/RoomList';
+import TenantTable from '../../components/owner/TenantTable';
+import RentPaymentsList from '../../components/owner/RentPaymentsList';
+import PaymentHistoryTable from '../../components/owner/PaymentHistoryTable';
+import PreBookingList from '../../components/owner/PreBookingList';
+import ComplaintList from '../../components/owner/ComplaintList';
+import VacateRequestList from '../../components/owner/VacateRequestList';
+import NoticeList from '../../components/owner/NoticeList';
+import ApplicationList from '../../components/owner/ApplicationList';
+import RoomChangeRequestList from '../../components/owner/RoomChangeRequestList';
 
 // Modal Components
-const ConfirmDeleteModal = dynamic(() => import('../../components/owner/modals/ConfirmDeleteModal'), { ssr: false })
-const AddTenantModal = dynamic(() => import('../../components/owner/modals/AddTenantModal'), { ssr: false })
-const AddRoomModal = dynamic(() => import('../../components/owner/modals/AddRoomModal'), { ssr: false })
-const CollectRentModal = dynamic(() => import('../../components/owner/modals/CollectRentModal'), { ssr: false })
-const PostNoticeModal = dynamic(() => import('../../components/owner/modals/PostNoticeModal'), { ssr: false })
-const SettingsModal = dynamic(() => import('../../components/owner/modals/SettingsModal'), { ssr: false })
-const ComplaintResponseModal = dynamic(() => import('../../components/owner/modals/ComplaintResponseModal'), { ssr: false })
-const RoomDetailsModal = dynamic(() => import('../../components/owner/modals/RoomDetailsModal'), { ssr: false })
-const MembershipModal = dynamic(() => import('../../components/owner/modals/MembershipModal'), { ssr: false })
-const PaymentConfirmModal = dynamic(() => import('../../components/owner/modals/PaymentConfirmModal'), { ssr: false })
-const ApplicationDetailModal = dynamic(() => import('../../components/owner/modals/ApplicationDetailModal'), { ssr: false })
-const TenantPaymentsModal = dynamic(() => import('../../components/owner/modals/TenantPaymentsModal'), { ssr: false })
-const TenantProfileModal = dynamic(() => import('../../components/owner/modals/TenantProfileModal'), { ssr: false })
-const RoomChangeReasonModal = dynamic(() => import('../../components/owner/modals/RoomChangeReasonModal'), { ssr: false })
-const ScreenshotModal = dynamic(() => import('../../components/owner/modals/ScreenshotModal'), { ssr: false })
+const ConfirmDeleteModal = dynamic(() => import('../../components/owner/modals/ConfirmDeleteModal'), { ssr: false });
+const AddTenantModal = dynamic(() => import('../../components/owner/modals/AddTenantModal'), { ssr: false });
+const AddRoomModal = dynamic(() => import('../../components/owner/modals/AddRoomModal'), { ssr: false });
+const CollectRentModal = dynamic(() => import('../../components/owner/modals/CollectRentModal'), { ssr: false });
+const PostNoticeModal = dynamic(() => import('../../components/owner/modals/PostNoticeModal'), { ssr: false });
+const SettingsModal = dynamic(() => import('../../components/owner/modals/SettingsModal'), { ssr: false });
+const ComplaintResponseModal = dynamic(() => import('../../components/owner/modals/ComplaintResponseModal'), { ssr: false });
+const RoomDetailsModal = dynamic(() => import('../../components/owner/modals/RoomDetailsModal'), { ssr: false });
+const MembershipModal = dynamic(() => import('../../components/owner/modals/MembershipModal'), { ssr: false });
+const PaymentConfirmModal = dynamic(() => import('../../components/owner/modals/PaymentConfirmModal'), { ssr: false });
+const ApplicationDetailModal = dynamic(() => import('../../components/owner/modals/ApplicationDetailModal'), { ssr: false });
+const TenantPaymentsModal = dynamic(() => import('../../components/owner/modals/TenantPaymentsModal'), { ssr: false });
+const TenantProfileModal = dynamic(() => import('../../components/owner/modals/TenantProfileModal'), { ssr: false });
+const RoomChangeReasonModal = dynamic(() => import('../../components/owner/modals/RoomChangeReasonModal'), { ssr: false });
+const ScreenshotModal = dynamic(() => import('../../components/owner/modals/ScreenshotModal'), { ssr: false });
 
 export default function OwnerDashboard() {
   return (
@@ -103,7 +101,7 @@ function OwnerDashboardContent() {
   const [activeTab, setActiveTab] = useState('overview');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [noticeForm, setNoticeForm] = useState({ title:'', content:'', type:'general', is_urgent:false });
+  const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
 
   const getRoomNumberById = (roomId) => { const room = rooms.find(r => r.id === roomId); return room ? room.room_number : 'N/A' }
   const getTenantsInRoom = (roomId) => tenants.filter(t => t.room_id === roomId)
