@@ -1,3 +1,6 @@
+import { useState, useEffect, useRef } from 'react'; // <-- Must include useRef
+import { useRouter } from 'next/router';
+
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
