@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start"
+    "vercel-build": "npm install --package-lock=false && npm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.8",
