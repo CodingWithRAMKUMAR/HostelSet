@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { cleanPhoneNumber } from '../lib/utils';
 import toast from 'react-hot-toast';
