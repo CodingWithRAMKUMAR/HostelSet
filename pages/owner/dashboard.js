@@ -5,7 +5,6 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { supabase } from '../../lib/supabase';
 import { formatCurrency, formatDate } from '../../lib/utils';
-import { ErrorBoundary } from '../../components/ErrorBoundary'; // 
 
 // Modular Imports
 import { useOwner, OwnerProvider } from '../../context/OwnerContext';
@@ -49,11 +48,9 @@ const ScreenshotModal = dynamic(() => import('../../components/owner/modals/Scre
 
 export default function OwnerDashboard() {
   return (
-    <ErrorBoundary> {/* <-- Wrap everything in here */}
-      <OwnerProvider>
-        <OwnerDashboardContent />
-      </OwnerProvider>
-    </ErrorBoundary>
+    <OwnerProvider>
+      <OwnerDashboardContent />
+    </OwnerProvider>
   );
 }
 
@@ -135,10 +132,10 @@ function OwnerDashboardContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="min-h-screen flex items-center justify-center bg-[#1a1a1a]">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-500">Loading dashboard...</p>
+          <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-orange-400">Loading your golden suite...</p>
         </div>
       </div>
     )
@@ -147,14 +144,14 @@ function OwnerDashboardContent() {
   if (!property) {
     return (
       <div className="min-h-screen bg-white">
-        <nav className="bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-slate-800">🏠 HOSTELSET</h1>
-          <button onClick={async () => { await supabase.auth.signOut(); localStorage.clear(); router.push('/') }} className="text-red-500">Logout</button>
+        <nav className="bg-[#1a1a1a] border-b border-orange-500/30 px-6 py-4 flex justify-between items-center text-white">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">🏠 HOSTELSET</h1>
+          <button onClick={async () => { await supabase.auth.signOut(); localStorage.clear(); router.push('/') }} className="text-red-400 hover:text-red-300 transition">Logout</button>
         </nav>
         <div className="text-center py-20">
           <div className="text-6xl mb-6">🏠</div>
-          <h1 className="text-2xl font-bold mb-4">Welcome to HOSTELSET!</h1>
-          <Link href="/owner/register-property" className="bg-slate-800 text-white px-6 py-3 rounded-full font-semibold hover:bg-slate-700 transition">
+          <h1 className="text-2xl font-bold mb-4 text-[#1a1a1a]">Welcome to HOSTELSET!</h1>
+          <Link href="/owner/register-property" className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-3 rounded-full font-semibold transition shadow-lg">
             Register Your First Property →
           </Link>
         </div>
@@ -173,54 +170,57 @@ function OwnerDashboardContent() {
   const searchLower = searchTerm.trim().toLowerCase()
 
   return (
-    <div className="min-h-screen bg-white">
-      {!membershipActive && (
-        <div className="bg-yellow-100 border-b border-yellow-300 px-4 py-3 text-center sticky top-0 z-50">
-          <p className="text-yellow-800 font-semibold">⭐ You're exploring the dashboard with limited access. <button onClick={() => setShowMembershipModal(true)} className="ml-2 underline text-yellow-900 font-bold hover:text-yellow-950">Subscribe now</button> to unlock all features.</p>
-        </div>
-      )}
-
-      <nav className="bg-white border-b border-gray-100 sticky top-0 z-40 px-6 py-4">
+    <div className="min-h-screen bg-[#f8f9fa] font-sans">
+      
+      {/* --- NAVBAR (Premium Onyx & Gold) --- */}
+      <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-6 py-4 shadow-lg border-b-2 border-orange-500/80">
         <div className="container mx-auto flex flex-wrap justify-between items-center gap-4">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-slate-800">🏠 HOSTELSET</h1>
-            <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full">Owner</span>
+            <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">🏠 HOSTELSET</h1>
+            <span className="text-xs bg-[#2a2a2a] text-orange-400/90 border border-orange-500/30 px-3 py-1 rounded-full">Owner</span>
           </div>
           <div className="flex items-center gap-4 flex-wrap">
-            <input type="text" placeholder="🔍 Search by name, room, phone, title..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="border border-gray-300 rounded-lg px-4 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-slate-500" />
-            <button onClick={() => setShowMembershipModal(true)} className={`px-3 py-1 rounded-lg text-sm font-semibold transition ${membershipActive ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{membershipActive ? '✅ Active' : '⭐ Buy Membership'}</button>
-            <button onClick={() => setShowSettingsModal(true)} className="text-gray-500 hover:text-slate-800 transition px-3 py-1 rounded-lg hover:bg-gray-100">⚙️ Settings</button>
-            <span className="text-sm hidden md:inline text-gray-500">{property.name}</span>
-            <button onClick={async () => { await supabase.auth.signOut(); localStorage.clear(); router.push('/') }} className="text-red-500 hover:text-red-600 transition">Logout</button>
+            <input type="text" placeholder="🔍 Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-[#2a2a2a] border border-gray-700/50 rounded-lg px-4 py-2 text-sm w-48 md:w-64 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 transition" />
+            <button onClick={() => setShowMembershipModal(true)} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition shadow-sm ${membershipActive ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-500/30' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>
+              {membershipActive ? '✅ Active' : '⭐ Subscribe'}
+            </button>
+            <button onClick={() => setShowSettingsModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5">⚙️</button>
+            <span className="text-sm hidden md:inline text-orange-300/80">{property.name}</span>
+            <button onClick={async () => { await supabase.auth.signOut(); localStorage.clear(); router.push('/') }} className="text-red-400 hover:text-red-300 transition font-medium">Logout</button>
           </div>
         </div>
       </nav>
 
       <div className="container mx-auto px-4 py-8">
+        
+        {/* --- STATS CARDS --- */}
         <StatsCards stats={stats} />
-        <div className="flex flex-wrap gap-3 mb-8">
-          <button onClick={() => membershipActive && setShowAddModal(true)} disabled={!membershipActive} className={`px-5 py-2 rounded-full text-sm font-semibold transition ${membershipActive ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>+ Add Tenant</button>
-          <button onClick={() => membershipActive && setShowRoomModal(true)} disabled={!membershipActive} className={`border-2 px-5 py-2 rounded-full text-sm font-semibold transition ${membershipActive ? 'border-slate-300 text-slate-700 hover:bg-slate-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>+ Add Room</button>
-          <button onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive} className={`border-2 px-5 py-2 rounded-full text-sm font-semibold transition ${membershipActive ? 'border-slate-300 text-slate-700 hover:bg-slate-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>📢 Post Notice</button>
-          <button onClick={() => membershipActive && setShowSettingsModal(true)} disabled={!membershipActive} className={`border-2 px-5 py-2 rounded-full text-sm font-semibold transition ${membershipActive ? 'border-blue-300 text-blue-700 hover:bg-blue-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>⚙️ Settings</button>
+
+        {/* --- ACTION BUTTONS (Glassmorphism) --- */}
+        <div className="flex flex-wrap gap-4 mb-8">
+          <button onClick={() => membershipActive && setShowAddModal(true)} disabled={!membershipActive} className={`px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-md ${membershipActive ? 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>+ Add Tenant</button>
+          <button onClick={() => membershipActive && setShowRoomModal(true)} disabled={!membershipActive} className={`px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>+ Add Room</button>
+          <button onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive} className={`px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>📢 Notice</button>
         </div>
 
-        <div className="flex flex-wrap border-b border-gray-200 mb-6 gap-2">
+        {/* --- TABS --- */}
+        <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto">
           {['overview', 'rooms', 'tenants', 'rent-payments', 'payment-history', 'complaints', 'vacate', 'room-change', 'notices'].map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} disabled={!membershipActive} className={`px-5 py-2 text-sm font-semibold capitalize transition-all rounded-t-lg ${activeTab === tab ? 'bg-slate-800 text-white' : membershipActive ? 'text-gray-500 hover:text-slate-700 hover:bg-gray-50' : 'text-gray-400 cursor-not-allowed'}`}>
-              {tab === 'rent-payments' && `💸 Rent Payments (${stats.pendingRentConfirmations})`}
-              {tab === 'payment-history' && '💳 Payment History'}
+            <button key={tab} onClick={() => setActiveTab(tab)} disabled={!membershipActive} className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${activeTab === tab ? 'bg-[#1a1a1a] text-white shadow-sm border-b-2 border-orange-500' : membershipActive ? 'text-gray-600 hover:text-orange-600 hover:bg-orange-50' : 'text-gray-400 cursor-not-allowed'}`}>
+              {tab === 'rent-payments' && `💸 Rent (${stats.pendingRentConfirmations})`}
+              {tab === 'payment-history' && '💳 History'}
               {tab === 'overview' && '📊 Overview'}
               {tab === 'rooms' && `🏠 Rooms (${rooms.length})`}
               {tab === 'tenants' && `👥 Tenants (${tenants.length})`}
               {tab === 'complaints' && `🔧 Complaints ${stats.totalComplaints > 0 ? `(${stats.totalComplaints})` : ''}`}
               {tab === 'vacate' && `🚪 Vacate ${stats.pendingVacate > 0 ? `(${stats.pendingVacate})` : ''}`}
-              {tab === 'room-change' && `🔄 Room Change (${roomChangeRequests.length})`}
+              {tab === 'room-change' && `🔄 Change (${roomChangeRequests.length})`}
               {tab === 'notices' && `📢 Notices (${notices.length})`}
             </button>
           ))}
         </div>
 
+        {/* --- TAB CONTENT --- */}
         {activeTab === 'rooms' && <RoomList rooms={safeRooms} tenants={safeTenants} vacateRequests={safeVacateRequests} roomMonthlyIncome={roomMonthlyIncome} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />}
         {activeTab === 'tenants' && <TenantTable tenants={safeTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setShowPaymentModal(true) }} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={(tenant) => { setConfirmingTenant(tenant); setShowPaymentConfirmModal(true) }} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
         {activeTab === 'rent-payments' && <RentPaymentsList payments={safeAllPayments} onConfirm={confirmRentPayment} onReject={rejectRentPayment} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
@@ -231,6 +231,7 @@ function OwnerDashboardContent() {
         {activeTab === 'notices' && <NoticeList notices={safeNotices} onDelete={deleteNotice} onPost={() => setShowNoticeModal(true)} isSubmitting={isSubmitting} />}
       </div>
 
+      {/* --- MODALS --- */}
       <AnimatePresence>
         {showSettingsModal && <SettingsModal settings={settings} setSettings={setSettings} onSave={() => saveSettings(settings)} onCancel={() => setShowSettingsModal(false)} isSubmitting={isSubmitting} />}
         {showAddModal && <AddTenantModal formData={formData} setFormData={setFormData} rooms={rooms} onAdd={() => addTenant(isSubmitting, setIsSubmitting)} onCancel={() => setShowAddModal(false)} isSubmitting={isSubmitting} />}
