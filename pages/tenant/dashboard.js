@@ -1,4 +1,4 @@
-import { useState } from 'react' 
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
 
@@ -28,10 +28,10 @@ const ProfileModal = dynamic(() => import('../../components/tenant/modals/Profil
 const RoomChangeModal = dynamic(() => import('../../components/tenant/modals/RoomChangeModal'), { ssr: false })
 const ScreenshotModal = dynamic(() => import('../../components/tenant/modals/ScreenshotModal'), { ssr: false })
 
-export default function TenantDashboard() {
+export default function TenantDashboardNew() {
   // ---------------- MODULAR HOOKS ----------------
-  const core = useTenant() || {}; // SAFETY FALLBACK added here
-  const { tenant, room, property, owner, roommates, loading, refreshData, setTenant } = core;
+  const core = useTenant() || {};
+  const { tenant, room, property, owner, roommates, loading, roommateVacateAlert, refreshData, setTenant } = core;
   
   const { notices } = useNotices(tenant);
   const { existingVacateRequest, cancelVacateRequest } = useVacate(tenant, setTenant);
@@ -57,7 +57,6 @@ export default function TenantDashboard() {
     openRoomChangeModal,
     submitRoomChangeRequest
   } = useRoomChange(tenant, refreshData);
-  // ------------------------------------------------
 
   // ----- UI States remaining -----
   const [showComplaintModal, setShowComplaintModal] = useState(false)
