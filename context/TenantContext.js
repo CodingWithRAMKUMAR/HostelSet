@@ -1,8 +1,6 @@
-// Cache clear update 2026-06-23 - Tenant
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabase';
-import { calculateRentDueStatus } from '../lib/utils';
 import toast from 'react-hot-toast';
 
 const TenantContext = createContext();
@@ -21,20 +19,16 @@ export function TenantProvider({ children }) {
   const loadTenantData = useCallback(async (userId, isBackground = false) => {
     if (!isBackground) setLoading(true); else setIsRefreshing(true);
 
-    // SAFETY TIMEOUT: If Supabase doesn't respond in 5 seconds, stop loading and show error
-    const timeout = setTimeout(() => {
-      setLoading(false);
-      toast.error('Failed to load dashboard: Request timed out. Please refresh.');
-    }, 5000);
-
     try {
+      console.log("🔍 DEBUG: Attempting to fetch tenant data for user ID:", userId);
+
       const { data: tenantData, error } = await supabase
         .from('tenants')
         .select('*, rooms:room_id(*), property:property_id(*)')
         .eq('user_id', userId)
         .maybeSingle();
 
-      clearTimeout(timeout); // Clear the timeout since we got a response
+      console.log("🔍 DEBUG: Supabase Raw Response:", { tenantData, error });
 
       if (error) {
         console.error('Supabase Error:', error);
@@ -44,7 +38,8 @@ export function TenantProvider({ children }) {
       }
 
       if (!tenantData) {
-        toast.error('No tenant record found for this user.');
+        console.warn("⚠️ DEBUG: No tenant data found for this user.");
+        toast.error('No tenant record found. Please ensure you are logged in as a valid tenant.');
         router.push('/login');
         return;
       }
@@ -97,12 +92,10 @@ export function TenantProvider({ children }) {
         }
       }
     } catch (error) { 
-      clearTimeout(timeout);
       console.error('Load tenant core data error:', error); 
       toast.error('Failed to load core dashboard data'); 
     }
     finally { 
-      clearTimeout(timeout);
       if (!isBackground) setLoading(false); 
       else setIsRefreshing(false); 
     }
