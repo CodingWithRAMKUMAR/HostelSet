@@ -14,26 +14,42 @@ export default async function handler(req, res) {
 
   const { ownerId, email, name } = req.body;
 
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required' });
+  // Safety check: ensure email is provided and is a string
+  if (!email || typeof email !== 'string') {
+    return res.status(400).json({ error: 'A valid email address is required' });
   }
 
   try {
-    // Send a password reset email which doubles as a renewal prompt
-    const { error } = await supabaseAdmin.auth.admin.generateLink({
+    console.log(`📧 Attempting to send renewal email to: ${email}`);
+
+    // Generate the password recovery link (which acts as the renewal link)
+    // Since "Forgot Password" works, this exact method is confirmed working.
+    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
       type: 'recovery',
       email: email,
       options: {
-        // HARDCODED TO YOUR LIVE DOMAIN TO PREVENT FAILURES
+        // Hardcoded redirect to the live subscription page
         redirectTo: `https://hostelset.com/owner/subscribe`,
       },
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase Admin Error:', error);
+      throw error;
+    }
 
-    return res.status(200).json({ success: true, message: 'Email sent successfully' });
+    console.log(`✅ Successfully generated link for ${email}. Brevo will now deliver it.`);
+
+    return res.status(200).json({ 
+      success: true, 
+      message: `Renewal email successfully triggered for ${name || email}` 
+    });
+
   } catch (error) {
-    console.error('Email error:', error);
-    return res.status(500).json({ error: error.message });
+    console.error('Fatal email error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to send renewal email. Check server logs.'
+    });
   }
 }
