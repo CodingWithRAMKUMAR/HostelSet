@@ -14,21 +14,38 @@ export default function MembershipManager({
   const [manualRevokeId, setManualRevokeId] = useState('');
 
   const handleGrant = () => {
-    if (!manualGrantId || !manualGrantDays) {
-      toast.error('Please provide both Owner UUID and Days.');
+    // Trim whitespace just in case
+    const id = manualGrantId.trim();
+    const days = parseInt(manualGrantDays);
+
+    if (!id) {
+      toast.error('Please paste an Owner UUID.');
       return;
     }
-    grantMembership(manualGrantId, parseInt(manualGrantDays));
+    if (!days || days < 1) {
+      toast.error('Please enter a valid number of days (minimum 1).');
+      return;
+    }
+
+    console.log("Granting:", id, days); // Check browser console (F12) to verify data is correct
+    grantMembership(id, days);
+    
+    // Clear inputs on success
     setManualGrantId('');
     setManualGrantDays('');
   };
 
   const handleRevoke = () => {
-    if (!manualRevokeId) {
-      toast.error('Please provide an Owner UUID.');
+    const id = manualRevokeId.trim();
+
+    if (!id) {
+      toast.error('Please paste an Owner UUID.');
       return;
     }
-    revokeMembership(manualRevokeId);
+
+    console.log("Revoking:", id); // Check browser console (F12) to verify data is correct
+    revokeMembership(id);
+    
     setManualRevokeId('');
   };
 
@@ -42,14 +59,14 @@ export default function MembershipManager({
         <button onClick={() => window.location.reload()} className="text-orange-500 hover:text-orange-600 text-sm font-medium">🔄 Refresh</button>
       </div>
 
-      {/* Manual Grant / Revoke Panel (Isolated Module) */}
       <div className="mb-8 bg-gray-50 border border-gray-200 rounded-xl p-4">
         <h4 className="font-semibold text-gray-800 mb-3 text-sm">🔧 Manual Membership Control</h4>
         <div className="grid md:grid-cols-2 gap-4">
-          {/* Grant Section */}
+          {/* GRANT SECTION */}
           <div className="flex flex-col gap-2">
             <div className="flex gap-2">
               <input
+                id="manualGrantId"
                 type="text"
                 placeholder="Paste Owner UUID here"
                 value={manualGrantId}
@@ -57,6 +74,7 @@ export default function MembershipManager({
                 className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500"
               />
               <input
+                id="manualGrantDays"
                 type="number"
                 placeholder="Days"
                 value={manualGrantDays}
@@ -72,9 +90,10 @@ export default function MembershipManager({
             </button>
           </div>
 
-          {/* Revoke Section */}
+          {/* REVOKE SECTION */}
           <div className="flex flex-col gap-2">
             <input
+              id="manualRevokeId"
               type="text"
               placeholder="Paste Owner UUID here"
               value={manualRevokeId}
@@ -91,7 +110,7 @@ export default function MembershipManager({
         </div>
       </div>
 
-      {/* Data Table */}
+      {/* TABLE */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="bg-[#1a1a1a] text-white/90 border-b border-orange-500/30">
