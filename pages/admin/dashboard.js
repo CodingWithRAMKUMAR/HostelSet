@@ -17,7 +17,7 @@ import { useAdminRoomChange } from '../../hooks/useAdminRoomChange';
 import { useAdminNotices } from '../../hooks/useAdminNotices';
 import { useAdminMembershipManager } from '../../hooks/useAdminMembershipManager';
 import { useAdminModals } from '../../hooks/useAdminModals';
-import MembershipManager from '../../components/admin/MembershipManager'; // <-- Modular Import
+import MembershipManager from '../../components/admin/MembershipManager';
 import toast from 'react-hot-toast';
 
 // ----------------- UTILITY TABLE COMPONENT -----------------
@@ -518,7 +518,7 @@ function AdminDashboardContent() {
           </div>
         )}
 
-        {/* ----- MEMBERSHIP MANAGEMENT (USING THE NEW MODULAR COMPONENT) ----- */}
+        {/* ----- MEMBERSHIP MANAGEMENT (USING THE MODULAR COMPONENT) ----- */}
         {activeTab === 'membership' && (
           <MembershipManager 
             owners={membershipOwners}
