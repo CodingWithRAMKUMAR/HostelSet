@@ -17,6 +17,7 @@ import { useAdminRoomChange } from '../../hooks/useAdminRoomChange';
 import { useAdminNotices } from '../../hooks/useAdminNotices';
 import { useAdminMembershipManager } from '../../hooks/useAdminMembershipManager';
 import { useAdminModals } from '../../hooks/useAdminModals';
+import MembershipManager from '../../components/admin/MembershipManager'; // <-- Modular Import
 import toast from 'react-hot-toast';
 
 // ----------------- UTILITY TABLE COMPONENT -----------------
@@ -80,7 +81,7 @@ function AdminDashboardContent() {
   const { vacateRequests, approveVacate, rejectVacate } = useAdminVacate();
   const { roomChanges, approveRoomChange, rejectRoomChange } = useAdminRoomChange();
   const { notices, postNotice, deleteNotice } = useAdminNotices();
-  const { owners: membershipOwners, loading: membershipLoading, getDaysLeft, sendRenewalEmail } = useAdminMembershipManager();
+  const { owners: membershipOwners, loading: membershipLoading, getDaysLeft, sendRenewalEmail, grantMembership, revokeMembership } = useAdminMembershipManager();
   const { selectedProperty, selectedOwner, viewPropertyDetails, viewOwnerDetails, closeModals } = useAdminModals();
 
   const [activeTab, setActiveTab] = useState('overview');
@@ -248,7 +249,7 @@ function AdminDashboardContent() {
           />
         )}
 
-        {/* ----- USERS (Fully Modular with Search, Filter, and Role Controls) ----- */}
+        {/* ----- USERS ----- */}
         {activeTab === 'users' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="mb-6 flex flex-col md:flex-row justify-between items-center gap-4 border-b border-gray-100 pb-4">
@@ -517,81 +518,16 @@ function AdminDashboardContent() {
           </div>
         )}
 
-        {/* ----- MEMBERSHIP MANAGEMENT ----- */}
+        {/* ----- MEMBERSHIP MANAGEMENT (USING THE NEW MODULAR COMPONENT) ----- */}
         {activeTab === 'membership' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <div className="mb-6 border-b border-gray-100 pb-4 flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-bold text-[#1a1a1a] mb-1">📋 Membership Overview</h3>
-                <p className="text-sm text-gray-500">View active/expired memberships and send renewal alerts.</p>
-              </div>
-              <button onClick={() => window.location.reload()} className="text-orange-500 hover:text-orange-600 text-sm font-medium">🔄 Refresh</button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-[#1a1a1a] text-white/90 border-b border-orange-500/30">
-                  <tr>
-                    <th className="px-6 py-4 font-medium tracking-wide">Owner Name</th>
-                    <th className="px-6 py-4 font-medium tracking-wide">Email</th>
-                    <th className="px-6 py-4 font-medium tracking-wide">Membership Status</th>
-                    <th className="px-6 py-4 font-medium tracking-wide">Days Left</th>
-                    <th className="px-6 py-4 font-medium tracking-wide">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {membershipLoading ? (
-                    <tr><td colSpan="5" className="px-6 py-12 text-center text-gray-400">Loading membership data...</td></tr>
-                  ) : membershipOwners.length === 0 ? (
-                    <tr><td colSpan="5" className="px-6 py-12 text-center text-gray-400">No owners found.</td></tr>
-                  ) : (
-                    membershipOwners.map((owner) => {
-                      const property = owner.properties?.[0];
-                      const isActive = property?.membership_active;
-                      const daysLeft = getDaysLeft(property?.membership_expiry);
-                      
-                      let statusColor = 'bg-gray-100 text-gray-700';
-                      let statusText = 'Inactive';
-
-                      if (isActive && daysLeft > 7) {
-                        statusColor = 'bg-emerald-100 text-emerald-700';
-                        statusText = 'Active';
-                      } else if (isActive && daysLeft <= 7 && daysLeft > 0) {
-                        statusColor = 'bg-amber-100 text-amber-700';
-                        statusText = `Expires in ${daysLeft} days`;
-                      } else if (isActive && daysLeft <= 0) {
-                        statusColor = 'bg-red-100 text-red-700';
-                        statusText = 'Expired';
-                      }
-
-                      return (
-                        <tr key={owner.id} className="hover:bg-orange-50/50 transition">
-                          <td className="px-6 py-4 font-semibold text-gray-800">{owner.full_name}</td>
-                          <td className="px-6 py-4 text-gray-500">{owner.email}</td>
-                          <td className="px-6 py-4">
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${statusColor}`}>
-                              {statusText}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-gray-500">
-                            {isActive && daysLeft !== null ? `${daysLeft} days` : '-'}
-                          </td>
-                          <td className="px-6 py-4">
-                            <button 
-                              onClick={() => sendRenewalEmail(owner.id, owner.email, owner.full_name)}
-                              className="text-orange-600 hover:text-orange-800 font-semibold text-xs uppercase tracking-wider"
-                            >
-                              Send Renewal
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <MembershipManager 
+            owners={membershipOwners}
+            loading={membershipLoading}
+            getDaysLeft={getDaysLeft}
+            sendRenewalEmail={sendRenewalEmail}
+            grantMembership={grantMembership}
+            revokeMembership={revokeMembership}
+          />
         )}
       </div>
 
