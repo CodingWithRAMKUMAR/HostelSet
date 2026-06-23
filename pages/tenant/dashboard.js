@@ -29,16 +29,16 @@ const RoomChangeModal = dynamic(() => import('../../components/tenant/modals/Roo
 const ScreenshotModal = dynamic(() => import('../../components/tenant/modals/ScreenshotModal'), { ssr: false })
 
 export default function TenantDashboardNew() {
-  // ---------------- MODULAR HOOKS ----------------
+  // ---------------- MODULAR HOOKS WITH FALLBACKS ----------------
   const core = useTenant() || {};
   const { tenant, room, property, owner, roommates, loading, roommateVacateAlert, refreshData, setTenant } = core;
   
-  const { notices } = useNotices(tenant);
+  const { notices = [] } = useNotices(tenant); // Default to empty array
   const { existingVacateRequest, cancelVacateRequest } = useVacate(tenant, setTenant);
-  const { complaints, submitComplaint, deleteComplaint } = useComplaints(tenant);
+  const { complaints = [] } = useComplaints(tenant); // Default to empty array
   
   const { 
-    paymentHistory, 
+    paymentHistory = [], 
     paymentLoading, 
     ownerUpiId, 
     ownerUpiPhone, 
@@ -47,7 +47,7 @@ export default function TenantDashboardNew() {
 
   const {
     pendingRoomChangeRequest,
-    availableRooms,
+    availableRooms = [],
     showRoomChangeModal,
     setShowRoomChangeModal,
     selectedNewRoom,
@@ -178,7 +178,8 @@ export default function TenantDashboardNew() {
     router.push('/')
   }
 
-  if (loading) {
+  // Show a clean loader while data is fetching, DO NOT render the UI yet
+  if (loading || !tenant) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-white">
         <div className="text-center">
@@ -264,10 +265,10 @@ export default function TenantDashboardNew() {
           {['overview', 'roommates', 'notices', 'complaints', 'payments'].map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 text-sm font-semibold capitalize transition-all rounded-t-lg ${activeTab === tab ? 'bg-slate-800 text-white' : 'text-gray-500 hover:text-slate-700 hover:bg-gray-50'}`}>
               {tab === 'overview' && '📊 Overview'}
-              {tab === 'roommates' && `👥 Roommates (${roommates.length})`}
-              {tab === 'notices' && `📢 Notices (${notices.length})`}
-              {tab === 'complaints' && `🔧 My Complaints (${complaints.length})`}
-              {tab === 'payments' && `💰 Payment History (${paymentHistory.length})`}
+              {tab === 'roommates' && `👥 Roommates (${roommates?.length || 0})`}
+              {tab === 'notices' && `📢 Notices (${notices?.length || 0})`}
+              {tab === 'complaints' && `🔧 My Complaints (${complaints?.length || 0})`}
+              {tab === 'payments' && `💰 Payment History (${paymentHistory?.length || 0})`}
             </button>
           ))}
         </div>
