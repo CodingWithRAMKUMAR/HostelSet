@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { useRouter } from 'next/router' // <-- FIX: Added Router
+import { useRouter } from 'next/router'
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
-import { supabase } from '../../lib/supabase' // <-- FIX: Added Supabase
-import toast from 'react-hot-toast' // <-- FIX: Added Toast
+import { supabase } from '../../lib/supabase'
+import toast from 'react-hot-toast'
 
 // ---------------- MODULAR IMPORTS ----------------
 import { useTenant, TenantProvider } from '../../context/TenantContext'
@@ -33,7 +33,7 @@ const ScreenshotModal = dynamic(() => import('../../components/tenant/modals/Scr
 
 // ---------------- THE ACTUAL DASHBOARD CONTENT ----------------
 function TenantDashboardContent() {
-  const router = useRouter(); // <-- FIX: Router defined here
+  const router = useRouter();
   
   // ---------------- MODULAR HOOKS ----------------
   const core = useTenant() || {};
@@ -120,7 +120,6 @@ function TenantDashboardContent() {
   }
 
   // ----- Handlers -----
-  // FIX: Wrappers for the Complaint functions
   const submitComplaint = async () => {
     if (isSubmitting) return
     if (!complaintForm.title || !complaintForm.description) { toast.error('Please fill all fields'); return }
@@ -202,94 +201,127 @@ function TenantDashboardContent() {
     router.push('/login');
   }
 
-  // DEBUG LOGGING (CHECK THE CONSOLE FOR THIS)
-  console.log('TENANT DEBUG', { loading, tenant, room, property, owner });
-
   if (loading || !tenant) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-white">
+      <div className="min-h-screen flex items-center justify-center bg-[#1a1a1a]">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-500">Loading your dashboard...</p>
+          <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-orange-400">Loading your premium suite...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white">
-      {/* Navbar */}
-      <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50 px-6 py-4">
+    <div className="min-h-screen bg-[#f8f9fa] font-sans">
+      
+      {/* --- NAVBAR (Premium Onyx & Gold) --- */}
+      <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-6 py-4 shadow-lg border-b-2 border-orange-500/80">
         <div className="container mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">🏠 HOSTELSET</h1>
-            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">Tenant</span>
+            <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">🏠 HOSTELSET</h1>
+            <span className="text-xs bg-[#2a2a2a] text-orange-400/90 border border-orange-500/30 px-3 py-1 rounded-full">Tenant</span>
           </div>
           <div className="flex items-center gap-4">
-            <button onClick={() => setShowProfileModal(true)} className="flex items-center gap-2 text-gray-600 hover:text-slate-800 transition">
-              <div className="w-8 h-8 bg-gradient-to-r from-slate-600 to-slate-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
+            <button onClick={() => setShowProfileModal(true)} className="flex items-center gap-2 text-gray-400 hover:text-orange-400 transition">
+              <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
                 {tenant?.name?.charAt(0) || 'U'}
               </div>
-              <span className="text-sm hidden md:inline">{tenant?.name}</span>
+              <span className="text-sm hidden md:inline font-medium text-orange-300/80">{tenant?.name}</span>
             </button>
-            <button onClick={handleLogout} className="text-red-500 hover:text-red-600 transition">Logout</button>
+            <button onClick={handleLogout} className="text-red-400 hover:text-red-300 transition font-medium">Logout</button>
           </div>
         </div>
       </nav>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Welcome Section */}
-        <div className={`rounded-2xl p-6 mb-8 text-white ${rentStatus.status === 'overdue' ? 'bg-gradient-to-r from-red-600 to-red-500 animate-pulse' : rentStatus.status === 'due_soon' ? 'bg-gradient-to-r from-orange-500 to-orange-600 animate-pulse' : 'bg-gradient-to-r from-slate-800 to-slate-700'}`}>
-          <div className="flex justify-between items-start flex-wrap gap-4">
+        
+        {/* --- WELCOME SECTION (GLASSMORPHISM) --- */}
+        <div className="relative overflow-hidden rounded-2xl p-8 mb-8 bg-[#1a1a1a] shadow-xl border border-orange-500/20">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-orange-500/10 to-transparent rounded-full -mr-20 -mt-20 pointer-events-none" />
+          <div className="flex justify-between items-start flex-wrap gap-4 relative z-10">
             <div>
-              <h2 className="text-2xl font-bold mb-2">Welcome back, {tenant?.name}! 👋</h2>
-              <p className="text-white/80">Room {room?.room_number} • {getSharingDetails(room?.sharing_type)?.label}</p>
-              <p className="text-white/70 text-sm mt-1">{property?.name}</p>
+              <h2 className="text-3xl font-bold text-white mb-2">Welcome back, <span className="text-orange-400">{tenant?.name}</span>! 👋</h2>
+              <p className="text-white/70">Room {room?.room_number} • {getSharingDetails(room?.sharing_type)?.label}</p>
+              <p className="text-white/50 text-sm mt-1">{property?.name}</p>
             </div>
-            <div className={`px-4 py-2 rounded-full text-sm font-semibold ${isUrgent ? 'bg-red-700 text-white animate-pulse' : 'bg-white/20'}`}>{rentStatus.message}</div>
+            <div className={`px-5 py-2.5 rounded-full text-sm font-bold shadow-lg backdrop-blur-sm ${isUrgent ? 'bg-red-500/90 text-white animate-pulse border border-red-400' : 'bg-white/10 text-white border border-white/20'}`}>
+              {rentStatus.message}
+            </div>
           </div>
           {rentStatus.dueDate && isUrgent && (
-            <div className="mt-4 text-center">
-              <div className="inline-block bg-black/40 backdrop-blur-sm px-4 py-2 rounded-lg text-lg font-bold">⚠️ Next due date: {formatDate(rentStatus.dueDate)} ⚠️</div>
+            <div className="mt-4 text-center relative z-10">
+              <div className="inline-block bg-black/40 backdrop-blur-sm px-5 py-2.5 rounded-lg text-orange-400 font-bold border border-orange-500/30">
+                ⚠️ Next due date: {formatDate(rentStatus.dueDate)}
+              </div>
             </div>
           )}
         </div>
 
         {/* Roommate Vacate Alert */}
         {roommateVacateAlert && (
-          <div className="bg-orange-100 border-l-4 border-orange-500 text-orange-700 p-4 mb-6 rounded-lg shadow-sm">
-            <div className="flex items-center gap-2"><span className="text-xl">🚪</span><div><strong>Vacate Notice:</strong> {roommateVacateAlert.name} will vacate in <strong>{roommateVacateAlert.daysLeft}</strong> days (by {formatDate(roommateVacateAlert.date)}).</div></div>
+          <div className="bg-orange-500/10 border-l-4 border-orange-500 text-orange-400 p-4 mb-6 rounded-lg shadow-sm backdrop-blur-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🚪</span>
+              <div className="font-medium">
+                <strong>Vacate Notice:</strong> {roommateVacateAlert.name} will vacate in <strong>{roommateVacateAlert.daysLeft}</strong> days (by {formatDate(roommateVacateAlert.date)}).
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Stats Cards */}
+        {/* --- STATS CARDS (PREMIUM GLASS) --- */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-xl p-5 shadow-sm border hover:shadow-md"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-xl">💰</div><div><p className="text-xs text-gray-500">Monthly Rent</p><p className="text-xl font-bold text-slate-800">{formatCurrency(tenant?.rent_amount)}</p></div></div></div>
-          <div className="bg-white rounded-xl p-5 shadow-sm border hover:shadow-md"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-xl">✅</div><div><p className="text-xs text-gray-500">Total Paid</p><p className="text-xl font-bold text-green-600">{formatCurrency(tenant?.total_paid || 0)}</p></div></div></div>
-          <div className="bg-white rounded-xl p-5 shadow-sm border hover:shadow-md"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-xl">⚠️</div><div><p className="text-xs text-gray-500">Pending Amount</p><p className="text-xl font-bold text-red-500">{formatCurrency(tenant?.pending_amount || 0)}</p></div></div></div>
-          <div className="bg-white rounded-xl p-5 shadow-sm border hover:shadow-md"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-xl">👥</div><div><p className="text-xs text-gray-500">Roommates</p><p className="text-xl font-bold text-slate-800">{roommates.length}</p></div></div></div>
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-orange-100/50 flex items-center justify-center text-xl text-orange-600">💰</div>
+            <div>
+              <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Monthly Rent</p>
+              <p className="text-xl font-bold text-gray-800">{formatCurrency(tenant?.rent_amount)}</p>
+            </div>
+          </div>
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-100/50 flex items-center justify-center text-xl text-emerald-600">✅</div>
+            <div>
+              <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Total Paid</p>
+              <p className="text-xl font-bold text-emerald-600">{formatCurrency(tenant?.total_paid || 0)}</p>
+            </div>
+          </div>
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-red-100/50 flex items-center justify-center text-xl text-red-600">⚠️</div>
+            <div>
+              <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Pending Amount</p>
+              <p className="text-xl font-bold text-red-500">{formatCurrency(tenant?.pending_amount || 0)}</p>
+            </div>
+          </div>
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-purple-100/50 flex items-center justify-center text-xl text-purple-600">👥</div>
+            <div>
+              <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Roommates</p>
+              <p className="text-xl font-bold text-gray-800">{roommates?.length || 0}</p>
+            </div>
+          </div>
         </div>
 
-        {/* Action Buttons */}
+        {/* --- ACTION BUTTONS (GRADIENT & GLASS) --- */}
         <div className="flex flex-wrap gap-3 mb-8">
-          <button onClick={() => setShowPaymentModal(true)} disabled={isSubmitting} className="bg-green-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50">💳 Pay Rent (UPI)</button>
-          <button onClick={() => setShowComplaintModal(true)} disabled={isSubmitting} className="border-2 border-orange-300 text-orange-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition disabled:opacity-50">📝 Raise Complaint</button>
+          <button onClick={() => setShowPaymentModal(true)} disabled={isSubmitting} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold shadow-md transition disabled:opacity-50">💳 Pay Rent (UPI)</button>
+          <button onClick={() => setShowComplaintModal(true)} disabled={isSubmitting} className="border-2 border-orange-300/50 text-orange-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition disabled:opacity-50">📝 Raise Complaint</button>
           {!pendingRoomChangeRequest ? (
-            <button onClick={openRoomChangeModal} disabled={isSubmitting} className="border-2 border-blue-300 text-blue-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-50 transition disabled:opacity-50">🔄 Request Room Change</button>
+            <button onClick={openRoomChangeModal} disabled={isSubmitting} className="border-2 border-blue-300/50 text-blue-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-50 transition disabled:opacity-50">🔄 Request Room Change</button>
           ) : (
-            <button disabled className="border-2 border-gray-300 text-gray-500 px-6 py-2.5 rounded-full text-sm font-semibold cursor-not-allowed">⏳ Room Change Pending</button>
+            <button disabled className="border-2 border-gray-300/50 text-gray-500 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold cursor-not-allowed">⏳ Room Change Pending</button>
           )}
           {existingVacateRequest ? (
-            <button onClick={cancelVacateRequest} disabled={isSubmitting} className="border-2 border-yellow-500 text-yellow-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition disabled:opacity-50">❌ Cancel Vacate Request</button>
+            <button onClick={cancelVacateRequest} disabled={isSubmitting} className="border-2 border-yellow-500/50 text-yellow-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition disabled:opacity-50">❌ Cancel Vacate Request</button>
           ) : (
-            <button onClick={() => setShowVacateModal(true)} disabled={isSubmitting} className="border-2 border-red-300 text-red-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50">🚪 Request Vacate</button>
+            <button onClick={() => setShowVacateModal(true)} disabled={isSubmitting} className="border-2 border-red-300/50 text-red-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50">🚪 Request Vacate</button>
           )}
         </div>
 
-        {/* Tabs */}
-        <div className="flex flex-wrap border-b border-gray-200 mb-6 gap-2">
+        {/* --- TABS (ONYX & GOLD) --- */}
+        <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto">
           {['overview', 'roommates', 'notices', 'complaints', 'payments'].map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 text-sm font-semibold capitalize transition-all rounded-t-lg ${activeTab === tab ? 'bg-slate-800 text-white' : 'text-gray-500 hover:text-slate-700 hover:bg-gray-50'}`}>
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${activeTab === tab ? 'bg-[#1a1a1a] text-white shadow-sm border-b-2 border-orange-500' : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50'}`}>
               {tab === 'overview' && '📊 Overview'}
               {tab === 'roommates' && `👥 Roommates (${roommates?.length || 0})`}
               {tab === 'notices' && `📢 Notices (${notices?.length || 0})`}
@@ -299,7 +331,7 @@ function TenantDashboardContent() {
           ))}
         </div>
 
-        {/* Tab Content */}
+        {/* --- TAB CONTENT --- */}
         {activeTab === 'overview' && (
           <OverviewSection
             tenant={tenant}
@@ -327,7 +359,7 @@ function TenantDashboardContent() {
         )}
       </div>
 
-      {/* Modals (lazy‑loaded) */}
+      {/* --- MODALS (LAZY LOADED) --- */}
       <AnimatePresence>
         {showPaymentModal && (
           <PayRentModal
