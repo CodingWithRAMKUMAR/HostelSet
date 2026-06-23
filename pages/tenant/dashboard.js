@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import { useRouter } from 'next/router' // <-- FIX: Added Router
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
+import { supabase } from '../../lib/supabase' // <-- FIX: Added Supabase
+import toast from 'react-hot-toast' // <-- FIX: Added Toast
 
 // ---------------- MODULAR IMPORTS ----------------
 import { useTenant, TenantProvider } from '../../context/TenantContext'
@@ -28,14 +31,17 @@ const ProfileModal = dynamic(() => import('../../components/tenant/modals/Profil
 const RoomChangeModal = dynamic(() => import('../../components/tenant/modals/RoomChangeModal'), { ssr: false })
 const ScreenshotModal = dynamic(() => import('../../components/tenant/modals/ScreenshotModal'), { ssr: false })
 
-export default function TenantDashboardNew() {
-  // ---------------- MODULAR HOOKS WITH FALLBACKS ----------------
+// ---------------- THE ACTUAL DASHBOARD CONTENT ----------------
+function TenantDashboardContent() {
+  const router = useRouter(); // <-- FIX: Router defined here
+  
+  // ---------------- MODULAR HOOKS ----------------
   const core = useTenant() || {};
   const { tenant, room, property, owner, roommates, loading, roommateVacateAlert, refreshData, setTenant } = core;
   
-  const { notices = [] } = useNotices(tenant); // Default to empty array
+  const { notices = [] } = useNotices(tenant);
   const { existingVacateRequest, cancelVacateRequest } = useVacate(tenant, setTenant);
-  const { complaints = [] } = useComplaints(tenant); // Default to empty array
+  const { complaints = [], submitComplaint: hookSubmitComplaint, deleteComplaint: hookDeleteComplaint } = useComplaints(tenant);
   
   const { 
     paymentHistory = [], 
@@ -114,6 +120,23 @@ export default function TenantDashboardNew() {
   }
 
   // ----- Handlers -----
+  // FIX: Wrappers for the Complaint functions
+  const submitComplaint = async () => {
+    if (isSubmitting) return
+    if (!complaintForm.title || !complaintForm.description) { toast.error('Please fill all fields'); return }
+    setIsSubmitting(true)
+    const success = await hookSubmitComplaint(complaintForm);
+    if (success) {
+      setShowComplaintModal(false);
+      setComplaintForm({ title:'', description:'', priority:'medium' });
+    }
+    setIsSubmitting(false);
+  };
+
+  const deleteComplaint = async (complaintId) => {
+    await hookDeleteComplaint(complaintId);
+  };
+
   const requestVacate = async () => {
     if (isSubmitting) return
     if (!vacateForm.expected_date) { toast.error('Please select expected check-out date'); return }
@@ -173,12 +196,15 @@ export default function TenantDashboardNew() {
   const isUrgent = rentStatus.urgent && (rentStatus.status === 'due_soon' || rentStatus.status === 'overdue')
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    localStorage.clear()
-    router.push('/')
+    await supabase.auth.signOut();
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('userRole');
+    router.push('/login');
   }
 
-  // Show a clean loader while data is fetching, DO NOT render the UI yet
+  // DEBUG LOGGING (CHECK THE CONSOLE FOR THIS)
+  console.log('TENANT DEBUG', { loading, tenant, room, property, owner });
+
   if (loading || !tenant) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-white">
@@ -391,5 +417,14 @@ export default function TenantDashboardNew() {
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+// ---------------- THE EXPORT WITH PROVIDER WRAPPER ----------------
+export default function TenantDashboard() {
+  return (
+    <TenantProvider>
+      <TenantDashboardContent />
+    </TenantProvider>
   )
 }
