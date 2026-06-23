@@ -24,14 +24,12 @@ export default async function handler(req, res) {
       type: 'recovery',
       email: email,
       options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_VERCEL_URL || 'http://localhost:3000'}/owner/subscribe`,
+        // HARDCODED TO YOUR LIVE DOMAIN TO PREVENT FAILURES
+        redirectTo: `https://hostelset.com/owner/subscribe`,
       },
     });
 
     if (error) throw error;
-
-    // Optional: Log this action in your audit log table if you have one
-    // await supabaseAdmin.from('audit_logs').insert({ admin_id: '...', action: 'SENT_RENEWAL_EMAIL', target: ownerId });
 
     return res.status(200).json({ success: true, message: 'Email sent successfully' });
   } catch (error) {

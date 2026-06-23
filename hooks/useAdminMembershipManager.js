@@ -42,6 +42,9 @@ export function useAdminMembershipManager() {
   };
 
   const sendRenewalEmail = async (ownerId, ownerEmail, ownerName) => {
+    // --- DEBUG LOG TO CHECK THE EMAIL ---
+    console.log("🔍 SENDING RENEWAL EMAIL TO:", ownerEmail);
+    
     try {
       const response = await fetch('/api/admin/send-renewal-email', {
         method: 'POST',
@@ -60,7 +63,6 @@ export function useAdminMembershipManager() {
     }
   };
 
-  // --- FIXED GRANT MEMBERSHIP FUNCTION ---
   const grantMembership = async (ownerId, days) => {
     if (!ownerId) {
       toast.error('Owner ID is required.');
@@ -71,7 +73,6 @@ export function useAdminMembershipManager() {
       return;
     }
     try {
-      // Directly update the property without an RPC to prevent 'i is not a function'
       const { data: propertyData, error: fetchError } = await supabase
         .from('properties')
         .select('id')
@@ -103,7 +104,6 @@ export function useAdminMembershipManager() {
     }
   };
 
-  // --- FIXED REVOKE MEMBERSHIP FUNCTION ---
   const revokeMembership = async (ownerId) => {
     if (!ownerId) {
       toast.error('Owner ID is required.');
