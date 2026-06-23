@@ -1,3 +1,4 @@
+import { useState } from 'react' 
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
 
