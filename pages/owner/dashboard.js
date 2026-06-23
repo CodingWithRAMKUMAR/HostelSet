@@ -1,3 +1,4 @@
+import 'react'; // Bulletproof import to ensure global React availability
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -46,7 +47,7 @@ const TenantProfileModal = dynamic(() => import('../../components/owner/modals/T
 const RoomChangeReasonModal = dynamic(() => import('../../components/owner/modals/RoomChangeReasonModal'), { ssr: false });
 const ScreenshotModal = dynamic(() => import('../../components/owner/modals/ScreenshotModal'), { ssr: false });
 
-export default function OwnerDashboardNew() {
+export default function OwnerDashboard() {
   return (
     <OwnerProvider>
       <OwnerDashboardContent />
@@ -57,7 +58,31 @@ export default function OwnerDashboardNew() {
 function OwnerDashboardContent() {
   const router = useRouter();
   const core = useOwner();
-  const { loading, property, propertyImages, setPropertyImages, rooms, setRooms, tenants, setTenants, settings, setSettings, stats, setStats, roomMonthlyIncome, membershipActive, membershipLoading, membershipStatus, membershipExpiry, daysLeft, loadData, loadSettings, saveSettings, initiateMembershipPayment, startAutoRefresh } = core;
+  const { 
+    loading, 
+    property, 
+    propertyImages, 
+    setPropertyImages, 
+    rooms, 
+    setRooms, 
+    tenants, 
+    setTenants, 
+    settings, 
+    setSettings, 
+    stats, 
+    setStats, 
+    roomMonthlyIncome, 
+    membershipActive, 
+    membershipLoading, 
+    membershipStatus, 
+    membershipExpiry, 
+    daysLeft, 
+    loadData, 
+    loadSettings, 
+    saveSettings, 
+    initiateMembershipPayment, 
+    startAutoRefresh 
+  } = core;
   
   const { showRoomModal, setShowRoomModal, roomForm, setRoomForm, sharingTypes, addRoom, deleteRoom } = useOwnerRooms(property, rooms, setRooms, setStats);
   const { formData, setFormData, addTenant } = useOwnerTenants(property, rooms, tenants, setTenants, setStats, loadData);
