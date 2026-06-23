@@ -29,7 +29,7 @@ const ScreenshotModal = dynamic(() => import('../../components/tenant/modals/Scr
 
 export default function TenantDashboard() {
   // ---------------- MODULAR HOOKS ----------------
-  const core = useTenant();
+  const core = useTenant() || {}; // SAFETY FALLBACK added here
   const { tenant, room, property, owner, roommates, loading, refreshData, setTenant } = core;
   
   const { notices } = useNotices(tenant);
@@ -300,7 +300,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Modals */}
+      {/* Modals (lazy‑loaded) */}
       <AnimatePresence>
         {showPaymentModal && (
           <PayRentModal
@@ -317,7 +317,7 @@ export default function TenantDashboard() {
             initiateUPIPayment={initiateUPIPayment}
             copyUpiId={copyUpiId}
             copyUpiPhone={copyUpiPhone}
-            submitPaymentWithProof={() => submitPaymentWithProof(paymentScreenshot, paymentTransactionId)}
+            submitPaymentWithProof={submitPaymentWithProof}
             onCancel={() => setShowPaymentModal(false)}
           />
         )}
@@ -329,10 +329,7 @@ export default function TenantDashboard() {
             complaintForm={complaintForm}
             setComplaintForm={setComplaintForm}
             isSubmitting={isSubmitting}
-            onSubmit={() => {
-              submitComplaint();
-              setShowComplaintModal(false);
-            }}
+            onSubmit={submitComplaint}
             onCancel={() => setShowComplaintModal(false)}
           />
         )}

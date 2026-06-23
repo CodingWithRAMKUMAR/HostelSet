@@ -1,3 +1,4 @@
+// Cache clear update 2026-06-23 - Tenant
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabase';
@@ -62,7 +63,7 @@ export function TenantProvider({ children }) {
   }, []);
 
   return (
-    <TenantContext.Provider value={{ loading, isRefreshing, tenant, room, property, owner, roommates, refreshData, setTenant, setExistingVacateRequest: () => {} }}>
+    <TenantContext.Provider value={{ loading, isRefreshing, tenant, room, property, owner, roommates, refreshData, setTenant }}>
       {children}
     </TenantContext.Provider>
   );
