@@ -15,6 +15,8 @@ import { useOwnerVacate } from '../../hooks/useOwnerVacate';
 import { useOwnerPayments } from '../../hooks/useOwnerPayments';
 import { useOwnerNotices } from '../../hooks/useOwnerNotices';
 import { useOwnerRoomChange } from '../../hooks/useOwnerRoomChange';
+import { useOwnerApplications } from '../../hooks/useOwnerApplications'; // Added
+import { useOwnerPreBookings } from '../../hooks/useOwnerPreBookings'; // Added
 
 // Content Components
 import StatsCards from '../../components/owner/StatsCards';
@@ -90,8 +92,10 @@ function OwnerDashboardContent() {
   const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment } = useOwnerPayments(property, tenants, setStats, loadData);
   const { notices, postNotice, deleteNotice } = useOwnerNotices(property);
   const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property);
+  const { applications, approveApplication, rejectApplication, resendPasswordEmail } = useOwnerApplications(property); // Added
+  const { preBookings, approvePreBooking, rejectPreBooking } = useOwnerPreBookings(property); // Added
 
-  // Local UI States (Kept exactly as they were)
+  // Local UI States
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showNoticeModal, setShowNoticeModal] = useState(false);
@@ -127,7 +131,6 @@ function OwnerDashboardContent() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
 
-  // Helper functions
   const getRoomNumberById = (roomId) => { const room = rooms.find(r => r.id === roomId); return room ? room.room_number : 'N/A' }
   const getTenantsInRoom = (roomId) => tenants.filter(t => t.room_id === roomId)
 
@@ -167,6 +170,8 @@ function OwnerDashboardContent() {
   const safeVacateRequests = Array.isArray(vacateRequests) ? vacateRequests : []
   const safeNotices = Array.isArray(notices) ? notices : []
   const safeRoomChangeRequests = Array.isArray(roomChangeRequests) ? roomChangeRequests : []
+  const safeApplications = Array.isArray(applications) ? applications : []
+  const safePreBookings = Array.isArray(preBookings) ? preBookings : []
 
   const searchLower = searchTerm.trim().toLowerCase()
 
@@ -228,8 +233,8 @@ function OwnerDashboardContent() {
         {activeTab === 'tenants' && <TenantTable tenants={safeTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setShowPaymentModal(true) }} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={(tenant) => { setConfirmingTenant(tenant); setShowPaymentConfirmModal(true) }} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
         {activeTab === 'rent-payments' && <RentPaymentsList payments={safeAllPayments} onConfirm={confirmRentPayment} onReject={rejectRentPayment} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
         {activeTab === 'payment-history' && <PaymentHistoryTable payments={safeAllPayments} getRoomNumberById={getRoomNumberById} />}
-        {activeTab === 'pre-bookings' && <PreBookingList bookings={safePreBookings} onApprove={approvePreBooking} onReject={rejectPreBooking} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
-        {activeTab === 'applications' && <ApplicationList applications={safeApplications} onApprove={approveApplication} onResendEmail={resendPasswordEmail} isSubmitting={isSubmitting} />}
+        {activeTab === 'pre-bookings' && <PreBookingList bookings={safePreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
+        {activeTab === 'applications' && <ApplicationList applications={safeApplications} onApprove={(id, data) => approveApplication(id, data)} onResendEmail={resendPasswordEmail} isSubmitting={isSubmitting} />}
         {activeTab === 'complaints' && <ComplaintList complaints={safeComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setShowComplaintResponseModal(true) }} onResolve={resolveComplaint} isSubmitting={isSubmitting} />}
         {activeTab === 'vacate' && <VacateRequestList requests={safeVacateRequests} onApprove={approveVacateRequest} isSubmitting={isSubmitting} />}
         {activeTab === 'room-change' && <RoomChangeRequestList requests={safeRoomChangeRequests} onApprove={approveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />}
