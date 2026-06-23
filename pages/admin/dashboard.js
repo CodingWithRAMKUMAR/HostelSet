@@ -15,9 +15,8 @@ import { useAdminComplaints } from '../../hooks/useAdminComplaints';
 import { useAdminVacate } from '../../hooks/useAdminVacate';
 import { useAdminRoomChange } from '../../hooks/useAdminRoomChange';
 import { useAdminNotices } from '../../hooks/useAdminNotices';
-import { useAdminMembership } from '../../hooks/useAdminMembership';
-import { useAdminRoles } from '../../hooks/useAdminRoles';
-import { useAdminModals } from '../../hooks/useAdminModals'; // <-- NEW IMPORT
+import { useAdminMembershipManager } from '../../hooks/useAdminMembershipManager'; // <-- NEW IMPORT
+import { useAdminModals } from '../../hooks/useAdminModals';
 import toast from 'react-hot-toast';
 
 // ----------------- UTILITY TABLE COMPONENT -----------------
@@ -81,9 +80,8 @@ function AdminDashboardContent() {
   const { vacateRequests, approveVacate, rejectVacate } = useAdminVacate();
   const { roomChanges, approveRoomChange, rejectRoomChange } = useAdminRoomChange();
   const { notices, postNotice, deleteNotice } = useAdminNotices();
-  const { grantMembership, revokeMembership, loading: membershipLoading } = useAdminMembership();
-  const { changeUserRole, loading: roleLoading } = useAdminRoles();
-  const { selectedProperty, selectedOwner, viewPropertyDetails, viewOwnerDetails, closeModals } = useAdminModals(); // <-- NEW HOOK
+  const { owners: membershipOwners, loading: membershipLoading, getDaysLeft, sendRenewalEmail } = useAdminMembershipManager(); // <-- NEW HOOK
+  const { selectedProperty, selectedOwner, viewPropertyDetails, viewOwnerDetails, closeModals } = useAdminModals();
 
   const [activeTab, setActiveTab] = useState('overview');
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
@@ -119,7 +117,7 @@ function AdminDashboardContent() {
     { id: 'vacate', label: '🚪 Vacate' },
     { id: 'roomchange', label: '🔄 Room Change' },
     { id: 'notices', label: '📢 Notices' },
-    { id: 'membership', label: '💎 Membership' },
+    { id: 'membership', label: '📋 Membership' }, // <-- NEW TAB
   ];
 
   return (
@@ -183,7 +181,7 @@ function AdminDashboardContent() {
           </div>
         )}
 
-        {/* ----- PROPERTIES (Now shows UUID & View Details) ----- */}
+        {/* ----- PROPERTIES ----- */}
         {activeTab === 'properties' && (
           <AdminTable
             headers={['Property Name', 'Owner', 'Property ID (UUID)', 'Actions']}
@@ -223,7 +221,7 @@ function AdminDashboardContent() {
           />
         )}
 
-        {/* ----- OWNERS (Now shows UUID & View Details) ----- */}
+        {/* ----- OWNERS ----- */}
         {activeTab === 'owners' && (
           <AdminTable
             headers={['Owner Name', 'Email', 'Owner ID (UUID)', 'Status', 'Actions']}
@@ -486,53 +484,85 @@ function AdminDashboardContent() {
           </div>
         )}
 
-        {/* ----- 💎 MEMBERSHIP PANEL ----- */}
+        {/* ----- 📋 MEMBERSHIP MANAGEMENT TAB (NEW) ----- */}
         {activeTab === 'membership' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <div className="mb-6 border-b border-gray-100 pb-4">
-              <h3 className="text-xl font-bold text-[#1a1a1a] mb-2">💎 Manual Membership Control</h3>
-              <p className="text-sm text-gray-500">Grant or revoke membership for any Owner. Changes take effect immediately.</p>
+            <div className="mb-6 border-b border-gray-100 pb-4 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-bold text-[#1a1a1a] mb-1">📋 Membership Overview</h3>
+                <p className="text-sm text-gray-500">View active/expired memberships and send renewal alerts.</p>
+              </div>
+              <button onClick={() => window.location.reload()} className="text-orange-500 hover:text-orange-600 text-sm font-medium">🔄 Refresh</button>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-8">
-              {/* GRANT CARD */}
-              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-2xl p-6">
-                <h4 className="font-bold text-emerald-800 mb-4 text-lg flex items-center gap-2">✅ Grant Membership</h4>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Owner ID (UUID)</label>
-                    <input id="grantOwnerId" type="text" placeholder="Paste the Owner's User ID" className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Number of Days</label>
-                    <input id="grantDays" type="number" min="1" placeholder="e.g. 30" className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                  </div>
-                  <button onClick={() => { const oid = document.getElementById('grantOwnerId').value; const days = parseInt(document.getElementById('grantDays').value); grantMembership(oid, days); }} disabled={membershipLoading} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg font-semibold transition shadow-sm disabled:opacity-50">Grant Membership</button>
-                </div>
-              </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-[#1a1a1a] text-white/90 border-b border-orange-500/30">
+                  <tr>
+                    <th className="px-6 py-4 font-medium tracking-wide">Owner Name</th>
+                    <th className="px-6 py-4 font-medium tracking-wide">Email</th>
+                    <th className="px-6 py-4 font-medium tracking-wide">Membership Status</th>
+                    <th className="px-6 py-4 font-medium tracking-wide">Days Left</th>
+                    <th className="px-6 py-4 font-medium tracking-wide">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {membershipLoading ? (
+                    <tr><td colSpan="5" className="px-6 py-12 text-center text-gray-400">Loading membership data...</td></tr>
+                  ) : membershipOwners.length === 0 ? (
+                    <tr><td colSpan="5" className="px-6 py-12 text-center text-gray-400">No owners found.</td></tr>
+                  ) : (
+                    membershipOwners.map((owner) => {
+                      const property = owner.properties?.[0];
+                      const isActive = property?.membership_active;
+                      const daysLeft = getDaysLeft(property?.membership_expiry);
+                      
+                      let statusColor = 'bg-gray-100 text-gray-700';
+                      let statusText = 'Inactive';
 
-              {/* REVOKE CARD */}
-              <div className="bg-gradient-to-br from-red-50 to-red-100/50 border border-red-200 rounded-2xl p-6">
-                <h4 className="font-bold text-red-800 mb-4 text-lg flex items-center gap-2">⛔ Revoke Membership</h4>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Owner ID (UUID)</label>
-                    <input id="revokeOwnerId" type="text" placeholder="Paste the Owner's User ID" className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500" />
-                  </div>
-                  <button onClick={() => { const oid = document.getElementById('revokeOwnerId').value; revokeMembership(oid); }} disabled={membershipLoading} className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-semibold transition shadow-sm disabled:opacity-50">Revoke Membership</button>
-                </div>
-              </div>
-            </div>
+                      if (isActive && daysLeft > 7) {
+                        statusColor = 'bg-emerald-100 text-emerald-700';
+                        statusText = 'Active';
+                      } else if (isActive && daysLeft <= 7 && daysLeft > 0) {
+                        statusColor = 'bg-amber-100 text-amber-700';
+                        statusText = `Expires in ${daysLeft} days`;
+                      } else if (isActive && daysLeft <= 0) {
+                        statusColor = 'bg-red-100 text-red-700';
+                        statusText = 'Expired';
+                      }
 
-            <div className="mt-8 bg-[#fafafa] rounded-lg p-4 border border-gray-200">
-              <h5 className="text-sm font-semibold text-gray-700 mb-2">📌 How to find an Owner ID</h5>
-              <p className="text-xs text-gray-500">Go to the <strong>"Owners"</strong> tab. Click any Owner's row and copy their ID from the URL, or search your database's <code>users</code> table.</p>
+                      return (
+                        <tr key={owner.id} className="hover:bg-orange-50/50 transition">
+                          <td className="px-6 py-4 font-semibold text-gray-800">{owner.full_name}</td>
+                          <td className="px-6 py-4 text-gray-500">{owner.email}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${statusColor}`}>
+                              {statusText}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-gray-500">
+                            {isActive && daysLeft !== null ? `${daysLeft} days` : '-'}
+                          </td>
+                          <td className="px-6 py-4">
+                            <button 
+                              onClick={() => sendRenewalEmail(owner.id, owner.email, owner.full_name)}
+                              className="text-orange-600 hover:text-orange-800 font-semibold text-xs uppercase tracking-wider"
+                            >
+                              Send Renewal
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
       </div>
 
-      {/* ----- DETAIL MODALS (Modular) ----- */}
+      {/* ----- DETAIL MODALS ----- */}
       <DetailModal 
         isOpen={!!selectedProperty} 
         onClose={closeModals} 
