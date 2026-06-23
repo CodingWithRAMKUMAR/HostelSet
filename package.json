@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "vercel-build": "rm -f package-lock.json && rm -f package.json && curl -o package.json https://raw.githubusercontent.com/CodingWithRAMKUMAR/HostelSet/main/package.json && npm install && npm run build"
+    "start": "next start"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.8",
