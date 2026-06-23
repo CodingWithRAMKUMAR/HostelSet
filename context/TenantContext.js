@@ -20,22 +20,64 @@ export function TenantProvider({ children }) {
 
   const loadTenantData = useCallback(async (userId, isBackground = false) => {
     if (!isBackground) setLoading(true); else setIsRefreshing(true);
+
+    // SAFETY TIMEOUT: If Supabase doesn't respond in 5 seconds, stop loading and show error
+    const timeout = setTimeout(() => {
+      setLoading(false);
+      toast.error('Failed to load dashboard: Request timed out. Please refresh.');
+    }, 5000);
+
     try {
-      const { data: tenantData } = await supabase.from('tenants').select('*, rooms:room_id(*), property:property_id(*)').eq('user_id', userId).maybeSingle();
-      if (!tenantData) { toast.error('No tenant record found'); router.push('/login'); return; }
-      setTenant(tenantData); setRoom(tenantData.rooms); setProperty(tenantData.property);
+      const { data: tenantData, error } = await supabase
+        .from('tenants')
+        .select('*, rooms:room_id(*), property:property_id(*)')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      clearTimeout(timeout); // Clear the timeout since we got a response
+
+      if (error) {
+        console.error('Supabase Error:', error);
+        toast.error('Failed to load tenant data: ' + error.message);
+        if (!isBackground) setLoading(false);
+        return;
+      }
+
+      if (!tenantData) {
+        toast.error('No tenant record found for this user.');
+        router.push('/login');
+        return;
+      }
+
+      setTenant(tenantData);
+      setRoom(tenantData.rooms);
+      setProperty(tenantData.property);
+
       if (tenantData.property?.owner_id) {
-        const { data: settings } = await supabase.from('owner_settings').select('upi_id, upi_phone').eq('owner_id', tenantData.property.owner_id).maybeSingle();
-        const { data: ownerData } = await supabase.from('users').select('full_name, phone, email').eq('id', tenantData.property.owner_id).single();
+        const { data: settings } = await supabase
+          .from('owner_settings')
+          .select('upi_id, upi_phone')
+          .eq('owner_id', tenantData.property.owner_id)
+          .maybeSingle();
+
+        const { data: ownerData } = await supabase
+          .from('users')
+          .select('full_name, phone, email')
+          .eq('id', tenantData.property.owner_id)
+          .single();
         setOwner(ownerData);
       }
+
       let roommatesList = [];
       if (tenantData.room_id) {
-        const { data: roommatesData } = await supabase.from('tenants').select('name, phone, email, move_in_date, id').eq('room_id', tenantData.room_id).neq('id', tenantData.id);
+        const { data: roommatesData } = await supabase
+          .from('tenants')
+          .select('name, phone, email, move_in_date, id')
+          .eq('room_id', tenantData.room_id)
+          .neq('id', tenantData.id);
         roommatesList = roommatesData || []; 
         setRoommates(roommatesList);
         
-        // Check for roommate vacate alert
         if (roommatesList.length > 0) {
           const roommateIds = roommatesList.map(r => r.id);
           const { data: vacateRequests } = await supabase
@@ -54,11 +96,22 @@ export function TenantProvider({ children }) {
           }
         }
       }
-    } catch (error) { console.error('Load tenant core data error:', error); toast.error('Failed to load core dashboard data'); }
-    finally { if (!isBackground) setLoading(false); else setIsRefreshing(false); }
+    } catch (error) { 
+      clearTimeout(timeout);
+      console.error('Load tenant core data error:', error); 
+      toast.error('Failed to load core dashboard data'); 
+    }
+    finally { 
+      clearTimeout(timeout);
+      if (!isBackground) setLoading(false); 
+      else setIsRefreshing(false); 
+    }
   }, []);
 
-  const refreshData = useCallback((isBackground = true) => { const userId = localStorage.getItem('userId'); if (userId) loadTenantData(userId, isBackground); }, [loadTenantData]);
+  const refreshData = useCallback((isBackground = true) => { 
+    const userId = localStorage.getItem('userId'); 
+    if (userId) loadTenantData(userId, isBackground); 
+  }, [loadTenantData]);
 
   const checkAuthAndRedirect = async () => {
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -92,7 +145,7 @@ export function TenantProvider({ children }) {
       property, 
       owner, 
       roommates, 
-      roommateVacateAlert, // <-- Now correctly exported
+      roommateVacateAlert, 
       refreshData, 
       setTenant 
     }}>
