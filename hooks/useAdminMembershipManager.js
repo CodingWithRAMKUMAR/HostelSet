@@ -8,7 +8,6 @@ export function useAdminMembershipManager() {
 
   const loadOwners = async () => {
     setLoading(true);
-    // We join 'users' (to get name/email) with 'properties' (to get membership_expiry)
     const { data, error } = await supabase
       .from('users')
       .select(`
@@ -34,7 +33,6 @@ export function useAdminMembershipManager() {
     setLoading(false);
   };
 
-  // Helper to calculate days left
   const getDaysLeft = (expiryDate) => {
     if (!expiryDate) return null;
     const today = new Date();
@@ -43,7 +41,6 @@ export function useAdminMembershipManager() {
     return diff;
   };
 
-  // Helper to send a renewal email via our API
   const sendRenewalEmail = async (ownerId, ownerEmail, ownerName) => {
     try {
       const response = await fetch('/api/admin/send-renewal-email', {
@@ -63,13 +60,89 @@ export function useAdminMembershipManager() {
     }
   };
 
+  // --- FIXED GRANT MEMBERSHIP FUNCTION ---
+  const grantMembership = async (ownerId, days) => {
+    if (!ownerId) {
+      toast.error('Owner ID is required.');
+      return;
+    }
+    if (!days || days < 1) {
+      toast.error('Please enter a valid number of days.');
+      return;
+    }
+    try {
+      // Directly update the property without an RPC to prevent 'i is not a function'
+      const { data: propertyData, error: fetchError } = await supabase
+        .from('properties')
+        .select('id')
+        .eq('owner_id', ownerId)
+        .maybeSingle();
+
+      if (fetchError || !propertyData) {
+        toast.error('Could not find a property for this owner.');
+        return;
+      }
+
+      const newExpiry = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+      const { error: updateError } = await supabase
+        .from('properties')
+        .update({
+          membership_active: true,
+          membership_expiry: newExpiry.toISOString()
+        })
+        .eq('id', propertyData.id);
+
+      if (updateError) throw updateError;
+
+      toast.success(`Membership granted for ${days} days.`);
+      await loadOwners();
+    } catch (error) {
+      console.error('Grant membership error:', error);
+      toast.error('Failed to grant membership: ' + error.message);
+    }
+  };
+
+  // --- FIXED REVOKE MEMBERSHIP FUNCTION ---
+  const revokeMembership = async (ownerId) => {
+    if (!ownerId) {
+      toast.error('Owner ID is required.');
+      return;
+    }
+    try {
+      const { data: propertyData, error: fetchError } = await supabase
+        .from('properties')
+        .select('id')
+        .eq('owner_id', ownerId)
+        .maybeSingle();
+
+      if (fetchError || !propertyData) {
+        toast.error('Could not find a property for this owner.');
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from('properties')
+        .update({
+          membership_active: false,
+          membership_expiry: new Date().toISOString()
+        })
+        .eq('id', propertyData.id);
+
+      if (updateError) throw updateError;
+
+      toast.success('Membership revoked immediately.');
+      await loadOwners();
+    } catch (error) {
+      console.error('Revoke membership error:', error);
+      toast.error('Failed to revoke membership: ' + error.message);
+    }
+  };
+
   useEffect(() => {
     loadOwners();
-    
-    // Real-time updates for membership changes
     const channel = supabase.channel('admin-membership-manager')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'properties' }, (payload) => {
-        // Refresh the list when any property's membership changes
         loadOwners();
       })
       .subscribe();
@@ -77,5 +150,5 @@ export function useAdminMembershipManager() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  return { owners, loading, getDaysLeft, sendRenewalEmail, refresh: loadOwners };
+  return { owners, loading, getDaysLeft, sendRenewalEmail, grantMembership, revokeMembership, refresh: loadOwners };
 }
