@@ -1,4 +1,4 @@
-import 'react'; // Bulletproof import to ensure global React availability
+import 'react';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -6,6 +6,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { supabase } from '../../lib/supabase';
 import { formatCurrency, formatDate } from '../../lib/utils';
+import { ErrorBoundary } from '../../components/ErrorBoundary'; // <-- New Import
 
 // Modular Imports
 import { useOwner, OwnerProvider } from '../../context/OwnerContext';
@@ -49,9 +50,11 @@ const ScreenshotModal = dynamic(() => import('../../components/owner/modals/Scre
 
 export default function OwnerDashboard() {
   return (
-    <OwnerProvider>
-      <OwnerDashboardContent />
-    </OwnerProvider>
+    <ErrorBoundary> {/* <-- Wrap everything in here */}
+      <OwnerProvider>
+        <OwnerDashboardContent />
+      </OwnerProvider>
+    </ErrorBoundary>
   );
 }
 
