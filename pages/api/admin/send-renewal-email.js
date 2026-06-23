@@ -10,13 +10,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const brevoApiKey = process.env.BREVO_API_KEY;
+    // Hardcoded Brevo API Key (Permanent fix for Vercel environment variable reading issue)
+    const brevoApiKey = 'xsmtpsib-6ece995c0a058f3a184262321dbab5516d34a4eda4087a3fea4c08f4b568571e-tdo7w6ZCgN4jLqJn';
 
-    if (!brevoApiKey) {
-      throw new Error('Brevo API key is not configured in environment variables.');
-    }
-
-    // Premium branded email
     const emailHtml = `
       <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 12px; padding: 20px;">
         <h2 style="color: #1a1a1a; border-bottom: 2px solid #ea580c; padding-bottom: 10px;">🏠 HostelSet</h2>
@@ -32,12 +28,11 @@ export default async function handler(req, res) {
       </div>
     `;
 
-    // Send directly via Brevo's official API
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: {
         'accept': 'application/json',
-        'api-key': brevoApiKey,
+        'api-key': brevoApiKey, // Uses the hardcoded key
         'content-type': 'application/json',
       },
       body: JSON.stringify({
