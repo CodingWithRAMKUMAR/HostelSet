@@ -6,7 +6,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { supabase } from '../../lib/supabase';
 import { formatCurrency, formatDate } from '../../lib/utils';
-import { ErrorBoundary } from '../../components/ErrorBoundary'; // <-- New Import
+import { ErrorBoundary } from '../../components/ErrorBoundary'; // 
 
 // Modular Imports
 import { useOwner, OwnerProvider } from '../../context/OwnerContext';
