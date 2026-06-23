@@ -16,6 +16,7 @@ export function TenantProvider({ children }) {
   const [property, setProperty] = useState(null);
   const [owner, setOwner] = useState(null);
   const [roommates, setRoommates] = useState([]);
+  const [roommateVacateAlert, setRoommateVacateAlert] = useState(null);
 
   const loadTenantData = useCallback(async (userId, isBackground = false) => {
     if (!isBackground) setLoading(true); else setIsRefreshing(true);
@@ -31,7 +32,27 @@ export function TenantProvider({ children }) {
       let roommatesList = [];
       if (tenantData.room_id) {
         const { data: roommatesData } = await supabase.from('tenants').select('name, phone, email, move_in_date, id').eq('room_id', tenantData.room_id).neq('id', tenantData.id);
-        roommatesList = roommatesData || []; setRoommates(roommatesList);
+        roommatesList = roommatesData || []; 
+        setRoommates(roommatesList);
+        
+        // Check for roommate vacate alert
+        if (roommatesList.length > 0) {
+          const roommateIds = roommatesList.map(r => r.id);
+          const { data: vacateRequests } = await supabase
+            .from('check_out_requests')
+            .select('tenant_id, tenant_name, expected_check_out')
+            .in('tenant_id', roommateIds)
+            .eq('status', 'approved');
+          const upcoming = vacateRequests?.find(v => new Date(v.expected_check_out) > new Date());
+          if (upcoming) {
+            const roommate = roommatesList.find(r => r.id === upcoming.tenant_id);
+            setRoommateVacateAlert({ 
+              name: roommate?.name || upcoming.tenant_name, 
+              daysLeft: Math.ceil((new Date(upcoming.expected_check_out) - new Date()) / (1000 * 60 * 60 * 24)), 
+              date: upcoming.expected_check_out 
+            });
+          }
+        }
       }
     } catch (error) { console.error('Load tenant core data error:', error); toast.error('Failed to load core dashboard data'); }
     finally { if (!isBackground) setLoading(false); else setIsRefreshing(false); }
@@ -63,7 +84,18 @@ export function TenantProvider({ children }) {
   }, []);
 
   return (
-    <TenantContext.Provider value={{ loading, isRefreshing, tenant, room, property, owner, roommates, refreshData, setTenant }}>
+    <TenantContext.Provider value={{ 
+      loading, 
+      isRefreshing, 
+      tenant, 
+      room, 
+      property, 
+      owner, 
+      roommates, 
+      roommateVacateAlert, // <-- Now correctly exported
+      refreshData, 
+      setTenant 
+    }}>
       {children}
     </TenantContext.Provider>
   );
