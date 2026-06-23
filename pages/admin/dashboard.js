@@ -15,7 +15,7 @@ import { useAdminComplaints } from '../../hooks/useAdminComplaints';
 import { useAdminVacate } from '../../hooks/useAdminVacate';
 import { useAdminRoomChange } from '../../hooks/useAdminRoomChange';
 import { useAdminNotices } from '../../hooks/useAdminNotices';
-import { useAdminMembershipManager } from '../../hooks/useAdminMembershipManager'; // <-- NEW IMPORT
+import { useAdminMembershipManager } from '../../hooks/useAdminMembershipManager';
 import { useAdminModals } from '../../hooks/useAdminModals';
 import toast from 'react-hot-toast';
 
@@ -71,7 +71,7 @@ function AdminDashboardContent() {
   const { properties, deleteProperty } = useAdminProperties();
   const { tenants, deleteTenant } = useAdminTenants();
   const { owners, toggleOwnerStatus } = useAdminOwners();
-  const { users, toggleUserStatus } = useAdminUsers();
+  const { users, loading: usersLoading, searchTerm, setSearchTerm, roleFilter, setRoleFilter, toggleUserStatus, changeUserRole } = useAdminUsers();
   const { payments, confirmPayment, rejectPayment } = useAdminPayments();
   const { preBookings, approvePreBooking, rejectPreBooking } = useAdminPreBookings();
   const { applications, approveApplication, rejectApplication } = useAdminApplications();
@@ -80,7 +80,7 @@ function AdminDashboardContent() {
   const { vacateRequests, approveVacate, rejectVacate } = useAdminVacate();
   const { roomChanges, approveRoomChange, rejectRoomChange } = useAdminRoomChange();
   const { notices, postNotice, deleteNotice } = useAdminNotices();
-  const { owners: membershipOwners, loading: membershipLoading, getDaysLeft, sendRenewalEmail } = useAdminMembershipManager(); // <-- NEW HOOK
+  const { owners: membershipOwners, loading: membershipLoading, getDaysLeft, sendRenewalEmail } = useAdminMembershipManager();
   const { selectedProperty, selectedOwner, viewPropertyDetails, viewOwnerDetails, closeModals } = useAdminModals();
 
   const [activeTab, setActiveTab] = useState('overview');
@@ -117,7 +117,7 @@ function AdminDashboardContent() {
     { id: 'vacate', label: '🚪 Vacate' },
     { id: 'roomchange', label: '🔄 Room Change' },
     { id: 'notices', label: '📢 Notices' },
-    { id: 'membership', label: '📋 Membership' }, // <-- NEW TAB
+    { id: 'membership', label: '📋 Membership' },
   ];
 
   return (
@@ -171,7 +171,7 @@ function AdminDashboardContent() {
           ))}
         </div>
 
-        {/* ----- TAB CONTENT RENDERER ----- */}
+        {/* ----- OVERVIEW ----- */}
         {activeTab === 'overview' && (
           <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm text-center relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-orange-50 to-transparent rounded-full -mr-20 -mt-20 opacity-50" />
@@ -248,43 +248,76 @@ function AdminDashboardContent() {
           />
         )}
 
-        {/* ----- USERS ----- */}
+        {/* ----- USERS (Fully Modular with Search, Filter, and Role Controls) ----- */}
         {activeTab === 'users' && (
-          <AdminTable
-            headers={['Full Name', 'Email', 'Role', 'Status', 'Actions']}
-            data={users}
-            renderRow={(u) => (
-              <tr key={u.id} className="hover:bg-orange-50/50 transition">
-                <td className="px-6 py-4 font-semibold text-gray-800">{u.full_name || 'N/A'}</td>
-                <td className="px-6 py-4 text-gray-500">{u.email}</td>
-                <td className="px-6 py-4">
-                  <span className="px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-orange-100 text-orange-700">{u.role}</span>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${u.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                    {u.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 flex flex-wrap gap-2">
-                  <button onClick={() => toggleUserStatus(u.id, u.is_active)} className={`font-semibold text-xs uppercase tracking-wider ${u.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-500 hover:text-green-700'}`}>
-                    {u.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
-                  <select
-                    onChange={(e) => changeUserRole(u.id, e.target.value)}
-                    disabled={roleLoading}
-                    className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-orange-500"
-                    defaultValue=""
-                  >
-                    <option value="" disabled>Change Role</option>
-                    <option value="tenant">Tenant</option>
-                    <option value="owner">Owner</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </td>
-              </tr>
-            )}
-            emptyMessage="No users found."
-          />
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="mb-6 flex flex-col md:flex-row justify-between items-center gap-4 border-b border-gray-100 pb-4">
+              <h3 className="text-lg font-bold text-[#1a1a1a]">👤 User Management</h3>
+              <div className="flex gap-4 w-full md:w-auto">
+                <input 
+                  type="text" 
+                  placeholder="🔍 Search name, email, phone..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-4 py-2 text-sm w-full md:w-64 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+                <select
+                  value={roleFilter}
+                  onChange={(e) => setRoleFilter(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-4 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  <option value="all">All Roles</option>
+                  <option value="admin">Admin</option>
+                  <option value="owner">Owner</option>
+                  <option value="tenant">Tenant</option>
+                </select>
+              </div>
+            </div>
+
+            <AdminTable
+              headers={['Full Name', 'Email', 'Role', 'Status', 'Actions']}
+              data={users}
+              renderRow={(u) => (
+                <tr key={u.id} className="hover:bg-orange-50/50 transition">
+                  <td className="px-6 py-4 font-semibold text-gray-800">{u.full_name || 'N/A'}</td>
+                  <td className="px-6 py-4 text-gray-500">{u.email}</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                      u.role === 'admin' ? 'bg-red-100 text-red-700' :
+                      u.role === 'owner' ? 'bg-orange-100 text-orange-700' :
+                      'bg-blue-100 text-blue-700'
+                    }`}>
+                      {u.role}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${u.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                      {u.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 flex flex-wrap gap-2">
+                    <button 
+                      onClick={() => toggleUserStatus(u.id, u.is_active)} 
+                      className={`font-semibold text-xs uppercase tracking-wider ${u.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-500 hover:text-green-700'}`}
+                    >
+                      {u.is_active ? 'Deactivate' : 'Activate'}
+                    </button>
+                    <select
+                      onChange={(e) => changeUserRole(u.id, e.target.value)}
+                      className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-orange-500"
+                      defaultValue=""
+                    >
+                      <option value="" disabled>Change Role</option>
+                      <option value="tenant">Tenant</option>
+                      <option value="owner">Owner</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </td>
+                </tr>
+              )}
+              emptyMessage="No users found matching your search."
+            />
+          </div>
         )}
 
         {/* ----- PAYMENTS ----- */}
@@ -484,7 +517,7 @@ function AdminDashboardContent() {
           </div>
         )}
 
-        {/* ----- 📋 MEMBERSHIP MANAGEMENT TAB (NEW) ----- */}
+        {/* ----- MEMBERSHIP MANAGEMENT ----- */}
         {activeTab === 'membership' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="mb-6 border-b border-gray-100 pb-4 flex justify-between items-center">
