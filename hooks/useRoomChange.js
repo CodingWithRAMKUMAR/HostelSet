@@ -1,0 +1,127 @@
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import toast from 'react-hot-toast';
+
+export function useRoomChange(tenant, refreshData) {
+  const [pendingRoomChangeRequest, setPendingRoomChangeRequest] = useState(null);
+  const [availableRooms, setAvailableRooms] = useState([]);
+  const [showRoomChangeModal, setShowRoomChangeModal] = useState(false);
+  const [selectedNewRoom, setSelectedNewRoom] = useState('');
+  const [roomChangeReason, setRoomChangeReason] = useState('');
+
+  const loadPendingRequest = async () => {
+    if (!tenant?.id) return;
+    const { data } = await supabase
+      .from('room_change_requests')
+      .select('*')
+      .eq('tenant_id', tenant.id)
+      .eq('status', 'pending')
+      .maybeSingle();
+    setPendingRoomChangeRequest(data);
+  };
+
+  const fetchAvailableRooms = async () => {
+    if (!tenant?.property_id) return;
+    try {
+      const { data: allRooms, error } = await supabase
+        .from('rooms')
+        .select('id, room_number, sharing_type, monthly_rent, capacity, current_occupants')
+        .eq('property_id', tenant.property_id)
+        .neq('id', tenant.room_id);
+      if (error) throw error;
+
+      const { data: pendingChanges } = await supabase
+        .from('room_change_requests')
+        .select('new_room_id')
+        .eq('property_id', tenant.property_id)
+        .eq('status', 'pending');
+      const pendingRoomIds = pendingChanges?.map(p => p.new_room_id) || [];
+
+      const available = allRooms.filter(room => 
+        room.current_occupants < room.capacity && 
+        !pendingRoomIds.includes(room.id)
+      );
+      setAvailableRooms(available);
+      if (available.length === 0) toast.info('No rooms available for change.');
+    } catch (error) {
+      console.error('Fetch available rooms error:', error);
+      toast.error('Failed to load available rooms');
+      setAvailableRooms([]);
+    }
+  };
+
+  const openRoomChangeModal = () => {
+    fetchAvailableRooms();
+    setSelectedNewRoom('');
+    setRoomChangeReason('');
+    setShowRoomChangeModal(true);
+  };
+
+  const submitRoomChangeRequest = async () => {
+    if (!selectedNewRoom) { toast.error('Please select a room'); return false; }
+    if (pendingRoomChangeRequest) { toast.error('You already have a pending room change request'); return false; }
+    try {
+      const { error } = await supabase.from('room_change_requests').insert({
+        tenant_id: tenant.id,
+        property_id: tenant.property_id,
+        old_room_id: tenant.room_id,
+        new_room_id: selectedNewRoom,
+        reason: roomChangeReason || null,
+        status: 'pending',
+        requested_at: new Date().toISOString()
+      });
+      if (error) throw error;
+      toast.success('Room change request submitted!');
+      setShowRoomChangeModal(false);
+      setSelectedNewRoom('');
+      setRoomChangeReason('');
+      await refreshData(true);
+      return true;
+    } catch (error) {
+      console.error('Room change request error:', error);
+      toast.error('Failed to submit request: ' + error.message);
+      return false;
+    }
+  };
+
+  // Real-time room change updates
+  useEffect(() => {
+    if (!tenant?.id) return;
+    loadPendingRequest();
+
+    const channel = supabase.channel('roomchange-tenant-isolated')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'room_change_requests' }, (payload) => {
+        if (payload.new?.tenant_id === tenant.id) {
+          if (payload.eventType === 'INSERT') {
+            setPendingRoomChangeRequest(payload.new);
+          } else if (payload.eventType === 'UPDATE') {
+            if (payload.new.status === 'approved' || payload.new.status === 'rejected') {
+              setPendingRoomChangeRequest(null);
+              if (payload.new.status === 'approved') toast.success('✅ Your room change request was approved!');
+              else toast.error('❌ Your room change request was rejected.');
+            } else {
+              setPendingRoomChangeRequest(payload.new);
+            }
+          } else if (payload.eventType === 'DELETE') {
+            setPendingRoomChangeRequest(null);
+          }
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [tenant?.id]);
+
+  return {
+    pendingRoomChangeRequest,
+    availableRooms,
+    showRoomChangeModal,
+    setShowRoomChangeModal,
+    selectedNewRoom,
+    setSelectedNewRoom,
+    roomChangeReason,
+    setRoomChangeReason,
+    openRoomChangeModal,
+    submitRoomChangeRequest
+  };
+}

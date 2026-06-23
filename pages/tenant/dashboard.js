@@ -1,6 +1,15 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
-import { useTenantDashboard } from '../../hooks/useTenantDashboard'
+
+// ---------------- MODULAR IMPORTS ----------------
+import { useTenant, TenantProvider } from '../../context/TenantContext'
+import { useNotices } from '../../hooks/useNotices'
+import { useVacate } from '../../hooks/useVacate'
+import { useComplaints } from '../../hooks/useComplaints'
+import { usePayments } from '../../hooks/usePayments'
+import { useRoomChange } from '../../hooks/useRoomChange'
+// ------------------------------------------------
+
 import { formatCurrency, formatDate, getSharingDetails } from '../../lib/utils'
 
 // Content Components (static)
@@ -10,7 +19,7 @@ import NoticesSection from '../../components/tenant/NoticesSection'
 import ComplaintsSection from '../../components/tenant/ComplaintsSection'
 import PaymentsSection from '../../components/tenant/PaymentsSection'
 
-// Lazy-load Modal Components for performance
+// Lazy-load Modal Components
 const PayRentModal = dynamic(() => import('../../components/tenant/modals/PayRentModal'), { ssr: false })
 const ComplaintModal = dynamic(() => import('../../components/tenant/modals/ComplaintModal'), { ssr: false })
 const VacateModal = dynamic(() => import('../../components/tenant/modals/VacateModal'), { ssr: false })
@@ -19,76 +28,155 @@ const RoomChangeModal = dynamic(() => import('../../components/tenant/modals/Roo
 const ScreenshotModal = dynamic(() => import('../../components/tenant/modals/ScreenshotModal'), { ssr: false })
 
 export default function TenantDashboard() {
+  // ---------------- MODULAR HOOKS ----------------
+  const core = useTenant();
+  const { tenant, room, property, owner, roommates, loading, refreshData, setTenant } = core;
+  
+  const { notices } = useNotices(tenant);
+  const { existingVacateRequest, cancelVacateRequest } = useVacate(tenant, setTenant);
+  const { complaints, submitComplaint, deleteComplaint } = useComplaints(tenant);
+  
+  const { 
+    paymentHistory, 
+    paymentLoading, 
+    ownerUpiId, 
+    ownerUpiPhone, 
+    submitPaymentWithProof 
+  } = usePayments(tenant, refreshData);
+
   const {
-    loading,
-    tenant,
-    room,
-    property,
-    owner,
-    roommates,
-    notices,
-    complaints,
-    paymentHistory,
-    existingVacateRequest,
-    roommateVacateAlert,
-    showComplaintModal,
-    setShowComplaintModal,
-    showPaymentModal,
-    setShowPaymentModal,
-    showVacateModal,
-    setShowVacateModal,
-    showProfileModal,
-    setShowProfileModal,
-    complaintForm,
-    setComplaintForm,
-    vacateForm,
-    setVacateForm,
-    isSubmitting,
-    activeTab,
-    setActiveTab,
-    editProfile,
-    setEditProfile,
-    profileForm,
-    setProfileForm,
-    ratingHover,
-    setRatingHover,
-    ownerUpiId,
-    ownerUpiPhone,
-    paymentScreenshot,
-    setPaymentScreenshot,
-    paymentTransactionId,
-    setPaymentTransactionId,
-    paymentLoading,
-    showScreenshotModal,
-    setShowScreenshotModal,
-    screenshotUrl,
-    setScreenshotUrl,
+    pendingRoomChangeRequest,
+    availableRooms,
     showRoomChangeModal,
     setShowRoomChangeModal,
-    availableRooms,
     selectedNewRoom,
     setSelectedNewRoom,
     roomChangeReason,
     setRoomChangeReason,
-    pendingRoomChangeRequest,
-    getRentStatus,
-    initiateUPIPayment,
-    copyUpiId,
-    copyUpiPhone,
-    refreshData,
-    updateProfile,
-    submitComplaint,
-    deleteComplaint,
-    requestVacate,
-    cancelVacateRequest,
-    submitPaymentWithProof,
     openRoomChangeModal,
-    submitRoomChangeRequest,
-    handleLogout,
-  } = useTenantDashboard()
+    submitRoomChangeRequest
+  } = useRoomChange(tenant, refreshData);
+  // ------------------------------------------------
 
-  const rentStatus = getRentStatus()
+  // ----- UI States remaining -----
+  const [showComplaintModal, setShowComplaintModal] = useState(false)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [showVacateModal, setShowVacateModal] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [complaintForm, setComplaintForm] = useState({ title:'', description:'', priority:'medium' })
+  const [vacateForm, setVacateForm] = useState({ expected_date:'', reason:'', rating:0, review:'' })
+  const [paymentAmount, setPaymentAmount] = useState(0)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [activeTab, setActiveTab] = useState('overview')
+  const [editProfile, setEditProfile] = useState(false)
+  const [profileForm, setProfileForm] = useState({ name:'', phone:'', email:'' })
+  const [ratingHover, setRatingHover] = useState(0)
+  const [paymentScreenshot, setPaymentScreenshot] = useState(null)
+  const [paymentTransactionId, setPaymentTransactionId] = useState('')
+  const [showScreenshotModal, setShowScreenshotModal] = useState(false)
+  const [screenshotUrl, setScreenshotUrl] = useState('')
+
+  // ----- Helper Functions -----
+  const initiateUPIPayment = (upiId, amount) => {
+    const cleanUpi = upiId.trim()
+    if (!cleanUpi) { toast.error('Owner UPI ID not available'); return }
+    const payee = encodeURIComponent(cleanUpi)
+    const payeeName = encodeURIComponent('HostelSet Rent')
+    const amt = encodeURIComponent(amount)
+    const cu = encodeURIComponent('INR')
+    const tr = encodeURIComponent(`RENT_${Date.now()}`)
+    const tn = encodeURIComponent(`Rent payment for ${tenant?.name||'tenant'}`)
+    const upiUrl = `upi://pay?pa=${payee}&pn=${payeeName}&am=${amt}&cu=${cu}&tr=${tr}&tn=${tn}`
+    window.location.href = upiUrl
+    setTimeout(() => {
+      if (document.hasFocus()) {
+        navigator.clipboard.writeText(cleanUpi)
+        toast.error('Unable to open UPI app. UPI ID copied.', { duration:5000 })
+      }
+    }, 2500)
+  }
+  const copyUpiId = (upiId) => { navigator.clipboard.writeText(upiId); toast.success('UPI ID copied!') }
+  const copyUpiPhone = (phone) => { navigator.clipboard.writeText(phone); toast.success('UPI Phone Number copied!') }
+
+  // ----- Profile -----
+  const updateProfile = async () => {
+    if (isSubmitting) return
+    if (!profileForm.name) { toast.error('Name is required'); return }
+    setIsSubmitting(true)
+    try {
+      const { error } = await supabase.from('tenants').update({ name:profileForm.name, phone:profileForm.phone, email:profileForm.email }).eq('id', tenant.id)
+      if (error) throw error
+      toast.success('Profile updated successfully!')
+      setEditProfile(false)
+      await refreshData(true)
+    } catch (error) { toast.error('Failed to update profile') }
+    finally { setIsSubmitting(false) }
+  }
+
+  // ----- Handlers -----
+  const requestVacate = async () => {
+    if (isSubmitting) return
+    if (!vacateForm.expected_date) { toast.error('Please select expected check-out date'); return }
+    if (vacateForm.rating === 0) { toast.error('Please rate your experience (1-5 stars)'); return }
+    setIsSubmitting(true)
+    try {
+      const vacateData = {
+        tenant_id: tenant.id, tenant_name: tenant.name, property_id: tenant.property_id,
+        room_id: tenant.room_id, room_number: room?.room_number || 'N/A',
+        expected_check_out: vacateForm.expected_date, reason: vacateForm.reason || null,
+        requested_date: new Date().toISOString().split('T')[0], status: 'pending',
+        created_at: new Date().toISOString()
+      }
+      const { error } = await supabase.from('check_out_requests').insert(vacateData)
+      if (error) throw new Error(error.message)
+      const { error: ratingError } = await supabase.from('ratings').insert({
+        tenant_id: tenant.id, property_id: tenant.property_id,
+        rating: vacateForm.rating, review: vacateForm.review || null,
+        created_at: new Date().toISOString()
+      })
+      if (ratingError) console.error('Rating submit error:', ratingError)
+      toast.success('Vacate request submitted! Owner will review it.')
+      setShowVacateModal(false)
+      setVacateForm({ expected_date:'', reason:'', rating:0, review:'' })
+      await refreshData(true)
+    } catch (error) {
+      console.error('Vacate request error:', error)
+      toast.error('Failed to submit vacate request: ' + error.message)
+    } finally { setIsSubmitting(false) }
+  }
+
+  const getRentStatus = () => {
+    if (!tenant) return { status: 'loading', message: '', daysUntilDue: null, dueDate: null }
+    const joinDate = new Date(tenant.move_in_date)
+    const today = new Date()
+    let monthsSinceJoin = (today.getFullYear() - joinDate.getFullYear()) * 12 + (today.getMonth() - joinDate.getMonth())
+    if (today.getDate() < joinDate.getDate()) monthsSinceJoin -= 1
+    const monthsPaid = Math.floor((tenant.total_paid || 0) / tenant.rent_amount)
+    const isCurrentMonthPaid = monthsPaid > monthsSinceJoin
+    if (isCurrentMonthPaid || (tenant.pending_amount === 0 && tenant.rent_status === 'paid')) {
+      const nextDueDate = new Date(today.getFullYear(), today.getMonth() + 1, joinDate.getDate())
+      if (nextDueDate.getDate() !== joinDate.getDate()) nextDueDate.setDate(0)
+      const daysUntilDue = Math.ceil((nextDueDate - today) / (1000*60*60*24))
+      return { status:'paid', message:`Paid ✓ | Next due on ${formatDate(nextDueDate)}`, daysUntilDue, dueAmount:0, dueDate:nextDueDate }
+    }
+    const expectedDate = new Date(today.getFullYear(), today.getMonth(), joinDate.getDate())
+    if (expectedDate.getDate() !== joinDate.getDate()) expectedDate.setDate(0)
+    const daysUntilDue = Math.ceil((expectedDate - today) / (1000*60*60*24))
+    const pendingAmount = tenant.pending_amount || tenant.rent_amount
+    if (daysUntilDue < 0) { return { status:'overdue', message:`Overdue by ${Math.abs(daysUntilDue)} days`, daysUntilDue, dueAmount:pendingAmount, dueDate:expectedDate, urgent:true } }
+    else if (daysUntilDue === 0) { return { status:'due_today', message:'Due today!', daysUntilDue:0, dueAmount:pendingAmount, dueDate:expectedDate, urgent:true } }
+    else if (daysUntilDue <= 5) { return { status:'due_soon', message:`Due in ${daysUntilDue} day${daysUntilDue!==1?'s':''}`, daysUntilDue, dueAmount:pendingAmount, dueDate:expectedDate, urgent:true } }
+    else { return { status:'pending', message:`Due on ${formatDate(expectedDate)}`, daysUntilDue, dueAmount:pendingAmount, dueDate:expectedDate, urgent:false } }
+  }
+
+  const rentStatus = getRentStatus() || { message: 'Loading...' }
   const isUrgent = rentStatus.urgent && (rentStatus.status === 'due_soon' || rentStatus.status === 'overdue')
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    localStorage.clear()
+    router.push('/')
+  }
 
   if (loading) {
     return (
@@ -212,7 +300,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      {/* Modals (lazy‑loaded) */}
+      {/* Modals */}
       <AnimatePresence>
         {showPaymentModal && (
           <PayRentModal
@@ -229,7 +317,7 @@ export default function TenantDashboard() {
             initiateUPIPayment={initiateUPIPayment}
             copyUpiId={copyUpiId}
             copyUpiPhone={copyUpiPhone}
-            submitPaymentWithProof={submitPaymentWithProof}
+            submitPaymentWithProof={() => submitPaymentWithProof(paymentScreenshot, paymentTransactionId)}
             onCancel={() => setShowPaymentModal(false)}
           />
         )}
@@ -241,7 +329,10 @@ export default function TenantDashboard() {
             complaintForm={complaintForm}
             setComplaintForm={setComplaintForm}
             isSubmitting={isSubmitting}
-            onSubmit={submitComplaint}
+            onSubmit={() => {
+              submitComplaint();
+              setShowComplaintModal(false);
+            }}
             onCancel={() => setShowComplaintModal(false)}
           />
         )}
