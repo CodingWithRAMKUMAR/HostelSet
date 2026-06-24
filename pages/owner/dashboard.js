@@ -95,6 +95,33 @@ function OwnerDashboardContent() {
   const { applications, approveApplication, rejectApplication, resendPasswordEmail } = useOwnerApplications(property);
   const { preBookings, approvePreBooking, rejectPreBooking } = useOwnerPreBookings(property);
 
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showNoticeModal, setShowNoticeModal] = useState(false);
+  const [showRoomDetailsModal, setShowRoomDetailsModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showComplaintResponseModal, setShowComplaintResponseModal] = useState(false);
+  const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
+  const [showMembershipModal, setShowMembershipModal] = useState(false);
+  const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
+  const [showApplicationDetailModal, setShowApplicationDetailModal] = useState(false);
+  const [showScreenshotModal, setShowScreenshotModal] = useState(false);
+  const [selectedRoom, setSelectedRoom] = useState(null);
+  const [selectedTenant, setSelectedTenant] = useState(null);
+  const [selectedComplaint, setSelectedComplaint] = useState(null);
+  const [selectedApplication, setSelectedApplication] = useState(null);
+  const [selectedRoomChangeRequest, setSelectedRoomChangeRequest] = useState(null);
+  const [confirmingTenant, setConfirmingTenant] = useState(null);
+  const [tenantToDelete, setTenantToDelete] = useState(null);
+  const [complaintResponse, setComplaintResponse] = useState('');
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [screenshotUrl, setScreenshotUrl] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('overview');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
+
   // Modal States for History & Profile
   const [showTenantPaymentsModal, setShowTenantPaymentsModal] = useState(false);
   const [showTenantProfileModal, setShowTenantProfileModal] = useState(false);
@@ -105,7 +132,7 @@ function OwnerDashboardContent() {
   const [loadingProfile, setLoadingProfile] = useState(false);
 
   // ----------------------------------------------------------------
-  // FETCH FUNCTIONS (Wires History & Profile buttons)
+  // FETCH FUNCTIONS FOR HISTORY & PROFILE
   // ----------------------------------------------------------------
   const fetchTenantPayments = async (tenant) => {
     setSelectedTenantForPayments(tenant);
@@ -144,34 +171,68 @@ function OwnerDashboardContent() {
     }
   };
 
-  // Local UI States
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showNoticeModal, setShowNoticeModal] = useState(false);
-  const [showRoomDetailsModal, setShowRoomDetailsModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showComplaintResponseModal, setShowComplaintResponseModal] = useState(false);
-  const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
-  const [showMembershipModal, setShowMembershipModal] = useState(false);
-  const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
-  const [showApplicationDetailModal, setShowApplicationDetailModal] = useState(false);
-  const [showScreenshotModal, setShowScreenshotModal] = useState(false);
-  const [showRoomChangeReasonModal, setShowRoomChangeReasonModal] = useState(false);
-  const [selectedRoom, setSelectedRoom] = useState(null);
-  const [selectedTenant, setSelectedTenant] = useState(null);
-  const [selectedComplaint, setSelectedComplaint] = useState(null);
-  const [selectedApplication, setSelectedApplication] = useState(null);
-  const [selectedRoomChangeRequest, setSelectedRoomChangeRequest] = useState(null);
-  const [confirmingTenant, setConfirmingTenant] = useState(null);
-  const [tenantToDelete, setTenantToDelete] = useState(null);
-  const [complaintResponse, setComplaintResponse] = useState('');
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [screenshotUrl, setScreenshotUrl] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('overview');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
+  // ----------------------------------------------------------------
+  // ROBUST APPROVAL LOGIC (Sends Password Reset Email after success)
+  // ----------------------------------------------------------------
+  const handleApproveApplication = async (appId, appData) => {
+    if (isSubmitting) return;
+    if (!appData) {
+      toast.error('Application data is missing.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      console.log("🚀 Starting approval for:", appData.name);
+
+      const moveInDate = appData.expected_move_in 
+        ? new Date(appData.expected_move_in).toISOString().split('T')[0] 
+        : new Date().toISOString().split('T')[0];
+      
+      // 1. Call the RPC to create the tenant
+      const { data, error } = await supabase.rpc('create_tenant_from_application', {
+        p_user_id: appData.user_id,
+        p_app_id: appId,
+        p_property_id: appData.property_id,
+        p_room_id: appData.room_id,
+        p_name: appData.name,
+        p_phone: appData.phone,
+        p_email: appData.email,
+        p_rent_amount: appData.rooms?.monthly_rent || 0,
+        p_move_in_date: moveInDate
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success(`✅ ${appData.name} approved! Tenant created.`);
+        
+        // 2. Send the Password Reset Email so the Tenant can log in
+        console.log("📧 Sending password reset email to:", appData.email);
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+          appData.email,
+          { redirectTo: `${window.location.origin}/reset-password` }
+        );
+
+        if (resetError) {
+          console.warn("⚠️ Password reset email failed to send:", resetError.message);
+          toast.warning("Tenant created, but password reset email could not be sent.");
+        } else {
+          toast.success("📧 Password reset email sent to the tenant!");
+        }
+
+        await loadData(true); // Refresh the dashboard
+      } else {
+        toast.error(data?.message || 'Failed to create tenant.');
+      }
+
+    } catch (error) {
+      console.error('Approve error:', error);
+      toast.error('Failed to approve: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const getRoomNumberById = (roomId) => { const room = rooms.find(r => r.id === roomId); return room ? room.room_number : 'N/A' }
   const getTenantsInRoom = (roomId) => tenants.filter(t => t.room_id === roomId)
@@ -276,7 +337,7 @@ function OwnerDashboardContent() {
         {activeTab === 'rent-payments' && <RentPaymentsList payments={safeAllPayments} onConfirm={confirmRentPayment} onReject={rejectRentPayment} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
         {activeTab === 'payment-history' && <PaymentHistoryTable payments={safeAllPayments} getRoomNumberById={getRoomNumberById} />}
         {activeTab === 'pre-bookings' && <PreBookingList bookings={safePreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
-        {activeTab === 'applications' && <ApplicationList applications={safeApplications} onApprove={(id, data) => approveApplication(id, data)} onResendEmail={resendPasswordEmail} isSubmitting={isSubmitting} />}
+        {activeTab === 'applications' && <ApplicationList applications={safeApplications} onApprove={(id, data) => handleApproveApplication(id, data)} onResendEmail={resendPasswordEmail} isSubmitting={isSubmitting} />}
         {activeTab === 'complaints' && <ComplaintList complaints={safeComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setShowComplaintResponseModal(true) }} onResolve={resolveComplaint} isSubmitting={isSubmitting} />}
         {activeTab === 'vacate' && <VacateRequestList requests={safeVacateRequests} onApprove={approveVacateRequest} isSubmitting={isSubmitting} />}
         {activeTab === 'room-change' && <RoomChangeRequestList requests={safeRoomChangeRequests} onApprove={approveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />}
