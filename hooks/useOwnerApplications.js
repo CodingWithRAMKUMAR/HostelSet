@@ -9,7 +9,7 @@ export function useOwnerApplications(property) {
     if (!property?.id) return;
     const { data } = await supabase
       .from('applications')
-      .select('*')
+      .select('*, rooms(room_number, monthly_rent, capacity)')
       .eq('property_id', property.id)
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
@@ -18,9 +18,43 @@ export function useOwnerApplications(property) {
 
   const approveApplication = async (appId, appData) => {
     try {
-      // Use the RPC function we created earlier to handle the atomic transaction
+      // --- SAFETY FALLBACK: Ensure we have a valid user_id ---
+      let userId = appData.user_id;
+
+      // If the application doesn't have a user_id, we must create a new Auth user
+      if (!userId) {
+        console.log("🛡️ No user_id found. Creating a new Auth user for:", appData.email);
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: appData.email,
+          password: Math.random().toString(36).slice(-8) + "A1!", // Generates a safe random password
+          options: {
+            data: { 
+              full_name: appData.name,
+              role: 'tenant',
+              phone: appData.phone
+            }
+          }
+        });
+        if (authError) throw new Error("Failed to create Auth user: " + authError.message);
+        userId = authData.user.id;
+
+        // Insert the user into the public 'users' table
+        const { error: userInsertError } = await supabase
+          .from('users')
+          .insert({ 
+            id: userId, 
+            email: appData.email, 
+            full_name: appData.name, 
+            phone: appData.phone, 
+            role: 'tenant', 
+            is_active: true 
+          });
+        if (userInsertError) throw userInsertError;
+      }
+
+      // --- PROCEED WITH ATOMIC APPROVAL ---
       const { data, error } = await supabase.rpc('create_tenant_from_application', {
-        p_user_id: appData.user_id || null,
+        p_user_id: userId,
         p_app_id: appId,
         p_property_id: appData.property_id,
         p_room_id: appData.room_id,
@@ -30,6 +64,7 @@ export function useOwnerApplications(property) {
         p_rent_amount: appData.rooms?.monthly_rent || 0,
         p_move_in_date: appData.expected_move_in || new Date().toISOString().split('T')[0]
       });
+      
       if (error) throw error;
       if (data?.success) {
         toast.success('Application approved! Tenant created.');

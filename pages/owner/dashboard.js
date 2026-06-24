@@ -15,12 +15,12 @@ import { useOwnerVacate } from '../../hooks/useOwnerVacate';
 import { useOwnerPayments } from '../../hooks/useOwnerPayments';
 import { useOwnerNotices } from '../../hooks/useOwnerNotices';
 import { useOwnerRoomChange } from '../../hooks/useOwnerRoomChange';
-import { useOwnerApplications } from '../../hooks/useOwnerApplications'; // Added
-import { useOwnerPreBookings } from '../../hooks/useOwnerPreBookings'; // Added
+import { useOwnerApplications } from '../../hooks/useOwnerApplications';
+import { useOwnerPreBookings } from '../../hooks/useOwnerPreBookings';
 
 // Content Components
 import StatsCards from '../../components/owner/StatsCards';
-import RoomList from '../../components/owner/RoomList';
+import RoomList from '../../components/owner/RoomListNew';
 import TenantTable from '../../components/owner/TenantTable';
 import RentPaymentsList from '../../components/owner/RentPaymentsList';
 import PaymentHistoryTable from '../../components/owner/PaymentHistoryTable';
@@ -92,8 +92,8 @@ function OwnerDashboardContent() {
   const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment } = useOwnerPayments(property, tenants, setStats, loadData);
   const { notices, postNotice, deleteNotice } = useOwnerNotices(property);
   const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property);
-  const { applications, approveApplication, rejectApplication, resendPasswordEmail } = useOwnerApplications(property); // Added
-  const { preBookings, approvePreBooking, rejectPreBooking } = useOwnerPreBookings(property); // Added
+  const { applications, approveApplication, rejectApplication, resendPasswordEmail } = useOwnerApplications(property);
+  const { preBookings, approvePreBooking, rejectPreBooking } = useOwnerPreBookings(property);
 
   // Local UI States
   const [showAddModal, setShowAddModal] = useState(false);
