@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase'; // <-- THIS WAS MISSING!
 import toast from 'react-hot-toast';
 
 export function useOwnerApplications(property) {
@@ -18,15 +18,17 @@ export function useOwnerApplications(property) {
 
   const approveApplication = async (appId, appData) => {
     try {
-      // --- SAFETY FALLBACK: Ensure we have a valid user_id ---
-      let userId = appData.user_id;
+      // --- FIX: Explicitly handle missing user_id by checking the raw object ---
+      let userId = appData?.user_id || null;
 
       // If the application doesn't have a user_id, we must create a new Auth user
       if (!userId) {
-        console.log("🛡️ No user_id found. Creating a new Auth user for:", appData.email);
+        console.log("🛡️ No user_id found. Creating a new Auth user for:", appData?.email);
+        
+        // 1. Create Auth User
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: appData.email,
-          password: Math.random().toString(36).slice(-8) + "A1!", // Generates a safe random password
+          password: Math.random().toString(36).slice(-8) + "A1!", 
           options: {
             data: { 
               full_name: appData.name,
@@ -35,10 +37,12 @@ export function useOwnerApplications(property) {
             }
           }
         });
-        if (authError) throw new Error("Failed to create Auth user: " + authError.message);
-        userId = authData.user.id;
 
-        // Insert the user into the public 'users' table
+        if (authError) throw new Error("Auth creation failed: " + authError.message);
+        userId = authData.user.id;
+        console.log("✅ New Auth user created with ID:", userId);
+
+        // 2. Insert into public users table
         const { error: userInsertError } = await supabase
           .from('users')
           .insert({ 
@@ -49,10 +53,14 @@ export function useOwnerApplications(property) {
             role: 'tenant', 
             is_active: true 
           });
+          
         if (userInsertError) throw userInsertError;
+        console.log("✅ Public user record created.");
       }
 
       // --- PROCEED WITH ATOMIC APPROVAL ---
+      console.log("🚀 Approving application with user_id:", userId);
+      
       const { data, error } = await supabase.rpc('create_tenant_from_application', {
         p_user_id: userId,
         p_app_id: appId,

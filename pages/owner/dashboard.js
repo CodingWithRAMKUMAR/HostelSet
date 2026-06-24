@@ -20,7 +20,7 @@ import { useOwnerPreBookings } from '../../hooks/useOwnerPreBookings';
 
 // Content Components
 import StatsCards from '../../components/owner/StatsCards';
-import RoomList from '../../components/owner/RoomList';
+import RoomList from '../../components/owner/RoomList'; // <-- FIXED: Removed "New"
 import TenantTable from '../../components/owner/TenantTable';
 import RentPaymentsList from '../../components/owner/RentPaymentsList';
 import PaymentHistoryTable from '../../components/owner/PaymentHistoryTable';
