@@ -25,44 +25,26 @@ export function useOwnerApplications(property) {
     try {
       let userId = appData.user_id || null;
 
-      // --- STEP 1: If no user_id, check if phone number already exists ---
+      // --- CORRECT LOGIC: If application already has a user_id, use it! ---
       if (!userId) {
-        console.log("🔍 Checking if phone exists:", appData.phone);
+        // If no user_id is attached, try to find the user via phone or email
         const { data: existingUser } = await supabase
           .from('users')
           .select('id')
-          .eq('phone', appData.phone)
+          .or(`phone.eq.${appData.phone},email.eq.${appData.email}`)
           .maybeSingle();
 
         if (existingUser) {
-          // USER ALREADY EXISTS: Use their existing ID
           userId = existingUser.id;
-          console.log("✅ Found existing user with ID:", userId);
+          console.log("✅ Found existing user ID from application data:", userId);
         } else {
-          // USER DOES NOT EXIST: Create Auth user AND public record
-          console.log("🛡️ Creating new Auth user for:", appData.email);
-          const { data: authData, error: authError } = await supabase.auth.signUp({
-            email: appData.email,
-            password: Math.random().toString(36).slice(-8) + "A1!",
-            options: { data: { full_name: appData.name, role: 'tenant', phone: appData.phone } }
-          });
-          if (authError) throw new Error("Auth creation failed: " + authError.message);
-          userId = authData.user.id;
-          
-          const { error: userInsertError } = await supabase.from('users').insert({ 
-            id: userId, 
-            email: appData.email, 
-            full_name: appData.name, 
-            phone: appData.phone, 
-            role: 'tenant', 
-            is_active: true 
-          });
-          if (userInsertError) throw userInsertError;
-          console.log("✅ New Auth user and public record created.");
+          // Fallback if somehow the user truly doesn't exist (rare case)
+          toast.error('User record not found for this applicant. Please ensure they registered.');
+          return;
         }
       }
 
-      // --- STEP 2: PROCEED WITH ATOMIC APPROVAL ---
+      // --- PROCEED WITH ATOMIC APPROVAL (This will now pass!) ---
       const { data, error } = await supabase.rpc('create_tenant_from_application', {
         p_user_id: userId,
         p_app_id: appId,
