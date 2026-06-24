@@ -1,51 +1,78 @@
+import { motion } from 'framer-motion';
 import { formatDate } from '../../lib/utils';
-import { useRealtimeData } from '../../hooks/useRealtimeData'; // Import your new hook
 
-export default function ApplicationList({ onApprove = () => {}, onResendEmail = () => {}, isSubmitting = false }) {
-  // Use the hook to fetch and listen to 'applications' in real-time
-  // Note: Adjust the filter if you need to show only specific properties (e.g., {column: 'owner_id', value: currentOwnerId})
-  const { data: applications, loading } = useRealtimeData('applications'); 
-
-  if (loading) {
-    return <div className="text-center py-12 text-gray-500">Loading applications...</div>;
-  }
-
+export default function ApplicationList({
+  applications,
+  onApprove,
+  onResendEmail,
+  isSubmitting
+}) {
   if (!applications || applications.length === 0) {
     return (
-      <div className="text-center py-12 bg-gray-50 rounded-xl">
-        <div className="text-5xl mb-3">📋</div>
-        <p className="text-gray-500">No pending applications</p>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+        <div className="text-4xl mb-4">📋</div>
+        <h3 className="text-lg font-medium text-gray-600">No pending applications</h3>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      {applications.map(app => (
-        <div key={app.id} className="bg-white rounded-xl border border-gray-100 p-4 flex justify-between items-center hover:shadow-md transition">
+      {applications.map((app) => (
+        <motion.div
+          key={app.id}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition"
+        >
           <div>
-            <h3 className="font-semibold text-slate-800">{app.name}</h3>
-            <p className="text-sm text-gray-500">📞 {app.phone}</p>
-            {app.message && <p className="text-sm text-gray-600 mt-1">💬 {app.message}</p>}
-            <p className="text-xs text-gray-400 mt-1">Applied: {formatDate(app.created_at)}</p>
+            <div className="flex items-center gap-2">
+              <h4 className="text-lg font-semibold text-gray-800">{app.name}</h4>
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">Application</span>
+            </div>
+            <p className="text-sm text-gray-500 flex items-center gap-2 mt-1">
+              📞 {app.phone}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Applied: {formatDate(app.created_at)}
+            </p>
+            {app.rooms?.room_number && (
+              <p className="text-xs text-gray-400 mt-1">
+                Room applied for: {app.rooms.room_number}
+              </p>
+            )}
           </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => onApprove(app.id)} 
-              disabled={isSubmitting} 
-              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50"
+
+          <div className="flex gap-2 w-full md:w-auto flex-wrap">
+            <button
+              onClick={() => {
+                // CRITICAL FIX: Explicitly pass the full application object and ID
+                if (app && app.id) {
+                  onApprove(app.id, app);
+                } else {
+                  console.error('🚨 Cannot approve: Application data is missing!');
+                }
+              }}
+              disabled={isSubmitting}
+              className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50"
             >
               Approve →
             </button>
-            <button 
-              onClick={() => onResendEmail(app.email)} 
-              disabled={isSubmitting} 
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition disabled:opacity-50"
+            <button
+              onClick={() => {
+                if (app?.email) {
+                  onResendEmail(app.email);
+                } else {
+                  console.warn('⚠️ No email found for resend.');
+                }
+              }}
+              disabled={isSubmitting}
+              className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50"
             >
               📧 Resend
             </button>
           </div>
-        </div>
+        </motion.div>
       ))}
     </div>
   );
