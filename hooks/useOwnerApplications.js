@@ -17,42 +17,39 @@ export function useOwnerApplications(property) {
   };
 
   const approveApplication = async (appId, appData) => {
-    // 🛡️ SAFETY GUARD: If appData is missing, stop immediately.
     if (!appData || typeof appData !== 'object') {
-      toast.error('Cannot approve: Application data is missing or invalid.');
-      console.error('❌ approveApplication called with invalid appData:', appData);
+      toast.error('Cannot approve: Application data is missing.');
       return;
     }
 
     try {
-      // --- SAFETY FALLBACK: Ensure we have a valid user_id ---
       let userId = appData.user_id || null;
 
-      // If the application doesn't have a user_id, we must create a new Auth user
+      // --- STEP 1: If no user_id, check if phone number already exists ---
       if (!userId) {
-        console.log("🛡️ No user_id found. Creating a new Auth user for:", appData.email);
-        
-        // 1. Create Auth User
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: appData.email,
-          password: Math.random().toString(36).slice(-8) + "A1!", 
-          options: {
-            data: { 
-              full_name: appData.name,
-              role: 'tenant',
-              phone: appData.phone
-            }
-          }
-        });
-
-        if (authError) throw new Error("Auth creation failed: " + authError.message);
-        userId = authData.user.id;
-        console.log("✅ New Auth user created with ID:", userId);
-
-        // 2. Insert into public users table
-        const { error: userInsertError } = await supabase
+        console.log("🔍 Checking if phone exists:", appData.phone);
+        const { data: existingUser } = await supabase
           .from('users')
-          .insert({ 
+          .select('id')
+          .eq('phone', appData.phone)
+          .maybeSingle();
+
+        if (existingUser) {
+          // USER ALREADY EXISTS: Use their existing ID
+          userId = existingUser.id;
+          console.log("✅ Found existing user with ID:", userId);
+        } else {
+          // USER DOES NOT EXIST: Create Auth user AND public record
+          console.log("🛡️ Creating new Auth user for:", appData.email);
+          const { data: authData, error: authError } = await supabase.auth.signUp({
+            email: appData.email,
+            password: Math.random().toString(36).slice(-8) + "A1!",
+            options: { data: { full_name: appData.name, role: 'tenant', phone: appData.phone } }
+          });
+          if (authError) throw new Error("Auth creation failed: " + authError.message);
+          userId = authData.user.id;
+          
+          const { error: userInsertError } = await supabase.from('users').insert({ 
             id: userId, 
             email: appData.email, 
             full_name: appData.name, 
@@ -60,14 +57,12 @@ export function useOwnerApplications(property) {
             role: 'tenant', 
             is_active: true 
           });
-          
-        if (userInsertError) throw userInsertError;
-        console.log("✅ Public user record created.");
+          if (userInsertError) throw userInsertError;
+          console.log("✅ New Auth user and public record created.");
+        }
       }
 
-      // --- PROCEED WITH ATOMIC APPROVAL ---
-      console.log("🚀 Approving application with user_id:", userId);
-      
+      // --- STEP 2: PROCEED WITH ATOMIC APPROVAL ---
       const { data, error } = await supabase.rpc('create_tenant_from_application', {
         p_user_id: userId,
         p_app_id: appId,
