@@ -95,43 +95,18 @@ function OwnerDashboardContent() {
   const { applications, approveApplication, rejectApplication, resendPasswordEmail } = useOwnerApplications(property);
   const { preBookings, approvePreBooking, rejectPreBooking } = useOwnerPreBookings(property);
 
-  // Local UI States
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showNoticeModal, setShowNoticeModal] = useState(false);
-  const [showRoomDetailsModal, setShowRoomDetailsModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showComplaintResponseModal, setShowComplaintResponseModal] = useState(false);
-  const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
-  const [showMembershipModal, setShowMembershipModal] = useState(false);
-  const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
-  const [showApplicationDetailModal, setShowApplicationDetailModal] = useState(false);
+  // Modal States for History & Profile
   const [showTenantPaymentsModal, setShowTenantPaymentsModal] = useState(false);
-  const [showScreenshotModal, setShowScreenshotModal] = useState(false);
   const [showTenantProfileModal, setShowTenantProfileModal] = useState(false);
-  const [showRoomChangeReasonModal, setShowRoomChangeReasonModal] = useState(false);
-  const [selectedRoom, setSelectedRoom] = useState(null);
-  const [selectedTenant, setSelectedTenant] = useState(null);
-  const [selectedComplaint, setSelectedComplaint] = useState(null);
-  const [selectedApplication, setSelectedApplication] = useState(null);
   const [selectedTenantForPayments, setSelectedTenantForPayments] = useState(null);
   const [selectedProfileTenant, setSelectedProfileTenant] = useState(null);
-  const [selectedRoomChangeRequest, setSelectedRoomChangeRequest] = useState(null);
-  const [confirmingTenant, setConfirmingTenant] = useState(null);
-  const [tenantToDelete, setTenantToDelete] = useState(null);
-  const [complaintResponse, setComplaintResponse] = useState('');
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [screenshotUrl, setScreenshotUrl] = useState('');
   const [tenantPayments, setTenantPayments] = useState([]);
   const [tenantApplication, setTenantApplication] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('overview');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
 
-  // --- DEFINE MISSING FUNCTIONS HERE ---
+  // ----------------------------------------------------------------
+  // FETCH FUNCTIONS (Wires History & Profile buttons)
+  // ----------------------------------------------------------------
   const fetchTenantPayments = async (tenant) => {
     setSelectedTenantForPayments(tenant);
     try {
@@ -144,7 +119,6 @@ function OwnerDashboardContent() {
       setTenantPayments(data || []);
       setShowTenantPaymentsModal(true);
     } catch (error) {
-      console.error('Error fetching payments:', error);
       toast.error('Failed to load payment history');
     }
   };
@@ -164,13 +138,40 @@ function OwnerDashboardContent() {
       setSelectedProfileTenant(tenant);
       setShowTenantProfileModal(true);
     } catch (error) {
-      console.error(error);
       toast.error('Could not fetch documents');
     } finally {
       setLoadingProfile(false);
     }
   };
-  // ----------------------------------------
+
+  // Local UI States
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showNoticeModal, setShowNoticeModal] = useState(false);
+  const [showRoomDetailsModal, setShowRoomDetailsModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showComplaintResponseModal, setShowComplaintResponseModal] = useState(false);
+  const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
+  const [showMembershipModal, setShowMembershipModal] = useState(false);
+  const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
+  const [showApplicationDetailModal, setShowApplicationDetailModal] = useState(false);
+  const [showScreenshotModal, setShowScreenshotModal] = useState(false);
+  const [showRoomChangeReasonModal, setShowRoomChangeReasonModal] = useState(false);
+  const [selectedRoom, setSelectedRoom] = useState(null);
+  const [selectedTenant, setSelectedTenant] = useState(null);
+  const [selectedComplaint, setSelectedComplaint] = useState(null);
+  const [selectedApplication, setSelectedApplication] = useState(null);
+  const [selectedRoomChangeRequest, setSelectedRoomChangeRequest] = useState(null);
+  const [confirmingTenant, setConfirmingTenant] = useState(null);
+  const [tenantToDelete, setTenantToDelete] = useState(null);
+  const [complaintResponse, setComplaintResponse] = useState('');
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [screenshotUrl, setScreenshotUrl] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('overview');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
 
   const getRoomNumberById = (roomId) => { const room = rooms.find(r => r.id === roomId); return room ? room.room_number : 'N/A' }
   const getTenantsInRoom = (roomId) => tenants.filter(t => t.room_id === roomId)
@@ -291,6 +292,27 @@ function OwnerDashboardContent() {
         {showMembershipModal && <MembershipModal onSelectPlan={initiateMembershipPayment} onCancel={() => setShowMembershipModal(false)} loading={membershipLoading} />}
         {showComplaintResponseModal && selectedComplaint && <ComplaintResponseModal complaint={selectedComplaint} response={complaintResponse} setResponse={setComplaintResponse} onSend={() => respondToComplaint(selectedComplaint.id, complaintResponse)} onCancel={() => setShowComplaintResponseModal(false)} isSubmitting={isSubmitting} />}
         {showRoomDetailsModal && selectedRoom && <RoomDetailsModal room={selectedRoom} tenantsInRoom={getTenantsInRoom(selectedRoom.id)} onClose={() => setShowRoomDetailsModal(false)} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} fetchTenantPayments={fetchTenantPayments} fetchTenantApplication={fetchTenantApplication} />}
+        
+        {/* History Modal */}
+        {showTenantPaymentsModal && selectedTenantForPayments && (
+          <TenantPaymentsModal
+            tenant={selectedTenantForPayments}
+            payments={tenantPayments}
+            onClose={() => setShowTenantPaymentsModal(false)}
+            onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }}
+          />
+        )}
+
+        {/* Profile Modal */}
+        {showTenantProfileModal && selectedProfileTenant && (
+          <TenantProfileModal
+            tenant={selectedProfileTenant}
+            application={tenantApplication}
+            loading={loadingProfile}
+            onClose={() => setShowTenantProfileModal(false)}
+            onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }}
+          />
+        )}
       </AnimatePresence>
     </div>
   )
