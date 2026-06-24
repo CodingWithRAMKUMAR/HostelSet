@@ -5,6 +5,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { supabase } from '../../lib/supabase';
 import { formatCurrency, formatDate } from '../../lib/utils';
+import toast from 'react-hot-toast'; // Explicitly added
 
 // Modular Imports
 import { useOwner, OwnerProvider } from '../../context/OwnerContext';
@@ -172,7 +173,7 @@ function OwnerDashboardContent() {
   };
 
   // ----------------------------------------------------------------
-  // ROBUST APPROVAL LOGIC (Sends Password Reset Email after success)
+  // ROBUST APPROVAL LOGIC (No RPC! Uses Direct Inserts)
   // ----------------------------------------------------------------
   const handleApproveApplication = async (appId, appData) => {
     if (isSubmitting) return;
@@ -188,43 +189,76 @@ function OwnerDashboardContent() {
       const moveInDate = appData.expected_move_in 
         ? new Date(appData.expected_move_in).toISOString().split('T')[0] 
         : new Date().toISOString().split('T')[0];
-      
-      // CALL THE RENAMED FUNCTION TO BYPASS SUPABASE CACHE
-      const { data, error } = await supabase.rpc('create_tenant_from_app', {
-        p_user_id: appData.user_id,
-        p_app_id: appId,
-        p_property_id: appData.property_id,
-        p_room_id: appData.room_id,
-        p_name: appData.name,
-        p_phone: appData.phone,
-        p_email: appData.email,
-        p_rent_amount: appData.rooms?.monthly_rent || 0,
-        p_move_in_date: moveInDate
-      });
 
-      if (error) throw error;
+      // ---------------------------------------------------------
+      // 1. Insert Tenant directly into 'tenants' table
+      // ---------------------------------------------------------
+      const { error: tenantError } = await supabase
+        .from('tenants')
+        .insert({
+          user_id: appData.user_id,
+          property_id: appData.property_id,
+          room_id: appData.room_id,
+          name: appData.name,
+          phone: appData.phone,
+          email: appData.email,
+          rent_amount: appData.rooms?.monthly_rent || 0,
+          pending_amount: appData.rooms?.monthly_rent || 0,
+          total_paid: 0,
+          rent_status: 'pending',
+          move_in_date: moveInDate,
+          status: 'active'
+        });
 
-      if (data?.success) {
-        toast.success(`✅ ${appData.name} approved! Tenant created.`);
-        
-        // 2. Send the Password Reset Email so the Tenant can log in
-        console.log("📧 Sending password reset email to:", appData.email);
-        const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-          appData.email,
-          { redirectTo: `${window.location.origin}/reset-password` }
-        );
+      if (tenantError) throw tenantError;
 
-        if (resetError) {
-          console.warn("⚠️ Password reset email failed to send:", resetError.message);
-          toast.warning("Tenant created, but password reset email could not be sent.");
-        } else {
-          toast.success("📧 Password reset email sent to the tenant!");
-        }
+      // ---------------------------------------------------------
+      // 2. Update Room Occupancy
+      // ---------------------------------------------------------
+      const { data: roomData } = await supabase
+        .from('rooms')
+        .select('current_occupants, capacity')
+        .eq('id', appData.room_id)
+        .single();
 
-        await loadData(true); // Refresh the dashboard
+      const newOccupants = (roomData.current_occupants || 0) + 1;
+      const newStatus = newOccupants >= roomData.capacity ? 'occupied' : 'vacant';
+
+      const { error: roomError } = await supabase
+        .from('rooms')
+        .update({ current_occupants: newOccupants, status: newStatus })
+        .eq('id', appData.room_id);
+
+      if (roomError) throw roomError;
+
+      // ---------------------------------------------------------
+      // 3. Mark Application as Approved
+      // ---------------------------------------------------------
+      const { error: appError } = await supabase
+        .from('applications')
+        .update({ status: 'approved', processed_at: new Date().toISOString() })
+        .eq('id', appId);
+
+      if (appError) throw appError;
+
+      // ---------------------------------------------------------
+      // 4. Send Password Reset Email
+      // ---------------------------------------------------------
+      console.log("📧 Sending password reset email to:", appData.email);
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        appData.email,
+        { redirectTo: `${window.location.origin}/reset-password` }
+      );
+
+      if (resetError) {
+        console.warn("⚠️ Password reset email failed to send:", resetError.message);
+        toast.warning("Tenant created, but password reset email could not be sent.");
       } else {
-        toast.error(data?.message || 'Failed to create tenant.');
+        toast.success("📧 Password reset email sent to the tenant!");
       }
+
+      toast.success(`✅ ${appData.name} approved! Tenant created.`);
+      await loadData(true); // Refresh the dashboard
 
     } catch (error) {
       console.error('Approve error:', error);
