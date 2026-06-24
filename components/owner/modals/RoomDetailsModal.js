@@ -1,16 +1,69 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
+import dynamic from 'next/dynamic';
+import { supabase } from '../../../lib/supabase';
 import { formatCurrency, formatDate } from '../../../lib/utils';
+import toast from 'react-hot-toast';
+
+// Dynamically import the sub-modals (lazy-loaded)
+const TenantPaymentsModal = dynamic(() => import('./TenantPaymentsModal'), { ssr: false });
+const TenantProfileModal = dynamic(() => import('./TenantProfileModal'), { ssr: false });
 
 export default function RoomDetailsModal({ 
   room, 
   tenantsInRoom, 
   onClose, 
   isSubmitting,
-  getRoomNumberById,
-  fetchTenantPayments,
-  fetchTenantApplication
+  getRoomNumberById
 }) {
+  // State for sub-modals
+  const [showTenantPayments, setShowTenantPayments] = useState(false);
+  const [showTenantProfile, setShowTenantProfile] = useState(false);
+  const [selectedTenantForPayments, setSelectedTenantForPayments] = useState(null);
+  const [selectedTenantForProfile, setSelectedTenantForProfile] = useState(null);
+  const [tenantPayments, setTenantPayments] = useState([]);
+  const [tenantApplication, setTenantApplication] = useState(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+
   if (!room) return null;
+
+  // --- HANDLERS INSIDE THE MODAL ---
+  const handleViewHistory = async (tenant) => {
+    setSelectedTenantForPayments(tenant);
+    try {
+      const { data, error } = await supabase
+        .from('payment_history')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .order('payment_date', { ascending: false });
+      if (error) throw error;
+      setTenantPayments(data || []);
+      setShowTenantPayments(true);
+    } catch (error) {
+      toast.error('Failed to load payment history');
+    }
+  };
+
+  const handleViewProfile = async (tenant) => {
+    setLoadingProfile(true);
+    try {
+      const { data, error } = await supabase
+        .from('applications')
+        .select('*')
+        .or(`phone.eq.${tenant.phone},email.eq.${tenant.email}`)
+        .eq('property_id', room.property_id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      setTenantApplication(data?.[0] || null);
+      setSelectedTenantForProfile(tenant);
+      setShowTenantProfile(true);
+    } catch (error) {
+      toast.error('Could not fetch documents');
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
 
   return (
     <motion.div
@@ -98,28 +151,16 @@ export default function RoomDetailsModal({
                         </div>
                       </div>
 
-                      {/* SAFE BUTTONS: Prevents 'i is not a function' crash */}
+                      {/* BUTTONS (Triggers local handlers) */}
                       <div className="flex gap-2 mt-3">
                         <button 
-                          onClick={() => {
-                            if (typeof fetchTenantPayments === 'function') {
-                              fetchTenantPayments(tenant);
-                            } else {
-                              console.warn("fetchTenantPayments is not available");
-                            }
-                          }} 
+                          onClick={() => handleViewHistory(tenant)} 
                           className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-medium transition"
                         >
                           History
                         </button>
                         <button 
-                          onClick={() => {
-                            if (typeof fetchTenantApplication === 'function') {
-                              fetchTenantApplication(tenant);
-                            } else {
-                              console.warn("fetchTenantApplication is not available");
-                            }
-                          }} 
+                          onClick={() => handleViewProfile(tenant)} 
                           className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-xs font-medium transition"
                         >
                           Profile
@@ -143,6 +184,24 @@ export default function RoomDetailsModal({
           </button>
         </div>
       </motion.div>
+
+      {/* INNER MODALS (Rendered entirely inside this file) */}
+      {showTenantPayments && selectedTenantForPayments && (
+        <TenantPaymentsModal
+          tenant={selectedTenantForPayments}
+          payments={tenantPayments}
+          onClose={() => setShowTenantPayments(false)}
+        />
+      )}
+
+      {showTenantProfile && selectedTenantForProfile && (
+        <TenantProfileModal
+          tenant={selectedTenantForProfile}
+          application={tenantApplication}
+          loading={loadingProfile}
+          onClose={() => setShowTenantProfile(false)}
+        />
+      )}
     </motion.div>
   );
 }
