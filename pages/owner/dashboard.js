@@ -189,8 +189,8 @@ function OwnerDashboardContent() {
         ? new Date(appData.expected_move_in).toISOString().split('T')[0] 
         : new Date().toISOString().split('T')[0];
       
-      // 1. Call the RPC to create the tenant
-      const { data, error } = await supabase.rpc('create_tenant_from_application', {
+      // CALL THE RENAMED FUNCTION TO BYPASS SUPABASE CACHE
+      const { data, error } = await supabase.rpc('create_tenant_from_app', {
         p_user_id: appData.user_id,
         p_app_id: appId,
         p_property_id: appData.property_id,
