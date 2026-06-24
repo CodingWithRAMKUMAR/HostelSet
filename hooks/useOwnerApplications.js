@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase'; // <-- THIS WAS MISSING!
+import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 export function useOwnerApplications(property) {
@@ -17,13 +17,20 @@ export function useOwnerApplications(property) {
   };
 
   const approveApplication = async (appId, appData) => {
+    // 🛡️ SAFETY GUARD: If appData is missing, stop immediately.
+    if (!appData || typeof appData !== 'object') {
+      toast.error('Cannot approve: Application data is missing or invalid.');
+      console.error('❌ approveApplication called with invalid appData:', appData);
+      return;
+    }
+
     try {
-      // --- FIX: Explicitly handle missing user_id by checking the raw object ---
-      let userId = appData?.user_id || null;
+      // --- SAFETY FALLBACK: Ensure we have a valid user_id ---
+      let userId = appData.user_id || null;
 
       // If the application doesn't have a user_id, we must create a new Auth user
       if (!userId) {
-        console.log("🛡️ No user_id found. Creating a new Auth user for:", appData?.email);
+        console.log("🛡️ No user_id found. Creating a new Auth user for:", appData.email);
         
         // 1. Create Auth User
         const { data: authData, error: authError } = await supabase.auth.signUp({
