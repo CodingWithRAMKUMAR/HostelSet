@@ -131,6 +131,47 @@ function OwnerDashboardContent() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
 
+  // --- DEFINE MISSING FUNCTIONS HERE ---
+  const fetchTenantPayments = async (tenant) => {
+    setSelectedTenantForPayments(tenant);
+    try {
+      const { data, error } = await supabase
+        .from('payment_history')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .order('payment_date', { ascending: false });
+      if (error) throw error;
+      setTenantPayments(data || []);
+      setShowTenantPaymentsModal(true);
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+      toast.error('Failed to load payment history');
+    }
+  };
+
+  const fetchTenantApplication = async (tenant) => {
+    setLoadingProfile(true);
+    try {
+      const { data, error } = await supabase
+        .from('applications')
+        .select('*')
+        .or(`phone.eq.${tenant.phone},email.eq.${tenant.email}`)
+        .eq('property_id', property.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      setTenantApplication(data?.[0] || null);
+      setSelectedProfileTenant(tenant);
+      setShowTenantProfileModal(true);
+    } catch (error) {
+      console.error(error);
+      toast.error('Could not fetch documents');
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+  // ----------------------------------------
+
   const getRoomNumberById = (roomId) => { const room = rooms.find(r => r.id === roomId); return room ? room.room_number : 'N/A' }
   const getTenantsInRoom = (roomId) => tenants.filter(t => t.room_id === roomId)
 
@@ -250,9 +291,6 @@ function OwnerDashboardContent() {
         {showMembershipModal && <MembershipModal onSelectPlan={initiateMembershipPayment} onCancel={() => setShowMembershipModal(false)} loading={membershipLoading} />}
         {showComplaintResponseModal && selectedComplaint && <ComplaintResponseModal complaint={selectedComplaint} response={complaintResponse} setResponse={setComplaintResponse} onSend={() => respondToComplaint(selectedComplaint.id, complaintResponse)} onCancel={() => setShowComplaintResponseModal(false)} isSubmitting={isSubmitting} />}
         {showRoomDetailsModal && selectedRoom && <RoomDetailsModal room={selectedRoom} tenantsInRoom={getTenantsInRoom(selectedRoom.id)} onClose={() => setShowRoomDetailsModal(false)} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} fetchTenantPayments={fetchTenantPayments} fetchTenantApplication={fetchTenantApplication} />}
-        {showMembershipModal && <MembershipModal onSelectPlan={initiateMembershipPayment} onCancel={() => setShowMembershipModal(false)} loading={membershipLoading} />}
-        {showComplaintResponseModal && selectedComplaint && <ComplaintResponseModal complaint={selectedComplaint} response={complaintResponse} setResponse={setComplaintResponse} onSend={() => respondToComplaint(selectedComplaint.id, complaintResponse)} onCancel={() => setShowComplaintResponseModal(false)} isSubmitting={isSubmitting} />}
-        {showRoomDetailsModal && selectedRoom && <RoomDetailsModal room={selectedRoom} tenantsInRoom={getTenantsInRoom(selectedRoom.id)} onClose={() => setShowRoomDetailsModal(false)} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
       </AnimatePresence>
     </div>
   )
