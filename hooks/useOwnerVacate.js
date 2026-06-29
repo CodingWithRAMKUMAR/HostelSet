@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
 export function useOwnerVacate(property) {
   const [vacateRequests, setVacateRequests] = useState([]);
@@ -20,20 +21,9 @@ export function useOwnerVacate(property) {
   };
 
   useEffect(() => {
-    if (!property?.id) return;
-    loadVacateRequests();
-    const channel = supabase.channel('owner-vacate')
-      .on('postgres_changes', { event:'*', schema:'public', table:'check_out_requests' }, (payload) => {
-        const changedRequest = payload.new || payload.old;
-        if (changedRequest?.property_id === property.id) {
-          if (payload.eventType === 'INSERT') setVacateRequests(prev => [payload.new, ...prev]);
-          else if (payload.eventType === 'UPDATE') setVacateRequests(prev => prev.map(v => v.id === payload.new.id ? payload.new : v));
-          else if (payload.eventType === 'DELETE') setVacateRequests(prev => prev.filter(v => v.id !== payload.old.id));
-        }
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    if (property?.id) loadVacateRequests();
   }, [property?.id]);
+  useRealtimeRefresh(`owner-vacates-live:${property?.id || 'waiting'}`, ['check_out_requests', 'tenants', 'rooms'], loadVacateRequests, Boolean(property?.id));
 
   return { vacateRequests, approveVacateRequest, loadVacateRequests };
 }

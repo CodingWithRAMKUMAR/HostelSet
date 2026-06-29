@@ -74,24 +74,17 @@ export function usePayments(tenant, refreshData) {
     loadUPIDetails();
 
     const channel = supabase.channel('payments-tenant-isolated')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'payment_history' }, (payload) => {
-        if (payload.new?.tenant_id === tenant.id) {
-          setPaymentHistory(prev => [payload.new, ...prev]);
-        }
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_history' }, (payload) => {
+        loadPayments();
+        if (payload.eventType === 'UPDATE' && payload.new?.tenant_id === tenant.id) refreshData(true);
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'payment_history' }, (payload) => {
-        if (payload.new?.tenant_id === tenant.id) {
-          setPaymentHistory(prev => prev.map(payment => payment.id === payload.new.id ? payload.new : payment));
-          refreshData(true);
-        }
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'payment_history' }, (payload) => {
-        if (payload.old?.tenant_id === tenant.id) setPaymentHistory(prev => prev.filter(payment => payment.id !== payload.old.id));
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'owner_settings', filter: `owner_id=eq.${tenant.property?.owner_id}` }, () => {
+        loadUPIDetails();
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [tenant?.id]);
+  }, [tenant?.id, tenant?.property?.owner_id, tenant?.property?.owner_upi_id]);
 
   return {
     paymentHistory,

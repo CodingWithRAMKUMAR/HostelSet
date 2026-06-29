@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
 export function useOwnerNotices(property) {
   const [notices, setNotices] = useState([]);
@@ -26,18 +27,9 @@ export function useOwnerNotices(property) {
   };
 
   useEffect(() => {
-    if (!property?.id) return;
-    loadNotices();
-    const channel = supabase.channel('owner-notices')
-      .on('postgres_changes', { event:'INSERT', schema:'public', table:'notices' }, (payload) => {
-        if (payload.new?.property_id === property.id) setNotices(prev => [payload.new, ...prev]);
-      })
-      .on('postgres_changes', { event:'DELETE', schema:'public', table:'notices' }, (payload) => {
-        if (payload.old?.property_id === property.id) setNotices(prev => prev.filter(n => n.id !== payload.old.id));
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    if (property?.id) loadNotices();
   }, [property?.id]);
+  useRealtimeRefresh(`owner-notices-live:${property?.id || 'waiting'}`, ['notices'], loadNotices, Boolean(property?.id));
 
   return { notices, postNotice, deleteNotice };
 }

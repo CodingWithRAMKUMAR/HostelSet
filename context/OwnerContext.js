@@ -169,6 +169,7 @@ export function OwnerProvider({ children }) {
       .on('postgres_changes', { event:'*', schema:'public', table:'properties', filter:`id=eq.${property.id}` }, scheduleRefresh)
       .on('postgres_changes', { event:'*', schema:'public', table:'rooms', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
       .on('postgres_changes', { event:'*', schema:'public', table:'tenants', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
+      .on('postgres_changes', { event:'*', schema:'public', table:'payment_history' }, scheduleRefresh)
       .on('postgres_changes', { event:'*', schema:'public', table:'complaints', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
       .on('postgres_changes', { event:'*', schema:'public', table:'check_out_requests', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
       .on('postgres_changes', { event:'*', schema:'public', table:'owner_settings', filter:`owner_id=eq.${property.owner_id}` }, () => {

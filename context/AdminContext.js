@@ -38,7 +38,7 @@ export function AdminProvider({ children }) {
         supabase.from('properties').select('*', { count: 'exact', head: true }),
         supabase.from('tenants').select('*', { count: 'exact', head: true }),
         supabase.from('payment_history').select('amount').eq('status', 'success'),
-        supabase.from('complaints').select('*', { count: 'exact', head: true }).eq('status', 'open'),
+        supabase.from('complaints').select('*', { count: 'exact', head: true }).in('status', ['open', 'in_progress']),
         supabase.from('check_out_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
       ]);
       const totalRevenue = payments?.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) || 0;

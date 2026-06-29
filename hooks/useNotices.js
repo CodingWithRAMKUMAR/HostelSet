@@ -13,11 +13,11 @@ export function useNotices(tenant) {
     if (!tenant?.property_id) return;
     loadNotices();
     const channel = supabase.channel('notices-tenant-isolated')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notices' }, (payload) => {
-        if (payload.new?.property_id === tenant.property_id) { setNotices(prev => [payload.new, ...prev]); toast.success('📢 New notice posted by owner!'); }
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notices' }, (payload) => {
-        if (payload.old) setNotices(prev => prev.filter(n => n.id !== payload.old.id));
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, (payload) => {
+        if (payload.eventType === 'INSERT' && payload.new?.property_id === tenant.property_id) {
+          toast.success('📢 New notice posted by owner!');
+        }
+        loadNotices();
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };

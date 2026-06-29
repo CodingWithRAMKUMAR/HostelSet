@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'; // Added useEffect
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
@@ -13,27 +13,6 @@ export function useOwnerRooms(property, rooms, setRooms, setStats) {
     { value:'five', label:'Five Sharing', capacity:5, icon:'👥👥👤', price:6000 } 
   ];
 
-  // --- CRITICAL FIX: Load rooms strictly filtered by property ID ---
-  const loadRooms = async () => {
-    if (!property?.id) return;
-    const { data, error } = await supabase
-      .from('rooms')
-      .select('*')
-      .eq('property_id', property.id)  // <-- This prevents showing rooms from other properties
-      .order('room_number');
-      
-    if (error) {
-      toast.error('Failed to load rooms: ' + error.message);
-    } else {
-      setRooms(data || []);
-      // Update stats based on the newly fetched rooms
-      const total = data?.length || 0;
-      const occupied = data?.filter(r => r.current_occupants >= r.capacity).length || 0;
-      const vacant = total - occupied;
-      setStats(prev => ({ ...prev, totalRooms: total, occupied, vacant }));
-    }
-  };
-
   // --- Add a new room ---
   const addRoom = async (isSubmitting, setIsSubmitting) => {
     if (isSubmitting) return;
@@ -42,7 +21,7 @@ export function useOwnerRooms(property, rooms, setRooms, setStats) {
     
     setIsSubmitting(true);
     const selectedType = sharingTypes.find(t => t.value === roomForm.sharing_type);
-    const { error } = await supabase.from('rooms').insert({
+    const { data: insertedRoom, error } = await supabase.from('rooms').insert({
       property_id: property.id, 
       room_number: roomForm.room_number, 
       sharing_type: roomForm.sharing_type,
@@ -50,7 +29,7 @@ export function useOwnerRooms(property, rooms, setRooms, setStats) {
       capacity: selectedType.capacity,
       current_occupants: 0, 
       status: 'vacant'
-    });
+    }).select().single();
     
     if (error) {
       toast.error('Failed to add room: ' + error.message);
@@ -58,8 +37,7 @@ export function useOwnerRooms(property, rooms, setRooms, setStats) {
       toast.success(`Room ${roomForm.room_number} added!`);
       setShowRoomModal(false);
       setRoomForm({ room_number:'', sharing_type:'double', monthly_rent:10000 });
-      // Optimistic UI update
-      setRooms(prev => [...prev, { id: error?.id || 'temp', property_id: property.id, ...roomForm, current_occupants: 0, status: 'vacant' }]); 
+      setRooms(prev => [...prev, insertedRoom]);
       setStats(prev => ({ ...prev, totalRooms: prev.totalRooms + 1, vacant: prev.vacant + 1 }));
     }
     setIsSubmitting(false);
@@ -84,11 +62,6 @@ export function useOwnerRooms(property, rooms, setRooms, setStats) {
     }
     setIsSubmitting(false);
   };
-
-  // --- Automatically load rooms when property changes ---
-  useEffect(() => {
-    loadRooms();
-  }, [property?.id]); // Re-run if the property ID changes
 
   return { 
     rooms, 

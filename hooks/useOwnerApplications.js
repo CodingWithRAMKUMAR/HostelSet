@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
 export function useOwnerApplications(property) {
   const [applications, setApplications] = useState([]);
@@ -94,15 +95,9 @@ export function useOwnerApplications(property) {
   };
 
   useEffect(() => {
-    if (!property?.id) return;
-    loadApplications();
-    const channel = supabase.channel('owner-applications')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'applications' }, (payload) => {
-        if (payload.new?.property_id === property.id) setApplications(prev => [payload.new, ...prev]);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    if (property?.id) loadApplications();
   }, [property?.id]);
+  useRealtimeRefresh(`owner-applications-live:${property?.id || 'waiting'}`, ['applications', 'rooms'], loadApplications, Boolean(property?.id));
 
   return { applications, approveApplication, rejectApplication, resendPasswordEmail };
 }

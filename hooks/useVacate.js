@@ -46,13 +46,12 @@ export function useVacate(tenant, setTenant) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'check_out_requests' }, (payload) => {
         const changedRequest = payload.new || payload.old;
         if (changedRequest?.tenant_id === tenant.id) {
-          if (payload.eventType === 'INSERT') { setExistingVacateRequest(payload.new); }
-          else if (payload.eventType === 'UPDATE') {
-            setExistingVacateRequest(payload.new);
+          if (payload.eventType === 'UPDATE') {
             if (payload.new.status === 'approved') { setTenant(prev => ({ ...prev, status:'notice_period', check_out_requested:true, notice_period_start:new Date().toISOString().split('T')[0], notice_period_end:payload.new.expected_check_out })); toast.success('✅ Your vacate request was approved!'); }
             else if (payload.new.status === 'rejected') { setTenant(prev => ({ ...prev, status:'active' })); toast.error('❌ Your vacate request was rejected.'); }
-          } else if (payload.eventType === 'DELETE') { setExistingVacateRequest(null); }
+          }
         }
+        loadVacate();
       }).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [tenant?.id]);

@@ -9,6 +9,7 @@ declare
     'rooms',
     'tenants',
     'payment_history',
+    'payment_transactions',
     'applications',
     'pre_bookings',
     'complaints',
@@ -16,7 +17,9 @@ declare
     'room_change_requests',
     'notices',
     'owner_memberships',
-    'owner_settings'
+    'owner_settings',
+    'membership_plans',
+    'ratings'
   ];
 begin
   foreach table_name in array realtime_tables loop

@@ -93,20 +93,15 @@ export function useRoomChange(tenant, refreshData) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'room_change_requests' }, (payload) => {
         const changedRequest = payload.new || payload.old;
         if (changedRequest?.tenant_id === tenant.id) {
-          if (payload.eventType === 'INSERT') {
-            setPendingRoomChangeRequest(payload.new);
-          } else if (payload.eventType === 'UPDATE') {
+          if (payload.eventType === 'UPDATE') {
             if (payload.new.status === 'approved' || payload.new.status === 'rejected') {
-              setPendingRoomChangeRequest(null);
               if (payload.new.status === 'approved') toast.success('✅ Your room change request was approved!');
               else toast.error('❌ Your room change request was rejected.');
-            } else {
-              setPendingRoomChangeRequest(payload.new);
             }
-          } else if (payload.eventType === 'DELETE') {
-            setPendingRoomChangeRequest(null);
+            refreshData(true);
           }
         }
+        loadPendingRequest();
       })
       .subscribe();
 

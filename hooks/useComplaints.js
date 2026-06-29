@@ -26,14 +26,14 @@ export function useComplaints(tenant) {
     if (!tenant?.id) return;
     loadComplaints();
     const channel = supabase.channel('complaints-tenant-isolated')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'complaints' }, (payload) => { if (payload.new?.tenant_id === tenant.id) setComplaints(prev => [payload.new, ...prev]); })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'complaints' }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'complaints' }, (payload) => {
         if (payload.new?.tenant_id === tenant.id) {
-          setComplaints(prev => prev.map(c => c.id === payload.new.id ? payload.new : c));
-          if (payload.new.status !== payload.old?.status) toast.success(`📝 Complaint status updated to: ${payload.new.status}`);
+          if (payload.eventType === 'UPDATE' && payload.new.status !== payload.old?.status) {
+            toast.success(`📝 Complaint status updated to: ${payload.new.status}`);
+          }
         }
+        loadComplaints();
       })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'complaints' }, (payload) => { if (payload.old?.tenant_id === tenant.id) setComplaints(prev => prev.filter(c => c.id !== payload.old.id)); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [tenant?.id]);

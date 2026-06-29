@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
 export function useOwnerRoomChange(property) {
   const [roomChangeRequests, setRoomChangeRequests] = useState([]);
@@ -32,24 +33,9 @@ export function useOwnerRoomChange(property) {
   };
 
   useEffect(() => {
-    if (!property?.id) return;
-    loadRoomChangeRequests();
-    const channel = supabase.channel('owner-roomchange')
-      .on('postgres_changes', { event:'*', schema:'public', table:'room_change_requests' }, (payload) => {
-        const changedRequest = payload.new || payload.old;
-        if (changedRequest?.property_id === property.id) {
-          if (payload.eventType === 'INSERT') setRoomChangeRequests(prev => [payload.new, ...prev]);
-          else if (payload.eventType === 'UPDATE') {
-            if (payload.new.status !== 'pending') setRoomChangeRequests(prev => prev.filter(r => r.id !== payload.new.id));
-            else setRoomChangeRequests(prev => prev.map(r => r.id === payload.new.id ? payload.new : r));
-          } else if (payload.eventType === 'DELETE') {
-            setRoomChangeRequests(prev => prev.filter(r => r.id !== payload.old.id));
-          }
-        }
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    if (property?.id) loadRoomChangeRequests();
   }, [property?.id]);
+  useRealtimeRefresh(`owner-room-changes-live:${property?.id || 'waiting'}`, ['room_change_requests', 'tenants', 'rooms'], loadRoomChangeRequests, Boolean(property?.id));
 
   return { roomChangeRequests, approveRoomChange, rejectRoomChange };
 }

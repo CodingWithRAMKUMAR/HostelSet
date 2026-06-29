@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
 export function useOwnerPayments(property, tenants, setStats, loadData) {
   const [pendingRentPayments, setPendingRentPayments] = useState([]);
@@ -43,15 +44,9 @@ export function useOwnerPayments(property, tenants, setStats, loadData) {
   };
 
   useEffect(() => {
-    if (!property?.id) return;
-    loadPayments();
-    const channel = supabase.channel('owner-payments')
-      .on('postgres_changes', { event:'INSERT', schema:'public', table:'payment_history' }, (payload) => {
-        if (tenants.some((tenant) => tenant.id === payload.new?.tenant_id)) loadPayments();
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    if (property?.id) loadPayments();
   }, [property?.id, tenants.map((tenant) => tenant.id).join(',')]);
+  useRealtimeRefresh(`owner-payments-live:${property?.id || 'waiting'}`, ['payment_history', 'tenants', 'rooms'], loadPayments, Boolean(property?.id));
 
   return { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment };
 }

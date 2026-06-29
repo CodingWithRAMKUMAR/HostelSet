@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
 export function useOwnerPreBookings(property) {
   const [preBookings, setPreBookings] = useState([]);
@@ -71,15 +72,9 @@ export function useOwnerPreBookings(property) {
   };
 
   useEffect(() => {
-    if (!property?.id) return;
-    loadPreBookings();
-    const channel = supabase.channel('owner-prebookings')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pre_bookings' }, (payload) => {
-        if (payload.new?.property_id === property.id) setPreBookings(prev => [payload.new, ...prev]);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    if (property?.id) loadPreBookings();
   }, [property?.id]);
+  useRealtimeRefresh(`owner-prebookings-live:${property?.id || 'waiting'}`, ['pre_bookings', 'rooms'], loadPreBookings, Boolean(property?.id));
 
   return { preBookings, approvePreBooking, rejectPreBooking };
 }
