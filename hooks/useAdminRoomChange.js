@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useAdminRoomChange() {
+export function useAdminRoomChange(enabled = true) {
   const [roomChanges, setRoomChanges] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadRoomChanges = async () => {
-    setLoading(true);
+  const loadRoomChanges = async (background = false) => {
+    if (!background) setLoading(true);
     const { data, error } = await supabase.from('room_change_requests')
       .select('*, tenants(name, phone), old_room:old_room_id(room_number), new_room:new_room_id(room_number)')
       .order('requested_at', { ascending: false });
@@ -29,16 +30,7 @@ export function useAdminRoomChange() {
     else { toast.success('Room change rejected.'); await loadRoomChanges(); }
   };
 
-  useEffect(() => {
-    loadRoomChanges();
-    const channel = supabase.channel('admin-roomchange')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'room_change_requests' }, (payload) => {
-        if (payload.eventType === 'INSERT') setRoomChanges(prev => [payload.new, ...prev]);
-        else if (payload.eventType === 'UPDATE') setRoomChanges(prev => prev.map(r => r.id === payload.new.id ? payload.new : r));
-        else if (payload.eventType === 'DELETE') setRoomChanges(prev => prev.filter(r => r.id !== payload.old.id));
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+  useEffect(() => { if (enabled) loadRoomChanges(); }, [enabled]);
+  useRealtimeRefresh('admin-room-changes-live', ['room_change_requests', 'tenants', 'rooms'], loadRoomChanges, enabled);
   return { roomChanges, loading, approveRoomChange, rejectRoomChange, refreshRoomChanges: loadRoomChanges };
 }

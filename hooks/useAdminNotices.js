@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useAdminNotices() {
+export function useAdminNotices(enabled = true) {
   const [notices, setNotices] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadNotices = async () => {
-    setLoading(true);
+  const loadNotices = async (background = false) => {
+    if (!background) setLoading(true);
     const { data, error } = await supabase.from('notices').select('*').order('created_at', { ascending: false });
     if (error) toast.error('Failed to load notices');
     else setNotices(data || []);
@@ -28,15 +29,7 @@ export function useAdminNotices() {
     else { toast.success('Notice deleted.'); await loadNotices(); }
   };
 
-  useEffect(() => {
-    loadNotices();
-    const channel = supabase.channel('admin-notices')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, (payload) => {
-        if (payload.eventType === 'INSERT') setNotices(prev => [payload.new, ...prev]);
-        else if (payload.eventType === 'DELETE') setNotices(prev => prev.filter(n => n.id !== payload.old.id));
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+  useEffect(() => { if (enabled) loadNotices(); }, [enabled]);
+  useRealtimeRefresh('admin-notices-live', ['notices'], loadNotices, enabled);
   return { notices, loading, postNotice, deleteNotice, refreshNotices: loadNotices };
 }

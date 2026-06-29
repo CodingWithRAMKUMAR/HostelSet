@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useAdminApplications() {
+export function useAdminApplications(enabled = true) {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadApplications = async () => {
-    setLoading(true);
+  const loadApplications = async (background = false) => {
+    if (!background) setLoading(true);
     const { data, error } = await supabase
       .from('applications')
       .select('*, rooms(room_number, monthly_rent, property_id)')
@@ -90,6 +91,7 @@ export function useAdminApplications() {
     else { toast.success('Application rejected.'); await loadApplications(); }
   };
 
-  useEffect(() => { loadApplications(); }, []);
+  useEffect(() => { if (enabled) loadApplications(); }, [enabled]);
+  useRealtimeRefresh('admin-applications-live', ['applications', 'rooms'], loadApplications, enabled);
   return { applications, loading, approveApplication, rejectApplication, refreshApplications: loadApplications };
 }

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -15,34 +15,42 @@ export function TenantProvider({ children }) {
   const [roommates, setRoommates] = useState([]);
   const [roommateVacateAlert, setRoommateVacateAlert] = useState(null);
   const [error, setError] = useState(null);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const userIdRef = useRef(null);
 
   const refreshData = useCallback(async (isBackground = false) => {
     if (!isBackground) setLoading(true);
 
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) {
-        localStorage.clear();
-        await router.push('/login');
-        return false;
-      }
+      let userId = userIdRef.current;
+      if (!isBackground || !userId) {
+        const { data: { session }, error: authError } = await supabase.auth.getSession();
+        const user = session?.user;
+        if (authError || !user) {
+          localStorage.clear();
+          await router.push('/login');
+          return false;
+        }
 
-      const { data: userRecord, error: roleError } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single();
+        const { data: userRecord, error: roleError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single();
 
-      if (roleError || userRecord?.role !== 'tenant') {
-        toast.error('Access denied. You are not registered as a tenant.');
-        await router.push('/login');
-        return false;
+        if (roleError || userRecord?.role !== 'tenant') {
+          toast.error('Access denied. You are not registered as a tenant.');
+          await router.push('/login');
+          return false;
+        }
+        userId = user.id;
+        userIdRef.current = user.id;
       }
 
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
         .select('*, rooms:room_id(*), property:property_id(*)')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .maybeSingle();
 
       if (tenantError) throw tenantError;
@@ -130,6 +138,34 @@ export function TenantProvider({ children }) {
     return () => subscription.unsubscribe();
   }, [refreshData, router]);
 
+  useEffect(() => {
+    if (!tenant?.id || !room?.id || !property?.id) return undefined;
+
+    let timer;
+    const scheduleRefresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => refreshData(true), 200);
+    };
+    let channel = supabase
+      .channel(`tenant-dashboard-live:${tenant.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tenants', filter: `user_id=eq.${tenant.user_id}` }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tenants', filter: `room_id=eq.${room.id}` }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${room.id}` }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'properties', filter: `id=eq.${property.id}` }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'check_out_requests', filter: `room_id=eq.${room.id}` }, scheduleRefresh);
+
+    if (property.owner_id) {
+      channel = channel.on('postgres_changes', { event: '*', schema: 'public', table: 'users', filter: `id=eq.${property.owner_id}` }, scheduleRefresh);
+    }
+
+    channel.subscribe((status) => setRealtimeConnected(status === 'SUBSCRIBED'));
+    return () => {
+      clearTimeout(timer);
+      setRealtimeConnected(false);
+      supabase.removeChannel(channel);
+    };
+  }, [tenant?.id, tenant?.user_id, room?.id, property?.id, property?.owner_id, refreshData]);
+
   return (
     <TenantContext.Provider value={{
       loading,
@@ -141,6 +177,7 @@ export function TenantProvider({ children }) {
       roommates,
       roommateVacateAlert,
       error,
+      realtimeConnected,
       refreshData,
     }}>
       {children}

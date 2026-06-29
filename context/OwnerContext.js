@@ -22,6 +22,7 @@ export function OwnerProvider({ children }) {
   const [membershipExpiry, setMembershipExpiry] = useState(null);
   const [daysLeft, setDaysLeft] = useState(null);
   const [roomMonthlyIncome, setRoomMonthlyIncome] = useState({});
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
   const autoRefreshRef = useRef(null);
 
   const updateMembershipFromProperty = (propertyData) => {
@@ -45,37 +46,40 @@ export function OwnerProvider({ children }) {
       if (propertyData) {
         setProperty(propertyData); setPropertyImages(propertyData.photos || []); updateMembershipFromProperty(propertyData);
         
-        // Load Rooms
-        const { data: roomsData } = await supabase.from('rooms').select('*').eq('property_id', propertyData.id).order('room_number');
+        // Rooms and tenants are independent after the property is known, so load them together.
+        const [{ data: roomsData, error: roomsError }, { data: tenantsData, error: tenantsError }] = await Promise.all([
+          supabase.from('rooms').select('*').eq('property_id', propertyData.id).order('room_number'),
+          supabase.from('tenants').select('*').eq('property_id', propertyData.id),
+        ]);
+        if (roomsError) throw roomsError;
+        if (tenantsError) throw tenantsError;
         setRooms(roomsData || []);
         const total = roomsData?.length || 0; const occupied = roomsData?.filter(r => r.current_occupants >= r.capacity).length || 0; const vacant = total - occupied;
-        
-        // Load Tenants
-        const { data: tenantsData } = await supabase.from('tenants').select('*').eq('property_id', propertyData.id);
         const tenantsWithRoomNumber = (tenantsData || []).map(t => { const room = roomsData?.find(r => r.id === t.room_id); return { ...t, room_number: room ? room.room_number : 'N/A', dueStatus: calculateRentDueStatus(t) } });
         setTenants(tenantsWithRoomNumber);
         
         // Stats and Finance
-        const totalCollected = tenantsData?.reduce((sum, t) => sum + (t.total_paid || 0), 0) || 0;
-        const pendingAmount = tenantsData?.reduce((sum, t) => sum + (t.pending_amount || 0), 0) || 0;
+        const totalCollected = tenantsData?.reduce((sum, t) => sum + Number(t.total_paid || 0), 0) || 0;
+        const pendingAmount = tenantsData?.reduce((sum, t) => sum + Number(t.pending_amount || 0), 0) || 0;
         const overdueCount = tenantsWithRoomNumber.filter(t => t.dueStatus.status === 'overdue').length;
         const noticePeriodCount = tenantsWithRoomNumber.filter(t => t.status === 'notice_period').length;
         const pendingPaymentCount = tenantsWithRoomNumber.filter(t => t.status === 'payment_pending').length;
         const tenantIds = tenantsData?.map(t => t.id) || [];
         const now = new Date(); const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]; const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-        const { data: monthlyPayments } = tenantIds.length
-          ? await supabase.from('payment_history').select('amount').eq('status', 'success').gte('payment_date', startOfMonth).lte('payment_date', endOfMonth).in('tenant_id', tenantIds)
-          : { data: [] };
-        const monthlyIncome = monthlyPayments?.reduce((sum, p) => sum + p.amount, 0) || 0;
-        const { data: pendingPayments } = tenantIds.length
-          ? await supabase.from('payment_history').select('*, tenants(name, phone, room_id, rooms(room_number))').eq('status', 'payment_pending').in('tenant_id', tenantIds).order('payment_date', { ascending: false })
-          : { data: [] };
-        const pendingRentConfirmations = pendingPayments?.length || 0;
-
-        const [{ count: complaintCount }, { count: vacateCount }] = await Promise.all([
+        const [monthlyResult, pendingResult, complaintResult, vacateResult] = await Promise.all([
+          tenantIds.length
+            ? supabase.from('payment_history').select('amount').eq('status', 'success').gte('payment_date', startOfMonth).lte('payment_date', endOfMonth).in('tenant_id', tenantIds)
+            : Promise.resolve({ data: [] }),
+          tenantIds.length
+            ? supabase.from('payment_history').select('id').eq('status', 'payment_pending').in('tenant_id', tenantIds)
+            : Promise.resolve({ data: [] }),
           supabase.from('complaints').select('*', { count: 'exact', head: true }).eq('property_id', propertyData.id).in('status', ['open', 'in_progress']),
           supabase.from('check_out_requests').select('*', { count: 'exact', head: true }).eq('property_id', propertyData.id).eq('status', 'pending'),
         ]);
+        const monthlyIncome = monthlyResult.data?.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) || 0;
+        const pendingRentConfirmations = pendingResult.data?.length || 0;
+        const complaintCount = complaintResult.count;
+        const vacateCount = vacateResult.count;
 
         setStats({ totalRooms:total, occupied, vacant, totalCollected, pendingAmount, totalComplaints:complaintCount||0, pendingVacate:vacateCount||0, overdueCount, noticePeriodCount, pendingPaymentCount, pendingRentConfirmations, monthlyIncome });
         return propertyData;
@@ -85,11 +89,17 @@ export function OwnerProvider({ children }) {
     finally { if (!isBackground) setLoading(false); else setIsRefreshing(false); }
   }, []);
 
-  const startAutoRefresh = () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); autoRefreshRef.current = setInterval(() => { loadData(true) }, 15000) };
+  const startAutoRefresh = () => {
+    if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
+    autoRefreshRef.current = setInterval(() => {
+      if (document.visibilityState === 'visible') loadData(true);
+    }, 120000);
+  };
 
   // Auth and Init
   const checkAuthAndRedirect = async () => {
-    const { data:{user}, error } = await supabase.auth.getUser();
+    const { data:{session}, error } = await supabase.auth.getSession();
+    const user = session?.user;
     if (error || !user) { localStorage.clear(); router.push('/login'); return null; }
     const { data:userRecord, error:roleError } = await supabase.from('users').select('role').eq('id', user.id).single();
     if (roleError || !userRecord) { localStorage.clear(); router.push('/login'); return null; }
@@ -146,9 +156,37 @@ export function OwnerProvider({ children }) {
     return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); if (subscription) subscription.unsubscribe(); };
   }, []);
 
+  useEffect(() => {
+    if (!property?.id) return undefined;
+
+    let timer;
+    const scheduleRefresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => loadData(true), 300);
+    };
+    const channel = supabase
+      .channel(`owner-core-live:${property.id}`)
+      .on('postgres_changes', { event:'*', schema:'public', table:'properties', filter:`id=eq.${property.id}` }, scheduleRefresh)
+      .on('postgres_changes', { event:'*', schema:'public', table:'rooms', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
+      .on('postgres_changes', { event:'*', schema:'public', table:'tenants', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
+      .on('postgres_changes', { event:'*', schema:'public', table:'complaints', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
+      .on('postgres_changes', { event:'*', schema:'public', table:'check_out_requests', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
+      .on('postgres_changes', { event:'*', schema:'public', table:'owner_settings', filter:`owner_id=eq.${property.owner_id}` }, () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => loadSettings(property), 300);
+      })
+      .subscribe((status) => setRealtimeConnected(status === 'SUBSCRIBED'));
+
+    return () => {
+      clearTimeout(timer);
+      setRealtimeConnected(false);
+      supabase.removeChannel(channel);
+    };
+  }, [property?.id, property?.owner_id]);
+
   return (
     <OwnerContext.Provider value={{
-      loading, isRefreshing, property, propertyImages, setPropertyImages, rooms, tenants, settings, stats, roomMonthlyIncome, setRoomMonthlyIncome, membershipActive, membershipLoading, membershipStatus, membershipExpiry, daysLeft, loadData, loadSettings, saveSettings, initiateMembershipPayment, startAutoRefresh, updateMembershipFromProperty, setTenants, setRooms, setProperty, setStats
+      loading, isRefreshing, realtimeConnected, property, propertyImages, setPropertyImages, rooms, tenants, settings, stats, roomMonthlyIncome, setRoomMonthlyIncome, membershipActive, membershipLoading, membershipStatus, membershipExpiry, daysLeft, loadData, loadSettings, saveSettings, initiateMembershipPayment, startAutoRefresh, updateMembershipFromProperty, setTenants, setRooms, setProperty, setStats
     }}>
       {children}
     </OwnerContext.Provider>

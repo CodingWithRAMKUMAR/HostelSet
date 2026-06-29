@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
@@ -14,6 +14,12 @@ export default function Login() {
   const [showReset, setShowReset] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+
+  useEffect(() => {
+    router.prefetch('/admin/dashboard')
+    router.prefetch('/owner/dashboard')
+    router.prefetch('/tenant/dashboard')
+  }, [router])
 
   const isEmail = (input) => input.includes('@')
   const isPhone = (input) => /^\d{10}$/.test(input)
@@ -55,16 +61,11 @@ export default function Login() {
         toast.success(`Welcome back, ${result.userData.full_name}!`)
 
         if (result.role === 'admin') {
-          router.push('/admin/dashboard')
+          router.replace('/admin/dashboard')
         } else if (result.role === 'owner') {
-          const { data: property } = await supabase
-            .from('properties')
-            .select('id')
-            .eq('owner_id', result.userData.id)
-            .maybeSingle()
-          router.push(property ? '/owner/dashboard' : '/owner/register-property')
+          router.replace(result.userData.properties?.length ? '/owner/dashboard' : '/owner/register-property')
         } else {
-          router.push('/tenant/dashboard')
+          router.replace('/tenant/dashboard')
         }
       } else {
         // ✅ Better error messages based on error type

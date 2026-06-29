@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useAdminOwners() {
+export function useAdminOwners(enabled = true) {
   const [owners, setOwners] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadOwners = async () => {
-    setLoading(true);
+  const loadOwners = async (background = false) => {
+    if (!background) setLoading(true);
     const { data, error } = await supabase.from('users').select('*').eq('role', 'owner').order('created_at', { ascending: false });
     if (error) toast.error('Failed to load owners');
     else setOwners(data || []);
@@ -24,6 +25,7 @@ export function useAdminOwners() {
     }
   };
 
-  useEffect(() => { loadOwners(); }, []);
+  useEffect(() => { if (enabled) loadOwners(); }, [enabled]);
+  useRealtimeRefresh('admin-owners-live', ['users'], loadOwners, enabled);
   return { owners, loading, toggleOwnerStatus, refreshOwners: loadOwners };
 }

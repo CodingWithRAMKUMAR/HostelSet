@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useAdminPayments() {
+export function useAdminPayments(enabled = true) {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadPayments = async () => {
-    setLoading(true);
+  const loadPayments = async (background = false) => {
+    if (!background) setLoading(true);
     const { data, error } = await supabase
       .from('payment_history')
       .select('*, tenants(name, phone, room_id, rooms(room_number))')
@@ -38,6 +39,7 @@ export function useAdminPayments() {
     else { toast.success('Payment rejected.'); await loadPayments(); }
   };
 
-  useEffect(() => { loadPayments(); }, []);
+  useEffect(() => { if (enabled) loadPayments(); }, [enabled]);
+  useRealtimeRefresh('admin-payments-live', ['payment_history', 'tenants', 'rooms'], loadPayments, enabled);
   return { payments, loading, confirmPayment, rejectPayment, refreshPayments: loadPayments };
 }

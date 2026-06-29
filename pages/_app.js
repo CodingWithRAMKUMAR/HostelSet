@@ -11,7 +11,7 @@ export default function App({ Component, pageProps }) {
     const checkSession = () => {
       try {
         const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true'
-        const protectedRoutes = ['/owner', '/tenant']
+        const protectedRoutes = ['/owner', '/tenant', '/admin']
         const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
 
         if (isProtectedRoute) {
@@ -25,7 +25,7 @@ export default function App({ Component, pageProps }) {
         }
       } catch (e) {
         // If accessing localStorage fails, treat as not authorized for protected routes
-        const protectedRoutes = ['/owner', '/tenant']
+        const protectedRoutes = ['/owner', '/tenant', '/admin']
         const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
         if (isProtectedRoute && router.pathname !== '/login') router.replace('/login')
         else setAuthorized(true)
@@ -47,7 +47,7 @@ export default function App({ Component, pageProps }) {
           error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
         }}
       />
-      {(!router.pathname.startsWith('/owner') && !router.pathname.startsWith('/tenant')) || authorized ? (
+      {(!router.pathname.startsWith('/owner') && !router.pathname.startsWith('/tenant') && !router.pathname.startsWith('/admin')) || authorized ? (
         <Component {...pageProps} />
       ) : null}
     </>

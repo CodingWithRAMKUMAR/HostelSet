@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useAdminTenants() {
+export function useAdminTenants(enabled = true) {
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadTenants = async () => {
-    setLoading(true);
+  const loadTenants = async (background = false) => {
+    if (!background) setLoading(true);
     const { data, error } = await supabase.from('tenants').select('*, rooms(room_number), property:property_id(name)').order('created_at', { ascending: false });
     if (error) toast.error('Failed to load tenants');
     else setTenants(data || []);
@@ -25,6 +26,7 @@ export function useAdminTenants() {
     }
   };
 
-  useEffect(() => { loadTenants(); }, []);
+  useEffect(() => { if (enabled) loadTenants(); }, [enabled]);
+  useRealtimeRefresh('admin-tenants-live', ['tenants', 'rooms', 'properties'], loadTenants, enabled);
   return { tenants, loading, deleteTenant, refreshTenants: loadTenants };
 }

@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useAdminMembershipManager() {
+export function useAdminMembershipManager(enabled = true) {
   const [owners, setOwners] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadOwners = async () => {
-    setLoading(true);
+  const loadOwners = async (background = false) => {
+    if (!background) setLoading(true);
     const { data, error } = await supabase
       .from('users')
       .select(`
@@ -141,16 +142,8 @@ export function useAdminMembershipManager() {
     }
   };
 
-  useEffect(() => {
-    loadOwners();
-    const channel = supabase.channel('admin-membership-manager')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'properties' }, (payload) => {
-        loadOwners();
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+  useEffect(() => { if (enabled) loadOwners(); }, [enabled]);
+  useRealtimeRefresh('admin-memberships-live', ['properties', 'users', 'owner_memberships'], loadOwners, enabled);
 
   return { owners, loading, getDaysLeft, sendRenewalEmail, grantMembership, revokeMembership, refresh: loadOwners };
 }

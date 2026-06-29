@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useAdminComplaints() {
+export function useAdminComplaints(enabled = true) {
   const [complaints, setComplaints] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadComplaints = async () => {
-    setLoading(true);
+  const loadComplaints = async (background = false) => {
+    if (!background) setLoading(true);
     const { data, error } = await supabase.from('complaints').select('*, tenants(name, phone)').order('created_at', { ascending: false });
     if (error) toast.error('Failed to load complaints');
     else setComplaints(data || []);
@@ -28,16 +29,7 @@ export function useAdminComplaints() {
     else { toast.success('Complaint deleted.'); await loadComplaints(); }
   };
 
-  useEffect(() => {
-    loadComplaints();
-    const channel = supabase.channel('admin-complaints')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'complaints' }, (payload) => {
-        if (payload.eventType === 'INSERT') setComplaints(prev => [payload.new, ...prev]);
-        else if (payload.eventType === 'UPDATE') setComplaints(prev => prev.map(c => c.id === payload.new.id ? payload.new : c));
-        else if (payload.eventType === 'DELETE') setComplaints(prev => prev.filter(c => c.id !== payload.old.id));
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+  useEffect(() => { if (enabled) loadComplaints(); }, [enabled]);
+  useRealtimeRefresh('admin-complaints-live', ['complaints', 'tenants'], loadComplaints, enabled);
   return { complaints, loading, resolveComplaint, deleteComplaint, refreshComplaints: loadComplaints };
 }

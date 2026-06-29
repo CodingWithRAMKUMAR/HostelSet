@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useAdminPreBookings() {
+export function useAdminPreBookings(enabled = true) {
   const [preBookings, setPreBookings] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadPreBookings = async () => {
-    setLoading(true);
+  const loadPreBookings = async (background = false) => {
+    if (!background) setLoading(true);
     const { data, error } = await supabase
       .from('pre_bookings')
       .select('*, rooms(room_number, monthly_rent, capacity, property_id, properties(name))')
@@ -39,6 +40,7 @@ export function useAdminPreBookings() {
     else { toast.success('Pre-booking rejected.'); await loadPreBookings(); }
   };
 
-  useEffect(() => { loadPreBookings(); }, []);
+  useEffect(() => { if (enabled) loadPreBookings(); }, [enabled]);
+  useRealtimeRefresh('admin-prebookings-live', ['pre_bookings', 'rooms', 'properties'], loadPreBookings, enabled);
   return { preBookings, loading, approvePreBooking, rejectPreBooking, refreshPreBookings: loadPreBookings };
 }

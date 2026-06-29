@@ -37,7 +37,7 @@ function TenantDashboardContent() {
   
   // ---------------- MODULAR HOOKS ----------------
   const core = useTenant() || {};
-  const { tenant, room, property, owner, roommates, loading, roommateVacateAlert, refreshData, setTenant } = core;
+  const { tenant, room, property, owner, roommates, loading, realtimeConnected, roommateVacateAlert, refreshData, setTenant } = core;
   
   const { notices = [] } = useNotices(tenant);
   const { existingVacateRequest, cancelVacateRequest } = useVacate(tenant, setTenant);
@@ -223,6 +223,10 @@ function TenantDashboardContent() {
             <span className="text-xs bg-[#2a2a2a] text-orange-400/90 border border-orange-500/30 px-3 py-1 rounded-full">Tenant</span>
           </div>
           <div className="flex items-center gap-4">
+            <span className={`hidden sm:inline-flex items-center gap-2 text-xs font-semibold ${realtimeConnected ? 'text-emerald-400' : 'text-gray-500'}`}>
+              <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
+              {realtimeConnected ? 'Live' : 'Connecting'}
+            </span>
             <button onClick={() => setShowProfileModal(true)} className="flex items-center gap-2 text-gray-400 hover:text-orange-400 transition">
               <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
                 {tenant?.name?.charAt(0) || 'U'}
@@ -341,7 +345,7 @@ function TenantDashboardContent() {
             pendingRoomChangeRequest={pendingRoomChangeRequest}
           />
         )}
-        {activeTab === 'roommates' && <RoommatesSection roommates={roommates} />}
+        {activeTab === 'roommates' && <RoommatesSection roommates={roommates} room={room} />}
         {activeTab === 'notices' && <NoticesSection notices={notices} />}
         {activeTab === 'complaints' && (
           <ComplaintsSection

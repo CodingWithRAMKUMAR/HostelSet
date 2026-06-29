@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useAdminVacate() {
+export function useAdminVacate(enabled = true) {
   const [vacateRequests, setVacateRequests] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadVacate = async () => {
-    setLoading(true);
+  const loadVacate = async (background = false) => {
+    if (!background) setLoading(true);
     const { data, error } = await supabase.from('check_out_requests').select('*, tenants(name, phone, room_id, rooms(room_number))').order('created_at', { ascending: false });
     if (error) toast.error('Failed to load vacate requests');
     else setVacateRequests(data || []);
@@ -27,16 +28,7 @@ export function useAdminVacate() {
     else { toast.success('Vacate request rejected.'); await loadVacate(); }
   };
 
-  useEffect(() => {
-    loadVacate();
-    const channel = supabase.channel('admin-vacate')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'check_out_requests' }, (payload) => {
-        if (payload.eventType === 'INSERT') setVacateRequests(prev => [payload.new, ...prev]);
-        else if (payload.eventType === 'UPDATE') setVacateRequests(prev => prev.map(v => v.id === payload.new.id ? payload.new : v));
-        else if (payload.eventType === 'DELETE') setVacateRequests(prev => prev.filter(v => v.id !== payload.old.id));
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+  useEffect(() => { if (enabled) loadVacate(); }, [enabled]);
+  useRealtimeRefresh('admin-vacate-live', ['check_out_requests', 'tenants', 'rooms'], loadVacate, enabled);
   return { vacateRequests, loading, approveVacate, rejectVacate, refreshVacate: loadVacate };
 }

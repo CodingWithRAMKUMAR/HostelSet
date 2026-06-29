@@ -61,7 +61,8 @@ function OwnerDashboardContent() {
   const router = useRouter();
   const core = useOwner();
   const { 
-    loading, 
+    loading,
+    realtimeConnected,
     property, 
     propertyImages, 
     setPropertyImages, 
@@ -367,6 +368,10 @@ function OwnerDashboardContent() {
             <span className="text-xs bg-[#2a2a2a] text-orange-400/90 border border-orange-500/30 px-3 py-1 rounded-full">Owner</span>
           </div>
           <div className="flex items-center gap-4 flex-wrap">
+            <span className={`hidden sm:inline-flex items-center gap-2 text-xs font-semibold ${realtimeConnected ? 'text-emerald-400' : 'text-gray-500'}`}>
+              <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
+              {realtimeConnected ? 'Live' : 'Connecting'}
+            </span>
             <input type="text" placeholder="🔍 Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-[#2a2a2a] border border-gray-700/50 rounded-lg px-4 py-2 text-sm w-48 md:w-64 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 transition" />
             <button onClick={() => setShowMembershipModal(true)} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition shadow-sm ${membershipActive ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-500/30' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>
               {membershipActive ? '✅ Active' : '⭐ Subscribe'}

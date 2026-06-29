@@ -21,7 +21,7 @@ import MembershipManager from '../../components/admin/MembershipManager';
 import toast from 'react-hot-toast';
 
 // ----------------- UTILITY TABLE COMPONENT -----------------
-const AdminTable = ({ headers, data, renderRow, emptyMessage }) => (
+const AdminTable = ({ headers, data, renderRow, emptyMessage, loading = false }) => (
   <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
     <div className="overflow-x-auto">
       <table className="w-full text-sm text-left">
@@ -29,7 +29,9 @@ const AdminTable = ({ headers, data, renderRow, emptyMessage }) => (
           <tr>{headers.map((h, i) => <th key={i} className="px-6 py-4 whitespace-nowrap font-medium tracking-wide">{h}</th>)}</tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {data.length === 0 ? (
+          {loading ? (
+            <tr><td colSpan={headers.length} className="px-6 py-12 text-center text-orange-600 font-medium">Loading live data…</td></tr>
+          ) : data.length === 0 ? (
             <tr><td colSpan={headers.length} className="px-6 py-12 text-center text-gray-400 italic">{emptyMessage}</td></tr>
           ) : (
             data.map((item, index) => renderRow(item, index))
@@ -66,25 +68,25 @@ const DetailModal = ({ isOpen, onClose, title, data }) => {
 // ----------------- MAIN DASHBOARD CONTENT -----------------
 function AdminDashboardContent() {
   const router = useRouter();
-  const { globalStats, refreshStats } = useAdmin();
+  const { globalStats, statsLoading, realtimeConnected, refreshStats } = useAdmin();
+  const [activeTab, setActiveTab] = useState('overview');
   
-  // ALL HOOKS
-  const { properties, deleteProperty } = useAdminProperties();
-  const { tenants, deleteTenant } = useAdminTenants();
-  const { owners, toggleOwnerStatus } = useAdminOwners();
-  const { users, loading: usersLoading, searchTerm, setSearchTerm, roleFilter, setRoleFilter, toggleUserStatus, changeUserRole } = useAdminUsers();
-  const { payments, confirmPayment, rejectPayment } = useAdminPayments();
-  const { preBookings, approvePreBooking, rejectPreBooking } = useAdminPreBookings();
-  const { applications, approveApplication, rejectApplication } = useAdminApplications();
-  const { approvedApps } = useAdminApprovedApplications();
-  const { complaints, resolveComplaint, deleteComplaint } = useAdminComplaints();
-  const { vacateRequests, approveVacate, rejectVacate } = useAdminVacate();
-  const { roomChanges, approveRoomChange, rejectRoomChange } = useAdminRoomChange();
-  const { notices, postNotice, deleteNotice } = useAdminNotices();
-  const { owners: membershipOwners, loading: membershipLoading, getDaysLeft, sendRenewalEmail, grantMembership, revokeMembership } = useAdminMembershipManager();
+  // Only the visible tab loads its dataset. This keeps login fast and reduces database traffic.
+  const { properties, loading: propertiesLoading, deleteProperty } = useAdminProperties(activeTab === 'properties');
+  const { tenants, loading: tenantsLoading, deleteTenant } = useAdminTenants(activeTab === 'tenants');
+  const { owners, loading: ownersLoading, toggleOwnerStatus } = useAdminOwners(activeTab === 'owners');
+  const { users, loading: usersLoading, searchTerm, setSearchTerm, roleFilter, setRoleFilter, toggleUserStatus, changeUserRole } = useAdminUsers(activeTab === 'users');
+  const { payments, loading: paymentsLoading, confirmPayment, rejectPayment } = useAdminPayments(activeTab === 'payments');
+  const { preBookings, loading: preBookingsLoading, approvePreBooking, rejectPreBooking } = useAdminPreBookings(activeTab === 'prebookings');
+  const { applications, loading: applicationsLoading, approveApplication, rejectApplication } = useAdminApplications(activeTab === 'applications');
+  const { approvedApps, loading: approvedAppsLoading } = useAdminApprovedApplications(activeTab === 'approvedapps');
+  const { complaints, loading: complaintsLoading, resolveComplaint, deleteComplaint } = useAdminComplaints(activeTab === 'complaints');
+  const { vacateRequests, loading: vacateLoading, approveVacate, rejectVacate } = useAdminVacate(activeTab === 'vacate');
+  const { roomChanges, loading: roomChangesLoading, approveRoomChange, rejectRoomChange } = useAdminRoomChange(activeTab === 'roomchange');
+  const { notices, loading: noticesLoading, postNotice, deleteNotice } = useAdminNotices(activeTab === 'notices');
+  const { owners: membershipOwners, loading: membershipLoading, getDaysLeft, sendRenewalEmail, grantMembership, revokeMembership } = useAdminMembershipManager(activeTab === 'membership');
   const { selectedProperty, selectedOwner, viewPropertyDetails, viewOwnerDetails, closeModals } = useAdminModals();
 
-  const [activeTab, setActiveTab] = useState('overview');
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -96,11 +98,11 @@ function AdminDashboardContent() {
 
   // STATS CARDS
   const statsData = [
-    { label: 'Properties', value: globalStats.totalProperties, icon: '🏢', color: 'bg-orange-100 text-orange-600' },
-    { label: 'Active Tenants', value: globalStats.totalTenants, icon: '👥', color: 'bg-blue-100 text-blue-600' },
-    { label: 'Total Revenue', value: formatCurrency(globalStats.totalRevenue), icon: '💰', color: 'bg-emerald-100 text-emerald-600' },
-    { label: 'Pending Complaints', value: globalStats.pendingComplaints, icon: '🔧', color: 'bg-red-100 text-red-600' },
-    { label: 'Pending Vacates', value: globalStats.pendingVacates, icon: '🚪', color: 'bg-amber-100 text-amber-600' },
+    { label: 'Properties', value: statsLoading ? '—' : globalStats.totalProperties, icon: '🏢', color: 'bg-orange-100 text-orange-600' },
+    { label: 'Active Tenants', value: statsLoading ? '—' : globalStats.totalTenants, icon: '👥', color: 'bg-blue-100 text-blue-600' },
+    { label: 'Total Revenue', value: statsLoading ? '—' : formatCurrency(globalStats.totalRevenue), icon: '💰', color: 'bg-emerald-100 text-emerald-600' },
+    { label: 'Pending Complaints', value: statsLoading ? '—' : globalStats.pendingComplaints, icon: '🔧', color: 'bg-red-100 text-red-600' },
+    { label: 'Pending Vacates', value: statsLoading ? '—' : globalStats.pendingVacates, icon: '🚪', color: 'bg-amber-100 text-amber-600' },
   ];
 
   // TABS
@@ -132,6 +134,10 @@ function AdminDashboardContent() {
             <span className="text-xs bg-[#2a2a2a] text-orange-400/90 border border-orange-500/30 px-3 py-1 rounded-full ml-2">Admin Control</span>
           </div>
           <div className="flex items-center gap-4">
+            <span className={`hidden sm:inline-flex items-center gap-2 text-xs font-semibold ${realtimeConnected ? 'text-emerald-400' : 'text-gray-500'}`}>
+              <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
+              {realtimeConnected ? 'Live' : 'Connecting'}
+            </span>
             <button onClick={() => refreshStats()} className="text-orange-400 hover:text-orange-300 text-sm font-medium transition">🔄 Refresh</button>
             <button onClick={handleLogout} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-1.5 rounded-full font-semibold transition shadow-md">Logout</button>
           </div>
@@ -185,6 +191,7 @@ function AdminDashboardContent() {
         {/* ----- PROPERTIES ----- */}
         {activeTab === 'properties' && (
           <AdminTable
+            loading={propertiesLoading}
             headers={['Property Name', 'Owner', 'Property ID (UUID)', 'Actions']}
             data={properties}
             renderRow={(p) => (
@@ -205,6 +212,7 @@ function AdminDashboardContent() {
         {/* ----- TENANTS ----- */}
         {activeTab === 'tenants' && (
           <AdminTable
+            loading={tenantsLoading}
             headers={['Tenant Name', 'Phone', 'Room', 'Property', 'Actions']}
             data={tenants}
             renderRow={(t) => (
@@ -225,6 +233,7 @@ function AdminDashboardContent() {
         {/* ----- OWNERS ----- */}
         {activeTab === 'owners' && (
           <AdminTable
+            loading={ownersLoading}
             headers={['Owner Name', 'Email', 'Owner ID (UUID)', 'Status', 'Actions']}
             data={owners}
             renderRow={(o) => (
@@ -276,6 +285,7 @@ function AdminDashboardContent() {
             </div>
 
             <AdminTable
+              loading={usersLoading}
               headers={['Full Name', 'Email', 'Role', 'Status', 'Actions']}
               data={users}
               renderRow={(u) => (
@@ -324,6 +334,7 @@ function AdminDashboardContent() {
         {/* ----- PAYMENTS ----- */}
         {activeTab === 'payments' && (
           <AdminTable
+            loading={paymentsLoading}
             headers={['Tenant', 'Amount', 'Date', 'Status', 'Actions']}
             data={payments}
             renderRow={(p) => (
@@ -353,6 +364,7 @@ function AdminDashboardContent() {
         {/* ----- PRE-BOOKINGS ----- */}
         {activeTab === 'prebookings' && (
           <AdminTable
+            loading={preBookingsLoading}
             headers={['Name', 'Room', 'Property', 'Fee', 'Actions']}
             data={preBookings}
             renderRow={(b) => (
@@ -374,6 +386,7 @@ function AdminDashboardContent() {
         {/* ----- APPLICATIONS ----- */}
         {activeTab === 'applications' && (
           <AdminTable
+            loading={applicationsLoading}
             headers={['Name', 'Phone', 'Room', 'Actions']}
             data={applications}
             renderRow={(a) => (
@@ -394,6 +407,7 @@ function AdminDashboardContent() {
         {/* ----- APPROVED APPLICATIONS ----- */}
         {activeTab === 'approvedapps' && (
           <AdminTable
+            loading={approvedAppsLoading}
             headers={['Name', 'Room', 'Status', 'Processed']}
             data={approvedApps}
             renderRow={(a) => (
@@ -415,6 +429,7 @@ function AdminDashboardContent() {
         {/* ----- COMPLAINTS ----- */}
         {activeTab === 'complaints' && (
           <AdminTable
+            loading={complaintsLoading}
             headers={['Title', 'Tenant', 'Status', 'Actions']}
             data={complaints}
             renderRow={(c) => (
@@ -439,6 +454,7 @@ function AdminDashboardContent() {
         {/* ----- VACATE ----- */}
         {activeTab === 'vacate' && (
           <AdminTable
+            loading={vacateLoading}
             headers={['Tenant', 'Room', 'Checkout Date', 'Status', 'Actions']}
             data={vacateRequests}
             renderRow={(v) => (
@@ -468,6 +484,7 @@ function AdminDashboardContent() {
         {/* ----- ROOM CHANGE ----- */}
         {activeTab === 'roomchange' && (
           <AdminTable
+            loading={roomChangesLoading}
             headers={['Tenant', 'Old Room', 'New Room', 'Actions']}
             data={roomChanges}
             renderRow={(r) => (
@@ -507,7 +524,7 @@ function AdminDashboardContent() {
               <textarea placeholder="Notice Content" rows="3" value={noticeForm.content} onChange={(e) => setNoticeForm({ ...noticeForm, content: e.target.value })} className="w-full mt-4 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" />
               <button onClick={async () => { setIsSubmitting(true); await postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent); setNoticeForm({ title:'', content:'', type:'general', is_urgent:false }); setIsSubmitting(false); }} disabled={isSubmitting} className="mt-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2 rounded-full font-semibold transition shadow-md disabled:opacity-50">Post Notice</button>
             </div>
-            <AdminTable headers={['Title', 'Type', 'Date', 'Actions']} data={notices} renderRow={(n) => (
+            <AdminTable loading={noticesLoading} headers={['Title', 'Type', 'Date', 'Actions']} data={notices} renderRow={(n) => (
               <tr key={n.id} className="hover:bg-orange-50/50 transition">
                 <td className="px-6 py-4 font-semibold text-gray-800">{n.title} {n.is_urgent && <span className="ml-2 text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">URGENT</span>}</td>
                 <td className="px-6 py-4 capitalize text-gray-500">{n.type}</td>

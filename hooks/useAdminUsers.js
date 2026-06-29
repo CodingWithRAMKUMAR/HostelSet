@@ -1,16 +1,17 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useAdminUsers() {
+export function useAdminUsers(enabled = true) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
 
   // Fetch all users
-  const loadUsers = async () => {
-    setLoading(true);
+  const loadUsers = async (background = false) => {
+    if (!background) setLoading(true);
     const { data, error } = await supabase
       .from('users')
       .select('*')
@@ -56,18 +57,8 @@ export function useAdminUsers() {
     }
   };
 
-  // Real-time subscription
-  useEffect(() => {
-    loadUsers();
-    const channel = supabase.channel('admin-users')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, (payload) => {
-        if (payload.eventType === 'INSERT') setUsers(prev => [payload.new, ...prev]);
-        else if (payload.eventType === 'UPDATE') setUsers(prev => prev.map(u => u.id === payload.new.id ? payload.new : u));
-        else if (payload.eventType === 'DELETE') setUsers(prev => prev.filter(u => u.id !== payload.old.id));
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+  useEffect(() => { if (enabled) loadUsers(); }, [enabled]);
+  useRealtimeRefresh('admin-users-live', ['users'], loadUsers, enabled);
 
   // Filtered & Search Logic
   const filteredUsers = useMemo(() => {
