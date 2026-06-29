@@ -8,7 +8,7 @@ export function useOwnerNotices(property) {
 
   const loadNotices = async () => {
     if (!property?.id) return;
-    const { data } = await supabase.from('notices').select('*').eq('property_id', property.id).order('created_at', { ascending: false });
+    const { data } = await supabase.from('notices').select('*').or(`property_id.eq.${property.id},property_id.is.null`).order('created_at', { ascending: false });
     setNotices(data || []);
   };
 

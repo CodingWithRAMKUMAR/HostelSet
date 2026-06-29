@@ -21,14 +21,20 @@ export function useAdminPreBookings(enabled = true) {
   const approvePreBooking = async (bookingId, userId, roomId, propertyId, name, phone, email, monthlyRent) => {
     if (!confirm('Approve this pre-booking? The user will be converted to a tenant.')) return;
     const moveInDate = new Date(); moveInDate.setDate(moveInDate.getDate() + 7);
-    const { data: newTenant, error: tenantError } = await supabase.from('tenants').insert({
+    const { error: tenantError } = await supabase.from('tenants').insert({
       user_id: userId, property_id: propertyId, room_id: roomId, name, phone, email,
       rent_amount: monthlyRent, pending_amount: monthlyRent, total_paid: 0,
       rent_status: 'pending', move_in_date: moveInDate.toISOString().split('T')[0], status: 'active'
-    }).select().single();
+    });
     if (tenantError) { toast.error('Failed to create tenant: ' + tenantError.message); return; }
-    await supabase.from('rooms').update({ current_occupants: 1, status: 'occupied' }).eq('id', roomId);
-    await supabase.from('pre_bookings').delete().eq('id', bookingId);
+    const { data: room, error: roomError } = await supabase.from('rooms').select('current_occupants, capacity').eq('id', roomId).single();
+    if (roomError) { toast.error('Tenant created, but room could not be updated: ' + roomError.message); return; }
+    const occupants = Number(room.current_occupants || 0) + 1;
+    if (occupants > room.capacity) { toast.error('The room is already full.'); return; }
+    const { error: updateRoomError } = await supabase.from('rooms').update({ current_occupants: occupants, status: occupants >= room.capacity ? 'occupied' : 'vacant' }).eq('id', roomId);
+    if (updateRoomError) { toast.error('Tenant created, but room could not be updated: ' + updateRoomError.message); return; }
+    const { error: bookingError } = await supabase.from('pre_bookings').delete().eq('id', bookingId);
+    if (bookingError) { toast.error('Tenant created, but booking cleanup failed: ' + bookingError.message); return; }
     toast.success('Pre-booking approved! Tenant created.');
     await loadPreBookings();
   };

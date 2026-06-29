@@ -49,7 +49,7 @@ function TenantDashboardContent() {
     ownerUpiId, 
     ownerUpiPhone, 
     submitPaymentWithProof 
-  } = usePayments(tenant, refreshData);
+  } = usePayments(tenant, refreshData, owner);
 
   const {
     pendingRoomChangeRequest,

@@ -49,7 +49,6 @@ export default async function handler(req, res) {
     }
 
     const userId = authData.user.id
-    console.log('Auth user created with ID:', userId)
 
     // 2. Call the DB function
     const { data, error: dbError } = await supabaseAdmin.rpc('register_owner_and_property', {
@@ -66,8 +65,6 @@ export default async function handler(req, res) {
       p_amenities: amenities || [],
       p_photos: photos || [],
     })
-
-    console.log('Function result:', { data, dbError })
 
     // 3. Check the function result
     if (dbError) {

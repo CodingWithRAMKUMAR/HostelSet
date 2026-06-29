@@ -21,26 +21,19 @@ export function useOwnerPayments(property, tenants, setStats, loadData) {
     setAllPayments(all || []);
   };
 
-  const confirmRentPayment = async (paymentId, tenantId, amount) => {
-    const { error } = await supabase.from('payment_history').update({ status:'success' }).eq('id', paymentId);
+  const confirmRentPayment = async (paymentId) => {
+    const { error } = await supabase.rpc('review_rent_payment', { p_payment_id: paymentId, p_approve: true });
     if (error) { toast.error('Failed to confirm: ' + error.message); return; }
-    const { data: tenant } = await supabase.from('tenants').select('total_paid, pending_amount, rent_amount').eq('id', tenantId).single();
-    if (tenant) {
-      const newTotalPaid = (tenant.total_paid||0)+amount;
-      const newPending = Math.max(0, (tenant.pending_amount||0)-amount);
-      const newStatus = newPending <= 0 ? 'paid':'pending';
-      await supabase.from('tenants').update({ total_paid:newTotalPaid, pending_amount:newPending, rent_status:newStatus, last_payment_date:new Date().toISOString().split('T')[0] }).eq('id', tenantId);
-    }
     toast.success('✅ Rent payment confirmed!');
-    await loadData(true);
+    await Promise.all([loadPayments(), loadData(true)]);
   };
 
   const rejectRentPayment = async (paymentId) => {
     if (!confirm('Reject this payment?')) return;
-    const { error } = await supabase.from('payment_history').delete().eq('id', paymentId);
+    const { error } = await supabase.rpc('review_rent_payment', { p_payment_id: paymentId, p_approve: false });
     if (error) { toast.error('Failed to reject: ' + error.message); return; }
     toast.success('Payment rejected.');
-    await loadData(true);
+    await Promise.all([loadPayments(), loadData(true)]);
   };
 
   useEffect(() => {

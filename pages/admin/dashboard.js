@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../lib/supabase';
 import { formatCurrency } from '../../lib/utils';
@@ -18,7 +18,6 @@ import { useAdminNotices } from '../../hooks/useAdminNotices';
 import { useAdminMembershipManager } from '../../hooks/useAdminMembershipManager';
 import { useAdminModals } from '../../hooks/useAdminModals';
 import MembershipManager from '../../components/admin/MembershipManager';
-import toast from 'react-hot-toast';
 
 // ----------------- UTILITY TABLE COMPONENT -----------------
 const AdminTable = ({ headers, data, renderRow, emptyMessage, loading = false }) => (
@@ -84,7 +83,7 @@ function AdminDashboardContent() {
   const { vacateRequests, loading: vacateLoading, approveVacate, rejectVacate } = useAdminVacate(activeTab === 'vacate');
   const { roomChanges, loading: roomChangesLoading, approveRoomChange, rejectRoomChange } = useAdminRoomChange(activeTab === 'roomchange');
   const { notices, loading: noticesLoading, postNotice, deleteNotice } = useAdminNotices(activeTab === 'notices');
-  const { owners: membershipOwners, loading: membershipLoading, getDaysLeft, sendRenewalEmail, grantMembership, revokeMembership, refresh: refreshMemberships } = useAdminMembershipManager(activeTab === 'membership');
+  const { owners: membershipOwners, requests: membershipRequests, loading: membershipLoading, processingId: membershipProcessingId, getDaysLeft, sendRenewalEmail, grantMembership, revokeMembership, reviewRequest, refresh: refreshMemberships } = useAdminMembershipManager(activeTab === 'membership');
   const { selectedProperty, selectedOwner, viewPropertyDetails, viewOwnerDetails, closeModals } = useAdminModals();
 
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
@@ -359,7 +358,7 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 flex gap-2">
                   {p.status === 'payment_pending' && (
                     <>
-                      <button onClick={() => confirmPayment(p.id, p.tenant_id, p.amount)} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider">Confirm</button>
+                      <button onClick={() => confirmPayment(p.id)} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider">Confirm</button>
                       <button onClick={() => rejectPayment(p.id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Reject</button>
                     </>
                   )}
@@ -548,11 +547,14 @@ function AdminDashboardContent() {
         {activeTab === 'membership' && (
           <MembershipManager 
             owners={membershipOwners}
+            requests={membershipRequests}
             loading={membershipLoading}
+            processingId={membershipProcessingId}
             getDaysLeft={getDaysLeft}
             sendRenewalEmail={sendRenewalEmail}
             grantMembership={grantMembership}
             revokeMembership={revokeMembership}
+            reviewRequest={reviewRequest}
             onRefresh={() => refreshMemberships(false)}
           />
         )}

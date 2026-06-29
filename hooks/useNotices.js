@@ -6,7 +6,7 @@ export function useNotices(tenant) {
   const [notices, setNotices] = useState([]);
   const loadNotices = async () => {
     if (!tenant?.property_id) return;
-    const { data } = await supabase.from('notices').select('*').eq('property_id', tenant.property_id).order('created_at', { ascending: false }).limit(10);
+    const { data } = await supabase.from('notices').select('*').or(`property_id.eq.${tenant.property_id},property_id.is.null`).order('created_at', { ascending: false }).limit(10);
     setNotices(data || []);
   };
   useEffect(() => {
@@ -14,8 +14,8 @@ export function useNotices(tenant) {
     loadNotices();
     const channel = supabase.channel('notices-tenant-isolated')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, (payload) => {
-        if (payload.eventType === 'INSERT' && payload.new?.property_id === tenant.property_id) {
-          toast.success('📢 New notice posted by owner!');
+        if (payload.eventType === 'INSERT' && (!payload.new?.property_id || payload.new.property_id === tenant.property_id)) {
+          toast.success(payload.new?.property_id ? '📢 New notice posted by owner!' : '📢 New HostelSet announcement!');
         }
         loadNotices();
       })

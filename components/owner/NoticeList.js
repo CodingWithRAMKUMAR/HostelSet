@@ -19,17 +19,20 @@ export default function NoticeList({ notices = [], onDelete = () => {}, onPost =
       ) : (
         notices.map(notice => (
           <div key={notice.id} className={`bg-white rounded-xl border p-4 ${notice.is_urgent ? 'border-red-200 bg-red-50' : 'border-gray-100'} relative group`}>
-            <button 
-              onClick={() => onDelete(notice.id)} 
-              disabled={isSubmitting} 
-              className="absolute top-4 right-4 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition disabled:opacity-50"
-            >
-              🗑️ Delete
-            </button>
+            {notice.property_id && (
+              <button
+                onClick={() => onDelete(notice.id)}
+                disabled={isSubmitting}
+                className="absolute top-4 right-4 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition disabled:opacity-50"
+              >
+                🗑️ Delete
+              </button>
+            )}
             <div className="flex items-center gap-2 mb-2 pr-12">
               <h3 className="font-semibold text-slate-800">{notice.title}</h3>
               {notice.is_urgent && <span className="px-2 py-1 bg-red-500 text-white rounded-full text-xs">URGENT</span>}
               <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">{notice.type}</span>
+              {!notice.property_id && <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs">HostelSet</span>}
             </div>
             <p className="text-gray-600">{notice.content}</p>
             <p className="text-xs text-gray-400 mt-2">Posted: {formatDate(notice.created_at)}</p>

@@ -1,12 +1,14 @@
-export default function MembershipModal({ onSelectPlan, onCancel, loading }) {
+export default function MembershipModal({ onSelectPlan, onCancel, loading, pendingRequest }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onCancel}>
       <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-2xl font-bold mb-4">✨ Choose Membership Plan</h2>
+        <h2 className="text-2xl font-bold mb-2">✨ Request Membership</h2>
+        <p className="text-sm text-gray-500 mb-4">Choose a plan and send it to the HostelSet admin for approval. No online payment is collected.</p>
+        {pendingRequest && <div className="mb-4 rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">Your {pendingRequest.plan_id} request is awaiting admin approval.</div>}
         <div className="space-y-3">
           <button
             onClick={() => onSelectPlan('monthly', 499, 'Monthly')}
-            disabled={loading}
+            disabled={loading || Boolean(pendingRequest)}
             className="w-full p-4 border rounded-xl text-left hover:bg-gray-50 transition disabled:opacity-50"
           >
             <div className="font-bold text-lg">Monthly Plan</div>
@@ -16,7 +18,7 @@ export default function MembershipModal({ onSelectPlan, onCancel, loading }) {
           </button>
           <button
             onClick={() => onSelectPlan('yearly', 4999, 'Yearly')}
-            disabled={loading}
+            disabled={loading || Boolean(pendingRequest)}
             className="w-full p-4 border rounded-xl text-left hover:bg-gray-50 transition disabled:opacity-50"
           >
             <div className="font-bold text-lg">Yearly Plan</div>

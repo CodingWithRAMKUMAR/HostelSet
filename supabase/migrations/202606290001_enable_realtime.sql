@@ -9,16 +9,13 @@ declare
     'rooms',
     'tenants',
     'payment_history',
-    'payment_transactions',
     'applications',
     'pre_bookings',
     'complaints',
     'check_out_requests',
     'room_change_requests',
     'notices',
-    'owner_memberships',
     'owner_settings',
-    'membership_plans',
     'ratings'
   ];
 begin
@@ -97,16 +94,13 @@ declare
     'rooms',
     'tenants',
     'payment_history',
-    'payment_transactions',
     'applications',
     'pre_bookings',
     'complaints',
     'check_out_requests',
     'room_change_requests',
     'notices',
-    'owner_memberships',
     'owner_settings',
-    'membership_plans',
     'ratings'
   ];
 begin

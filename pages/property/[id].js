@@ -597,8 +597,8 @@ export default function PropertyDetail() {
         email: applyForm.email,
         rent_amount: room.monthly_rent,
         pending_amount: 0,
-        total_paid: totalAmount,
-        rent_status: 'paid',
+        total_paid: 0,
+        rent_status: 'payment_pending',
         move_in_date: new Date().toISOString().split('T')[0],
         status: 'payment_pending',
         payment_screenshot: screenshotUrl,
@@ -621,19 +621,11 @@ export default function PropertyDetail() {
           amount: totalAmount,
           payment_date: new Date().toISOString().split('T')[0],
           payment_method: 'advance', // or 'security_deposit'
-          status: 'success',
+          status: 'payment_pending',
           upi_transaction_id: transactionId || null,
           payment_screenshot: screenshotUrl,
         })
       }
-
-      // 6. Update room occupancy
-      const newOccupants = room.current_occupants + 1
-      const newStatus = newOccupants >= room.capacity ? 'occupied' : 'vacant'
-      await supabase.from('rooms').update({
-        current_occupants: newOccupants,
-        status: newStatus,
-      }).eq('id', selectedRoom)
 
       toast.success(
         `🎉 Application submitted! Once the owner approves, you will receive an email to set your password.`,

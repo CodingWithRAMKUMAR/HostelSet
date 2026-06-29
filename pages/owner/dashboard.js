@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/router';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { supabase } from '../../lib/supabase';
-import { formatCurrency, formatDate } from '../../lib/utils';
 import toast from 'react-hot-toast';
 
 // Modular Imports
@@ -48,6 +47,7 @@ const TenantPaymentsModal = dynamic(() => import('../../components/owner/modals/
 const TenantProfileModal = dynamic(() => import('../../components/owner/modals/TenantProfileModal'), { ssr: false });
 const RoomChangeReasonModal = dynamic(() => import('../../components/owner/modals/RoomChangeReasonModal'), { ssr: false });
 const ScreenshotModal = dynamic(() => import('../../components/owner/modals/ScreenshotModal'), { ssr: false });
+const OwnerProfileModal = dynamic(() => import('../../components/owner/modals/OwnerProfileModal'), { ssr: false });
 
 export default function OwnerDashboard() {
   return (
@@ -64,8 +64,8 @@ function OwnerDashboardContent() {
     loading,
     realtimeConnected,
     property, 
-    propertyImages, 
-    setPropertyImages, 
+    ownerProfile,
+    updateOwnerProfile,
     rooms, 
     setRooms, 
     tenants, 
@@ -77,14 +77,10 @@ function OwnerDashboardContent() {
     roomMonthlyIncome, 
     membershipActive, 
     membershipLoading, 
-    membershipStatus, 
-    membershipExpiry, 
-    daysLeft, 
     loadData, 
-    loadSettings, 
     saveSettings, 
-    initiateMembershipPayment, 
-    startAutoRefresh 
+    pendingMembershipRequest,
+    requestMembership
   } = core;
   
   const { showRoomModal, setShowRoomModal, roomForm, setRoomForm, sharingTypes, addRoom, deleteRoom } = useOwnerRooms(property, rooms, setRooms, setStats);
@@ -94,7 +90,7 @@ function OwnerDashboardContent() {
   const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment } = useOwnerPayments(property, tenants, setStats, loadData);
   const { notices, postNotice, deleteNotice } = useOwnerNotices(property);
   const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property);
-  const { applications, approveApplication, rejectApplication, resendPasswordEmail } = useOwnerApplications(property);
+  const { applications, rejectApplication, resendPasswordEmail } = useOwnerApplications(property);
   const { preBookings, approvePreBooking, rejectPreBooking } = useOwnerPreBookings(property);
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -108,6 +104,7 @@ function OwnerDashboardContent() {
   const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
   const [showApplicationDetailModal, setShowApplicationDetailModal] = useState(false);
   const [showScreenshotModal, setShowScreenshotModal] = useState(false);
+  const [showOwnerProfileModal, setShowOwnerProfileModal] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [selectedComplaint, setSelectedComplaint] = useState(null);
@@ -185,8 +182,6 @@ function OwnerDashboardContent() {
 
     setIsSubmitting(true);
     try {
-      console.log("🚀 Starting approval for:", appData.name);
-
       // Applications created after payment already have a payment_pending tenant.
       // Promote that record instead of creating a duplicate and counting the room twice.
       const { data: existingTenant, error: existingTenantError } = await supabase
@@ -220,7 +215,7 @@ function OwnerDashboardContent() {
           .eq('id', existingTenant.id);
 
         if (promoteError) throw promoteError;
-        roomOccupancyAlreadyCounted = true;
+        roomOccupancyAlreadyCounted = false;
       } else {
         let userId = appData.user_id;
         if (!userId) {
@@ -288,14 +283,12 @@ function OwnerDashboardContent() {
       // ---------------------------------------------------------
       // 4. Send Password Reset Email
       // ---------------------------------------------------------
-      console.log("📧 Sending password reset email to:", appData.email);
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
         appData.email,
         { redirectTo: `${window.location.origin}/reset-password` }
       );
 
       if (resetError) {
-        console.warn("⚠️ Password reset email failed to send:", resetError.message);
         toast.warning("Tenant created, but password reset email could not be sent.");
       } else {
         toast.success("📧 Password reset email sent to the tenant!");
@@ -314,6 +307,34 @@ function OwnerDashboardContent() {
 
   const getRoomNumberById = (roomId) => { const room = rooms.find(r => r.id === roomId); return room ? room.room_number : 'N/A' }
   const getTenantsInRoom = (roomId) => tenants.filter(t => t.room_id === roomId)
+
+  const handleSaveSettings = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await saveSettings(settings);
+      toast.success('Settings saved');
+      setShowSettingsModal(false);
+    } catch (error) {
+      toast.error('Failed to save settings: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveOwnerProfile = async (profileData) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await updateOwnerProfile(profileData);
+      toast.success('Owner profile updated');
+      setShowOwnerProfileModal(false);
+    } catch (error) {
+      toast.error('Failed to update profile: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -373,9 +394,10 @@ function OwnerDashboardContent() {
               {realtimeConnected ? 'Live' : 'Connecting'}
             </span>
             <input type="text" placeholder="🔍 Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-[#2a2a2a] border border-gray-700/50 rounded-lg px-4 py-2 text-sm w-48 md:w-64 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 transition" />
-            <button onClick={() => setShowMembershipModal(true)} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition shadow-sm ${membershipActive ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-500/30' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>
-              {membershipActive ? '✅ Active' : '⭐ Subscribe'}
+            <button onClick={() => setShowMembershipModal(true)} disabled={Boolean(pendingMembershipRequest)} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition shadow-sm ${membershipActive ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-500/30' : pendingMembershipRequest ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-wait' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>
+              {membershipActive ? '✅ Active' : pendingMembershipRequest ? '⏳ Approval Pending' : '⭐ Request Membership'}
             </button>
+            <button onClick={() => setShowOwnerProfileModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5" aria-label="Edit owner profile">👤</button>
             <button onClick={() => setShowSettingsModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5">⚙️</button>
             <span className="text-sm hidden md:inline text-orange-300/80">{property.name}</span>
             <button onClick={async () => { await supabase.auth.signOut(); localStorage.clear(); router.push('/') }} className="text-red-400 hover:text-red-300 transition font-medium">Logout</button>
@@ -429,11 +451,12 @@ function OwnerDashboardContent() {
 
       {/* --- MODALS --- */}
       <AnimatePresence>
-        {showSettingsModal && <SettingsModal settings={settings} setSettings={setSettings} onSave={() => saveSettings(settings)} onCancel={() => setShowSettingsModal(false)} isSubmitting={isSubmitting} />}
+        {showSettingsModal && <SettingsModal settings={settings} setSettings={setSettings} onSave={handleSaveSettings} onCancel={() => setShowSettingsModal(false)} isSubmitting={isSubmitting} />}
         {showAddModal && <AddTenantModal formData={formData} setFormData={setFormData} rooms={rooms} onAdd={() => addTenant(isSubmitting, setIsSubmitting)} onCancel={() => setShowAddModal(false)} isSubmitting={isSubmitting} />}
         {showRoomModal && <AddRoomModal roomForm={roomForm} setRoomForm={setRoomForm} sharingTypes={sharingTypes} onAdd={() => addRoom(isSubmitting, setIsSubmitting)} onCancel={() => setShowRoomModal(false)} isSubmitting={isSubmitting} />}
         {showNoticeModal && <PostNoticeModal noticeForm={noticeForm} setNoticeForm={setNoticeForm} onPost={() => postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent)} onCancel={() => setShowNoticeModal(false)} isSubmitting={isSubmitting} />}
-        {showMembershipModal && <MembershipModal onSelectPlan={initiateMembershipPayment} onCancel={() => setShowMembershipModal(false)} loading={membershipLoading} />}
+        {showMembershipModal && <MembershipModal onSelectPlan={async (...args) => { const sent = await requestMembership(...args); if (sent) setShowMembershipModal(false); }} onCancel={() => setShowMembershipModal(false)} loading={membershipLoading} pendingRequest={pendingMembershipRequest} />}
+        {showOwnerProfileModal && ownerProfile && <OwnerProfileModal profile={ownerProfile} onSave={handleSaveOwnerProfile} onCancel={() => setShowOwnerProfileModal(false)} isSubmitting={isSubmitting} />}
         {showComplaintResponseModal && selectedComplaint && <ComplaintResponseModal complaint={selectedComplaint} response={complaintResponse} setResponse={setComplaintResponse} onSend={() => respondToComplaint(selectedComplaint.id, complaintResponse)} onCancel={() => setShowComplaintResponseModal(false)} isSubmitting={isSubmitting} />}
         {showRoomDetailsModal && selectedRoom && <RoomDetailsModal room={selectedRoom} tenantsInRoom={getTenantsInRoom(selectedRoom.id)} onClose={() => setShowRoomDetailsModal(false)} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} fetchTenantPayments={fetchTenantPayments} fetchTenantApplication={fetchTenantApplication} />}
         

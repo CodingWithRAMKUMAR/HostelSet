@@ -37,7 +37,6 @@ export function useOwnerApplications(property) {
 
         if (existingUser) {
           userId = existingUser.id;
-          console.log("✅ Found existing user ID from application data:", userId);
         } else {
           // Fallback if somehow the user truly doesn't exist (rare case)
           toast.error('User record not found for this applicant. Please ensure they registered.');

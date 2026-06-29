@@ -46,28 +46,15 @@ export default function ApplicationList({
 
           <div className="flex gap-2 w-full md:w-auto flex-wrap">
             <button
-              onClick={() => {
-                // CRITICAL FIX: Explicitly pass the full application object and ID
-                if (app && app.id) {
-                  onApprove(app.id, app);
-                } else {
-                  console.error('🚨 Cannot approve: Application data is missing!');
-                }
-              }}
+              onClick={() => onApprove(app.id, app)}
               disabled={isSubmitting}
               className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50"
             >
               Approve →
             </button>
             <button
-              onClick={() => {
-                if (app?.email) {
-                  onResendEmail(app.email);
-                } else {
-                  console.warn('⚠️ No email found for resend.');
-                }
-              }}
-              disabled={isSubmitting}
+              onClick={() => onResendEmail(app.email)}
+              disabled={isSubmitting || !app.email}
               className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50"
             >
               📧 Resend

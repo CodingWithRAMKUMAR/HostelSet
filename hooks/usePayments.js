@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
-export function usePayments(tenant, refreshData) {
+export function usePayments(tenant, refreshData, owner) {
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [ownerUpiId, setOwnerUpiId] = useState('');
@@ -26,7 +26,7 @@ export function usePayments(tenant, refreshData) {
       .eq('owner_id', tenant.property.owner_id)
       .maybeSingle();
     setOwnerUpiId(data?.upi_id || tenant.property?.owner_upi_id || '');
-    setOwnerUpiPhone(data?.upi_phone || '');
+    setOwnerUpiPhone(data?.upi_phone || owner?.phone || '');
   };
 
   const uploadFile = async (file, prefix) => {
@@ -41,6 +41,14 @@ export function usePayments(tenant, refreshData) {
 
   const submitPaymentWithProof = async (paymentScreenshot, paymentTransactionId) => {
     if (!paymentScreenshot) { toast.error('Please upload payment screenshot'); return false; }
+    if (!paymentScreenshot.type?.startsWith('image/') || paymentScreenshot.size > 5 * 1024 * 1024) {
+      toast.error('Upload an image smaller than 5MB');
+      return false;
+    }
+    if (paymentHistory.some((payment) => payment.status === 'payment_pending')) {
+      toast.error('A payment proof is already waiting for owner confirmation.');
+      return false;
+    }
     setPaymentLoading(true);
     try {
       const screenshotUrl = await uploadFile(paymentScreenshot, 'rent');
@@ -56,7 +64,7 @@ export function usePayments(tenant, refreshData) {
       });
       if (paymentError) throw paymentError;
       toast.success('Payment proof submitted!');
-      await refreshData(true);
+      await Promise.all([loadPayments(), refreshData(true)]);
       return true;
     } catch (error) {
       console.error('Payment error:', error);
@@ -74,7 +82,7 @@ export function usePayments(tenant, refreshData) {
     loadUPIDetails();
 
     const channel = supabase.channel('payments-tenant-isolated')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_history' }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_history', filter: `tenant_id=eq.${tenant.id}` }, (payload) => {
         loadPayments();
         if (payload.eventType === 'UPDATE' && payload.new?.tenant_id === tenant.id) refreshData(true);
       })
@@ -84,7 +92,7 @@ export function usePayments(tenant, refreshData) {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [tenant?.id, tenant?.property?.owner_id, tenant?.property?.owner_upi_id]);
+  }, [tenant?.id, tenant?.property?.owner_id, tenant?.property?.owner_upi_id, owner?.phone]);
 
   return {
     paymentHistory,

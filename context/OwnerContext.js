@@ -11,6 +11,7 @@ export function OwnerProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [property, setProperty] = useState(null);
+  const [ownerProfile, setOwnerProfile] = useState(null);
   const [propertyImages, setPropertyImages] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -20,6 +21,7 @@ export function OwnerProvider({ children }) {
   const [membershipLoading, setMembershipLoading] = useState(false);
   const [membershipStatus, setMembershipStatus] = useState('loading');
   const [membershipExpiry, setMembershipExpiry] = useState(null);
+  const [pendingMembershipRequest, setPendingMembershipRequest] = useState(null);
   const [daysLeft, setDaysLeft] = useState(null);
   const [roomMonthlyIncome, setRoomMonthlyIncome] = useState({});
   const [realtimeConnected, setRealtimeConnected] = useState(false);
@@ -116,6 +118,50 @@ export function OwnerProvider({ children }) {
     } catch (error) { console.error('Error loading settings:', error); toast.error('Failed to load settings'); }
   };
 
+  const loadOwnerProfile = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return null;
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, full_name, email, phone, is_active')
+      .eq('id', session.user.id)
+      .single();
+    if (error) throw error;
+    setOwnerProfile(data);
+    return data;
+  };
+
+  const updateOwnerProfile = async ({ full_name, phone }) => {
+    const name = full_name?.trim();
+    const cleanPhone = String(phone || '').replace(/\D/g, '').slice(-10);
+    if (!name) throw new Error('Full name is required');
+    if (cleanPhone.length !== 10) throw new Error('Enter a valid 10-digit phone number');
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) throw new Error('Please log in again');
+    const { error } = await supabase
+      .from('users')
+      .update({ full_name: name, phone: cleanPhone })
+      .eq('id', session.user.id);
+    if (error) throw error;
+    await supabase.auth.updateUser({ data: { full_name: name, phone: cleanPhone } });
+    localStorage.setItem('userName', name);
+    await loadOwnerProfile();
+  };
+
+  const loadMembershipRequest = async (ownerId = property?.owner_id) => {
+    if (!ownerId) return null;
+    const { data, error } = await supabase
+      .from('membership_requests')
+      .select('id, plan_id, amount, status, requested_at, admin_note')
+      .eq('owner_id', ownerId)
+      .eq('status', 'pending')
+      .maybeSingle();
+    if (error) throw error;
+    setPendingMembershipRequest(data || null);
+    return data || null;
+  };
+
   const saveSettings = async (newSettings) => {
     const userId = localStorage.getItem('userId');
     const { data: existing } = await supabase.from('owner_settings').select('id').eq('owner_id', userId).maybeSingle();
@@ -128,16 +174,35 @@ export function OwnerProvider({ children }) {
     setSettings(newSettings); await loadData(true);
   };
 
-  const initiateMembershipPayment = async (planId, amount) => {
+  const requestMembership = async (planId, amount) => {
+    if (!property?.id) {
+      toast.error('Register a property before requesting membership');
+      return false;
+    }
+    if (pendingMembershipRequest) {
+      toast('Your membership request is already waiting for admin approval.', { icon: '⏳' });
+      return false;
+    }
     setMembershipLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Please log in again');
-      const response = await fetch('/api/payment/create-membership-order', { method:'POST', headers:{'Content-Type':'application/json', Authorization:`Bearer ${session.access_token}`}, body:JSON.stringify({ ownerId:session.user.id, planId }) });
-      const data = await response.json();
-      if (data.success) { window.open(data.paymentLink, '_blank'); toast.success('Redirecting...'); setTimeout(async () => { const refreshedProperty = await loadData(true); const isActive = refreshedProperty?.membership_active && new Date(refreshedProperty.membership_expiry) > new Date(); if (isActive) { setMembershipStatus('active'); startAutoRefresh(); toast.success('✅ Membership activated! Reloading...'); window.location.reload(); } else { toast('Payment processing...', { icon:'⏳' }); } }, 15000); }
-      else toast.error(data.error || 'Payment initiation failed');
-    } catch (error) { console.error('Membership payment error:', error); toast.error('Failed to initiate payment'); }
+      const { data, error } = await supabase.from('membership_requests').insert({
+        owner_id: session.user.id,
+        property_id: property.id,
+        plan_id: planId,
+        amount,
+        status: 'pending',
+      }).select('id, plan_id, amount, status, requested_at, admin_note').single();
+      if (error) throw error;
+      setPendingMembershipRequest(data);
+      toast.success('Membership request sent to the admin.');
+      return true;
+    } catch (error) {
+      console.error('Membership request error:', error);
+      toast.error(error.code === '23505' ? 'A membership request is already pending.' : 'Failed to send membership request: ' + error.message);
+      return false;
+    }
     finally { setMembershipLoading(false); }
   };
 
@@ -146,7 +211,9 @@ export function OwnerProvider({ children }) {
       const auth = await checkAuthAndRedirect();
       if (!auth) return; if (auth.role !== 'owner') { router.push('/login'); return; }
       localStorage.setItem('userId', auth.user.id); localStorage.setItem('userEmail', auth.user.email || ''); localStorage.setItem('userName', auth.user.user_metadata?.full_name || '');
-      const loadedProperty = await loadData(false); await loadSettings(loadedProperty);
+      const loadedProperty = await loadData(false);
+      await Promise.all([loadSettings(loadedProperty), loadOwnerProfile()]);
+      if (loadedProperty?.owner_id) await loadMembershipRequest(loadedProperty.owner_id);
       const membershipExpired = loadedProperty?.membership_active && loadedProperty.membership_expiry && new Date(loadedProperty.membership_expiry) <= new Date();
       if (membershipExpired) { router.push('/owner/subscribe?reason=expired'); return; }
       startAutoRefresh();
@@ -176,6 +243,9 @@ export function OwnerProvider({ children }) {
         clearTimeout(timer);
         timer = setTimeout(() => loadSettings(property), 300);
       })
+      .on('postgres_changes', { event:'*', schema:'public', table:'membership_requests', filter:`owner_id=eq.${property.owner_id}` }, () => {
+        loadMembershipRequest(property.owner_id).catch((error) => console.error('Membership request refresh failed:', error));
+      })
       .subscribe((status) => setRealtimeConnected(status === 'SUBSCRIBED'));
 
     return () => {
@@ -187,7 +257,13 @@ export function OwnerProvider({ children }) {
 
   return (
     <OwnerContext.Provider value={{
-      loading, isRefreshing, realtimeConnected, property, propertyImages, setPropertyImages, rooms, tenants, settings, stats, roomMonthlyIncome, setRoomMonthlyIncome, membershipActive, membershipLoading, membershipStatus, membershipExpiry, daysLeft, loadData, loadSettings, saveSettings, initiateMembershipPayment, startAutoRefresh, updateMembershipFromProperty, setTenants, setRooms, setProperty, setStats
+      loading, isRefreshing, realtimeConnected, property, propertyImages, setPropertyImages, rooms, tenants,
+      ownerProfile, loadOwnerProfile, updateOwnerProfile,
+      settings, setSettings, stats, roomMonthlyIncome, setRoomMonthlyIncome,
+      membershipActive, membershipLoading, membershipStatus, membershipExpiry, daysLeft,
+      pendingMembershipRequest, loadMembershipRequest, requestMembership,
+      loadData, loadSettings, saveSettings, startAutoRefresh, updateMembershipFromProperty,
+      setTenants, setRooms, setProperty, setStats
     }}>
       {children}
     </OwnerContext.Provider>

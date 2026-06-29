@@ -43,7 +43,7 @@ export function useAdminApplications(enabled = true) {
           move_in_date: moveInDate,
         }).eq('id', existingTenant.id);
         if (error) throw error;
-        occupancyAlreadyCounted = true;
+        occupancyAlreadyCounted = false;
       } else {
         if (!userId) {
           const { data: existingUser, error: userError } = await supabase

@@ -2,6 +2,7 @@ import '../styles/globals.css'
 import { Toaster } from 'react-hot-toast'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
+import { ErrorBoundary } from '../components/ErrorBoundary'
 
 export default function App({ Component, pageProps }) {
   const router = useRouter()
@@ -48,7 +49,9 @@ export default function App({ Component, pageProps }) {
         }}
       />
       {(!router.pathname.startsWith('/owner') && !router.pathname.startsWith('/tenant') && !router.pathname.startsWith('/admin')) || authorized ? (
-        <Component {...pageProps} />
+        <ErrorBoundary key={router.asPath}>
+          <Component {...pageProps} />
+        </ErrorBoundary>
       ) : null}
     </>
   )

@@ -27,7 +27,7 @@ export function useOwnerTenants(property, rooms, tenants, setTenants, setStats, 
       if (tenantError) throw tenantError;
       if (totalJoiningAmount > 0 && newTenant) { await supabase.from('payment_history').insert({ tenant_id:newTenant.id, amount:totalJoiningAmount, payment_date:new Date().toISOString().split('T')[0], payment_method:'advance', status:'success' }); }
       await supabase.from('rooms').update({ current_occupants: selectedRoom.current_occupants + 1, status: selectedRoom.current_occupants + 1 >= selectedRoom.capacity ? 'occupied' : 'vacant' }).eq('id', selectedRoom.id);
-      await supabase.auth.resetPasswordForEmail(tenantEmail, { redirectTo:`${window.location.origin}/reset-password` }).catch(e => console.warn);
+      await supabase.auth.resetPasswordForEmail(tenantEmail, { redirectTo:`${window.location.origin}/reset-password` }).catch(() => {});
       toast.success(`Tenant "${formData.name}" added!`);
       setFormData({ name:'', phone:'', email:'', rent_amount:'', room_id:'', advance_amount:'0', joining_fee:'0' });
       await loadData(true);
