@@ -7,11 +7,21 @@ export default function MembershipManager({
   getDaysLeft,
   sendRenewalEmail,
   grantMembership,
-  revokeMembership
+  revokeMembership,
+  onRefresh,
 }) {
   const [manualGrantId, setManualGrantId] = useState('');
   const [manualGrantDays, setManualGrantDays] = useState('');
   const [manualRevokeId, setManualRevokeId] = useState('');
+
+  const copyOwnerId = async (ownerId) => {
+    try {
+      await navigator.clipboard.writeText(ownerId);
+      toast.success('Owner UUID copied');
+    } catch (error) {
+      toast.error('Could not copy UUID');
+    }
+  };
 
   const handleGrant = () => {
     // Trim whitespace just in case
@@ -27,7 +37,6 @@ export default function MembershipManager({
       return;
     }
 
-    console.log("Granting:", id, days); // Check browser console (F12) to verify data is correct
     grantMembership(id, days);
     
     // Clear inputs on success
@@ -43,7 +52,6 @@ export default function MembershipManager({
       return;
     }
 
-    console.log("Revoking:", id); // Check browser console (F12) to verify data is correct
     revokeMembership(id);
     
     setManualRevokeId('');
@@ -56,7 +64,7 @@ export default function MembershipManager({
           <h3 className="text-xl font-bold text-[#1a1a1a] mb-1">📋 Membership Overview</h3>
           <p className="text-sm text-gray-500">View active/expired memberships, send renewal alerts, or grant/revoke manually.</p>
         </div>
-        <button onClick={() => window.location.reload()} className="text-orange-500 hover:text-orange-600 text-sm font-medium">🔄 Refresh</button>
+        <button onClick={onRefresh} className="text-orange-500 hover:text-orange-600 text-sm font-medium">🔄 Refresh</button>
       </div>
 
       <div className="mb-8 bg-gray-50 border border-gray-200 rounded-xl p-4">
@@ -117,6 +125,7 @@ export default function MembershipManager({
             <tr>
               <th className="px-6 py-4 font-medium tracking-wide">Owner Name</th>
               <th className="px-6 py-4 font-medium tracking-wide">Email</th>
+              <th className="px-6 py-4 font-medium tracking-wide">Owner UUID</th>
               <th className="px-6 py-4 font-medium tracking-wide">Membership Status</th>
               <th className="px-6 py-4 font-medium tracking-wide">Days Left</th>
               <th className="px-6 py-4 font-medium tracking-wide">Actions</th>
@@ -124,9 +133,9 @@ export default function MembershipManager({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan="5" className="px-6 py-12 text-center text-gray-400">Loading membership data...</td></tr>
+              <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-400">Loading membership data...</td></tr>
             ) : owners.length === 0 ? (
-              <tr><td colSpan="5" className="px-6 py-12 text-center text-gray-400">No owners found.</td></tr>
+              <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-400">No owners found.</td></tr>
             ) : (
               owners.map((owner) => {
                 const property = owner.properties?.[0];
@@ -151,6 +160,19 @@ export default function MembershipManager({
                   <tr key={owner.id} className="hover:bg-orange-50/50 transition">
                     <td className="px-6 py-4 font-semibold text-gray-800">{owner.full_name}</td>
                     <td className="px-6 py-4 text-gray-500">{owner.email}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2 min-w-[250px]">
+                        <code className="text-xs text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-2 py-1.5 select-all">{owner.id}</code>
+                        <button
+                          type="button"
+                          onClick={() => copyOwnerId(owner.id)}
+                          className="text-xs font-semibold text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-2 py-1.5 rounded-lg"
+                          title="Copy owner UUID"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${statusColor}`}>
                         {statusText}

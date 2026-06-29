@@ -6,12 +6,19 @@ import { useRealtimeRefresh } from './useRealtimeRefresh';
 export function useAdminTenants(enabled = true) {
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const loadTenants = async (background = false) => {
     if (!background) setLoading(true);
     const { data, error } = await supabase.from('tenants').select('*, rooms(room_number), property:property_id(name)').order('created_at', { ascending: false });
-    if (error) toast.error('Failed to load tenants');
-    else setTenants(data || []);
+    if (error) {
+      console.error('Admin tenant query failed:', error);
+      setError(error.message);
+      toast.error('Failed to load tenants: ' + error.message);
+    } else {
+      setError(null);
+      setTenants(data || []);
+    }
     setLoading(false);
   };
 
@@ -28,5 +35,5 @@ export function useAdminTenants(enabled = true) {
 
   useEffect(() => { if (enabled) loadTenants(); }, [enabled]);
   useRealtimeRefresh('admin-tenants-live', ['tenants', 'rooms', 'properties'], loadTenants, enabled);
-  return { tenants, loading, deleteTenant, refreshTenants: loadTenants };
+  return { tenants, loading, error, deleteTenant, refreshTenants: loadTenants };
 }

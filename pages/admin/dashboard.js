@@ -73,7 +73,7 @@ function AdminDashboardContent() {
   
   // Only the visible tab loads its dataset. This keeps login fast and reduces database traffic.
   const { properties, loading: propertiesLoading, deleteProperty } = useAdminProperties(activeTab === 'properties');
-  const { tenants, loading: tenantsLoading, deleteTenant } = useAdminTenants(activeTab === 'tenants');
+  const { tenants, loading: tenantsLoading, error: tenantsError, deleteTenant } = useAdminTenants(activeTab === 'tenants');
   const { owners, loading: ownersLoading, toggleOwnerStatus } = useAdminOwners(activeTab === 'owners');
   const { users, loading: usersLoading, searchTerm, setSearchTerm, roleFilter, setRoleFilter, toggleUserStatus, changeUserRole } = useAdminUsers(activeTab === 'users');
   const { payments, loading: paymentsLoading, confirmPayment, rejectPayment } = useAdminPayments(activeTab === 'payments');
@@ -84,7 +84,7 @@ function AdminDashboardContent() {
   const { vacateRequests, loading: vacateLoading, approveVacate, rejectVacate } = useAdminVacate(activeTab === 'vacate');
   const { roomChanges, loading: roomChangesLoading, approveRoomChange, rejectRoomChange } = useAdminRoomChange(activeTab === 'roomchange');
   const { notices, loading: noticesLoading, postNotice, deleteNotice } = useAdminNotices(activeTab === 'notices');
-  const { owners: membershipOwners, loading: membershipLoading, getDaysLeft, sendRenewalEmail, grantMembership, revokeMembership } = useAdminMembershipManager(activeTab === 'membership');
+  const { owners: membershipOwners, loading: membershipLoading, getDaysLeft, sendRenewalEmail, grantMembership, revokeMembership, refresh: refreshMemberships } = useAdminMembershipManager(activeTab === 'membership');
   const { selectedProperty, selectedOwner, viewPropertyDetails, viewOwnerDetails, closeModals } = useAdminModals();
 
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
@@ -211,23 +211,32 @@ function AdminDashboardContent() {
 
         {/* ----- TENANTS ----- */}
         {activeTab === 'tenants' && (
-          <AdminTable
-            loading={tenantsLoading}
-            headers={['Tenant Name', 'Phone', 'Room', 'Property', 'Actions']}
-            data={tenants}
-            renderRow={(t) => (
-              <tr key={t.id} className="hover:bg-orange-50/50 transition">
-                <td className="px-6 py-4 font-semibold text-gray-800">{t.name}</td>
-                <td className="px-6 py-4 text-gray-500">{t.phone}</td>
-                <td className="px-6 py-4 text-gray-500">{t.rooms?.room_number || 'N/A'}</td>
-                <td className="px-6 py-4 text-gray-500">{t.property?.name || 'N/A'}</td>
-                <td className="px-6 py-4">
-                  <button onClick={() => deleteTenant(t.id, t.user_id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Delete</button>
-                </td>
-              </tr>
-            )}
-            emptyMessage="No tenants in the system yet."
-          />
+          <div className="space-y-3">
+            <div className="flex items-center justify-between bg-white border border-gray-100 rounded-xl px-4 py-3">
+              <p className="text-sm text-gray-500"><span className="font-bold text-slate-800">{tenants.length}</span> tenant{tenants.length !== 1 ? 's' : ''} visible to this admin</p>
+              {tenantsError && <p className="text-xs text-red-600">Database error: {tenantsError}</p>}
+            </div>
+            <AdminTable
+              loading={tenantsLoading}
+              headers={['Tenant', 'Email', 'Phone', 'Room', 'Property', 'Status', 'Tenant UUID', 'Actions']}
+              data={tenants}
+              renderRow={(t) => (
+                <tr key={t.id} className="hover:bg-orange-50/50 transition">
+                  <td className="px-6 py-4 font-semibold text-gray-800">{t.name}</td>
+                  <td className="px-6 py-4 text-gray-500">{t.email || 'N/A'}</td>
+                  <td className="px-6 py-4 text-gray-500">{t.phone}</td>
+                  <td className="px-6 py-4 text-gray-500">{t.rooms?.room_number || 'N/A'}</td>
+                  <td className="px-6 py-4 text-gray-500">{t.property?.name || 'N/A'}</td>
+                  <td className="px-6 py-4"><span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 capitalize">{(t.status || 'unknown').replaceAll('_', ' ')}</span></td>
+                  <td className="px-6 py-4 font-mono text-xs text-slate-500">{t.id}</td>
+                  <td className="px-6 py-4">
+                    <button onClick={() => deleteTenant(t.id, t.user_id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Delete</button>
+                  </td>
+                </tr>
+              )}
+              emptyMessage="No tenant rows are visible. Apply the admin RLS migration if tenants exist in Supabase."
+            />
+          </div>
         )}
 
         {/* ----- OWNERS ----- */}
@@ -544,6 +553,7 @@ function AdminDashboardContent() {
             sendRenewalEmail={sendRenewalEmail}
             grantMembership={grantMembership}
             revokeMembership={revokeMembership}
+            onRefresh={() => refreshMemberships(false)}
           />
         )}
       </div>
