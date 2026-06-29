@@ -1,14 +1,6 @@
 import { formatDate } from '../../lib/utils';
-import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function NoticeList({ onDelete = () => {}, onPost = () => {}, isSubmitting = false }) {
-  // Fetch and listen for real-time updates to the 'notices' table
-  const { data: notices, loading } = useRealtimeData('notices');
-
-  if (loading) {
-    return <div className="text-center py-12 text-gray-500">Loading notices...</div>;
-  }
-
+export default function NoticeList({ notices = [], onDelete = () => {}, onPost = () => {}, isSubmitting = false }) {
   return (
     <div className="space-y-4">
       <button 

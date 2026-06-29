@@ -24,7 +24,8 @@ export function useOwnerVacate(property) {
     loadVacateRequests();
     const channel = supabase.channel('owner-vacate')
       .on('postgres_changes', { event:'*', schema:'public', table:'check_out_requests' }, (payload) => {
-        if (payload.new?.property_id === property.id) {
+        const changedRequest = payload.new || payload.old;
+        if (changedRequest?.property_id === property.id) {
           if (payload.eventType === 'INSERT') setVacateRequests(prev => [payload.new, ...prev]);
           else if (payload.eventType === 'UPDATE') setVacateRequests(prev => prev.map(v => v.id === payload.new.id ? payload.new : v));
           else if (payload.eventType === 'DELETE') setVacateRequests(prev => prev.filter(v => v.id !== payload.old.id));

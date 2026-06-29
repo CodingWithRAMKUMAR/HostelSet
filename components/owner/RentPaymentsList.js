@@ -1,19 +1,6 @@
 import { formatCurrency, formatDate } from '../../lib/utils';
-import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function RentPaymentsList({ onConfirm = () => {}, onReject = () => {}, onViewScreenshot = () => {}, isSubmitting = false }) {
-  // Fetch pending rent payments in real-time
-  // Note: If you only want to show 'pending' payments, 
-  // you might filter the results like we did for the pre-bookings:
-  const { data: allPayments, loading } = useRealtimeData('payments');
-
-  // Filter for only pending payments
-  const payments = allPayments?.filter(p => p.status === 'payment_pending') || [];
-
-  if (loading) {
-    return <div className="text-center py-12 text-gray-500">Loading rent payments...</div>;
-  }
-
+export default function RentPaymentsList({ payments = [], onConfirm = () => {}, onReject = () => {}, onViewScreenshot = () => {}, isSubmitting = false }) {
   if (payments.length === 0) {
     return <div className="text-center py-12 bg-gray-50 rounded-xl">No pending rent payments.</div>;
   }

@@ -11,9 +11,11 @@ export default function SubscribePage() {
   const initiateMembershipPayment = async (planId, amount, planName) => {
     setLoading(true)
     try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Please log in again')
       const response = await fetch('/api/payment/create-membership-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({
           ownerId: localStorage.getItem('userId'),
           planId,

@@ -1,16 +1,7 @@
 import { memo } from 'react';
 import { formatCurrency, formatDate } from '../../lib/utils';
-import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-function TenantTable({ onCollect = () => {}, onHistory = () => {}, onProfile = () => {}, onDelete = () => {}, onConfirmPayment = () => {}, isSubmitting = false, getRoomNumberById = () => 'N/A', calculateRentDueStatus }) {
-  // Subscribe to changes in tenants and vacate requests
-  const { data: tenants, loading } = useRealtimeData('tenants');
-  const { data: vacateRequests } = useRealtimeData('vacate_requests');
-
-  if (loading) {
-    return <div className="text-center py-12 text-gray-500">Loading tenants...</div>;
-  }
-
+function TenantTable({ tenants = [], vacateRequests = [], onCollect = () => {}, onHistory = () => {}, onProfile = () => {}, onDelete = () => {}, onConfirmPayment = () => {}, isSubmitting = false, getRoomNumberById = () => 'N/A', calculateRentDueStatus }) {
   if (!tenants || tenants.length === 0) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-xl">

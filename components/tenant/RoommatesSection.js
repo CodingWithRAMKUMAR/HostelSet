@@ -1,23 +1,12 @@
 import { memo } from 'react';
 import { formatDate } from '../../lib/utils';
-import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-const RoommatesSection = ({ currentTenantId, roomId }) => {
-  // Subscribe to all tenants to find roommates
-  const { data: allTenants, loading } = useRealtimeData('tenants');
-
-  // Filter for roommates: same room, but not the current user
-  const roommates = allTenants.filter(t => t.room_id === roomId && t.id !== currentTenantId);
-
-  if (loading) {
-    return <div className="text-center py-12 text-gray-500">Loading roommates...</div>;
-  }
-
-  if (!roommates || roommates.length === 0) {
+const RoommatesSection = ({ roommates = [] }) => {
+  if (roommates.length === 0) {
     return (
       <div className="bg-white rounded-xl border p-6 text-center py-12">
         <div className="text-5xl mb-3">👤</div>
-        <p>You're the only person in this room</p>
+        <p>You&apos;re the only person in this room</p>
         <p className="text-xs text-gray-400">Enjoy the privacy!</p>
       </div>
     );

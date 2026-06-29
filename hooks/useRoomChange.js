@@ -91,7 +91,8 @@ export function useRoomChange(tenant, refreshData) {
 
     const channel = supabase.channel('roomchange-tenant-isolated')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'room_change_requests' }, (payload) => {
-        if (payload.new?.tenant_id === tenant.id) {
+        const changedRequest = payload.new || payload.old;
+        if (changedRequest?.tenant_id === tenant.id) {
           if (payload.eventType === 'INSERT') {
             setPendingRoomChangeRequest(payload.new);
           } else if (payload.eventType === 'UPDATE') {

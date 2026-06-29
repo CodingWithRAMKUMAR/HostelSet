@@ -5,7 +5,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { supabase } from '../../lib/supabase';
 import { formatCurrency, formatDate } from '../../lib/utils';
-import toast from 'react-hot-toast'; // Explicitly added
+import toast from 'react-hot-toast';
 
 // Modular Imports
 import { useOwner, OwnerProvider } from '../../context/OwnerContext';
@@ -173,7 +173,7 @@ function OwnerDashboardContent() {
   };
 
   // ----------------------------------------------------------------
-  // ROBUST APPROVAL LOGIC (No RPC! Uses Direct Inserts)
+  // FINAL APPROVAL LOGIC (Duplicate phone Check)
   // ----------------------------------------------------------------
   const handleApproveApplication = async (appId, appData) => {
     if (isSubmitting) return;
@@ -186,50 +186,93 @@ function OwnerDashboardContent() {
     try {
       console.log("🚀 Starting approval for:", appData.name);
 
-      const moveInDate = appData.expected_move_in 
-        ? new Date(appData.expected_move_in).toISOString().split('T')[0] 
+      // Applications created after payment already have a payment_pending tenant.
+      // Promote that record instead of creating a duplicate and counting the room twice.
+      const { data: existingTenant, error: existingTenantError } = await supabase
+        .from('tenants')
+        .select('id, name, status, room_id, user_id')
+        .eq('phone', appData.phone)
+        .eq('property_id', appData.property_id)
+        .maybeSingle();
+
+      if (existingTenantError) throw existingTenantError;
+
+      const moveInDate = appData.expected_move_in
+        ? new Date(appData.expected_move_in).toISOString().split('T')[0]
         : new Date().toISOString().split('T')[0];
 
-      // ---------------------------------------------------------
-      // 1. Insert Tenant directly into 'tenants' table
-      // ---------------------------------------------------------
-      const { error: tenantError } = await supabase
-        .from('tenants')
-        .insert({
-          user_id: appData.user_id,
-          property_id: appData.property_id,
-          room_id: appData.room_id,
-          name: appData.name,
-          phone: appData.phone,
-          email: appData.email,
-          rent_amount: appData.rooms?.monthly_rent || 0,
-          pending_amount: appData.rooms?.monthly_rent || 0,
-          total_paid: 0,
-          rent_status: 'pending',
-          move_in_date: moveInDate,
-          status: 'active'
-        });
+      let roomOccupancyAlreadyCounted = false;
 
-      if (tenantError) throw tenantError;
+      if (existingTenant) {
+        if (existingTenant.status !== 'payment_pending' || existingTenant.room_id !== appData.room_id) {
+          toast.error(`A tenant with this phone number (${appData.phone}) already exists. Duplicate prevented.`);
+          return;
+        }
 
-      // ---------------------------------------------------------
-      // 2. Update Room Occupancy
-      // ---------------------------------------------------------
-      const { data: roomData } = await supabase
-        .from('rooms')
-        .select('current_occupants, capacity')
-        .eq('id', appData.room_id)
-        .single();
+        const { error: promoteError } = await supabase
+          .from('tenants')
+          .update({
+            status: 'active',
+            user_id: existingTenant.user_id || appData.user_id,
+            move_in_date: moveInDate,
+          })
+          .eq('id', existingTenant.id);
 
-      const newOccupants = (roomData.current_occupants || 0) + 1;
-      const newStatus = newOccupants >= roomData.capacity ? 'occupied' : 'vacant';
+        if (promoteError) throw promoteError;
+        roomOccupancyAlreadyCounted = true;
+      } else {
+        let userId = appData.user_id;
+        if (!userId) {
+          const { data: existingUser, error: userError } = await supabase
+            .from('users')
+            .select('id')
+            .or(`phone.eq.${appData.phone},email.eq.${appData.email}`)
+            .maybeSingle();
+          if (userError) throw userError;
+          userId = existingUser?.id;
+        }
 
-      const { error: roomError } = await supabase
-        .from('rooms')
-        .update({ current_occupants: newOccupants, status: newStatus })
-        .eq('id', appData.room_id);
+        if (!userId) {
+          toast.error('Applicant account not found. Ask the applicant to submit again.');
+          return;
+        }
 
-      if (roomError) throw roomError;
+        const { error: tenantError } = await supabase
+          .from('tenants')
+          .insert({
+            user_id: userId,
+            property_id: appData.property_id,
+            room_id: appData.room_id,
+            name: appData.name,
+            phone: appData.phone,
+            email: appData.email,
+            rent_amount: appData.rooms?.monthly_rent || 0,
+            pending_amount: appData.rooms?.monthly_rent || 0,
+            total_paid: 0,
+            rent_status: 'pending',
+            move_in_date: moveInDate,
+            status: 'active'
+          });
+
+        if (tenantError) throw tenantError;
+      }
+
+      if (!roomOccupancyAlreadyCounted) {
+        const { data: roomData, error: roomFetchError } = await supabase
+          .from('rooms')
+          .select('current_occupants, capacity')
+          .eq('id', appData.room_id)
+          .single();
+        if (roomFetchError) throw roomFetchError;
+        if ((roomData.current_occupants || 0) >= roomData.capacity) throw new Error('The selected room is already full.');
+
+        const newOccupants = (roomData.current_occupants || 0) + 1;
+        const { error: roomError } = await supabase
+          .from('rooms')
+          .update({ current_occupants: newOccupants, status: newOccupants >= roomData.capacity ? 'occupied' : 'vacant' })
+          .eq('id', appData.room_id);
+        if (roomError) throw roomError;
+      }
 
       // ---------------------------------------------------------
       // 3. Mark Application as Approved
@@ -303,6 +346,7 @@ function OwnerDashboardContent() {
   const safeRooms = Array.isArray(rooms) ? rooms : []
   const safeTenants = Array.isArray(tenants) ? tenants : []
   const safeAllPayments = Array.isArray(allPayments) ? allPayments : []
+  const safePendingRentPayments = Array.isArray(pendingRentPayments) ? pendingRentPayments : []
   const safeComplaints = Array.isArray(complaints) ? complaints : []
   const safeVacateRequests = Array.isArray(vacateRequests) ? vacateRequests : []
   const safeNotices = Array.isArray(notices) ? notices : []
@@ -367,11 +411,11 @@ function OwnerDashboardContent() {
 
         {/* --- TAB CONTENT --- */}
         {activeTab === 'rooms' && <RoomList rooms={safeRooms} tenants={safeTenants} vacateRequests={safeVacateRequests} roomMonthlyIncome={roomMonthlyIncome} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />}
-        {activeTab === 'tenants' && <TenantTable tenants={safeTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setShowPaymentModal(true) }} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={(tenant) => { setConfirmingTenant(tenant); setShowPaymentConfirmModal(true) }} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
-        {activeTab === 'rent-payments' && <RentPaymentsList payments={safeAllPayments} onConfirm={confirmRentPayment} onReject={rejectRentPayment} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
+        {activeTab === 'tenants' && <TenantTable tenants={safeTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={(tenant) => { setConfirmingTenant(tenant); setShowPaymentConfirmModal(true) }} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
+        {activeTab === 'rent-payments' && <RentPaymentsList payments={safePendingRentPayments} onConfirm={confirmRentPayment} onReject={rejectRentPayment} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
         {activeTab === 'payment-history' && <PaymentHistoryTable payments={safeAllPayments} getRoomNumberById={getRoomNumberById} />}
         {activeTab === 'pre-bookings' && <PreBookingList bookings={safePreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
-        {activeTab === 'applications' && <ApplicationList applications={safeApplications} onApprove={(id, data) => handleApproveApplication(id, data)} onResendEmail={resendPasswordEmail} isSubmitting={isSubmitting} />}
+        {activeTab === 'applications' && <ApplicationList applications={safeApplications} onApprove={(id, data) => handleApproveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} isSubmitting={isSubmitting} />}
         {activeTab === 'complaints' && <ComplaintList complaints={safeComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setShowComplaintResponseModal(true) }} onResolve={resolveComplaint} isSubmitting={isSubmitting} />}
         {activeTab === 'vacate' && <VacateRequestList requests={safeVacateRequests} onApprove={approveVacateRequest} isSubmitting={isSubmitting} />}
         {activeTab === 'room-change' && <RoomChangeRequestList requests={safeRoomChangeRequests} onApprove={approveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />}

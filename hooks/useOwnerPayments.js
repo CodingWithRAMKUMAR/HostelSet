@@ -9,6 +9,11 @@ export function useOwnerPayments(property, tenants, setStats, loadData) {
   const loadPayments = async () => {
     if (!property?.id) return;
     const tenantIds = tenants.map(t => t.id);
+    if (!tenantIds.length) {
+      setPendingRentPayments([]);
+      setAllPayments([]);
+      return;
+    }
     const { data: pending } = await supabase.from('payment_history').select('*, tenants(name, phone, room_id, rooms(room_number))').eq('status', 'payment_pending').in('tenant_id', tenantIds).order('payment_date', { ascending: false });
     setPendingRentPayments(pending || []);
     const { data: all } = await supabase.from('payment_history').select('*, tenants(name, room_id, rooms(room_number))').in('tenant_id', tenantIds).order('payment_date', { ascending: false }).limit(100);
@@ -42,11 +47,11 @@ export function useOwnerPayments(property, tenants, setStats, loadData) {
     loadPayments();
     const channel = supabase.channel('owner-payments')
       .on('postgres_changes', { event:'INSERT', schema:'public', table:'payment_history' }, (payload) => {
-        if (payload.new?.tenant_id) setPendingRentPayments(prev => [payload.new, ...prev]);
+        if (tenants.some((tenant) => tenant.id === payload.new?.tenant_id)) loadPayments();
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [property?.id]);
+  }, [property?.id, tenants.map((tenant) => tenant.id).join(',')]);
 
   return { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment };
 }

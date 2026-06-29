@@ -4,6 +4,7 @@ import { formatDate } from '../../lib/utils';
 export default function ApplicationList({
   applications,
   onApprove,
+  onReject,
   onResendEmail,
   isSubmitting
 }) {
@@ -70,6 +71,13 @@ export default function ApplicationList({
               className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50"
             >
               📧 Resend
+            </button>
+            <button
+              onClick={() => onReject(app.id)}
+              disabled={isSubmitting}
+              className="flex-1 md:flex-none bg-red-500 hover:bg-red-600 text-white px-5 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50"
+            >
+              Reject
             </button>
           </div>
         </motion.div>

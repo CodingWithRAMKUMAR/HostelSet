@@ -1,16 +1,8 @@
 import { formatCurrency, formatDate } from '../../lib/utils';
-import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function PreBookingList({ onApprove = () => {}, onReject = () => {}, onViewScreenshot = () => {}, isSubmitting = false }) {
-  // Fetch all pre-bookings in real-time
-  const { data: bookings, loading } = useRealtimeData('pre_bookings'); 
-
+export default function PreBookingList({ bookings = [], onApprove = () => {}, onReject = () => {}, onViewScreenshot = () => {}, isSubmitting = false }) {
   // Keep your existing filtering logic
   const pending = bookings?.filter(b => b.status === 'pending' && b.payment_status === 'pending') || [];
-
-  if (loading) {
-    return <div className="text-center py-12 text-gray-500">Loading pre-bookings...</div>;
-  }
 
   if (pending.length === 0) {
     return <div className="text-center py-12 bg-gray-50 rounded-xl">No pending pre‑bookings waiting for payment verification.</div>;
@@ -39,7 +31,7 @@ export default function PreBookingList({ onApprove = () => {}, onReject = () => 
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => onApprove(booking.id, booking.room_id, booking.user_id)}
+                onClick={() => onApprove(booking.id, booking)}
                 disabled={isSubmitting}
                 className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50"
               >

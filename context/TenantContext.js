@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -7,7 +7,7 @@ const TenantContext = createContext();
 
 export function TenantProvider({ children }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(true); // Default to true
+  const [loading, setLoading] = useState(true);
   const [tenant, setTenant] = useState(null);
   const [room, setRoom] = useState(null);
   const [property, setProperty] = useState(null);
@@ -16,120 +16,132 @@ export function TenantProvider({ children }) {
   const [roommateVacateAlert, setRoommateVacateAlert] = useState(null);
   const [error, setError] = useState(null);
 
-  // ONE SINGLE, LINEAR USEFFECT (NO CALLBACKS)
-  useEffect(() => {
-    console.log("🔍 [1] Tenant useEffect started. Loading: true");
+  const refreshData = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
 
-    const loadTenantData = async () => {
-      try {
-        // --- STEP 1: CHECK AUTH ---
-        console.log("🔍 [2] Checking auth...");
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        
-        if (authError) {
-          console.error("🔴 [3] Auth Error:", authError);
-          throw new Error(authError.message);
-        }
-
-        if (!user) {
-          console.warn("🔴 [3] No user found. Redirecting to login.");
-          localStorage.clear();
-          router.push('/login');
-          return;
-        }
-        console.log("✅ [3] Auth user found:", user.id);
-
-        // --- STEP 2: CHECK ROLE ---
-        console.log("🔍 [4] Checking user role...");
-        const { data: userRecord, error: roleError } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-
-        if (roleError) {
-          console.error("🔴 [5] Role Error:", roleError);
-          throw new Error(roleError.message);
-        }
-
-        if (!userRecord || userRecord.role !== 'tenant') {
-          console.warn("🔴 [5] User is not a tenant. Role:", userRecord?.role);
-          toast.error('Access denied. You are not registered as a tenant.');
-          router.push('/login');
-          return;
-        }
-        console.log("✅ [5] Role validated as tenant.");
-
-        // --- STEP 3: FETCH TENANT DATA ---
-        console.log("🔍 [6] Fetching tenant data from Supabase...");
-        const { data: tenantData, error: fetchError } = await supabase
-          .from('tenants')
-          .select('*, rooms:room_id(*), property:property_id(*)')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        if (fetchError) {
-          console.error("🔴 [7] Fetch Error:", fetchError);
-          throw new Error(fetchError.message);
-        }
-
-        console.log("✅ [7] Supabase raw response:", tenantData);
-
-        if (!tenantData) {
-          console.warn("🟡 [8] Tenant data is null.");
-          setError("No tenant record found in the database.");
-          toast.error('No tenant record found. Please ensure you are added to a room.');
-          return;
-        }
-        console.log("✅ [8] Tenant data found.");
-
-        // --- STEP 4: SET STATE ---
-        console.log("🔍 [9] Setting state variables...");
-        setTenant(tenantData);
-        setRoom(tenantData.rooms);
-        setProperty(tenantData.property);
-        setRoommates(tenantData.roommates || []);
-        
-        // Fetched owner info
-        if (tenantData.property?.owner_id) {
-          console.log("🔍 [10] Fetching owner details...");
-          const { data: ownerData } = await supabase
-            .from('users')
-            .select('full_name, phone, email')
-            .eq('id', tenantData.property.owner_id)
-            .single();
-          setOwner(ownerData);
-        }
-
-        console.log("✅ [10] State set successfully.");
-        setError(null);
-
-      } catch (error) {
-        console.error("🔴 CRITICAL ERROR:", error);
-        setError(error.message);
-        toast.error("Failed to load dashboard: " + error.message);
-      } finally {
-        // --- STEP 5: ALWAYS TURN OFF LOADING ---
-        console.log("🔍 [11] finally block executing. Setting loading = false.");
-        setLoading(false);
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        localStorage.clear();
+        await router.push('/login');
+        return false;
       }
-    };
 
-    // EXECUTE THE FUNCTION
-    loadTenantData();
+      const { data: userRecord, error: roleError } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single();
 
-  }, []); // <-- Empty dependency array ensures this runs ONLY once on mount.
+      if (roleError || userRecord?.role !== 'tenant') {
+        toast.error('Access denied. You are not registered as a tenant.');
+        await router.push('/login');
+        return false;
+      }
+
+      const { data: tenantData, error: tenantError } = await supabase
+        .from('tenants')
+        .select('*, rooms:room_id(*), property:property_id(*)')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (tenantError) throw tenantError;
+      if (!tenantData) {
+        setTenant(null);
+        setRoom(null);
+        setProperty(null);
+        setOwner(null);
+        setRoommates([]);
+        setRoommateVacateAlert(null);
+        setError('No tenant record found in the database.');
+        return false;
+      }
+
+      const [ownerResult, roommatesResult] = await Promise.all([
+        tenantData.property?.owner_id
+          ? supabase.from('users').select('full_name, phone, email').eq('id', tenantData.property.owner_id).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        tenantData.room_id
+          ? supabase
+              .from('tenants')
+              .select('id, name, phone, email, status, room_id, move_in_date')
+              .eq('room_id', tenantData.room_id)
+              .neq('id', tenantData.id)
+              .in('status', ['active', 'notice_period', 'payment_pending'])
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      if (ownerResult.error) throw ownerResult.error;
+      if (roommatesResult.error) throw roommatesResult.error;
+
+      const roommateRows = roommatesResult.data || [];
+      let vacateAlert = null;
+      const roommateIds = roommateRows.map((roommate) => roommate.id);
+      if (roommateIds.length) {
+        const { data: vacateRequests, error: vacateError } = await supabase
+          .from('check_out_requests')
+          .select('id, tenant_id, tenant_name, expected_check_out, status')
+          .in('tenant_id', roommateIds)
+          .in('status', ['pending', 'approved'])
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (vacateError) throw vacateError;
+        const request = vacateRequests?.[0];
+        if (request) {
+          const vacateDate = new Date(request.expected_check_out);
+          const daysLeft = Math.max(0, Math.ceil((vacateDate - new Date()) / (1000 * 60 * 60 * 24)));
+          vacateAlert = {
+            ...request,
+            name: request.tenant_name || roommateRows.find((mate) => mate.id === request.tenant_id)?.name || 'A roommate',
+            date: request.expected_check_out,
+            daysLeft,
+          };
+        }
+      }
+
+      setTenant(tenantData);
+      setRoom(tenantData.rooms || null);
+      setProperty(tenantData.property || null);
+      setOwner(ownerResult.data || null);
+      setRoommates(roommateRows);
+      setRoommateVacateAlert(vacateAlert);
+      setError(null);
+      return true;
+    } catch (loadError) {
+      console.error('Failed to load tenant dashboard:', loadError);
+      setError(loadError.message);
+      if (!isBackground) toast.error('Failed to load dashboard: ' + loadError.message);
+      return false;
+    } finally {
+      if (!isBackground) setLoading(false);
+    }
+  }, [router]);
+
+  useEffect(() => {
+    refreshData(false);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        localStorage.clear();
+        router.push('/login');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [refreshData, router]);
 
   return (
-    <TenantContext.Provider value={{ 
-      loading, 
-      tenant, 
-      room, 
-      property, 
-      owner, 
-      roommates, 
+    <TenantContext.Provider value={{
+      loading,
+      tenant,
+      setTenant,
+      room,
+      property,
+      owner,
+      roommates,
       roommateVacateAlert,
-      error
+      error,
+      refreshData,
     }}>
       {children}
     </TenantContext.Provider>

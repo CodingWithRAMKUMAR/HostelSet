@@ -92,8 +92,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Registration error:', error)
     return res.status(500).json({
-      error: error.message || 'Registration failed. Please try again.',
-      stack: error.stack
+      error: error.message || 'Registration failed. Please try again.'
     })
   }
 }

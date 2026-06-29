@@ -1,16 +1,6 @@
 import { formatCurrency, formatDate } from '../../lib/utils';
-import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function PaymentHistoryTable({ getRoomNumberById = () => 'N/A' }) {
-  // Use the hook to fetch and listen to 'payments'
-  // Note: Depending on your schema, you might need to ensure your 
-  // 'payments' table contains the necessary join data or is joined properly.
-  const { data: payments, loading } = useRealtimeData('payments');
-
-  if (loading) {
-    return <div className="text-center py-12 text-gray-500">Loading payment history...</div>;
-  }
-
+export default function PaymentHistoryTable({ payments = [], getRoomNumberById = () => 'N/A' }) {
   if (!payments || payments.length === 0) {
     return <div className="text-center py-12 bg-gray-50 rounded-xl">No payment records</div>;
   }

@@ -566,6 +566,7 @@ export default function PropertyDetail() {
 
       // 3. Insert application record (status = 'pending' initially)
       const { error: appError } = await supabase.from('applications').insert({
+        user_id: userId,
         property_id: id,
         room_id: selectedRoom,
         name: applyForm.name,

@@ -1,21 +1,6 @@
 import { formatCurrency, formatDate, getSharingDetails } from '../../lib/utils';
-import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function OverviewSection({ tenantId, propertyId }) {
-  // Subscribe to all relevant tables
-  const { data: tenants } = useRealtimeData('tenants');
-  const { data: rooms } = useRealtimeData('rooms');
-  const { data: properties } = useRealtimeData('properties');
-  const { data: owners } = useRealtimeData('owners');
-  const { data: roomChanges } = useRealtimeData('room_change_requests');
-
-  // Filter for specific record
-  const tenant = tenants.find(t => t.id === tenantId);
-  const room = rooms.find(r => r.id === tenant?.room_id);
-  const property = properties.find(p => p.id === propertyId);
-  const owner = owners.find(o => o.id === property?.owner_id);
-  const pendingRoomChangeRequest = roomChanges.find(r => r.tenant_id === tenantId && r.status === 'pending');
-
+export default function OverviewSection({ tenant, room, property, owner, pendingRoomChangeRequest }) {
   if (!tenant || !room) {
     return <div className="text-center py-12 text-gray-500">Loading your profile...</div>;
   }

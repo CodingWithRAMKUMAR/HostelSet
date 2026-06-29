@@ -1,14 +1,6 @@
 import { formatDate } from '../../lib/utils';
-import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function VacateRequestList({ onApprove = () => {}, isSubmitting = false }) {
-  // Fetch and listen to vacate requests in real-time
-  const { data: requests, loading } = useRealtimeData('vacate_requests');
-
-  if (loading) {
-    return <div className="text-center py-12 text-gray-500">Loading requests...</div>;
-  }
-
+export default function VacateRequestList({ requests = [], onApprove = () => {}, isSubmitting = false }) {
   if (!requests || requests.length === 0) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-xl">
@@ -43,7 +35,7 @@ export default function VacateRequestList({ onApprove = () => {}, isSubmitting =
               </div>
               {isPending && (
                 <button
-                  onClick={() => onApprove(req.id, req.tenant_id, req.room_id, req.expected_check_out)}
+                  onClick={() => onApprove(req.id, req.tenant_id, req.expected_check_out)}
                   disabled={isSubmitting}
                   className="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-700 transition disabled:opacity-50"
                 >

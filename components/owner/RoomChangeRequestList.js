@@ -1,17 +1,6 @@
 import { formatCurrency, formatDate } from '../../lib/utils';
-import { useRealtimeData } from '../../hooks/useRealtimeData';
 
-export default function RoomChangeRequestList({ onApprove = () => {}, onReject = () => {}, isSubmitting = false }) {
-  // Fetch real-time room change requests
-  // Filter for only 'pending' requests if your table stores history too
-  const { data: allRequests, loading } = useRealtimeData('room_change_requests');
-
-  const requests = allRequests?.filter(r => r.status === 'pending') || [];
-
-  if (loading) {
-    return <div className="text-center py-12 text-gray-500">Loading requests...</div>;
-  }
-
+export default function RoomChangeRequestList({ requests = [], onApprove = () => {}, onReject = () => {}, isSubmitting = false }) {
   if (requests.length === 0) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-xl">

@@ -36,7 +36,8 @@ export function useOwnerRoomChange(property) {
     loadRoomChangeRequests();
     const channel = supabase.channel('owner-roomchange')
       .on('postgres_changes', { event:'*', schema:'public', table:'room_change_requests' }, (payload) => {
-        if (payload.new?.property_id === property.id) {
+        const changedRequest = payload.new || payload.old;
+        if (changedRequest?.property_id === property.id) {
           if (payload.eventType === 'INSERT') setRoomChangeRequests(prev => [payload.new, ...prev]);
           else if (payload.eventType === 'UPDATE') {
             if (payload.new.status !== 'pending') setRoomChangeRequests(prev => prev.filter(r => r.id !== payload.new.id));

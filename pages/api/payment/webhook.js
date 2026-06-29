@@ -1,126 +1,142 @@
-// pages/api/payment/webhook.js
-import crypto from 'crypto';
-import { supabase } from '../../../lib/supabase';
+import { Webhook } from 'standardwebhooks';
+import { supabaseAdmin } from '../../../lib/supabase';
 
-const WEBHOOK_SECRET = process.env.DODO_WEBHOOK_SECRET;
+export const config = {
+  api: { bodyParser: false },
+};
+
+async function readRawBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  return Buffer.concat(chunks).toString('utf8');
+}
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!process.env.DODO_WEBHOOK_SECRET || !supabaseAdmin) {
+    return res.status(500).json({ error: 'Webhook is not configured' });
   }
 
-  // Verify signature (if Dodo provides a signature header)
-  const signature = req.headers['x-dodo-signature'];
-  if (WEBHOOK_SECRET && signature) {
-    const expected = crypto
-      .createHmac('sha256', WEBHOOK_SECRET)
-      .update(JSON.stringify(req.body))
-      .digest('hex');
-    if (signature !== expected) {
-      console.error('Invalid webhook signature');
-      return res.status(401).json({ error: 'Invalid signature' });
+  let event;
+  try {
+    const rawBody = await readRawBody(req);
+    const headers = {
+      'webhook-id': req.headers['webhook-id'],
+      'webhook-signature': req.headers['webhook-signature'],
+      'webhook-timestamp': req.headers['webhook-timestamp'],
+    };
+    event = new Webhook(process.env.DODO_WEBHOOK_SECRET).verify(rawBody, headers);
+  } catch (error) {
+    console.error('Webhook verification failed:', error.message);
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  try {
+    const dodoPaymentId = event.data?.payment_id || event.data?.order_id;
+    if (!dodoPaymentId) return res.status(400).json({ error: 'Payment ID missing' });
+
+    if (event.type === 'payment.failed') {
+      const { error } = await supabaseAdmin
+        .from('payment_transactions')
+        .update({ status: 'failed', webhook_received: true, updated_at: new Date().toISOString() })
+        .eq('dodo_order_id', dodoPaymentId);
+      if (error) throw error;
+      return res.status(200).json({ received: true });
     }
-  }
 
-  const event = req.body;
-  const eventType = event.type;
+    if (event.type !== 'payment.succeeded') {
+      return res.status(200).json({ received: true });
+    }
 
-  // Handle payment succeeded
-  if (eventType === 'payment.succeeded') {
-    const { order_id, payment_id, amount, metadata } = event.data;
-
-    // Find transaction by dodo_order_id
-    const { data: tx, error: findError } = await supabase
+    const { data: tx, error: findError } = await supabaseAdmin
       .from('payment_transactions')
       .select('*')
-      .eq('dodo_order_id', order_id)
+      .eq('dodo_order_id', dodoPaymentId)
       .single();
+    if (findError || !tx) return res.status(404).json({ error: 'Transaction not found' });
 
-    if (findError || !tx) {
-      console.error('Transaction not found for order:', order_id);
-      return res.status(404).json({ error: 'Transaction not found' });
-    }
+    // Dodo retries webhooks. A completed transaction must never be applied twice.
+    if (tx.status === 'success') return res.status(200).json({ received: true, duplicate: true });
 
-    // Update transaction status
-    await supabase
+    const { error: transactionError } = await supabaseAdmin
       .from('payment_transactions')
       .update({
-        status: 'success',
-        dodo_payment_id: payment_id,
+        status: 'processing',
+        dodo_payment_id: dodoPaymentId,
         webhook_received: true,
-        updated_at: new Date(),
+        updated_at: new Date().toISOString(),
       })
-      .eq('id', tx.id);
+      .eq('id', tx.id)
+      .neq('status', 'success');
+    if (transactionError) throw transactionError;
 
-    // Handle rent payment
     if (tx.purpose === 'rent' && tx.tenant_id) {
-      const { data: tenant, error: tenantError } = await supabase
+      const { data: tenant, error: tenantError } = await supabaseAdmin
         .from('tenants')
         .select('pending_amount, total_paid')
         .eq('id', tx.tenant_id)
         .single();
+      if (tenantError) throw tenantError;
 
-      if (!tenantError && tenant) {
-        const newPending = Math.max(0, (tenant.pending_amount || 0) - tx.amount);
-        const newTotalPaid = (tenant.total_paid || 0) + tx.amount;
-        await supabase
-          .from('tenants')
-          .update({
-            pending_amount: newPending,
-            total_paid: newTotalPaid,
-            rent_status: newPending <= 0 ? 'paid' : 'pending',
-            last_payment_date: new Date().toISOString().split('T')[0],
-          })
-          .eq('id', tx.tenant_id);
-      }
+      const newPending = Math.max(0, (tenant.pending_amount || 0) - tx.amount);
+      const { error: updateTenantError } = await supabaseAdmin.from('tenants').update({
+        pending_amount: newPending,
+        total_paid: (tenant.total_paid || 0) + tx.amount,
+        rent_status: newPending <= 0 ? 'paid' : 'pending',
+        last_payment_date: new Date().toISOString().split('T')[0],
+      }).eq('id', tx.tenant_id);
+      if (updateTenantError) throw updateTenantError;
+
+      const { error: historyError } = await supabaseAdmin.from('payment_history').insert({
+        tenant_id: tx.tenant_id,
+        amount: tx.amount,
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: 'dodo',
+        status: 'success',
+        upi_transaction_id: dodoPaymentId,
+      });
+      if (historyError) throw historyError;
     }
 
-    // Handle membership purchase
     if (tx.purpose === 'membership' && tx.owner_id) {
       const planId = tx.metadata?.planId;
-      if (planId) {
-        const { data: plan } = await supabase
-          .from('membership_plans')
-          .select('duration_months')
-          .eq('id', planId)
-          .single();
+      const { data: plan, error: planError } = await supabaseAdmin
+        .from('membership_plans')
+        .select('duration_months')
+        .eq('id', planId)
+        .single();
+      if (planError || !plan) throw planError || new Error('Membership plan not found');
 
-        if (plan) {
-          const startDate = new Date();
-          const endDate = new Date();
-          endDate.setMonth(endDate.getMonth() + plan.duration_months);
+      const startDate = new Date();
+      const endDate = new Date(startDate);
+      endDate.setMonth(endDate.getMonth() + plan.duration_months);
 
-          await supabase
-            .from('owner_memberships')
-            .upsert({
-              owner_id: tx.owner_id,
-              plan_id: planId,
-              status: 'active',
-              start_date: startDate.toISOString().split('T')[0],
-              end_date: endDate.toISOString().split('T')[0],
-              payment_transaction_id: tx.id,
-            });
+      const { error: membershipError } = await supabaseAdmin.from('owner_memberships').upsert({
+        owner_id: tx.owner_id,
+        plan_id: planId,
+        status: 'active',
+        start_date: startDate.toISOString().split('T')[0],
+        end_date: endDate.toISOString().split('T')[0],
+        payment_transaction_id: tx.id,
+      }, { onConflict: 'owner_id' });
+      if (membershipError) throw membershipError;
 
-          await supabase
-            .from('properties')
-            .update({
-              membership_active: true,
-              membership_expiry: endDate.toISOString().split('T')[0],
-            })
-            .eq('owner_id', tx.owner_id);
-        }
-      }
+      const { error: propertyError } = await supabaseAdmin.from('properties').update({
+        membership_active: true,
+        membership_expiry: endDate.toISOString().split('T')[0],
+      }).eq('owner_id', tx.owner_id);
+      if (propertyError) throw propertyError;
     }
-  }
 
-  // Handle payment failed (optional)
-  if (eventType === 'payment.failed') {
-    const { order_id } = event.data;
-    await supabase
+    const { error: completedError } = await supabaseAdmin
       .from('payment_transactions')
-      .update({ status: 'failed', webhook_received: true })
-      .eq('dodo_order_id', order_id);
-  }
+      .update({ status: 'success', updated_at: new Date().toISOString() })
+      .eq('id', tx.id);
+    if (completedError) throw completedError;
 
-  res.status(200).json({ received: true });
+    return res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('Webhook processing failed:', error);
+    return res.status(500).json({ error: 'Webhook processing failed' });
+  }
 }

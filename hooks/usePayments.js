@@ -79,6 +79,15 @@ export function usePayments(tenant, refreshData) {
           setPaymentHistory(prev => [payload.new, ...prev]);
         }
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'payment_history' }, (payload) => {
+        if (payload.new?.tenant_id === tenant.id) {
+          setPaymentHistory(prev => prev.map(payment => payment.id === payload.new.id ? payload.new : payment));
+          refreshData(true);
+        }
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'payment_history' }, (payload) => {
+        if (payload.old?.tenant_id === tenant.id) setPaymentHistory(prev => prev.filter(payment => payment.id !== payload.old.id));
+      })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };

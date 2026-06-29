@@ -24,7 +24,15 @@ export function useVacate(tenant, setTenant) {
     setTenant(prev => ({ ...prev, status: 'active', check_out_requested: false, notice_period_start: null, notice_period_end: null }));
     try {
       const { error } = await supabase.from('check_out_requests').delete().eq('tenant_id', tenant.id);
-      if (error) throw error; toast.success('Vacate request cancelled. You remain active.');
+      if (error) throw error;
+      const { error: tenantError } = await supabase.from('tenants').update({
+        status: 'active',
+        check_out_requested: false,
+        notice_period_start: null,
+        notice_period_end: null,
+      }).eq('id', tenant.id);
+      if (tenantError) throw tenantError;
+      toast.success('Vacate request cancelled. You remain active.');
     } catch (error) {
       console.error('Cancel vacate error:', error); toast.error('Failed to cancel request: ' + error.message);
       setExistingVacateRequest(prevRequest); setTenant(prevTenant);
@@ -36,7 +44,8 @@ export function useVacate(tenant, setTenant) {
     loadVacate();
     const channel = supabase.channel('vacate-tenant-isolated')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'check_out_requests' }, (payload) => {
-        if (payload.new?.tenant_id === tenant.id) {
+        const changedRequest = payload.new || payload.old;
+        if (changedRequest?.tenant_id === tenant.id) {
           if (payload.eventType === 'INSERT') { setExistingVacateRequest(payload.new); }
           else if (payload.eventType === 'UPDATE') {
             setExistingVacateRequest(payload.new);

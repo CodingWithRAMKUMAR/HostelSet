@@ -46,10 +46,12 @@ export function useAdminMembershipManager() {
     console.log("🔍 SENDING RENEWAL EMAIL TO:", ownerEmail);
     
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Please log in again');
       const response = await fetch('/api/admin/send-renewal-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ownerId, email: ownerEmail, name: ownerName })
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ ownerId })
       });
       const data = await response.json();
       if (data.success) {

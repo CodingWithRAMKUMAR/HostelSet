@@ -63,15 +63,25 @@ export function OwnerProvider({ children }) {
         const pendingPaymentCount = tenantsWithRoomNumber.filter(t => t.status === 'payment_pending').length;
         const tenantIds = tenantsData?.map(t => t.id) || [];
         const now = new Date(); const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]; const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-        const { data: monthlyPayments } = await supabase.from('payment_history').select('amount').eq('status', 'success').gte('payment_date', startOfMonth).lte('payment_date', endOfMonth).in('tenant_id', tenantIds);
+        const { data: monthlyPayments } = tenantIds.length
+          ? await supabase.from('payment_history').select('amount').eq('status', 'success').gte('payment_date', startOfMonth).lte('payment_date', endOfMonth).in('tenant_id', tenantIds)
+          : { data: [] };
         const monthlyIncome = monthlyPayments?.reduce((sum, p) => sum + p.amount, 0) || 0;
-        const { data: pendingPayments } = await supabase.from('payment_history').select('*, tenants(name, phone, room_id, rooms(room_number))').eq('status', 'payment_pending').in('tenant_id', tenantIds).order('payment_date', { ascending: false });
+        const { data: pendingPayments } = tenantIds.length
+          ? await supabase.from('payment_history').select('*, tenants(name, phone, room_id, rooms(room_number))').eq('status', 'payment_pending').in('tenant_id', tenantIds).order('payment_date', { ascending: false })
+          : { data: [] };
         const pendingRentConfirmations = pendingPayments?.length || 0;
 
-        setStats({ totalRooms:total, occupied, vacant, totalCollected, pendingAmount, totalComplaints:0, pendingVacate:0, overdueCount, noticePeriodCount, pendingPaymentCount, pendingRentConfirmations, monthlyIncome });
-        await supabase.from('complaints').delete().lt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+        const [{ count: complaintCount }, { count: vacateCount }] = await Promise.all([
+          supabase.from('complaints').select('*', { count: 'exact', head: true }).eq('property_id', propertyData.id).in('status', ['open', 'in_progress']),
+          supabase.from('check_out_requests').select('*', { count: 'exact', head: true }).eq('property_id', propertyData.id).eq('status', 'pending'),
+        ]);
+
+        setStats({ totalRooms:total, occupied, vacant, totalCollected, pendingAmount, totalComplaints:complaintCount||0, pendingVacate:vacateCount||0, overdueCount, noticePeriodCount, pendingPaymentCount, pendingRentConfirmations, monthlyIncome });
+        return propertyData;
       }
-    } catch (error) { console.error('Load error:', error); if (!isBackground) toast.error('Failed to load data: ' + error.message); }
+      return null;
+    } catch (error) { console.error('Load error:', error); if (!isBackground) toast.error('Failed to load data: ' + error.message); return null; }
     finally { if (!isBackground) setLoading(false); else setIsRefreshing(false); }
   }, []);
 
@@ -86,14 +96,13 @@ export function OwnerProvider({ children }) {
     return { user, role: userRecord.role };
   };
 
-  const loadSettings = async () => {
+  const loadSettings = async (loadedProperty = null) => {
     try {
       const userId = localStorage.getItem('userId');
       const { data, error } = await supabase.from('owner_settings').select('*').eq('owner_id', userId).maybeSingle();
       if (error) throw error;
       if (data) setSettings({ joining_fee:data.joining_fee||0, advance_months:data.advance_months||1, due_day:data.due_day||5, upi_id:data.upi_id||'', upi_phone:data.upi_phone||'' });
-      else setSettings({ joining_fee:0, advance_months:1, due_day:5, upi_id:property?.owner_upi_id||'', upi_phone:'' });
-      if (property && !settings.upi_id && property.owner_upi_id) setSettings(prev => ({ ...prev, upi_id: property.owner_upi_id }));
+      else setSettings({ joining_fee:0, advance_months:1, due_day:5, upi_id:(loadedProperty || property)?.owner_upi_id||'', upi_phone:'' });
     } catch (error) { console.error('Error loading settings:', error); toast.error('Failed to load settings'); }
   };
 
@@ -112,9 +121,11 @@ export function OwnerProvider({ children }) {
   const initiateMembershipPayment = async (planId, amount) => {
     setMembershipLoading(true);
     try {
-      const response = await fetch('/api/payment/create-membership-order', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ownerId:localStorage.getItem('userId'), planId, amount, ownerName:localStorage.getItem('userName'), ownerEmail:localStorage.getItem('userEmail') }) });
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Please log in again');
+      const response = await fetch('/api/payment/create-membership-order', { method:'POST', headers:{'Content-Type':'application/json', Authorization:`Bearer ${session.access_token}`}, body:JSON.stringify({ ownerId:session.user.id, planId }) });
       const data = await response.json();
-      if (data.success) { window.open(data.paymentLink, '_blank'); toast.success('Redirecting...'); setTimeout(async () => { await loadData(true); if (membershipActive) { setMembershipStatus('active'); startAutoRefresh(); toast.success('✅ Membership activated! Reloading...'); window.location.reload(); } else { toast('Payment processing...', { icon:'⏳' }); } }, 15000); }
+      if (data.success) { window.open(data.paymentLink, '_blank'); toast.success('Redirecting...'); setTimeout(async () => { const refreshedProperty = await loadData(true); const isActive = refreshedProperty?.membership_active && new Date(refreshedProperty.membership_expiry) > new Date(); if (isActive) { setMembershipStatus('active'); startAutoRefresh(); toast.success('✅ Membership activated! Reloading...'); window.location.reload(); } else { toast('Payment processing...', { icon:'⏳' }); } }, 15000); }
       else toast.error(data.error || 'Payment initiation failed');
     } catch (error) { console.error('Membership payment error:', error); toast.error('Failed to initiate payment'); }
     finally { setMembershipLoading(false); }
@@ -125,8 +136,9 @@ export function OwnerProvider({ children }) {
       const auth = await checkAuthAndRedirect();
       if (!auth) return; if (auth.role !== 'owner') { router.push('/login'); return; }
       localStorage.setItem('userId', auth.user.id); localStorage.setItem('userEmail', auth.user.email || ''); localStorage.setItem('userName', auth.user.user_metadata?.full_name || '');
-      await loadData(false); await loadSettings();
-      if (property && !membershipActive && membershipStatus === 'expired') { router.push('/owner/subscribe?reason=expired'); return; }
+      const loadedProperty = await loadData(false); await loadSettings(loadedProperty);
+      const membershipExpired = loadedProperty?.membership_active && loadedProperty.membership_expiry && new Date(loadedProperty.membership_expiry) <= new Date();
+      if (membershipExpired) { router.push('/owner/subscribe?reason=expired'); return; }
       startAutoRefresh();
     };
     init();
