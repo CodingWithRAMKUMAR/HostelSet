@@ -13,8 +13,8 @@ export default function ComplaintResponseModal({ complaint, response, setRespons
           onChange={(e) => setResponse(e.target.value)}
         />
         <div className="flex gap-3">
-          <button onClick={onSend} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
-            Send Response
+          <button onClick={onSend} disabled={isSubmitting || !response.trim()} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
+            {isSubmitting ? 'Sending…' : 'Send Response'}
           </button>
           <button onClick={onCancel} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">
             Cancel

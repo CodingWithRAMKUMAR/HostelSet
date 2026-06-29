@@ -53,6 +53,7 @@ function TenantDashboardContent() {
 
   const {
     pendingRoomChangeRequest,
+    lastRoomChangeDecision,
     availableRooms = [],
     showRoomChangeModal,
     setShowRoomChangeModal,
@@ -343,6 +344,7 @@ function TenantDashboardContent() {
             property={property}
             owner={owner}
             pendingRoomChangeRequest={pendingRoomChangeRequest}
+            lastRoomChangeDecision={lastRoomChangeDecision}
           />
         )}
         {activeTab === 'roommates' && <RoommatesSection roommates={roommates} room={room} />}
