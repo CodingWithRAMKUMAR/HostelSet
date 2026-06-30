@@ -5,6 +5,7 @@ import { useRealtimeRefresh } from './useRealtimeRefresh';
 
 export function useOwnerApplications(property, enabled = true) {
   const [applications, setApplications] = useState([]);
+  const [processingId, setProcessingId] = useState(null);
 
   const loadApplications = async () => {
     if (!property?.id) return;
@@ -19,12 +20,14 @@ export function useOwnerApplications(property, enabled = true) {
   };
 
   const approveApplication = async (appId, appData) => {
+    if (processingId) return;
     if (!appData || typeof appData !== 'object') {
       toast.error('Cannot approve: Application data is missing.');
       return;
     }
 
     try {
+      setProcessingId(appId);
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Your session expired. Please log in again.');
       const response = await fetch('/api/requests/approve', {
@@ -39,7 +42,7 @@ export function useOwnerApplications(property, enabled = true) {
     } catch (error) {
       console.error('Approve error:', error);
       toast.error('Failed to approve: ' + error.message);
-    }
+    } finally { setProcessingId(null); }
   };
 
   const rejectApplication = async (appId) => {
@@ -70,5 +73,5 @@ export function useOwnerApplications(property, enabled = true) {
   }, [property?.id, enabled]);
   useRealtimeRefresh(`owner-applications-live:${property?.id || 'waiting'}`, ['applications', 'rooms'], loadApplications, Boolean(property?.id && enabled));
 
-  return { applications, approveApplication, rejectApplication, resendPasswordEmail };
+  return { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId };
 }

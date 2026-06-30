@@ -2,7 +2,7 @@ import crypto from 'crypto'
 import { supabaseAdmin } from '../../../lib/supabase'
 import { cleanPhoneNumber } from '../../../lib/utils'
 
-export const config = { api: { bodyParser: { sizeLimit: '18mb' } } }
+export const config = { api: { bodyParser: { sizeLimit: '1mb' } } }
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
@@ -48,6 +48,23 @@ async function removeFiles(paths) {
   if (paths.length) await supabaseAdmin.storage.from('tenant-documents').remove(paths)
 }
 
+function privatePath(path, propertyId, category, label) {
+  const value = String(path || '')
+  if (!value.startsWith(`${propertyId}/${category}/`) || value.includes('..')) throw new Error(`${label} upload is invalid`)
+  return value
+}
+
+async function verifyPrivateObject(path, label) {
+  const slash = path.lastIndexOf('/')
+  const folder = path.slice(0, slash)
+  const name = path.slice(slash + 1)
+  const { data, error } = await supabaseAdmin.storage.from('tenant-documents').list(folder, { search: name, limit: 2 })
+  const object = data?.find(item => item.name === name)
+  if (error || !object || Number(object.metadata?.size || 0) < 1 || Number(object.metadata?.size || 0) > MAX_FILE_SIZE) {
+    throw new Error(`${label} upload was not completed`)
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
   if (!supabaseAdmin) return res.status(503).json({ error: 'Application service is unavailable' })
@@ -81,12 +98,15 @@ export default async function handler(req, res) {
     ])
     if (duplicatePhone?.length || duplicateEmail?.length) return res.status(409).json({ error: 'An active request already exists for these details.' })
 
-    const idPath = await uploadPrivate(files?.idProof, `${propertyId}/identity`, 'ID proof')
+    const idPath = typeof files?.idProof === 'string' ? privatePath(files.idProof, propertyId, 'identity', 'ID proof') : await uploadPrivate(files?.idProof, `${propertyId}/identity`, 'ID proof')
     uploaded.push(idPath)
-    const photoPath = await uploadPrivate(files?.photo, `${propertyId}/photos`, 'Photo', true)
+    const photoPath = typeof files?.photo === 'string' ? privatePath(files.photo, propertyId, 'photos', 'Photo') : await uploadPrivate(files?.photo, `${propertyId}/photos`, 'Photo', true)
     uploaded.push(photoPath)
-    const paymentPath = await uploadPrivate(files?.payment, `${propertyId}/payments`, 'Payment screenshot', true)
+    const paymentPath = typeof files?.payment === 'string' ? privatePath(files.payment, propertyId, 'payments', 'Payment screenshot') : await uploadPrivate(files?.payment, `${propertyId}/payments`, 'Payment screenshot', true)
     uploaded.push(paymentPath)
+    await Promise.all([
+      verifyPrivateObject(idPath, 'ID proof'), verifyPrivateObject(photoPath, 'Photo'), verifyPrivateObject(paymentPath, 'Payment screenshot'),
+    ])
 
     if (kind === 'prebooking') {
       if (!expectedMoveIn || Number.isNaN(Date.parse(expectedMoveIn))) throw new Error('A valid move-in date is required')

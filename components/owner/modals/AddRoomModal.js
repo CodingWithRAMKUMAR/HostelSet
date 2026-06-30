@@ -13,6 +13,19 @@ export default function AddRoomModal({ roomForm, setRoomForm, sharingTypes, onAd
             value={roomForm.room_number}
             onChange={(e) => setRoomForm({...roomForm, room_number: e.target.value})}
           />
+          <div>
+            <label className="mb-1 block text-sm font-semibold text-gray-700">Room category *</label>
+            <select className="w-full rounded-xl border border-gray-200 px-4 py-3" value={roomForm.room_audience} onChange={(e) => setRoomForm({...roomForm, room_audience: e.target.value})}>
+              <option value="boys">Boys Room</option>
+              <option value="girls">Girls Room</option>
+              <option value="coliving">Co-living Room</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-semibold text-gray-700">Application security deposit (₹) *</label>
+            <input type="number" min="0" max="1000000" className="w-full rounded-xl border border-gray-200 px-4 py-3" value={roomForm.deposit_amount} onChange={(e) => setRoomForm({...roomForm, deposit_amount: Number(e.target.value)})} />
+            <p className="mt-1 text-xs text-gray-500">This exact amount is shown when a visitor applies.</p>
+          </div>
           <select
             className="w-full px-4 py-3 border border-gray-200 rounded-xl"
             value={roomForm.sharing_type}

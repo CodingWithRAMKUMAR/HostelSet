@@ -46,6 +46,7 @@ export default function RoomList({
                   <p className="text-sm text-gray-500 mt-1">
                     {sharing?.label || 'Unknown'} {sharing?.icon}
                   </p>
+                  <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${room.room_audience === 'boys' ? 'bg-blue-100 text-blue-700' : room.room_audience === 'girls' ? 'bg-pink-100 text-pink-700' : 'bg-violet-100 text-violet-700'}`}>{room.room_audience === 'boys' ? 'Boys Room' : room.room_audience === 'girls' ? 'Girls Room' : 'Co-living'}</span>
                 </div>
                 <div className="flex flex-col items-end">
                   {room.current_occupants >= room.capacity ? (
@@ -72,6 +73,7 @@ export default function RoomList({
                 <div>
                   <p className="text-2xl font-bold text-[#1a1a1a]">{formatCurrency(room.monthly_rent)}</p>
                   <p className="text-xs text-gray-400">/month</p>
+                  <p className="mt-1 text-xs text-gray-500">Application deposit: {formatCurrency(room.deposit_amount || 0)}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold text-emerald-600">{formatCurrency(monthlyIncome)}</p>

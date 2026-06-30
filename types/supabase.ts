@@ -87,6 +87,13 @@ export interface VisitorApplicationSecurityFields {
   payment_amount: number;
 }
 
+export type RoomAudience = "boys" | "girls" | "coliving";
+
+export interface RoomApplicationSettings {
+  room_audience: RoomAudience;
+  deposit_amount: number;
+}
+
 export interface ApprovalResult {
   success: boolean;
   tenant_id: string;

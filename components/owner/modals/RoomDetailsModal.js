@@ -14,7 +14,8 @@ export default function RoomDetailsModal({
   tenantsInRoom, 
   onClose, 
   isSubmitting,
-  getRoomNumberById
+  getRoomNumberById,
+  onUpdated
 }) {
   // State for sub-modals
   const [showTenantPayments, setShowTenantPayments] = useState(false);
@@ -24,6 +25,8 @@ export default function RoomDetailsModal({
   const [tenantPayments, setTenantPayments] = useState([]);
   const [tenantApplication, setTenantApplication] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [savingRoom, setSavingRoom] = useState(false);
+  const [roomSettings, setRoomSettings] = useState({ room_audience: room?.room_audience || 'coliving', deposit_amount: Number(room?.deposit_amount || 0) });
 
   if (!room) return null;
 
@@ -63,6 +66,19 @@ export default function RoomDetailsModal({
     } finally {
       setLoadingProfile(false);
     }
+  };
+
+  const saveRoomSettings = async () => {
+    if (savingRoom) return;
+    setSavingRoom(true);
+    try {
+      const values = { room_audience: roomSettings.room_audience, deposit_amount: Math.max(0, Number(roomSettings.deposit_amount || 0)) };
+      const { data, error } = await supabase.from('rooms').update(values).eq('id', room.id).select().single();
+      if (error) throw error;
+      onUpdated?.(data);
+      toast.success('Room application settings updated');
+    } catch (error) { toast.error('Failed to update room: ' + error.message); }
+    finally { setSavingRoom(false); }
   };
 
   return (
@@ -105,6 +121,17 @@ export default function RoomDetailsModal({
                   <span className="text-gray-500">Room Number:</span>
                   <span className="font-medium text-gray-800">{room.room_number}</span>
                 </div>
+                <div className="border-t pt-3">
+                  <label className="mb-1 block text-gray-500">Room category</label>
+                  <select value={roomSettings.room_audience} onChange={e => setRoomSettings({...roomSettings, room_audience:e.target.value})} className="w-full rounded-lg border px-3 py-2">
+                    <option value="boys">Boys Room</option><option value="girls">Girls Room</option><option value="coliving">Co-living Room</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-gray-500">Application deposit (₹)</label>
+                  <input type="number" min="0" value={roomSettings.deposit_amount} onChange={e => setRoomSettings({...roomSettings, deposit_amount:e.target.value})} className="w-full rounded-lg border px-3 py-2" />
+                </div>
+                <button onClick={saveRoomSettings} disabled={savingRoom} className="w-full rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white disabled:opacity-50">{savingRoom ? 'Saving…' : 'Save Room Settings'}</button>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Sharing Type:</span>
                   <span className="font-medium text-gray-800 capitalize">{room.sharing_type}</span>

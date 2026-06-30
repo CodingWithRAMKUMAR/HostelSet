@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase'
 import { formatCurrency, getSharingDetails, getPropertyTypeLabel, cleanPhoneNumber, formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import NearbyHostelMap from '../../components/maps/NearbyHostelMap'
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
 
 export default function PropertyDetail() {
   const router = useRouter()
@@ -69,9 +70,9 @@ export default function PropertyDetail() {
     if (id) loadData()
   }, [id])
 
-  const loadData = async () => {
-    setLoading(true)
-    setLoadError('')
+  const loadData = async (background = false) => {
+    if (!background) setLoading(true)
+    if (!background) setLoadError('')
     try {
       const [{ data: propertyData, error: propertyError }, { data: roomsData, error: roomsError }] = await Promise.all([
         supabase.from('properties').select('*').eq('id', id).eq('is_active', true).single(),
@@ -108,9 +109,9 @@ export default function PropertyDetail() {
       await Promise.all([loadVacateInfo(propertyData), loadApprovedPrebookings(propertyData)])
     } catch (error) {
       console.error('Error:', error)
-      setLoadError('We could not load this property. Please check your connection and try again.')
+      if (!background) setLoadError('We could not load this property. Please check your connection and try again.')
     } finally {
-      setLoading(false)
+      if (!background) setLoading(false)
     }
   }
 
@@ -166,6 +167,20 @@ export default function PropertyDetail() {
     reader.onerror = () => reject(new Error(`Could not read ${file.name}`))
     reader.readAsDataURL(file)
   })
+
+  const uploadPrivateFile = async (file, category) => {
+    const response = await fetch('/api/visitor/upload-url', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ propertyId: id, category, contentType: file.type, size: file.size }),
+    })
+    const signed = await response.json()
+    if (!response.ok) throw new Error(signed.error || 'Could not prepare upload')
+    const { error } = await supabase.storage.from('tenant-documents').uploadToSignedUrl(signed.path, signed.token, file, { contentType: file.type })
+    if (error) throw error
+    return signed.path
+  }
+
+  useRealtimeRefresh(`public-property-live:${id || 'waiting'}`, ['properties', 'rooms', 'owner_settings', 'check_out_requests', 'pre_bookings'], loadData, Boolean(id), 120)
 
   // ========== Apply Form Validation (simplified) ==========
   const validatePhone = async (phone) => {
@@ -423,7 +438,7 @@ export default function PropertyDetail() {
     setPaymentSubmitting(true)
     try {
       const [idPayload, photoPayload, paymentPayload] = await Promise.all([
-        fileToPayload(idProof), fileToPayload(photo), fileToPayload(paymentScreenshot),
+        uploadPrivateFile(idProof, 'identity'), uploadPrivateFile(photo, 'photos'), uploadPrivateFile(paymentScreenshot, 'payments'),
       ])
       const response = await fetch('/api/visitor/submit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -681,7 +696,7 @@ export default function PropertyDetail() {
     setPrebookPaymentSubmitting(true)
     try {
       const [idPayload, photoPayload, paymentPayload] = await Promise.all([
-        fileToPayload(prebookIdProof), fileToPayload(prebookPhoto), fileToPayload(prebookPaymentScreenshot),
+        uploadPrivateFile(prebookIdProof, 'identity'), uploadPrivateFile(prebookPhoto, 'photos'), uploadPrivateFile(prebookPaymentScreenshot, 'payments'),
       ])
       const response = await fetch('/api/visitor/submit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -936,6 +951,7 @@ export default function PropertyDetail() {
                           <div>
                             <h3 className="text-2xl font-bold text-slate-800">Room {room.room_number}</h3>
                             <p className="text-sm text-gray-500 mt-1">{sharing.label} {sharing.icon}</p>
+                            <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${room.room_audience === 'boys' ? 'bg-blue-100 text-blue-700' : room.room_audience === 'girls' ? 'bg-pink-100 text-pink-700' : 'bg-violet-100 text-violet-700'}`}>{room.room_audience === 'boys' ? 'Boys Room' : room.room_audience === 'girls' ? 'Girls Room' : 'Co-living Room'}</span>
                           </div>
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${badgeColor}`}>
                             {badgeText}

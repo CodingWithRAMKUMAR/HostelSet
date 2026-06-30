@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { supabase } from '../lib/supabase'
 import { formatCurrency } from '../lib/utils'
 import NearbyHostelMap from '../components/maps/NearbyHostelMap'
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
 
 function distanceKm(origin, property) {
   if (!origin || !Number.isFinite(property.latitude) || !Number.isFinite(property.longitude)) return null
@@ -59,8 +60,8 @@ export default function PropertiesPage() {
     )
   }
 
-  const loadProperties = async () => {
-    setLoading(true)
+  const loadProperties = async (background = false) => {
+    if (!background) setLoading(true)
     setLoadError('')
     try {
       // Fetch all active properties
@@ -74,7 +75,6 @@ export default function PropertiesPage() {
       if (!propertiesData || propertiesData.length === 0) {
         setProperties([])
         setFilteredProperties([])
-        setLoading(false)
         return
       }
 
@@ -111,9 +111,11 @@ export default function PropertiesPage() {
       console.error('Error loading properties:', error)
       setLoadError('Properties could not be loaded. Check your connection and try again.')
     } finally {
-      setLoading(false)
+      if (!background) setLoading(false)
     }
   }
+
+  useRealtimeRefresh('public-properties-live', ['properties', 'rooms'], loadProperties, true, 120)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-gray-50">

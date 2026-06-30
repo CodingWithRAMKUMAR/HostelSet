@@ -92,8 +92,8 @@ function OwnerDashboardContent() {
   const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment } = useOwnerPayments(property, tenants, setStats, loadData, activeTab === 'rent-payments' || activeTab === 'payment-history');
   const { notices, postNotice, deleteNotice } = useOwnerNotices(property, activeTab === 'notices');
   const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, activeTab === 'room-change');
-  const { applications, rejectApplication, resendPasswordEmail } = useOwnerApplications(property, activeTab === 'applications');
-  const { preBookings, approvePreBooking, rejectPreBooking } = useOwnerPreBookings(property, activeTab === 'pre-bookings');
+  const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, activeTab === 'applications');
+  const { preBookings, approvePreBooking, rejectPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, activeTab === 'pre-bookings');
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -483,8 +483,8 @@ function OwnerDashboardContent() {
         {activeTab === 'tenants' && <TenantTable tenants={safeTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={(tenant) => { setConfirmingTenant(tenant); setShowPaymentConfirmModal(true) }} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
         {activeTab === 'rent-payments' && <RentPaymentsList payments={safePendingRentPayments} onConfirm={confirmRentPayment} onReject={rejectRentPayment} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
         {activeTab === 'payment-history' && <PaymentHistoryTable payments={safeAllPayments} getRoomNumberById={getRoomNumberById} />}
-        {activeTab === 'pre-bookings' && <PreBookingList bookings={safePreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
-        {activeTab === 'applications' && <ApplicationList applications={safeApplications} onApprove={(id, data) => handleApproveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} isSubmitting={isSubmitting} />}
+        {activeTab === 'pre-bookings' && <PreBookingList bookings={safePreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={Boolean(prebookingProcessingId)} />}
+        {activeTab === 'applications' && <ApplicationList applications={safeApplications} onApprove={(id, data) => approveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} isSubmitting={Boolean(applicationProcessingId)} />}
         {activeTab === 'complaints' && <ComplaintList complaints={safeComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setComplaintResponse(''); setShowComplaintResponseModal(true) }} onResolve={resolveComplaint} isSubmitting={isSubmitting} />}
         {activeTab === 'vacate' && <VacateRequestList requests={safeVacateRequests} onApprove={approveVacateRequest} isSubmitting={isSubmitting} />}
         {activeTab === 'room-change' && <RoomChangeRequestList requests={safeRoomChangeRequests} onApprove={approveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />}
@@ -501,7 +501,7 @@ function OwnerDashboardContent() {
         {showOwnerProfileModal && ownerProfile && <OwnerProfileModal profile={ownerProfile} onSave={handleSaveOwnerProfile} onCancel={() => setShowOwnerProfileModal(false)} isSubmitting={isSubmitting} />}
         {showComplaintResponseModal && selectedComplaint && <ComplaintResponseModal complaint={selectedComplaint} response={complaintResponse} setResponse={setComplaintResponse} onSend={handleRespondToComplaint} onCancel={() => { setShowComplaintResponseModal(false); setSelectedComplaint(null); setComplaintResponse(''); }} isSubmitting={isSubmitting} />}
         {showRoomChangeReasonModal && selectedRoomChangeRequest && <RoomChangeReasonModal reason={rejectionReason} setReason={setRejectionReason} onReject={handleRejectRoomChange} onCancel={() => { setShowRoomChangeReasonModal(false); setSelectedRoomChangeRequest(null); setRejectionReason(''); }} isSubmitting={isSubmitting} />}
-        {showRoomDetailsModal && selectedRoom && <RoomDetailsModal room={selectedRoom} tenantsInRoom={getTenantsInRoom(selectedRoom.id)} onClose={() => setShowRoomDetailsModal(false)} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} fetchTenantPayments={fetchTenantPayments} fetchTenantApplication={fetchTenantApplication} />}
+        {showRoomDetailsModal && selectedRoom && <RoomDetailsModal room={selectedRoom} tenantsInRoom={getTenantsInRoom(selectedRoom.id)} onClose={() => setShowRoomDetailsModal(false)} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} onUpdated={(updated) => { setRooms(current => current.map(room => room.id === updated.id ? updated : room)); setSelectedRoom(updated); }} />}
         
         {/* History Modal */}
         {showTenantPaymentsModal && selectedTenantForPayments && (

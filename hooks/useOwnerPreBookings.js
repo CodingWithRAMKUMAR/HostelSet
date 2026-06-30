@@ -5,6 +5,7 @@ import { useRealtimeRefresh } from './useRealtimeRefresh'
 
 export function useOwnerPreBookings(property, enabled = true) {
   const [preBookings, setPreBookings] = useState([])
+  const [processingId, setProcessingId] = useState(null)
 
   const loadPreBookings = async () => {
     if (!property?.id) return
@@ -16,8 +17,10 @@ export function useOwnerPreBookings(property, enabled = true) {
   }
 
   const approvePreBooking = async (bookingId) => {
+    if (processingId) return
     if (!confirm('Approve this pre-booking? The user will become a tenant.')) return
     try {
+      setProcessingId(bookingId)
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Your session expired. Please log in again.')
       const response = await fetch('/api/requests/approve', {
@@ -32,7 +35,7 @@ export function useOwnerPreBookings(property, enabled = true) {
     } catch (error) {
       console.error('Approve pre-booking error:', error)
       toast.error('Failed to approve pre-booking: ' + error.message)
-    }
+    } finally { setProcessingId(null) }
   }
 
   const rejectPreBooking = async (bookingId) => {
@@ -46,5 +49,5 @@ export function useOwnerPreBookings(property, enabled = true) {
   useEffect(() => { if (property?.id && enabled) loadPreBookings() }, [property?.id, enabled])
   useRealtimeRefresh(`owner-prebookings-live:${property?.id || 'waiting'}`, ['pre_bookings', 'rooms'], loadPreBookings, Boolean(property?.id && enabled))
 
-  return { preBookings, approvePreBooking, rejectPreBooking }
+  return { preBookings, approvePreBooking, rejectPreBooking, processingId }
 }
