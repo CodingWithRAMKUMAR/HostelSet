@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { supabase } from '../../lib/supabase';
+import { supabase, signPrivateDocumentFields } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 
 // Modular Imports
@@ -84,16 +84,29 @@ function OwnerDashboardContent() {
     requestMembership
   } = core;
   const [activeTab, setActiveTab] = useState('overview');
+  const [prefetchReady, setPrefetchReady] = useState(false);
+
+  useEffect(() => {
+    if (!property?.id) return undefined;
+    const preload = () => {
+      [RoomList, TenantTable, RentPaymentsList, PaymentHistoryTable, PreBookingList, ApplicationList, ComplaintList, VacateRequestList, NoticeList, RoomChangeRequestList,
+        AddTenantModal, AddRoomModal, CollectRentModal, PostNoticeModal, ComplaintResponseModal, RoomDetailsModal, PaymentConfirmModal, TenantPaymentsModal, TenantProfileModal,
+      ].forEach(component => component.preload?.());
+      setPrefetchReady(true);
+    };
+    const idleId = typeof window.requestIdleCallback === 'function' ? window.requestIdleCallback(preload, { timeout: 800 }) : window.setTimeout(preload, 250);
+    return () => typeof window.cancelIdleCallback === 'function' ? window.cancelIdleCallback(idleId) : window.clearTimeout(idleId);
+  }, [property?.id]);
   
   const { showRoomModal, setShowRoomModal, roomForm, setRoomForm, sharingTypes, addRoom, deleteRoom } = useOwnerRooms(property, rooms, setRooms, setStats);
   const { formData, setFormData, addTenant } = useOwnerTenants(property, rooms, tenants, setTenants, setStats, loadData);
-  const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, activeTab === 'complaints');
-  const { vacateRequests, approveVacateRequest } = useOwnerVacate(property, activeTab === 'vacate' || activeTab === 'rooms' || activeTab === 'tenants');
-  const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment } = useOwnerPayments(property, tenants, setStats, loadData, activeTab === 'rent-payments' || activeTab === 'payment-history');
-  const { notices, postNotice, deleteNotice } = useOwnerNotices(property, activeTab === 'notices');
-  const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, activeTab === 'room-change');
-  const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, activeTab === 'applications');
-  const { preBookings, approvePreBooking, rejectPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, activeTab === 'pre-bookings');
+  const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, activeTab === 'complaints' || prefetchReady);
+  const { vacateRequests, approveVacateRequest } = useOwnerVacate(property, activeTab === 'vacate' || activeTab === 'rooms' || activeTab === 'tenants' || prefetchReady);
+  const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment } = useOwnerPayments(property, tenants, setStats, loadData, activeTab === 'rent-payments' || activeTab === 'payment-history' || prefetchReady);
+  const { notices, postNotice, deleteNotice } = useOwnerNotices(property, activeTab === 'notices' || prefetchReady);
+  const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, activeTab === 'room-change' || prefetchReady);
+  const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, activeTab === 'applications' || prefetchReady);
+  const { preBookings, approvePreBooking, rejectPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, activeTab === 'pre-bookings' || prefetchReady);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -131,12 +144,18 @@ function OwnerDashboardContent() {
   const [tenantPayments, setTenantPayments] = useState([]);
   const [tenantApplication, setTenantApplication] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const profileCache = useRef(new Map());
+  const paymentCache = useRef(new Map());
 
   // ----------------------------------------------------------------
   // FETCH FUNCTIONS FOR HISTORY & PROFILE
   // ----------------------------------------------------------------
   const fetchTenantPayments = async (tenant) => {
     setSelectedTenantForPayments(tenant);
+    setShowTenantPaymentsModal(true);
+    if (paymentCache.current.has(tenant.id)) { setTenantPayments(paymentCache.current.get(tenant.id)); return; }
+    setLoadingPayments(true);
     try {
       const { data, error } = await supabase
         .from('payment_history')
@@ -144,14 +163,18 @@ function OwnerDashboardContent() {
         .eq('tenant_id', tenant.id)
         .order('payment_date', { ascending: false });
       if (error) throw error;
-      setTenantPayments(data || []);
-      setShowTenantPaymentsModal(true);
+      const signed = await Promise.all((data || []).map(item => signPrivateDocumentFields(item, ['payment_screenshot'])));
+      paymentCache.current.set(tenant.id, signed);
+      setTenantPayments(signed);
     } catch (error) {
       toast.error('Failed to load payment history');
-    }
+    } finally { setLoadingPayments(false); }
   };
 
   const fetchTenantApplication = async (tenant) => {
+    setSelectedProfileTenant(tenant);
+    setShowTenantProfileModal(true);
+    if (profileCache.current.has(tenant.id)) { setTenantApplication(profileCache.current.get(tenant.id)); setLoadingProfile(false); return; }
     setLoadingProfile(true);
     try {
       const { data, error } = await supabase
@@ -162,9 +185,9 @@ function OwnerDashboardContent() {
         .order('created_at', { ascending: false })
         .limit(1);
       if (error) throw error;
-      setTenantApplication(data?.[0] || null);
-      setSelectedProfileTenant(tenant);
-      setShowTenantProfileModal(true);
+      const signed = data?.[0] ? await signPrivateDocumentFields(data[0], ['id_proof', 'photo', 'payment_screenshot']) : null;
+      profileCache.current.set(tenant.id, signed);
+      setTenantApplication(signed);
     } catch (error) {
       toast.error('Could not fetch documents');
     } finally {
@@ -508,6 +531,7 @@ function OwnerDashboardContent() {
           <TenantPaymentsModal
             tenant={selectedTenantForPayments}
             payments={tenantPayments}
+            loading={loadingPayments}
             onClose={() => setShowTenantPaymentsModal(false)}
             onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }}
           />

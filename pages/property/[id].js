@@ -126,10 +126,9 @@ export default function PropertyDetail() {
     const today = new Date()
     vacates?.forEach(v => {
       const vacateDate = new Date(v.expected_check_out)
+      if (Number.isNaN(vacateDate.getTime())) return
       const daysLeft = Math.ceil((vacateDate - today) / (1000 * 60 * 60 * 24))
-      if (daysLeft > 0) {
-        info[v.room_id] = { daysLeft, vacateRequestId: v.id, vacateDate: v.expected_check_out }
-      }
+      info[v.room_id] = { daysLeft, vacateRequestId: v.id, vacateDate: v.expected_check_out }
     })
     setVacateInfo(info)
   }
@@ -147,8 +146,7 @@ export default function PropertyDetail() {
   }
 
   const calculateTotalAmount = () => {
-    const room = rooms.find(item => item.id === selectedRoom)
-    return Math.max(0, Number(room?.deposit_amount || 0))
+    return 3000
   }
 
   const handleFileChange = (e, setter) => {
@@ -625,12 +623,13 @@ export default function PropertyDetail() {
 
   // ========== PRE‑BOOKING FLOW (unchanged) ==========
   const openPrebookModal = (roomId, vacateDate) => {
+    const today = new Date().toISOString().split('T')[0]
     setPrebookRoomId(roomId)
     setPrebookForm({
       name: '',
       phone: '',
       email: '',
-      move_in_date: vacateDate || '',
+      move_in_date: vacateDate && vacateDate > today ? vacateDate : today,
       message: ''
     })
     setPrebookIdProof(null)
@@ -829,15 +828,6 @@ export default function PropertyDetail() {
       </header>
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
-        {Number.isFinite(property.latitude) && Number.isFinite(property.longitude) && (
-          <section className="mb-8" aria-labelledby="property-location-title">
-            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div><h2 id="property-location-title" className="text-xl font-bold text-slate-800">Location</h2><p className="text-sm text-slate-500">{property.formatted_address || property.address}</p></div>
-              <a href={`https://www.google.com/maps/dir/?api=1&destination=${property.latitude},${property.longitude}`} target="_blank" rel="noreferrer" className="rounded-full bg-slate-800 px-5 py-2.5 text-center text-sm font-semibold text-white hover:bg-slate-700">Open Directions</a>
-            </div>
-            <NearbyHostelMap properties={[property]} userLocation={null} />
-          </section>
-        )}
         <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-500 hover:text-slate-800 mb-6 transition group">
           <span className="group-hover:-translate-x-1 transition">←</span> Back to Search
         </button>
@@ -917,7 +907,7 @@ export default function PropertyDetail() {
                   const availableSlots = room.capacity - room.current_occupants
                   const roomVacate = vacateInfo[room.id]
                   const hasApprovedPrebooking = approvedPrebookings[room.id]
-                  const isPrebookable = roomVacate && roomVacate.daysLeft > 0 && !hasApprovedPrebooking
+                  const isPrebookable = Boolean(roomVacate) && !hasApprovedPrebooking
                   const isReserved = hasApprovedPrebooking
 
                   let badgeText = ''
@@ -960,7 +950,7 @@ export default function PropertyDetail() {
                         <div className="mb-4">
                           <p className="text-3xl font-bold text-slate-800">{formatCurrency(room.monthly_rent)}</p>
                           <p className="text-gray-400 text-sm">per month</p>
-                          <p className="text-gray-400 text-sm mt-1">Deposit: {formatCurrency(room.deposit_amount || 0)}</p>
+                          <p className="text-gray-400 text-sm mt-1">Application deposit: {formatCurrency(3000)}</p>
                         </div>
                         <div className="mb-4">
                           <div className="flex justify-between text-sm mb-1">
@@ -974,7 +964,7 @@ export default function PropertyDetail() {
                         {isPrebookable && !isReserved && (
                           <div className="mt-2 mb-2">
                             <span className="inline-block bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full">
-                              🚪 Vacates in {roomVacate.daysLeft} days
+                              {roomVacate.daysLeft > 1 ? `Vacates in ${roomVacate.daysLeft} days` : roomVacate.daysLeft === 1 ? 'Vacates tomorrow' : 'Ready to vacate'}
                             </span>
                           </div>
                         )}
@@ -1046,6 +1036,16 @@ export default function PropertyDetail() {
               </div>
             </div>
           </div>
+        )}
+
+        {Number.isFinite(property.latitude) && Number.isFinite(property.longitude) && (
+          <section className="mt-10 border-t border-slate-200 pt-8" aria-labelledby="property-location-title">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div><h2 id="property-location-title" className="text-lg font-bold text-slate-800">Find this property</h2><p className="text-sm text-slate-500">{property.formatted_address || property.address}</p></div>
+              <a href={`https://www.google.com/maps/dir/?api=1&destination=${property.latitude},${property.longitude}`} target="_blank" rel="noreferrer" className="rounded-full bg-slate-800 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-slate-700">Open Directions</a>
+            </div>
+            <NearbyHostelMap properties={[property]} userLocation={null} compact />
+          </section>
         )}
       </div>
 

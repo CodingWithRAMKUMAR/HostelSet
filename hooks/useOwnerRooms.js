@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 
 export function useOwnerRooms(property, rooms, setRooms, setStats) {
   const [showRoomModal, setShowRoomModal] = useState(false);
-  const [roomForm, setRoomForm] = useState({ room_number:'', sharing_type:'double', monthly_rent:10000, deposit_amount:3000, room_audience:'coliving' });
+  const [roomForm, setRoomForm] = useState({ room_number:'', sharing_type:'double', monthly_rent:10000, room_audience:'coliving' });
   const sharingTypes = [ 
     { value:'single', label:'Single Sharing', capacity:1, icon:'👤', price:15000 }, 
     { value:'double', label:'Double Sharing', capacity:2, icon:'👥', price:10000 }, 
@@ -26,7 +26,7 @@ export function useOwnerRooms(property, rooms, setRooms, setStats) {
       room_number: roomForm.room_number, 
       sharing_type: roomForm.sharing_type,
       monthly_rent: parseInt(roomForm.monthly_rent)||selectedType.price, 
-      deposit_amount: Math.max(0, parseInt(roomForm.deposit_amount, 10) || 0),
+      deposit_amount: 3000,
       room_audience: roomForm.room_audience,
       capacity: selectedType.capacity,
       current_occupants: 0, 
@@ -38,7 +38,7 @@ export function useOwnerRooms(property, rooms, setRooms, setStats) {
     } else {
       toast.success(`Room ${roomForm.room_number} added!`);
       setShowRoomModal(false);
-      setRoomForm({ room_number:'', sharing_type:'double', monthly_rent:10000, deposit_amount:3000, room_audience:'coliving' });
+      setRoomForm({ room_number:'', sharing_type:'double', monthly_rent:10000, room_audience:'coliving' });
       setRooms(prev => [...prev, insertedRoom]);
       setStats(prev => ({ ...prev, totalRooms: prev.totalRooms + 1, vacant: prev.vacant + 1 }));
     }

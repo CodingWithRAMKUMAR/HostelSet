@@ -73,7 +73,7 @@ export default function RoomList({
                 <div>
                   <p className="text-2xl font-bold text-[#1a1a1a]">{formatCurrency(room.monthly_rent)}</p>
                   <p className="text-xs text-gray-400">/month</p>
-                  <p className="mt-1 text-xs text-gray-500">Application deposit: {formatCurrency(room.deposit_amount || 0)}</p>
+                  <p className="mt-1 text-xs text-gray-500">Application deposit: {formatCurrency(3000)}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold text-emerald-600">{formatCurrency(monthlyIncome)}</p>

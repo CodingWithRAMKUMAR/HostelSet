@@ -139,7 +139,7 @@ export default async function handler(req, res) {
         const { error: userError } = await supabaseAdmin.from('users').upsert({ id: userId, email, full_name: name, phone, role: 'tenant', is_active: true })
         if (userError) throw userError
       }
-      const deposit = Math.max(0, Number(room.deposit_amount || 0))
+      const deposit = 3000
       const { error } = await supabaseAdmin.from('applications').insert({
         user_id: userId, property_id: propertyId, room_id: roomId, name, phone, email, message,
         status: 'pending', id_proof: idPath, photo: photoPath, payment_screenshot: paymentPath,

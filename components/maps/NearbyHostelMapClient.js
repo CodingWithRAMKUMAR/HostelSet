@@ -18,10 +18,10 @@ function Fit({ properties, userLocation }) {
   return null
 }
 
-export default function NearbyHostelMapClient({ properties, userLocation }) {
+export default function NearbyHostelMapClient({ properties, userLocation, compact = false }) {
   const key = process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY
   if (!key) return <div className="rounded-2xl border bg-white p-8 text-center text-slate-600">Map configuration is unavailable.</div>
-  return <div className="h-[420px] overflow-hidden rounded-2xl border bg-white shadow-sm sm:h-[520px]">
+  return <div className={`${compact ? 'h-60 sm:h-72' : 'h-[420px] sm:h-[520px]'} overflow-hidden rounded-2xl border bg-white shadow-sm`}>
     <MapContainer center={[20.5937, 78.9629]} zoom={5} className="h-full w-full">
       <TileLayer attribution='&copy; OpenStreetMap contributors | Powered by <a href="https://www.geoapify.com/">Geoapify</a>' url={`https://maps.geoapify.com/v1/tile/positron/{z}/{x}/{y}.png?apiKey=${key}`} />
       <Fit properties={properties} userLocation={userLocation} />
