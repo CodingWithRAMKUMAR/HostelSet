@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useOwnerComplaints(property) {
+export function useOwnerComplaints(property, enabled = true) {
   const [complaints, setComplaints] = useState([]);
 
   const loadComplaints = async () => {
@@ -39,9 +39,9 @@ export function useOwnerComplaints(property) {
   };
 
   useEffect(() => {
-    if (property?.id) loadComplaints();
-  }, [property?.id]);
-  useRealtimeRefresh(`owner-complaints-live:${property?.id || 'waiting'}`, ['complaints'], loadComplaints, Boolean(property?.id));
+    if (property?.id && enabled) loadComplaints();
+  }, [property?.id, enabled]);
+  useRealtimeRefresh(`owner-complaints-live:${property?.id || 'waiting'}`, ['complaints'], loadComplaints, Boolean(property?.id && enabled));
 
   return { complaints, respondToComplaint, resolveComplaint };
 }

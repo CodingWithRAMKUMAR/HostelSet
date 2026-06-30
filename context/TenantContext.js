@@ -23,6 +23,7 @@ export function TenantProvider({ children }) {
 
     try {
       let userId = userIdRef.current;
+      let shouldCheckRole = false;
       if (!isBackground || !userId) {
         const { data: { session }, error: authError } = await supabase.auth.getSession();
         const user = session?.user;
@@ -32,26 +33,29 @@ export function TenantProvider({ children }) {
           return false;
         }
 
-        const { data: userRecord, error: roleError } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-
-        if (roleError || userRecord?.role !== 'tenant') {
-          toast.error('Access denied. You are not registered as a tenant.');
-          await router.push('/login');
-          return false;
-        }
         userId = user.id;
         userIdRef.current = user.id;
+        shouldCheckRole = true;
       }
 
-      const { data: tenantData, error: tenantError } = await supabase
-        .from('tenants')
-        .select('*, rooms:room_id(*), property:property_id(*)')
-        .eq('user_id', userId)
-        .maybeSingle();
+      const [roleResult, tenantResult] = await Promise.all([
+        shouldCheckRole
+          ? supabase.from('users').select('role').eq('id', userId).single()
+          : Promise.resolve({ data: { role: 'tenant' }, error: null }),
+        supabase
+          .from('tenants')
+          .select('*, rooms:room_id(*), property:property_id(*)')
+          .eq('user_id', userId)
+          .maybeSingle(),
+      ]);
+
+      if (roleResult.error || roleResult.data?.role !== 'tenant') {
+        toast.error('Access denied. You are not registered as a tenant.');
+        await router.replace('/login');
+        return false;
+      }
+
+      const { data: tenantData, error: tenantError } = tenantResult;
 
       if (tenantError) throw tenantError;
       if (!tenantData) {
@@ -64,6 +68,14 @@ export function TenantProvider({ children }) {
         setError('No tenant record found in the database.');
         return false;
       }
+
+      // Render the usable dashboard as soon as the tenant, room and property
+      // arrive. Owner/roommate details continue loading in parallel below.
+      setTenant(tenantData);
+      setRoom(tenantData.rooms || null);
+      setProperty(tenantData.property || null);
+      setError(null);
+      if (!isBackground) setLoading(false);
 
       const [ownerResult, roommatesResult] = await Promise.all([
         tenantData.property?.owner_id

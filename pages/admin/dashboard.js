@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
+import dynamic from 'next/dynamic';
 import { supabase } from '../../lib/supabase';
 import { formatCurrency } from '../../lib/utils';
 import { AdminProvider, useAdmin } from '../../context/AdminContext';
@@ -17,7 +18,7 @@ import { useAdminRoomChange } from '../../hooks/useAdminRoomChange';
 import { useAdminNotices } from '../../hooks/useAdminNotices';
 import { useAdminMembershipManager } from '../../hooks/useAdminMembershipManager';
 import { useAdminModals } from '../../hooks/useAdminModals';
-import MembershipManager from '../../components/admin/MembershipManager';
+const MembershipManager = dynamic(() => import('../../components/admin/MembershipManager'));
 
 // ----------------- UTILITY TABLE COMPONENT -----------------
 const AdminTable = ({ headers, data, renderRow, emptyMessage, loading = false }) => (
@@ -126,47 +127,47 @@ function AdminDashboardContent() {
     <div className="min-h-screen bg-[#f8f9fa] font-sans selection:bg-orange-500 selection:text-white">
       
       {/* ----- NAVBAR ----- */}
-      <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-6 py-4 shadow-md border-b-2 border-orange-500/80">
-        <div className="container mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">🏠 HOSTELSET</h1>
-            <span className="text-xs bg-[#2a2a2a] text-orange-400/90 border border-orange-500/30 px-3 py-1 rounded-full ml-2">Admin Control</span>
+      <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-3 sm:px-6 py-3 sm:py-4 shadow-md border-b-2 border-orange-500/80">
+        <div className="container mx-auto flex flex-wrap justify-between items-center gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <h1 className="text-lg sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent whitespace-nowrap">🏠 HOSTELSET</h1>
+            <span className="text-[10px] sm:text-xs bg-[#2a2a2a] text-orange-400/90 border border-orange-500/30 px-2 sm:px-3 py-1 rounded-full whitespace-nowrap">Admin</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <span className={`hidden sm:inline-flex items-center gap-2 text-xs font-semibold ${realtimeConnected ? 'text-emerald-400' : 'text-gray-500'}`}>
               <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
               {realtimeConnected ? 'Live' : 'Connecting'}
             </span>
             <button onClick={() => refreshStats()} className="text-orange-400 hover:text-orange-300 text-sm font-medium transition">🔄 Refresh</button>
-            <button onClick={handleLogout} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-1.5 rounded-full font-semibold transition shadow-md">Logout</button>
+            <button onClick={handleLogout} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-3 sm:px-6 py-2 rounded-full text-sm font-semibold transition shadow-md">Logout</button>
           </div>
         </div>
       </nav>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-3 sm:px-4 py-5 sm:py-8">
         
         {/* ----- STATS CARDS ----- */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4 mb-6 sm:mb-8">
           {statsData.map((stat, index) => (
-            <div key={index} className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-gray-200/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shadow-sm ${stat.color}`}>
+            <div key={index} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm border border-gray-200/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
+              <div className={`w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center text-base sm:text-xl shadow-sm ${stat.color}`}>
                 {stat.icon}
               </div>
               <div>
                 <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">{stat.label}</p>
-                <p className="text-xl font-bold text-gray-800 tracking-tight">{stat.value}</p>
+                <p className="text-base sm:text-xl font-bold text-gray-800 tracking-tight truncate">{stat.value}</p>
               </div>
             </div>
           ))}
         </div>
 
         {/* ----- TABS ----- */}
-        <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto">
+        <div className="flex flex-nowrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto dashboard-tabs">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${
+              className={`shrink-0 px-4 sm:px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${
                 activeTab === tab.id
                   ? 'bg-[#1a1a1a] text-white shadow-sm border-b-2 border-orange-500'
                   : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50'

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useOwnerPreBookings(property) {
+export function useOwnerPreBookings(property, enabled = true) {
   const [preBookings, setPreBookings] = useState([]);
 
   const loadPreBookings = async () => {
@@ -72,9 +72,9 @@ export function useOwnerPreBookings(property) {
   };
 
   useEffect(() => {
-    if (property?.id) loadPreBookings();
-  }, [property?.id]);
-  useRealtimeRefresh(`owner-prebookings-live:${property?.id || 'waiting'}`, ['pre_bookings', 'rooms'], loadPreBookings, Boolean(property?.id));
+    if (property?.id && enabled) loadPreBookings();
+  }, [property?.id, enabled]);
+  useRealtimeRefresh(`owner-prebookings-live:${property?.id || 'waiting'}`, ['pre_bookings', 'rooms'], loadPreBookings, Boolean(property?.id && enabled));
 
   return { preBookings, approvePreBooking, rejectPreBooking };
 }

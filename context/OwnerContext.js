@@ -59,6 +59,9 @@ export function OwnerProvider({ children }) {
         const total = roomsData?.length || 0; const occupied = roomsData?.filter(r => r.current_occupants >= r.capacity).length || 0; const vacant = total - occupied;
         const tenantsWithRoomNumber = (tenantsData || []).map(t => { const room = roomsData?.find(r => r.id === t.room_id); return { ...t, room_number: room ? room.room_number : 'N/A', dueStatus: calculateRentDueStatus(t) } });
         setTenants(tenantsWithRoomNumber);
+        // Rooms and tenants are enough to render a useful dashboard. Secondary
+        // financial counters continue below without holding the whole screen.
+        if (!isBackground) setLoading(false);
         
         // Stats and Finance
         const totalCollected = tenantsData?.reduce((sum, t) => sum + Number(t.total_paid || 0), 0) || 0;
@@ -118,13 +121,17 @@ export function OwnerProvider({ children }) {
     } catch (error) { console.error('Error loading settings:', error); toast.error('Failed to load settings'); }
   };
 
-  const loadOwnerProfile = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) return null;
+  const loadOwnerProfile = async (ownerId = null) => {
+    let userId = ownerId;
+    if (!userId) {
+      const { data: { session } } = await supabase.auth.getSession();
+      userId = session?.user?.id;
+    }
+    if (!userId) return null;
     const { data, error } = await supabase
       .from('users')
       .select('id, full_name, email, phone, is_active')
-      .eq('id', session.user.id)
+      .eq('id', userId)
       .single();
     if (error) throw error;
     setOwnerProfile(data);
@@ -211,9 +218,12 @@ export function OwnerProvider({ children }) {
       const auth = await checkAuthAndRedirect();
       if (!auth) return; if (auth.role !== 'owner') { router.push('/login'); return; }
       localStorage.setItem('userId', auth.user.id); localStorage.setItem('userEmail', auth.user.email || ''); localStorage.setItem('userName', auth.user.user_metadata?.full_name || '');
-      const loadedProperty = await loadData(false);
-      await Promise.all([loadSettings(loadedProperty), loadOwnerProfile()]);
-      if (loadedProperty?.owner_id) await loadMembershipRequest(loadedProperty.owner_id);
+      const [loadedProperty] = await Promise.all([
+        loadData(false),
+        loadSettings(),
+        loadOwnerProfile(auth.user.id),
+        loadMembershipRequest(auth.user.id),
+      ]);
       const membershipExpired = loadedProperty?.membership_active && loadedProperty.membership_expiry && new Date(loadedProperty.membership_expiry) <= new Date();
       if (membershipExpired) { router.push('/owner/subscribe?reason=expired'); return; }
       startAutoRefresh();

@@ -11,18 +11,18 @@ export default function StatsCards({ stats }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-6 sm:mb-8">
       {items.map((item, index) => (
         <div 
           key={index} 
-          className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-4"
+          className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0"
         >
-          <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shadow-sm ${item.color}`}>
+          <div className={`w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center text-base sm:text-xl shadow-sm ${item.color}`}>
             {item.icon}
           </div>
           <div>
             <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold">{item.label}</p>
-            <p className="text-xl font-bold text-gray-800 tracking-tight">{item.value}</p>
+            <p className="text-base sm:text-xl font-bold text-gray-800 tracking-tight truncate">{item.value}</p>
           </div>
         </div>
       ))}

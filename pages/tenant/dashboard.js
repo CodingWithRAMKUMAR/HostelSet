@@ -18,10 +18,11 @@ import { formatCurrency, formatDate, getSharingDetails } from '../../lib/utils'
 
 // Content Components (static)
 import OverviewSection from '../../components/tenant/OverviewSection'
-import RoommatesSection from '../../components/tenant/RoommatesSection'
-import NoticesSection from '../../components/tenant/NoticesSection'
-import ComplaintsSection from '../../components/tenant/ComplaintsSection'
-import PaymentsSection from '../../components/tenant/PaymentsSection'
+
+const RoommatesSection = dynamic(() => import('../../components/tenant/RoommatesSection'))
+const NoticesSection = dynamic(() => import('../../components/tenant/NoticesSection'))
+const ComplaintsSection = dynamic(() => import('../../components/tenant/ComplaintsSection'))
+const PaymentsSection = dynamic(() => import('../../components/tenant/PaymentsSection'))
 
 // Lazy-load Modal Components
 const PayRentModal = dynamic(() => import('../../components/tenant/modals/PayRentModal'), { ssr: false })
@@ -217,13 +218,13 @@ function TenantDashboardContent() {
     <div className="min-h-screen bg-[#f8f9fa] font-sans">
       
       {/* --- NAVBAR (Premium Onyx & Gold) --- */}
-      <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-6 py-4 shadow-lg border-b-2 border-orange-500/80">
-        <div className="container mx-auto flex justify-between items-center">
+      <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-3 sm:px-6 py-3 sm:py-4 shadow-lg border-b-2 border-orange-500/80">
+        <div className="container mx-auto flex justify-between items-center gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">🏠 HOSTELSET</h1>
+            <h1 className="text-lg sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent whitespace-nowrap">🏠 HOSTELSET</h1>
             <span className="text-xs bg-[#2a2a2a] text-orange-400/90 border border-orange-500/30 px-3 py-1 rounded-full">Tenant</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <span className={`hidden sm:inline-flex items-center gap-2 text-xs font-semibold ${realtimeConnected ? 'text-emerald-400' : 'text-gray-500'}`}>
               <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
               {realtimeConnected ? 'Live' : 'Connecting'}
@@ -239,14 +240,14 @@ function TenantDashboardContent() {
         </div>
       </nav>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-3 sm:px-4 py-5 sm:py-8">
         
         {/* --- WELCOME SECTION (GLASSMORPHISM) --- */}
-        <div className="relative overflow-hidden rounded-2xl p-8 mb-8 bg-[#1a1a1a] shadow-xl border border-orange-500/20">
+        <div className="relative overflow-hidden rounded-2xl p-5 sm:p-8 mb-6 sm:mb-8 bg-[#1a1a1a] shadow-xl border border-orange-500/20">
           <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-orange-500/10 to-transparent rounded-full -mr-20 -mt-20 pointer-events-none" />
           <div className="flex justify-between items-start flex-wrap gap-4 relative z-10">
             <div>
-              <h2 className="text-3xl font-bold text-white mb-2">Welcome back, <span className="text-orange-400">{tenant?.name}</span>! 👋</h2>
+              <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">Welcome back, <span className="text-orange-400">{tenant?.name}</span>! 👋</h2>
               <p className="text-white/70">Room {room?.room_number} • {getSharingDetails(room?.sharing_type)?.label}</p>
               <p className="text-white/50 text-sm mt-1">{property?.name}</p>
             </div>
@@ -276,57 +277,57 @@ function TenantDashboardContent() {
         )}
 
         {/* --- STATS CARDS (PREMIUM GLASS) --- */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-orange-100/50 flex items-center justify-center text-xl text-orange-600">💰</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-orange-100/50 flex items-center justify-center text-base sm:text-xl text-orange-600">💰</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Monthly Rent</p>
-              <p className="text-xl font-bold text-gray-800">{formatCurrency(tenant?.rent_amount)}</p>
+              <p className="text-base sm:text-xl font-bold text-gray-800 truncate">{formatCurrency(tenant?.rent_amount)}</p>
             </div>
           </div>
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-emerald-100/50 flex items-center justify-center text-xl text-emerald-600">✅</div>
+          <div className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-emerald-100/50 flex items-center justify-center text-base sm:text-xl text-emerald-600">✅</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Total Paid</p>
-              <p className="text-xl font-bold text-emerald-600">{formatCurrency(tenant?.total_paid || 0)}</p>
+              <p className="text-base sm:text-xl font-bold text-emerald-600 truncate">{formatCurrency(tenant?.total_paid || 0)}</p>
             </div>
           </div>
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-red-100/50 flex items-center justify-center text-xl text-red-600">⚠️</div>
+          <div className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-red-100/50 flex items-center justify-center text-base sm:text-xl text-red-600">⚠️</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Pending Amount</p>
-              <p className="text-xl font-bold text-red-500">{formatCurrency(tenant?.pending_amount || 0)}</p>
+              <p className="text-base sm:text-xl font-bold text-red-500 truncate">{formatCurrency(tenant?.pending_amount || 0)}</p>
             </div>
           </div>
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-purple-100/50 flex items-center justify-center text-xl text-purple-600">👥</div>
+          <div className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-purple-100/50 flex items-center justify-center text-base sm:text-xl text-purple-600">👥</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Roommates</p>
-              <p className="text-xl font-bold text-gray-800">{roommates?.length || 0}</p>
+              <p className="text-base sm:text-xl font-bold text-gray-800">{roommates?.length || 0}</p>
             </div>
           </div>
         </div>
 
         {/* --- ACTION BUTTONS (GRADIENT & GLASS) --- */}
-        <div className="flex flex-wrap gap-3 mb-8">
-          <button onClick={() => setShowPaymentModal(true)} disabled={isSubmitting} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold shadow-md transition disabled:opacity-50">💳 Pay Rent (UPI)</button>
-          <button onClick={() => setShowComplaintModal(true)} disabled={isSubmitting} className="border-2 border-orange-300/50 text-orange-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition disabled:opacity-50">📝 Raise Complaint</button>
+        <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3 mb-6 sm:mb-8">
+          <button onClick={() => setShowPaymentModal(true)} disabled={isSubmitting} className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold shadow-md transition disabled:opacity-50">💳 Pay Rent (UPI)</button>
+          <button onClick={() => setShowComplaintModal(true)} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-orange-300/50 text-orange-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition disabled:opacity-50">📝 Raise Complaint</button>
           {!pendingRoomChangeRequest ? (
-            <button onClick={openRoomChangeModal} disabled={isSubmitting} className="border-2 border-blue-300/50 text-blue-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-50 transition disabled:opacity-50">🔄 Request Room Change</button>
+            <button onClick={openRoomChangeModal} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-blue-300/50 text-blue-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-50 transition disabled:opacity-50">🔄 Request Room Change</button>
           ) : (
-            <button disabled className="border-2 border-gray-300/50 text-gray-500 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold cursor-not-allowed">⏳ Room Change Pending</button>
+            <button disabled className="w-full sm:w-auto border-2 border-gray-300/50 text-gray-500 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold cursor-not-allowed">⏳ Room Change Pending</button>
           )}
           {existingVacateRequest ? (
-            <button onClick={cancelVacateRequest} disabled={isSubmitting} className="border-2 border-yellow-500/50 text-yellow-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition disabled:opacity-50">❌ Cancel Vacate Request</button>
+            <button onClick={cancelVacateRequest} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-yellow-500/50 text-yellow-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition disabled:opacity-50">❌ Cancel Vacate Request</button>
           ) : (
-            <button onClick={() => setShowVacateModal(true)} disabled={isSubmitting} className="border-2 border-red-300/50 text-red-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50">🚪 Request Vacate</button>
+            <button onClick={() => setShowVacateModal(true)} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-red-300/50 text-red-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50">🚪 Request Vacate</button>
           )}
         </div>
 
         {/* --- TABS (ONYX & GOLD) --- */}
-        <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto">
+        <div className="flex flex-nowrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto dashboard-tabs">
           {['overview', 'roommates', 'notices', 'complaints', 'payments'].map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${activeTab === tab ? 'bg-[#1a1a1a] text-white shadow-sm border-b-2 border-orange-500' : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50'}`}>
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`shrink-0 px-4 sm:px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${activeTab === tab ? 'bg-[#1a1a1a] text-white shadow-sm border-b-2 border-orange-500' : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50'}`}>
               {tab === 'overview' && '📊 Overview'}
               {tab === 'roommates' && `👥 Roommates (${roommates?.length || 0})`}
               {tab === 'notices' && `📢 Notices (${notices?.length || 0})`}

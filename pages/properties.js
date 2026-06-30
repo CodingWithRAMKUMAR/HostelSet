@@ -143,7 +143,7 @@ export default function PropertiesPage() {
             <p className="text-gray-500">No properties found. Try a different search or city.</p>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-8">
             {filteredProperties.map((property, index) => (
               <motion.div
                 key={property.id}
@@ -159,6 +159,8 @@ export default function PropertiesPage() {
                     <img
                       src={property.firstPhoto}
                       alt={property.name}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover"
                     />
                   ) : (

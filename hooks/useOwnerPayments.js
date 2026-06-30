@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useOwnerPayments(property, tenants, setStats, loadData) {
+export function useOwnerPayments(property, tenants, setStats, loadData, enabled = true) {
   const [pendingRentPayments, setPendingRentPayments] = useState([]);
   const [allPayments, setAllPayments] = useState([]);
 
@@ -37,9 +37,9 @@ export function useOwnerPayments(property, tenants, setStats, loadData) {
   };
 
   useEffect(() => {
-    if (property?.id) loadPayments();
-  }, [property?.id, tenants.map((tenant) => tenant.id).join(',')]);
-  useRealtimeRefresh(`owner-payments-live:${property?.id || 'waiting'}`, ['payment_history', 'tenants', 'rooms'], loadPayments, Boolean(property?.id));
+    if (property?.id && enabled) loadPayments();
+  }, [property?.id, tenants.map((tenant) => tenant.id).join(','), enabled]);
+  useRealtimeRefresh(`owner-payments-live:${property?.id || 'waiting'}`, ['payment_history', 'tenants', 'rooms'], loadPayments, Boolean(property?.id && enabled));
 
   return { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment };
 }

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useOwnerNotices(property) {
+export function useOwnerNotices(property, enabled = true) {
   const [notices, setNotices] = useState([]);
 
   const loadNotices = async () => {
@@ -27,9 +27,9 @@ export function useOwnerNotices(property) {
   };
 
   useEffect(() => {
-    if (property?.id) loadNotices();
-  }, [property?.id]);
-  useRealtimeRefresh(`owner-notices-live:${property?.id || 'waiting'}`, ['notices'], loadNotices, Boolean(property?.id));
+    if (property?.id && enabled) loadNotices();
+  }, [property?.id, enabled]);
+  useRealtimeRefresh(`owner-notices-live:${property?.id || 'waiting'}`, ['notices'], loadNotices, Boolean(property?.id && enabled));
 
   return { notices, postNotice, deleteNotice };
 }

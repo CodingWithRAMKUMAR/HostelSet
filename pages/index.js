@@ -195,7 +195,7 @@ export default function Home() {
                   <span className="text-sm font-medium text-gray-300">🚀 Trusted by 100+ Property Owners</span>
                 </motion.div>
                 
-                <h1 className="text-6xl md:text-7xl lg:text-8xl font-bold mb-8 leading-tight">
+                <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-bold mb-8 leading-tight">
                   <span className="bg-gradient-to-r from-orange-400 via-amber-300 to-yellow-400 bg-clip-text text-transparent">
                     Find Your
                   </span>

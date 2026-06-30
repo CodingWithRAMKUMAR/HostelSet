@@ -20,16 +20,17 @@ import { useOwnerPreBookings } from '../../hooks/useOwnerPreBookings';
 
 // Content Components
 import StatsCards from '../../components/owner/StatsCards';
-import RoomList from '../../components/owner/RoomList';
-import TenantTable from '../../components/owner/TenantTable';
-import RentPaymentsList from '../../components/owner/RentPaymentsList';
-import PaymentHistoryTable from '../../components/owner/PaymentHistoryTable';
-import PreBookingList from '../../components/owner/PreBookingList';
-import ApplicationList from '../../components/owner/ApplicationList';
-import ComplaintList from '../../components/owner/ComplaintList';
-import VacateRequestList from '../../components/owner/VacateRequestList';
-import NoticeList from '../../components/owner/NoticeList';
-import RoomChangeRequestList from '../../components/owner/RoomChangeRequestList';
+
+const RoomList = dynamic(() => import('../../components/owner/RoomList'));
+const TenantTable = dynamic(() => import('../../components/owner/TenantTable'));
+const RentPaymentsList = dynamic(() => import('../../components/owner/RentPaymentsList'));
+const PaymentHistoryTable = dynamic(() => import('../../components/owner/PaymentHistoryTable'));
+const PreBookingList = dynamic(() => import('../../components/owner/PreBookingList'));
+const ApplicationList = dynamic(() => import('../../components/owner/ApplicationList'));
+const ComplaintList = dynamic(() => import('../../components/owner/ComplaintList'));
+const VacateRequestList = dynamic(() => import('../../components/owner/VacateRequestList'));
+const NoticeList = dynamic(() => import('../../components/owner/NoticeList'));
+const RoomChangeRequestList = dynamic(() => import('../../components/owner/RoomChangeRequestList'));
 
 // Modal Components
 const ConfirmDeleteModal = dynamic(() => import('../../components/owner/modals/ConfirmDeleteModal'), { ssr: false });
@@ -82,16 +83,17 @@ function OwnerDashboardContent() {
     pendingMembershipRequest,
     requestMembership
   } = core;
+  const [activeTab, setActiveTab] = useState('overview');
   
   const { showRoomModal, setShowRoomModal, roomForm, setRoomForm, sharingTypes, addRoom, deleteRoom } = useOwnerRooms(property, rooms, setRooms, setStats);
   const { formData, setFormData, addTenant } = useOwnerTenants(property, rooms, tenants, setTenants, setStats, loadData);
-  const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property);
-  const { vacateRequests, approveVacateRequest } = useOwnerVacate(property);
-  const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment } = useOwnerPayments(property, tenants, setStats, loadData);
-  const { notices, postNotice, deleteNotice } = useOwnerNotices(property);
-  const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property);
-  const { applications, rejectApplication, resendPasswordEmail } = useOwnerApplications(property);
-  const { preBookings, approvePreBooking, rejectPreBooking } = useOwnerPreBookings(property);
+  const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, activeTab === 'complaints');
+  const { vacateRequests, approveVacateRequest } = useOwnerVacate(property, activeTab === 'vacate' || activeTab === 'rooms' || activeTab === 'tenants');
+  const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment } = useOwnerPayments(property, tenants, setStats, loadData, activeTab === 'rent-payments' || activeTab === 'payment-history');
+  const { notices, postNotice, deleteNotice } = useOwnerNotices(property, activeTab === 'notices');
+  const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, activeTab === 'room-change');
+  const { applications, rejectApplication, resendPasswordEmail } = useOwnerApplications(property, activeTab === 'applications');
+  const { preBookings, approvePreBooking, rejectPreBooking } = useOwnerPreBookings(property, activeTab === 'pre-bookings');
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -117,7 +119,6 @@ function OwnerDashboardContent() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [screenshotUrl, setScreenshotUrl] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('overview');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
@@ -413,18 +414,18 @@ function OwnerDashboardContent() {
     <div className="min-h-screen bg-[#f8f9fa] font-sans">
       
       {/* --- NAVBAR (Premium Onyx & Gold) --- */}
-      <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-6 py-4 shadow-lg border-b-2 border-orange-500/80">
-        <div className="container mx-auto flex flex-wrap justify-between items-center gap-4">
+      <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-3 sm:px-6 py-3 sm:py-4 shadow-lg border-b-2 border-orange-500/80">
+        <div className="container mx-auto flex flex-wrap justify-between items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">🏠 HOSTELSET</h1>
+            <h1 className="text-lg sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent whitespace-nowrap">🏠 HOSTELSET</h1>
             <span className="text-xs bg-[#2a2a2a] text-orange-400/90 border border-orange-500/30 px-3 py-1 rounded-full">Owner</span>
           </div>
-          <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center justify-end gap-2 sm:gap-4 flex-wrap flex-1 min-w-0">
             <span className={`hidden sm:inline-flex items-center gap-2 text-xs font-semibold ${realtimeConnected ? 'text-emerald-400' : 'text-gray-500'}`}>
               <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
               {realtimeConnected ? 'Live' : 'Connecting'}
             </span>
-            <input type="text" placeholder="🔍 Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-[#2a2a2a] border border-gray-700/50 rounded-lg px-4 py-2 text-sm w-48 md:w-64 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 transition" />
+            <input type="search" aria-label="Search dashboard" placeholder="🔍 Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-[#2a2a2a] border border-gray-700/50 rounded-lg px-3 sm:px-4 py-2 text-sm w-full sm:w-48 md:w-64 order-last lg:order-none text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 transition" />
             <button onClick={() => setShowMembershipModal(true)} disabled={Boolean(pendingMembershipRequest)} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition shadow-sm ${membershipActive ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-500/30' : pendingMembershipRequest ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-wait' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>
               {membershipActive ? '✅ Active' : pendingMembershipRequest ? '⏳ Approval Pending' : '⭐ Request Membership'}
             </button>
@@ -436,22 +437,22 @@ function OwnerDashboardContent() {
         </div>
       </nav>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-3 sm:px-4 py-5 sm:py-8">
         
         {/* --- STATS CARDS --- */}
         <StatsCards stats={stats} />
 
         {/* --- ACTION BUTTONS (Glassmorphism) --- */}
-        <div className="flex flex-wrap gap-4 mb-8">
-          <button onClick={() => membershipActive && setShowAddModal(true)} disabled={!membershipActive} className={`px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-md ${membershipActive ? 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>+ Add Tenant</button>
-          <button onClick={() => membershipActive && setShowRoomModal(true)} disabled={!membershipActive} className={`px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>+ Add Room</button>
-          <button onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive} className={`px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>📢 Notice</button>
+        <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <button onClick={() => membershipActive && setShowAddModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-md ${membershipActive ? 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>+ Add Tenant</button>
+          <button onClick={() => membershipActive && setShowRoomModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>+ Add Room</button>
+          <button onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>📢 Notice</button>
         </div>
 
         {/* --- TABS --- */}
-        <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto">
+        <div className="flex flex-nowrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto dashboard-tabs">
           {['overview', 'rooms', 'tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'applications', 'complaints', 'vacate', 'room-change', 'notices'].map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} disabled={!membershipActive} className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${activeTab === tab ? 'bg-[#1a1a1a] text-white shadow-sm border-b-2 border-orange-500' : membershipActive ? 'text-gray-600 hover:text-orange-600 hover:bg-orange-50' : 'text-gray-400 cursor-not-allowed'}`}>
+            <button key={tab} onClick={() => setActiveTab(tab)} disabled={!membershipActive} className={`shrink-0 px-4 sm:px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${activeTab === tab ? 'bg-[#1a1a1a] text-white shadow-sm border-b-2 border-orange-500' : membershipActive ? 'text-gray-600 hover:text-orange-600 hover:bg-orange-50' : 'text-gray-400 cursor-not-allowed'}`}>
               {tab === 'rent-payments' && `💸 Rent (${stats.pendingRentConfirmations})`}
               {tab === 'payment-history' && '💳 History'}
               {tab === 'pre-bookings' && `📋 Pre-Bookings`}

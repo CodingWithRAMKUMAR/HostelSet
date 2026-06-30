@@ -839,7 +839,7 @@ export default function PropertyDetail() {
           <div className="relative bg-gray-900/5 backdrop-blur-sm">
             {property.photos && property.photos.length > 0 ? (
               <>
-                <img src={property.photos[currentImageIndex]} alt={property.name} className="w-full h-[400px] md:h-[500px] object-cover" />
+                <img src={property.photos[currentImageIndex]} alt={property.name} loading="eager" decoding="async" className="w-full h-[260px] sm:h-[400px] md:h-[500px] object-cover" />
                 {property.photos.length > 1 && (
                   <>
                     <button onClick={prevImage} className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-slate-800 p-2 rounded-full shadow-md transition backdrop-blur-sm">←</button>
@@ -853,14 +853,14 @@ export default function PropertyDetail() {
                 )}
               </>
             ) : (
-              <div className="w-full h-[400px] flex items-center justify-center text-8xl bg-gradient-to-br from-slate-100 to-gray-100">🏠</div>
+              <div className="w-full h-[260px] sm:h-[400px] flex items-center justify-center text-6xl sm:text-8xl bg-gradient-to-br from-slate-100 to-gray-100">🏠</div>
             )}
           </div>
           {property.photos && property.photos.length > 1 && (
             <div className="flex gap-2 mt-3 overflow-x-auto pb-2">
               {property.photos.map((photo, i) => (
                 <button key={i} onClick={() => setCurrentImageIndex(i)} className={`w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${i === currentImageIndex ? 'border-slate-800' : 'border-transparent opacity-70 hover:opacity-100'}`}>
-                  <img src={photo} alt="" className="w-full h-full object-cover" />
+                  <img src={photo} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>

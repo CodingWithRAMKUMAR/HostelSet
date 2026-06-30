@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useOwnerVacate(property) {
+export function useOwnerVacate(property, enabled = true) {
   const [vacateRequests, setVacateRequests] = useState([]);
 
   const loadVacateRequests = async () => {
@@ -21,9 +21,9 @@ export function useOwnerVacate(property) {
   };
 
   useEffect(() => {
-    if (property?.id) loadVacateRequests();
-  }, [property?.id]);
-  useRealtimeRefresh(`owner-vacates-live:${property?.id || 'waiting'}`, ['check_out_requests', 'tenants', 'rooms'], loadVacateRequests, Boolean(property?.id));
+    if (property?.id && enabled) loadVacateRequests();
+  }, [property?.id, enabled]);
+  useRealtimeRefresh(`owner-vacates-live:${property?.id || 'waiting'}`, ['check_out_requests', 'tenants', 'rooms'], loadVacateRequests, Boolean(property?.id && enabled));
 
   return { vacateRequests, approveVacateRequest, loadVacateRequests };
 }

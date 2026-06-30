@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
-import { motion } from 'framer-motion'
 import { supabase, signInWithEmail, resetPassword } from '../lib/supabase'
 import { cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
@@ -14,12 +13,6 @@ export default function Login() {
   const [showReset, setShowReset] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-
-  useEffect(() => {
-    router.prefetch('/admin/dashboard')
-    router.prefetch('/owner/dashboard')
-    router.prefetch('/tenant/dashboard')
-  }, [router])
 
   const isEmail = (input) => input.includes('@')
   const isPhone = (input) => /^\d{10}$/.test(input)
@@ -60,13 +53,12 @@ export default function Login() {
       if (result.success) {
         toast.success(`Welcome back, ${result.userData.full_name}!`)
 
-        if (result.role === 'admin') {
-          router.replace('/admin/dashboard')
-        } else if (result.role === 'owner') {
-          router.replace(result.userData.properties?.length ? '/owner/dashboard' : '/owner/register-property')
-        } else {
-          router.replace('/tenant/dashboard')
-        }
+        const destination = result.role === 'admin'
+          ? '/admin/dashboard'
+          : result.role === 'owner'
+            ? '/owner/dashboard'
+            : '/tenant/dashboard'
+        await router.replace(destination)
       } else {
         // ✅ Better error messages based on error type
         if (result.error?.includes('Email not confirmed')) {
@@ -105,12 +97,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 to-white">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5 }}
-        className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full border border-gray-100"
-      >
+      <div className="bg-white rounded-2xl shadow-xl p-5 sm:p-8 max-w-md w-full border border-gray-100 animate-fade-in">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-gradient-to-r from-slate-700 to-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-md">
             <span className="text-3xl">🏠</span>
@@ -215,7 +202,7 @@ export default function Login() {
             </Link>
           </p>
         </div>
-      </motion.div>
+      </div>
     </div>
   )
 }

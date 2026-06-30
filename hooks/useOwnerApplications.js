@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useOwnerApplications(property) {
+export function useOwnerApplications(property, enabled = true) {
   const [applications, setApplications] = useState([]);
 
   const loadApplications = async () => {
@@ -94,9 +94,9 @@ export function useOwnerApplications(property) {
   };
 
   useEffect(() => {
-    if (property?.id) loadApplications();
-  }, [property?.id]);
-  useRealtimeRefresh(`owner-applications-live:${property?.id || 'waiting'}`, ['applications', 'rooms'], loadApplications, Boolean(property?.id));
+    if (property?.id && enabled) loadApplications();
+  }, [property?.id, enabled]);
+  useRealtimeRefresh(`owner-applications-live:${property?.id || 'waiting'}`, ['applications', 'rooms'], loadApplications, Boolean(property?.id && enabled));
 
   return { applications, approveApplication, rejectApplication, resendPasswordEmail };
 }

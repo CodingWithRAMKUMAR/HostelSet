@@ -34,6 +34,19 @@ export function AdminProvider({ children }) {
   const loadGlobalStats = useCallback(async (background = false) => {
     if (!background) setStatsLoading(true);
     try {
+      const { data: aggregateStats, error: aggregateError } = await supabase.rpc('get_admin_dashboard_stats');
+      if (!aggregateError && aggregateStats) {
+        setGlobalStats({
+          totalProperties: Number(aggregateStats.totalProperties || 0),
+          totalTenants: Number(aggregateStats.totalTenants || 0),
+          totalRevenue: Number(aggregateStats.totalRevenue || 0),
+          pendingComplaints: Number(aggregateStats.pendingComplaints || 0),
+          pendingVacates: Number(aggregateStats.pendingVacates || 0),
+        });
+        return;
+      }
+
+      // Safe rollout fallback while the performance migration is being applied.
       const [{ count: propCount }, { count: tenantCount }, { data: payments }, { count: complaintCount }, { count: vacateCount }] = await Promise.all([
         supabase.from('properties').select('*', { count: 'exact', head: true }),
         supabase.from('tenants').select('*', { count: 'exact', head: true }),

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useOwnerRoomChange(property) {
+export function useOwnerRoomChange(property, enabled = true) {
   const [roomChangeRequests, setRoomChangeRequests] = useState([]);
 
   const loadRoomChangeRequests = async () => {
@@ -45,9 +45,9 @@ export function useOwnerRoomChange(property) {
   };
 
   useEffect(() => {
-    if (property?.id) loadRoomChangeRequests();
-  }, [property?.id]);
-  useRealtimeRefresh(`owner-room-changes-live:${property?.id || 'waiting'}`, ['room_change_requests', 'tenants', 'rooms'], loadRoomChangeRequests, Boolean(property?.id));
+    if (property?.id && enabled) loadRoomChangeRequests();
+  }, [property?.id, enabled]);
+  useRealtimeRefresh(`owner-room-changes-live:${property?.id || 'waiting'}`, ['room_change_requests', 'tenants', 'rooms'], loadRoomChangeRequests, Boolean(property?.id && enabled));
 
   return { roomChangeRequests, approveRoomChange, rejectRoomChange };
 }
