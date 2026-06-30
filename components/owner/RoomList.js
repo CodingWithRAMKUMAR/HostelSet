@@ -27,6 +27,7 @@ export default function RoomList({
         const sharing = getSharingDetails(room.sharing_type);
         const occupants = tenants.filter(t => t.room_id === room.id);
         const upcomingVacate = vacateRequests.find(v => v.room_id === room.id && v.status === 'approved');
+        const vacateDays = upcomingVacate?.expected_check_out ? Math.ceil((new Date(`${upcomingVacate.expected_check_out}T23:59:59`) - new Date()) / 86400000) : null;
         const monthlyIncome = roomMonthlyIncome[room.id] || 0;
 
         return (
@@ -60,7 +61,7 @@ export default function RoomList({
                   )}
                   {upcomingVacate && (
                     <span className="mt-1 text-xs text-amber-600 font-medium">
-                      🚪 Vacating soon
+                      {vacateDays > 1 ? `Vacates in ${vacateDays} days` : vacateDays === 1 ? 'Vacates tomorrow' : 'Ready to vacate'}
                     </span>
                   )}
                 </div>

@@ -106,7 +106,8 @@ export default function PropertyDetail() {
         }
       }
 
-      await Promise.all([loadVacateInfo(propertyData), loadApprovedPrebookings(propertyData)])
+      loadVacateInfo(roomsData || [])
+      loadApprovedPrebookings(roomsData || [])
     } catch (error) {
       console.error('Error:', error)
       if (!background) setLoadError('We could not load this property. Please check your connection and try again.')
@@ -115,33 +116,22 @@ export default function PropertyDetail() {
     }
   }
 
-  const loadVacateInfo = async (propertyData) => {
-    if (!propertyData) return
-    const { data: vacates } = await supabase
-      .from('check_out_requests')
-      .select('id, room_id, expected_check_out')
-      .eq('property_id', propertyData.id)
-      .eq('status', 'approved')
+  const loadVacateInfo = (roomRows) => {
     const info = {}
     const today = new Date()
-    vacates?.forEach(v => {
-      const vacateDate = new Date(v.expected_check_out)
+    roomRows.forEach(room => {
+      if (!room.next_vacate_date) return
+      const vacateDate = new Date(`${room.next_vacate_date}T23:59:59`)
       if (Number.isNaN(vacateDate.getTime())) return
       const daysLeft = Math.ceil((vacateDate - today) / (1000 * 60 * 60 * 24))
-      info[v.room_id] = { daysLeft, vacateRequestId: v.id, vacateDate: v.expected_check_out }
+      info[room.id] = { daysLeft, vacateDate: room.next_vacate_date }
     })
     setVacateInfo(info)
   }
 
-  const loadApprovedPrebookings = async (propertyData) => {
-    if (!propertyData) return
-    const { data: approved } = await supabase
-      .from('pre_bookings')
-      .select('room_id')
-      .eq('property_id', propertyData.id)
-      .eq('status', 'approved')
+  const loadApprovedPrebookings = (roomRows) => {
     const map = {}
-    approved?.forEach(p => { map[p.room_id] = true })
+    roomRows.forEach(room => { if (room.has_approved_prebooking) map[room.id] = true })
     setApprovedPrebookings(map)
   }
 
@@ -178,7 +168,7 @@ export default function PropertyDetail() {
     return signed.path
   }
 
-  useRealtimeRefresh(`public-property-live:${id || 'waiting'}`, ['properties', 'rooms', 'owner_settings', 'check_out_requests', 'pre_bookings'], loadData, Boolean(id), 120)
+  useRealtimeRefresh(`public-property-live:${id || 'waiting'}`, ['properties', 'rooms', 'owner_settings'], loadData, Boolean(id), 120)
 
   // ========== Apply Form Validation (simplified) ==========
   const validatePhone = async (phone) => {

@@ -8,8 +8,10 @@ export function useVacate(tenant, setTenant) {
 
   const loadVacate = async () => {
     if (!tenant?.id) return;
-    const { data } = await supabase.from('check_out_requests').select('*').eq('tenant_id', tenant.id).in('status', ['pending', 'approved']).maybeSingle();
-    setExistingVacateRequest(data);
+    const { data, error } = await supabase.from('check_out_requests').select('*').eq('tenant_id', tenant.id).in('status', ['pending', 'approved']).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (error) { console.error('Vacate status load failed:', error); return; }
+    setExistingVacateRequest(data || null);
+    if (data?.status === 'approved') setTenant(prev => ({ ...prev, status:'notice_period', check_out_requested:true, notice_period_end:data.expected_check_out }));
   };
 
   const cancelVacateRequest = async () => {
@@ -42,8 +44,8 @@ export function useVacate(tenant, setTenant) {
   useEffect(() => {
     if (!tenant?.id) return;
     loadVacate();
-    const channel = supabase.channel('vacate-tenant-isolated')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'check_out_requests' }, (payload) => {
+    const channel = supabase.channel(`vacate-tenant-isolated:${tenant.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'check_out_requests', filter:`tenant_id=eq.${tenant.id}` }, (payload) => {
         const changedRequest = payload.new || payload.old;
         if (changedRequest?.tenant_id === tenant.id) {
           if (payload.eventType === 'UPDATE') {
@@ -56,5 +58,5 @@ export function useVacate(tenant, setTenant) {
     return () => { supabase.removeChannel(channel); };
   }, [tenant?.id]);
 
-  return { existingVacateRequest, cancelVacateRequest, isSubmitting };
+  return { existingVacateRequest, cancelVacateRequest, isSubmitting, refreshVacate: loadVacate };
 }

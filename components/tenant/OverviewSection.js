@@ -1,6 +1,6 @@
 import { formatCurrency, formatDate, getSharingDetails } from '../../lib/utils';
 
-export default function OverviewSection({ tenant, room, property, owner, pendingRoomChangeRequest, lastRoomChangeDecision }) {
+export default function OverviewSection({ tenant, room, property, owner, pendingRoomChangeRequest, lastRoomChangeDecision, vacateRequest }) {
   if (!tenant || !room) {
     return <div className="text-center py-12 text-gray-500">Loading your profile...</div>;
   }
@@ -33,19 +33,25 @@ export default function OverviewSection({ tenant, room, property, owner, pending
               {tenant.status === 'active' ? 'Active' : 'Notice Period'}
             </span>
           </div>
-          {pendingRoomChangeRequest && (
+          {vacateRequest && (
+            <div className={`mt-3 rounded-lg border p-3 text-sm ${vacateRequest.status === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+              <strong>{vacateRequest.status === 'approved' ? 'Vacate request approved.' : 'Vacate request pending approval.'}</strong>
+              <div className="mt-1">Expected checkout: {formatDate(vacateRequest.expected_check_out)}</div>
+            </div>
+          )}
+          {!vacateRequest && pendingRoomChangeRequest && (
             <div className="mt-3 p-2 bg-blue-50 rounded-lg text-sm text-blue-700">
               ⏳ Room change request pending approval to Room {pendingRoomChangeRequest.new_room_id}.
             </div>
           )}
-          {!pendingRoomChangeRequest && lastRoomChangeDecision?.status === 'rejected' && (
+          {!vacateRequest && !pendingRoomChangeRequest && lastRoomChangeDecision?.status === 'rejected' && (
             <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-700">
               <strong>Room change rejected.</strong>
               <div className="mt-1">{lastRoomChangeDecision.rejection_reason || 'The owner did not provide a reason.'}</div>
               <div className="text-xs mt-2 text-red-500">You can submit another room-change request.</div>
             </div>
           )}
-          {!pendingRoomChangeRequest && lastRoomChangeDecision?.status === 'approved' && (
+          {!vacateRequest && !pendingRoomChangeRequest && lastRoomChangeDecision?.status === 'approved' && (
             <div className="mt-3 p-3 bg-green-50 border border-green-100 rounded-lg text-sm text-green-700">
               Your latest room-change request was approved.
             </div>

@@ -41,7 +41,7 @@ function TenantDashboardContent() {
   const { tenant, room, property, owner, roommates, loading, realtimeConnected, roommateVacateAlert, refreshData, setTenant } = core;
   
   const { notices = [] } = useNotices(tenant);
-  const { existingVacateRequest, cancelVacateRequest } = useVacate(tenant, setTenant);
+  const { existingVacateRequest, cancelVacateRequest, refreshVacate } = useVacate(tenant, setTenant);
   const { complaints = [], submitComplaint: hookSubmitComplaint, deleteComplaint: hookDeleteComplaint } = useComplaints(tenant);
   
   const { 
@@ -160,6 +160,7 @@ function TenantDashboardContent() {
       })
       if (ratingError) console.error('Rating submit error:', ratingError)
       toast.success('Vacate request submitted! Owner will review it.')
+      await refreshVacate()
       setShowVacateModal(false)
       setVacateForm({ expected_date:'', reason:'', rating:0, review:'' })
       await refreshData(true)
@@ -318,7 +319,7 @@ function TenantDashboardContent() {
             <button disabled className="w-full sm:w-auto border-2 border-gray-300/50 text-gray-500 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold cursor-not-allowed">⏳ Room Change Pending</button>
           )}
           {existingVacateRequest ? (
-            <button onClick={cancelVacateRequest} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-yellow-500/50 text-yellow-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition disabled:opacity-50">❌ Cancel Vacate Request</button>
+            <button onClick={cancelVacateRequest} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-yellow-500/50 text-yellow-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition disabled:opacity-50">{existingVacateRequest.status === 'approved' ? '✓ Vacate Approved · Cancel' : '⏳ Vacate Request Pending · Cancel'}</button>
           ) : (
             <button onClick={() => setShowVacateModal(true)} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-red-300/50 text-red-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50">🚪 Request Vacate</button>
           )}
@@ -346,6 +347,7 @@ function TenantDashboardContent() {
             owner={owner}
             pendingRoomChangeRequest={pendingRoomChangeRequest}
             lastRoomChangeDecision={lastRoomChangeDecision}
+            vacateRequest={existingVacateRequest}
           />
         )}
         {activeTab === 'roommates' && <RoommatesSection roommates={roommates} room={room} />}

@@ -17,6 +17,7 @@ export function useOwnerVacate(property, enabled = true) {
     const { error } = await supabase.rpc('approve_vacate_request', { p_request_id:requestId, p_tenant_id:tenantId, p_expected_check_out:expectedDate });
     if (error) { toast.error('Failed to approve'); return false; }
     toast.success('Vacate request approved');
+    await loadVacateRequests();
     return true;
   };
 
