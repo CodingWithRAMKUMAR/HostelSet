@@ -9,21 +9,19 @@ export default function App({ Component, pageProps }) {
   const [authorized, setAuthorized] = useState(false)
 
   useEffect(() => {
-    const checkSession = () => {
+    let active = true
+    const checkSession = async () => {
       try {
-        const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true'
         const protectedRoutes = ['/owner', '/tenant', '/admin']
         const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
-
-        if (isProtectedRoute) {
-          if (isLoggedIn) {
-            setAuthorized(true)
-          } else if (router.pathname !== '/login') {
-            router.replace('/login')
-          }
-        } else {
-          setAuthorized(true)
-        }
+        if (!isProtectedRoute) { if (active) setAuthorized(true); return }
+        // getSession reads the persisted session locally and avoids an extra
+        // network round-trip on every dashboard navigation.
+        const { supabase } = await import('../lib/supabase')
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!active) return
+        if (session) setAuthorized(true)
+        else if (router.pathname !== '/login') router.replace('/login')
       } catch (e) {
         // If accessing localStorage fails, treat as not authorized for protected routes
         const protectedRoutes = ['/owner', '/tenant', '/admin']
@@ -35,6 +33,7 @@ export default function App({ Component, pageProps }) {
 
     setAuthorized(false)
     checkSession()
+    return () => { active = false }
   }, [router.pathname])
 
   return (

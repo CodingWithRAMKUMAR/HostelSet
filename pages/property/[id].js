@@ -12,6 +12,7 @@ export default function PropertyDetail() {
   const [property, setProperty] = useState(null)
   const [rooms, setRooms] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [selectedRoom, setSelectedRoom] = useState(null)
   const [showApplyModal, setShowApplyModal] = useState(false)
   const [applyForm, setApplyForm] = useState({ name: '', phone: '', email: '', message: '' })
@@ -69,19 +70,15 @@ export default function PropertyDetail() {
 
   const loadData = async () => {
     setLoading(true)
+    setLoadError('')
     try {
-      const { data: propertyData } = await supabase
-        .from('properties')
-        .select('*')
-        .eq('id', id)
-        .single()
+      const [{ data: propertyData, error: propertyError }, { data: roomsData, error: roomsError }] = await Promise.all([
+        supabase.from('properties').select('*').eq('id', id).eq('is_active', true).single(),
+        supabase.from('rooms').select('*').eq('property_id', id).order('room_number'),
+      ])
+      if (propertyError) throw propertyError
+      if (roomsError) throw roomsError
       setProperty(propertyData)
-
-      const { data: roomsData } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('property_id', id)
-        .order('room_number')
       setRooms(roomsData || [])
 
       if (propertyData) {
@@ -95,7 +92,7 @@ export default function PropertyDetail() {
             upi_id: settingsData.upi_id || propertyData.owner_upi_id || '',
             advance_months: settingsData.advance_months || 1,
             joining_fee: settingsData.joining_fee || 0,
-            pre_booking_fee: settingsData.pre_booking_fee || 999,
+            pre_booking_fee: settingsData.pre_booking_fee ?? 999,
           })
         } else if (propertyData.owner_upi_id) {
           setOwnerSettings({
@@ -107,10 +104,10 @@ export default function PropertyDetail() {
         }
       }
 
-      await loadVacateInfo(propertyData)
-      await loadApprovedPrebookings(propertyData)
+      await Promise.all([loadVacateInfo(propertyData), loadApprovedPrebookings(propertyData)])
     } catch (error) {
       console.error('Error:', error)
+      setLoadError('We could not load this property. Please check your connection and try again.')
     } finally {
       setLoading(false)
     }
@@ -120,7 +117,7 @@ export default function PropertyDetail() {
     if (!propertyData) return
     const { data: vacates } = await supabase
       .from('check_out_requests')
-      .select('id, room_id, tenant_name, expected_check_out')
+      .select('id, room_id, expected_check_out')
       .eq('property_id', propertyData.id)
       .eq('status', 'approved')
     const info = {}
@@ -129,7 +126,7 @@ export default function PropertyDetail() {
       const vacateDate = new Date(v.expected_check_out)
       const daysLeft = Math.ceil((vacateDate - today) / (1000 * 60 * 60 * 24))
       if (daysLeft > 0) {
-        info[v.room_id] = { daysLeft, tenantName: v.tenant_name, vacateRequestId: v.id, vacateDate: v.expected_check_out }
+        info[v.room_id] = { daysLeft, vacateRequestId: v.id, vacateDate: v.expected_check_out }
       }
     })
     setVacateInfo(info)
@@ -147,12 +144,9 @@ export default function PropertyDetail() {
     setApprovedPrebookings(map)
   }
 
-  // --- NEW: fixed security deposit amount ---
-  const SECURITY_DEPOSIT = 3000
-
   const calculateTotalAmount = () => {
-    // Only security deposit, no advance or joining fee
-    return SECURITY_DEPOSIT
+    const room = rooms.find(item => item.id === selectedRoom)
+    return Math.max(0, Number(room?.deposit_amount || 0))
   }
 
   const handleFileChange = (e, setter) => {
@@ -165,15 +159,12 @@ export default function PropertyDetail() {
     setter(file)
   }
 
-  const uploadFile = async (file, prefix) => {
-    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${file.name.split('.').pop()}`
-    const { data, error } = await supabase.storage
-      .from('tenant-documents')
-      .upload(fileName, file, { cacheControl: '3600' })
-    if (error) throw error
-    const { data: { publicUrl } } = supabase.storage.from('tenant-documents').getPublicUrl(fileName)
-    return publicUrl
-  }
+  const fileToPayload = file => new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve({ data: reader.result, type: file.type, name: file.name })
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}`))
+    reader.readAsDataURL(file)
+  })
 
   // ========== Apply Form Validation (simplified) ==========
   const validatePhone = async (phone) => {
@@ -185,47 +176,6 @@ export default function PropertyDetail() {
     }
     setCheckingPhone(true)
     try {
-      // Check for existing user with this phone
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('phone', cleanPhone)
-        .maybeSingle()
-      if (existingUser) {
-        setPhoneError('This phone number is already registered. Please login.')
-        setPhoneValid(false)
-        return false
-      }
-
-      // Check for already approved applications (not pending)
-      const { data: approvedApp } = await supabase
-        .from('applications')
-        .select('id')
-        .eq('phone', cleanPhone)
-        .eq('property_id', id)
-        .eq('status', 'approved')
-        .maybeSingle()
-      if (approvedApp) {
-        setPhoneError('You already have an approved application for this property.')
-        setPhoneValid(false)
-        return false
-      }
-
-      // Check if the user is already a tenant (active) in this property
-      const { data: existingTenant } = await supabase
-        .from('tenants')
-        .select('id')
-        .eq('phone', cleanPhone)
-        .eq('property_id', id)
-        .eq('status', 'active')
-        .maybeSingle()
-      if (existingTenant) {
-        setPhoneError('You are already a tenant in this property.')
-        setPhoneValid(false)
-        return false
-      }
-
-      // No blocking record found
       setPhoneError('')
       setPhoneValid(true)
       return true
@@ -247,43 +197,6 @@ export default function PropertyDetail() {
     }
     setCheckingEmail(true)
     try {
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', email)
-        .maybeSingle()
-      if (existingUser) {
-        setEmailError('This email is already registered. Please login.')
-        setEmailValid(false)
-        return false
-      }
-
-      const { data: approvedApp } = await supabase
-        .from('applications')
-        .select('id')
-        .eq('email', email)
-        .eq('property_id', id)
-        .eq('status', 'approved')
-        .maybeSingle()
-      if (approvedApp) {
-        setEmailError('You already have an approved application for this property.')
-        setEmailValid(false)
-        return false
-      }
-
-      const { data: existingTenant } = await supabase
-        .from('tenants')
-        .select('id')
-        .eq('email', email)
-        .eq('property_id', id)
-        .eq('status', 'active')
-        .maybeSingle()
-      if (existingTenant) {
-        setEmailError('You are already a tenant in this property.')
-        setEmailValid(false)
-        return false
-      }
-
       setEmailError('')
       setEmailValid(true)
       return true
@@ -323,6 +236,10 @@ export default function PropertyDetail() {
     }
     setPrebookCheckingPhone(true)
     try {
+      // Duplicate/account checks are enforced by the server without exposing PII.
+      setPrebookPhoneError('')
+      setPrebookPhoneValid(true)
+      return true
       const { data: existingUser } = await supabase
         .from('users')
         .select('id')
@@ -372,6 +289,10 @@ export default function PropertyDetail() {
     }
     setPrebookCheckingEmail(true)
     try {
+      // Duplicate/account checks are enforced by the server without exposing PII.
+      setPrebookEmailError('')
+      setPrebookEmailValid(true)
+      return true
       const { data: existingUser } = await supabase
         .from('users')
         .select('id')
@@ -485,6 +406,44 @@ export default function PropertyDetail() {
       toast.error('Please upload payment screenshot')
       return
     }
+    if (!transactionId.trim()) {
+      toast.error('Enter the UPI transaction/reference ID')
+      return
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) {
+      toast.error('Use a JPEG, PNG, WEBP, or PDF file')
+      e.target.value = ''
+      return
+    }
+    if (!ownerSettings.upi_id) {
+      toast.error('Owner payment details are not configured yet.')
+      return
+    }
+    setPaymentSubmitting(true)
+    try {
+      const [idPayload, photoPayload, paymentPayload] = await Promise.all([
+        fileToPayload(idProof), fileToPayload(photo), fileToPayload(paymentScreenshot),
+      ])
+      const response = await fetch('/api/visitor/submit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'application', propertyId: id, roomId: selectedRoom, form: applyForm,
+          files: { idProof: idPayload, photo: photoPayload, payment: paymentPayload }, transactionId,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Submission failed')
+      toast.success('Application submitted. You will receive a password setup email after approval.', { duration: 8000 })
+      setShowPaymentModal(false)
+      setApplyForm({ name: '', phone: '', email: '', message: '' })
+      setIdProof(null); setPhoto(null); setPaymentScreenshot(null); setTransactionId('')
+      setTimeout(() => router.push('/login'), 8000)
+    } catch (error) {
+      toast.error(error.message || 'Application submission failed')
+    } finally {
+      setPaymentSubmitting(false)
+    }
+    return
     setPaymentSubmitting(true)
     try {
       const screenshotUrl = await uploadFile(paymentScreenshot, 'pay')
@@ -710,8 +669,37 @@ export default function PropertyDetail() {
       return
     }
     const cleanPhone = cleanPhoneNumber(prebookForm.phone)
+    if (!ownerSettings.upi_id) {
+      toast.error('Owner payment details are not configured yet.')
+      return
+    }
+    if (!prebookTransactionId.trim()) {
+      toast.error('Enter the UPI transaction/reference ID')
+      return
+    }
     setPrebookPaymentSubmitting(true)
     try {
+      const [idPayload, photoPayload, paymentPayload] = await Promise.all([
+        fileToPayload(prebookIdProof), fileToPayload(prebookPhoto), fileToPayload(prebookPaymentScreenshot),
+      ])
+      const response = await fetch('/api/visitor/submit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'prebooking', propertyId: id, roomId: prebookRoomId, form: prebookForm,
+          expectedMoveIn: prebookForm.move_in_date,
+          files: { idProof: idPayload, photo: photoPayload, payment: paymentPayload },
+          transactionId: prebookTransactionId,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Submission failed')
+      toast.success('Pre-booking request sent! Owner will verify payment and approve.')
+      setShowPrebookPaymentModal(false)
+      setPrebookForm({ name: '', phone: '', email: '', move_in_date: '', message: '' })
+      setPrebookRoomId(null); setPrebookIdProof(null); setPrebookPhoto(null)
+      setPrebookPaymentScreenshot(null); setPrebookTransactionId(''); setAgreeTerms(false)
+      return
+
       const idProofUrl = await uploadFile(prebookIdProof, 'prebook_id')
       const photoUrl = await uploadFile(prebookPhoto, 'prebook_photo')
       const screenshotUrl = await uploadFile(prebookPaymentScreenshot, 'prebook_pay')
@@ -782,6 +770,10 @@ export default function PropertyDetail() {
     )
   }
 
+  if (loadError) {
+    return <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50"><div className="max-w-md text-center bg-white p-8 rounded-2xl border"><p className="text-red-600 mb-5">{loadError}</p><button onClick={loadData} className="btn-primary">Try again</button></div></div>
+  }
+
   if (!property) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-white">
@@ -830,7 +822,7 @@ export default function PropertyDetail() {
           <div className="flex flex-wrap items-center gap-4 text-gray-500">
             <span className="flex items-center gap-1">📍 {property.address}, {property.city}</span>
             <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-            <span className="flex items-center gap-1">⭐ {property.rating || '4.8'} ({property.total_reviews || 120} reviews)</span>
+            {property.rating && property.total_reviews > 0 && <span className="flex items-center gap-1">⭐ {property.rating} ({property.total_reviews} reviews)</span>}
           </div>
         </div>
 

@@ -11,6 +11,7 @@ export default function PropertiesPage() {
   const [selectedCity, setSelectedCity] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
     loadProperties()
@@ -35,11 +36,12 @@ export default function PropertiesPage() {
 
   const loadProperties = async () => {
     setLoading(true)
+    setLoadError('')
     try {
       // Fetch all active properties
       const { data: propertiesData, error: propError } = await supabase
         .from('properties')
-        .select('*')
+        .select('id, name, city, photos, property_type, address')
         .eq('is_active', true)
 
       if (propError) throw propError
@@ -55,7 +57,7 @@ export default function PropertiesPage() {
       const propertyIds = propertiesData.map(p => p.id)
       const { data: roomsData, error: roomsError } = await supabase
         .from('rooms')
-        .select('*')
+        .select('property_id, monthly_rent, capacity, current_occupants')
         .in('property_id', propertyIds)
 
       if (roomsError) throw roomsError
@@ -82,6 +84,7 @@ export default function PropertiesPage() {
       setFilteredProperties(propertiesWithStats)
     } catch (error) {
       console.error('Error loading properties:', error)
+      setLoadError('Properties could not be loaded. Check your connection and try again.')
     } finally {
       setLoading(false)
     }
@@ -137,6 +140,8 @@ export default function PropertiesPage() {
           <div className="flex justify-center py-20">
             <div className="w-10 h-10 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
           </div>
+        ) : loadError ? (
+          <div className="text-center py-20"><p className="text-red-600 mb-4">{loadError}</p><button onClick={loadProperties} className="btn-primary">Try again</button></div>
         ) : filteredProperties.length === 0 ? (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">🏠</div>

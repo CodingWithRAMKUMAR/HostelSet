@@ -81,6 +81,18 @@ export interface PaymentHistoryRentReminderFields {
   rent_id: string | null;
 }
 
+export interface VisitorApplicationSecurityFields {
+  payment_screenshot: string | null;
+  payment_transaction_id: string | null;
+  payment_amount: number;
+}
+
+export interface ApprovalResult {
+  success: boolean;
+  tenant_id: string;
+  email: string;
+}
+
 export type RentReminderTables = {
   rent_records: {
     Row: RentRecordRow;
@@ -127,6 +139,14 @@ export type RentReminderTables = {
 };
 
 export type RentReminderFunctions = {
+  approve_application_atomic: {
+    Args: { p_application_id: string };
+    Returns: ApprovalResult;
+  };
+  approve_prebooking_atomic: {
+    Args: { p_booking_id: string; p_user_id: string };
+    Returns: ApprovalResult;
+  };
   run_rent_reminder_scheduler: {
     Args: { p_reference_time?: string };
     Returns: RentReminderSchedulerResult;

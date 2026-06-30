@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, signPrivateDocumentFields } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
@@ -14,7 +14,8 @@ export function useOwnerApplications(property, enabled = true) {
       .eq('property_id', property.id)
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
-    setApplications(data || []);
+    const signed = await Promise.all((data || []).map(item => signPrivateDocumentFields(item, ['id_proof', 'photo', 'payment_screenshot'])));
+    setApplications(signed);
   };
 
   const approveApplication = async (appId, appData) => {
@@ -24,46 +25,17 @@ export function useOwnerApplications(property, enabled = true) {
     }
 
     try {
-      let userId = appData.user_id || null;
-
-      // --- CORRECT LOGIC: If application already has a user_id, use it! ---
-      if (!userId) {
-        // If no user_id is attached, try to find the user via phone or email
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('id')
-          .or(`phone.eq.${appData.phone},email.eq.${appData.email}`)
-          .maybeSingle();
-
-        if (existingUser) {
-          userId = existingUser.id;
-        } else {
-          // Fallback if somehow the user truly doesn't exist (rare case)
-          toast.error('User record not found for this applicant. Please ensure they registered.');
-          return;
-        }
-      }
-
-      // --- PROCEED WITH ATOMIC APPROVAL (This will now pass!) ---
-      const { data, error } = await supabase.rpc('create_tenant_from_application', {
-        p_user_id: userId,
-        p_app_id: appId,
-        p_property_id: appData.property_id,
-        p_room_id: appData.room_id,
-        p_name: appData.name,
-        p_phone: appData.phone,
-        p_email: appData.email,
-        p_rent_amount: appData.rooms?.monthly_rent || 0,
-        p_move_in_date: appData.expected_move_in || new Date().toISOString().split('T')[0]
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Your session expired. Please log in again.');
+      const response = await fetch('/api/requests/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ type: 'application', id: appId }),
       });
-      
-      if (error) throw error;
-      if (data?.success) {
-        toast.success('Application approved! Tenant created.');
-        await loadApplications();
-      } else {
-        toast.error(data?.message || 'Failed to create tenant');
-      }
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Approval failed');
+      toast.success(result.emailSent ? 'Application approved and password email sent.' : 'Application approved. Use Resend if the email was not delivered.');
+      await loadApplications();
     } catch (error) {
       console.error('Approve error:', error);
       toast.error('Failed to approve: ' + error.message);

@@ -12,6 +12,7 @@ export default function ResetPassword() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    let resolved = false
     // Supabase automatically handles the token from the URL hash
     // We just need to listen for the session to be set
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -19,9 +20,11 @@ export default function ResetPassword() {
         if (event === 'PASSWORD_RECOVERY') {
           // ✅ Session is now set, user can update password
           setSessionReady(true)
+          resolved = true
         } else if (event === 'SIGNED_IN' && session) {
           // ✅ Also handles cases where session comes in as SIGNED_IN
           setSessionReady(true)
+          resolved = true
         }
       }
     )
@@ -29,11 +32,12 @@ export default function ResetPassword() {
     // Fallback: check if session already exists (page reload case)
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
+        resolved = true
         setSessionReady(true)
       } else {
         // Give it 3 seconds to detect token from URL
         setTimeout(() => {
-          if (!sessionReady) {
+          if (!resolved) {
             setError('Invalid or expired reset link. Please request a new one.')
           }
         }, 3000)
