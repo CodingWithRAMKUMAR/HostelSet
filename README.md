@@ -19,6 +19,11 @@ HostelSet is a Next.js and Supabase application for hostel owners, tenants and p
 
 Never commit `.env.local` or production secrets.
 
+The `process-rent-reminders` Supabase Edge Function requires its own Function
+secrets: `BREVO_API_KEY`, `RENT_REMINDER_SCHEDULER_SECRET`, and the four
+`BREVO_RENT_*_TEMPLATE_ID` values documented in
+`supabase/functions/process-rent-reminders/README.md`.
+
 ## Payments and membership
 
 - Tenant rent is paid directly to the owner's configured UPI ID or phone number. The tenant uploads a screenshot and the owner/admin confirms it.

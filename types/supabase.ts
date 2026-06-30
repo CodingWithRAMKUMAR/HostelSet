@@ -59,6 +59,7 @@ export interface RentReminderSchedulerResult {
   materialized_rents: number;
   weekly_reminders_scheduled: number;
   stale_locks_recovered: number;
+  stale_reminders_cancelled: number;
   ready_for_delivery: number;
 }
 

@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.39.8";
-import { UnconfiguredEmailService } from "../_shared/email-service.ts";
+import { createBrevoEmailService } from "../_shared/brevo-email-service.ts";
 import { RentReminderService } from "../_shared/rent-reminder-service.ts";
 import { SupabaseRentReminderRepository } from "../_shared/supabase-rent-reminder-repository.ts";
 
@@ -13,6 +13,9 @@ function json(body: unknown, status = 200): Response {
 function authorized(request: Request): boolean {
   const schedulerSecret = Deno.env.get("RENT_REMINDER_SCHEDULER_SECRET");
   if (!schedulerSecret) return false;
+
+  const schedulerHeader = request.headers.get("x-scheduler-secret");
+  if (schedulerHeader) return schedulerHeader === schedulerSecret;
 
   const authorization = request.headers.get("authorization") ?? "";
   return authorization === `Bearer ${schedulerSecret}`;
@@ -39,11 +42,10 @@ Deno.serve(async (request) => {
     });
     const repository = new SupabaseRentReminderRepository(client);
 
-    // Delivery intentionally remains disabled. Replace only this dependency
-    // with a provider implementation when Brevo integration is authorized.
+    const emailService = createBrevoEmailService((name) => Deno.env.get(name));
     const service = new RentReminderService(
       repository,
-      new UnconfiguredEmailService(),
+      emailService,
     );
     const result = await service.run();
 

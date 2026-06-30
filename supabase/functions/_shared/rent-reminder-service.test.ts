@@ -10,6 +10,7 @@ const schedulerResult: ReminderSchedulerResult = {
   materialized_rents: 1,
   weekly_reminders_scheduled: 0,
   stale_locks_recovered: 0,
+  stale_reminders_cancelled: 0,
   ready_for_delivery: 1,
 };
 
