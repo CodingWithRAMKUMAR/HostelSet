@@ -1,4 +1,12 @@
-export default function SettingsModal({ settings, setSettings, onSave, onCancel, isSubmitting }) {
+import { useState } from 'react'
+import LocationPicker from '../../maps/LocationPicker'
+
+export default function SettingsModal({ settings, setSettings, property, onSave, onCancel, isSubmitting }) {
+  const [location, setLocation] = useState(property?.latitude ? {
+    latitude: property.latitude, longitude: property.longitude,
+    formatted_address: property.formatted_address || property.address,
+    location_place_id: property.location_place_id || null,
+  } : null)
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onCancel}>
       <div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -58,8 +66,12 @@ export default function SettingsModal({ settings, setSettings, onSave, onCancel,
             />
             <p className="text-xs text-gray-400 mt-1">If provided, tenants can also pay using this phone number as UPI ID.</p>
           </div>
+          <div className="border-t pt-4">
+            <h3 className="mb-3 font-semibold text-slate-800">Property map location</h3>
+            <LocationPicker value={location} onChange={setLocation} />
+          </div>
           <div className="flex gap-3 mt-6">
-            <button onClick={onSave} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
+            <button onClick={() => onSave(location)} disabled={isSubmitting || !location?.latitude} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
               {isSubmitting ? 'Saving...' : 'Save Settings'}
             </button>
             <button onClick={onCancel} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">

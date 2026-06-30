@@ -310,11 +310,21 @@ function OwnerDashboardContent() {
   const getRoomNumberById = (roomId) => { const room = rooms.find(r => r.id === roomId); return room ? room.room_number : 'N/A' }
   const getTenantsInRoom = (roomId) => tenants.filter(t => t.room_id === roomId)
 
-  const handleSaveSettings = async () => {
+  const handleSaveSettings = async (location) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
       await saveSettings(settings);
+      if (location?.latitude && property?.id) {
+        const { error } = await supabase.from('properties').update({
+          latitude: location.latitude,
+          longitude: location.longitude,
+          formatted_address: location.formatted_address || property.address,
+          location_place_id: location.location_place_id || null,
+          location_verified: false,
+        }).eq('id', property.id).eq('owner_id', property.owner_id);
+        if (error) throw error;
+      }
       toast.success('Settings saved');
       setShowSettingsModal(false);
     } catch (error) {
@@ -483,7 +493,7 @@ function OwnerDashboardContent() {
 
       {/* --- MODALS --- */}
       <AnimatePresence>
-        {showSettingsModal && <SettingsModal settings={settings} setSettings={setSettings} onSave={handleSaveSettings} onCancel={() => setShowSettingsModal(false)} isSubmitting={isSubmitting} />}
+        {showSettingsModal && <SettingsModal settings={settings} setSettings={setSettings} property={property} onSave={handleSaveSettings} onCancel={() => setShowSettingsModal(false)} isSubmitting={isSubmitting} />}
         {showAddModal && <AddTenantModal formData={formData} setFormData={setFormData} rooms={rooms} onAdd={() => addTenant(isSubmitting, setIsSubmitting)} onCancel={() => setShowAddModal(false)} isSubmitting={isSubmitting} />}
         {showRoomModal && <AddRoomModal roomForm={roomForm} setRoomForm={setRoomForm} sharingTypes={sharingTypes} onAdd={() => addRoom(isSubmitting, setIsSubmitting)} onCancel={() => setShowRoomModal(false)} isSubmitting={isSubmitting} />}
         {showNoticeModal && <PostNoticeModal noticeForm={noticeForm} setNoticeForm={setNoticeForm} onPost={() => postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent)} onCancel={() => setShowNoticeModal(false)} isSubmitting={isSubmitting} />}

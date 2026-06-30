@@ -1,4 +1,5 @@
 import '../styles/globals.css'
+import 'leaflet/dist/leaflet.css'
 import { Toaster } from 'react-hot-toast'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'

@@ -19,10 +19,16 @@ export default async function handler(req, res) {
     property_type,
     amenities,
     photos,
+    location,
   } = req.body
 
   if (!email || !password || !phone || !full_name || !property_name || !address || !city) {
     return res.status(400).json({ error: 'Missing required fields' })
+  }
+  const latitude = Number(location?.latitude)
+  const longitude = Number(location?.longitude)
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return res.status(400).json({ error: 'A valid property map location is required' })
   }
 
   const cleanPhone = cleanPhoneNumber(phone)
@@ -77,6 +83,18 @@ export default async function handler(req, res) {
       await supabaseAdmin.auth.admin.deleteUser(userId)
       console.error('Function returned error:', data)
       return res.status(400).json({ error: data?.error || 'Registration failed' })
+    }
+
+    const { error: locationError } = await supabaseAdmin.from('properties').update({
+      latitude,
+      longitude,
+      formatted_address: String(location.formatted_address || address).slice(0, 500),
+      location_place_id: location.location_place_id || null,
+      location_verified: false,
+    }).eq('id', data.property_id).eq('owner_id', userId)
+    if (locationError) {
+      console.error('Property location update error:', locationError)
+      return res.status(500).json({ error: 'Registration completed, but map location could not be saved. Contact support.' })
     }
 
     // Success

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { uploadImage } from '../../lib/supabase'
 import { cleanPhoneNumber } from '../../lib/utils'
 import toast from 'react-hot-toast'
+import LocationPicker from '../../components/maps/LocationPicker'
 
 export default function RegisterProperty() {
   const router = useRouter()
@@ -12,6 +13,7 @@ export default function RegisterProperty() {
   const [uploadingImages, setUploadingImages] = useState(false)
   const [step, setStep] = useState(1)
   const [propertyImages, setPropertyImages] = useState([])
+  const [location, setLocation] = useState(null)
   const [formData, setFormData] = useState({
     name: '',
     ownerName: '',
@@ -84,6 +86,11 @@ export default function RegisterProperty() {
       toast.error('Passwords do not match')
       return
     }
+    if (!location?.latitude || !location?.longitude) {
+      toast.error('Please select the exact property location on the map')
+      setStep(1)
+      return
+    }
 
     setLoading(true)
     try {
@@ -111,6 +118,7 @@ export default function RegisterProperty() {
           property_type: formData.propertyType,
           amenities: formData.amenities,
           photos: propertyImages,
+          location,
         }),
       })
 
@@ -153,10 +161,10 @@ export default function RegisterProperty() {
               <div className="space-y-4">
                 <input name="name" placeholder="Property Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
                 <textarea name="description" placeholder="Property Description" rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} />
-                <input name="address" placeholder="Full Address *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                <input name="address" value={formData.address} placeholder="Full Address *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <input name="city" placeholder="City *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
-                  <input name="pincode" placeholder="Pincode" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} />
+                  <input name="city" value={formData.city} placeholder="City *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                  <input name="pincode" value={formData.pincode} placeholder="Pincode" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} />
                 </div>
                 <select name="propertyType" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange}>
                   <option value="boys">Boys PG</option>
@@ -165,6 +173,7 @@ export default function RegisterProperty() {
                   <option value="professionals">Working Professionals</option>
                 </select>
                 <input name="totalRooms" type="number" placeholder="Total Rooms *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                <LocationPicker value={location} onChange={next => { setLocation(next); setFormData(current => ({ ...current, address: next.formatted_address || current.address, city: next.city || current.city, pincode: next.pincode || current.pincode })) }} />
               </div>
             )}
 
@@ -230,6 +239,7 @@ export default function RegisterProperty() {
                   <div><p className="text-gray-500">Phone:</p><p className="font-semibold text-slate-700">{formData.phone || 'Not entered'}</p></div>
                   <div><p className="text-gray-500">Email:</p><p className="font-semibold text-slate-700">{formData.email || 'Not entered'}</p></div>
                   <div className="md:col-span-2"><p className="text-gray-500">Photos:</p><p className="font-semibold text-slate-700">{propertyImages.length} image(s) uploaded</p></div>
+                  <div className="md:col-span-2"><p className="text-gray-500">Map location:</p><p className="font-semibold text-slate-700">{location?.formatted_address || 'Not selected'}</p></div>
                 </div>
                 <p className="text-gray-400 text-sm text-center mt-4">Click Complete Registration to finish</p>
               </div>

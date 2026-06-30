@@ -3,6 +3,16 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { supabase } from '../lib/supabase'
 import { formatCurrency } from '../lib/utils'
+import NearbyHostelMap from '../components/maps/NearbyHostelMap'
+
+function distanceKm(origin, property) {
+  if (!origin || !Number.isFinite(property.latitude) || !Number.isFinite(property.longitude)) return null
+  const radians = value => value * Math.PI / 180
+  const dLat = radians(property.latitude - origin.latitude)
+  const dLon = radians(property.longitude - origin.longitude)
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(radians(origin.latitude)) * Math.cos(radians(property.latitude)) * Math.sin(dLon / 2) ** 2
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
 
 export default function PropertiesPage() {
   const [properties, setProperties] = useState([])
@@ -12,6 +22,9 @@ export default function PropertiesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const [view, setView] = useState('list')
+  const [userLocation, setUserLocation] = useState(null)
+  const [locationStatus, setLocationStatus] = useState('')
 
   useEffect(() => {
     loadProperties()
@@ -31,8 +44,20 @@ export default function PropertiesPage() {
           (p.city && p.city.toLowerCase().includes(q))
       )
     }
-    setFilteredProperties(filtered)
-  }, [selectedCity, searchQuery, properties])
+    const withDistance = filtered.map(property => ({ ...property, distance: distanceKm(userLocation, property) }))
+    if (userLocation) withDistance.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity))
+    setFilteredProperties(withDistance)
+  }, [selectedCity, searchQuery, properties, userLocation])
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) { setLocationStatus('Location is not supported on this device.'); return }
+    setLocationStatus('Finding your location…')
+    navigator.geolocation.getCurrentPosition(
+      position => { setUserLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude }); setLocationStatus('Showing nearest hostels first.'); setView('map') },
+      () => setLocationStatus('Location permission was not available. You can still search by city.'),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    )
+  }
 
   const loadProperties = async () => {
     setLoading(true)
@@ -41,7 +66,7 @@ export default function PropertiesPage() {
       // Fetch all active properties
       const { data: propertiesData, error: propError } = await supabase
         .from('properties')
-        .select('id, name, city, photos, property_type, address')
+        .select('id, name, city, photos, property_type, address, formatted_address, latitude, longitude, location_verified')
         .eq('is_active', true)
 
       if (propError) throw propError
@@ -131,6 +156,12 @@ export default function PropertiesPage() {
               ))}
             </select>
           </div>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <button onClick={useMyLocation} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Use my location</button>
+            <button onClick={() => setView('list')} className={`rounded-full px-4 py-2 text-sm font-semibold ${view === 'list' ? 'bg-slate-800 text-white' : 'border bg-white'}`}>List</button>
+            <button onClick={() => setView('map')} className={`rounded-full px-4 py-2 text-sm font-semibold ${view === 'map' ? 'bg-slate-800 text-white' : 'border bg-white'}`}>Map</button>
+          </div>
+          {locationStatus && <p className="mt-3 text-sm text-slate-500" role="status">{locationStatus}</p>}
         </div>
       </div>
 
@@ -147,6 +178,8 @@ export default function PropertiesPage() {
             <div className="text-5xl mb-4">🏠</div>
             <p className="text-gray-500">No properties found. Try a different search or city.</p>
           </div>
+        ) : view === 'map' ? (
+          <NearbyHostelMap properties={filteredProperties} userLocation={userLocation} />
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-8">
             {filteredProperties.map((property, index) => (
@@ -184,6 +217,7 @@ export default function PropertiesPage() {
                 <div className="p-5">
                   <h3 className="text-xl font-bold text-slate-800 mb-1">{property.name}</h3>
                   <p className="text-sm text-gray-500 mb-3">{property.city || 'Location not specified'}</p>
+                  {property.distance != null && <p className="mb-3 text-sm font-semibold text-blue-700">{property.distance < 1 ? `${Math.round(property.distance * 1000)} m away` : `${property.distance.toFixed(1)} km away`}</p>}
                   <div className="flex justify-between items-center text-sm text-gray-600 mb-4">
                     <span>🏠 {property.totalRooms} rooms</span>
                     <span>🛏️ {property.occupiedRooms}/{property.totalRooms} occupied</span>
@@ -194,6 +228,7 @@ export default function PropertiesPage() {
                   >
                     View Details →
                   </Link>
+                  {Number.isFinite(property.latitude) && Number.isFinite(property.longitude) && <a href={`https://www.google.com/maps/dir/?api=1&destination=${property.latitude},${property.longitude}`} target="_blank" rel="noreferrer" className="mt-2 block w-full rounded-full border border-slate-300 py-2 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50">Get Directions</a>}
                 </div>
               </motion.div>
             ))}

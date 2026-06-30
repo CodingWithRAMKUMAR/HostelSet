@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency, getSharingDetails, getPropertyTypeLabel, cleanPhoneNumber, formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
+import NearbyHostelMap from '../../components/maps/NearbyHostelMap'
 
 export default function PropertyDetail() {
   const router = useRouter()
@@ -813,6 +814,15 @@ export default function PropertyDetail() {
       </header>
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
+        {Number.isFinite(property.latitude) && Number.isFinite(property.longitude) && (
+          <section className="mb-8" aria-labelledby="property-location-title">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div><h2 id="property-location-title" className="text-xl font-bold text-slate-800">Location</h2><p className="text-sm text-slate-500">{property.formatted_address || property.address}</p></div>
+              <a href={`https://www.google.com/maps/dir/?api=1&destination=${property.latitude},${property.longitude}`} target="_blank" rel="noreferrer" className="rounded-full bg-slate-800 px-5 py-2.5 text-center text-sm font-semibold text-white hover:bg-slate-700">Open Directions</a>
+            </div>
+            <NearbyHostelMap properties={[property]} userLocation={null} />
+          </section>
+        )}
         <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-500 hover:text-slate-800 mb-6 transition group">
           <span className="group-hover:-translate-x-1 transition">←</span> Back to Search
         </button>
