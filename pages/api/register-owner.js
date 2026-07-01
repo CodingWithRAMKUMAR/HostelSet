@@ -1,10 +1,22 @@
 import { supabaseAdmin } from '../../lib/supabase'
 import { cleanPhoneNumber } from '../../lib/utils'
+import { allowPostOnly, enforceRateLimit, getClientIp, requireJson, setPrivateApiResponse } from '../../lib/server/publicApiSecurity'
+
+export const config = { api: { bodyParser: { sizeLimit: '256kb' } } }
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const PROPERTY_TYPES = new Set(['boys', 'girls', 'co-ed'])
+
+function text(value, max) {
+  return typeof value === 'string' ? value.trim().slice(0, max) : ''
+}
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
-  }
+  setPrivateApiResponse(res)
+  if (!allowPostOnly(req, res) || !requireJson(req, res)) return
+  if (!supabaseAdmin) return res.status(503).json({ error: 'Registration service unavailable' })
+  const ip = getClientIp(req)
+  if (!await enforceRateLimit(req, res, { scope: 'owner-registration-ip', identifier: ip, limit: 5, windowSeconds: 3600 })) return
 
   const {
     email,
@@ -22,9 +34,20 @@ export default async function handler(req, res) {
     location,
   } = req.body
 
-  if (!email || !password || !phone || !full_name || !property_name || !address || !city) {
-    return res.status(400).json({ error: 'Missing required fields' })
+  const cleanEmail = text(email, 254).toLowerCase()
+  const cleanName = text(full_name, 120)
+  const cleanPropertyName = text(property_name, 160)
+  const cleanDescription = text(description, 4000)
+  const cleanAddress = text(address, 500)
+  const cleanCity = text(city, 120)
+  const cleanPincode = text(pincode, 12)
+  const cleanPropertyType = PROPERTY_TYPES.has(property_type) ? property_type : 'boys'
+  if (!EMAIL_PATTERN.test(cleanEmail) || !cleanName || !cleanPropertyName || !cleanAddress || !cleanCity || typeof password !== 'string' || password.length < 6 || password.length > 128) {
+    return res.status(400).json({ error: 'Please provide valid registration details' })
   }
+  if (!Array.isArray(amenities) || amenities.length > 30 || amenities.some(item => typeof item !== 'string' || item.length > 80)) return res.status(400).json({ error: 'Invalid amenities' })
+  if (!Array.isArray(photos) || photos.length > 20 || photos.some(item => { try { return new URL(item).protocol !== 'https:' } catch { return true } })) return res.status(400).json({ error: 'Invalid property photos' })
+  if (!await enforceRateLimit(req, res, { scope: 'owner-registration-email', identifier: cleanEmail, limit: 3, windowSeconds: 86400 })) return
   const latitude = Number(location?.latitude)
   const longitude = Number(location?.longitude)
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
@@ -36,22 +59,19 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid phone number' })
   }
 
-  if (!supabaseAdmin) {
-    return res.status(500).json({ error: 'Server configuration error: SUPABASE_SERVICE_ROLE_KEY missing' })
-  }
-
   try {
     // 1. Create Auth user
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
+      email: cleanEmail,
       password,
       email_confirm: true,
-      user_metadata: { full_name, role: 'owner' },
+      user_metadata: { full_name: cleanName, role: 'owner' },
     })
 
     if (authError) {
       console.error('Auth error:', authError)
-      return res.status(500).json({ error: 'Auth error: ' + authError.message })
+      const duplicate = /already|registered|exists/i.test(authError.message || '')
+      return res.status(duplicate ? 409 : 400).json({ error: duplicate ? 'An account already exists for these details' : 'Unable to create this account' })
     }
 
     const userId = authData.user.id
@@ -60,14 +80,14 @@ export default async function handler(req, res) {
     const { data, error: dbError } = await supabaseAdmin.rpc('register_owner_and_property', {
       p_user_id: userId,
       p_phone: cleanPhone,
-      p_email: email,
-      p_full_name: full_name,
-      p_property_name: property_name,
-      p_description: description || '',
-      p_address: address,
-      p_city: city,
-      p_pincode: pincode || '',
-      p_property_type: property_type || 'boys',
+      p_email: cleanEmail,
+      p_full_name: cleanName,
+      p_property_name: cleanPropertyName,
+      p_description: cleanDescription,
+      p_address: cleanAddress,
+      p_city: cleanCity,
+      p_pincode: cleanPincode,
+      p_property_type: cleanPropertyType,
       p_amenities: amenities || [],
       p_photos: photos || [],
     })
@@ -76,7 +96,7 @@ export default async function handler(req, res) {
     if (dbError) {
       await supabaseAdmin.auth.admin.deleteUser(userId)
       console.error('Database function error:', dbError)
-      return res.status(500).json({ error: 'Database function error: ' + dbError.message })
+      return res.status(500).json({ error: 'Registration could not be completed' })
     }
 
     if (!data || !data.success) {
@@ -88,17 +108,18 @@ export default async function handler(req, res) {
     const { error: locationError } = await supabaseAdmin.from('properties').update({
       latitude,
       longitude,
-      formatted_address: String(location.formatted_address || address).slice(0, 500),
-      location_place_id: location.location_place_id || null,
+      formatted_address: text(location.formatted_address || cleanAddress, 500),
+      location_place_id: text(location.location_place_id, 200) || null,
       location_verified: false,
     }).eq('id', data.property_id).eq('owner_id', userId)
     if (locationError) {
       console.error('Property location update error:', locationError)
-      return res.status(500).json({ error: 'Registration completed, but map location could not be saved. Contact support.' })
+      await supabaseAdmin.auth.admin.deleteUser(userId)
+      return res.status(500).json({ error: 'Registration could not be completed' })
     }
 
     // Success
-    return res.status(200).json({
+    return res.status(201).json({
       success: true,
       message: 'Registration successful! Please login.',
       userId: userId,
@@ -107,7 +128,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Registration error:', error)
     return res.status(500).json({
-      error: error.message || 'Registration failed. Please try again.'
+      error: 'Registration failed. Please try again.'
     })
   }
 }

@@ -4,18 +4,23 @@ import toast from 'react-hot-toast';
 
 export function usePayments(tenant, refreshData, owner) {
   const [paymentHistory, setPaymentHistory] = useState([]);
+  const [paymentsLoaded, setPaymentsLoaded] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [ownerUpiId, setOwnerUpiId] = useState('');
   const [ownerUpiPhone, setOwnerUpiPhone] = useState('');
 
   const loadPayments = async () => {
     if (!tenant?.id) return;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('payment_history')
       .select('*')
       .eq('tenant_id', tenant.id)
       .order('payment_date', { ascending: false });
-    setPaymentHistory(data || []);
+    if (error) console.error('Payment history load failed:', error);
+    else {
+      setPaymentHistory(data || []);
+      setPaymentsLoaded(true);
+    }
   };
 
   const loadUPIDetails = async () => {
@@ -78,6 +83,7 @@ export function usePayments(tenant, refreshData, owner) {
   // Real-time payment updates
   useEffect(() => {
     if (!tenant?.id) return;
+    setPaymentsLoaded(false);
     loadPayments();
     loadUPIDetails();
 
@@ -96,6 +102,7 @@ export function usePayments(tenant, refreshData, owner) {
 
   return {
     paymentHistory,
+    paymentsLoaded,
     paymentLoading,
     ownerUpiId,
     ownerUpiPhone,

@@ -27,9 +27,19 @@ export default function RoomDetailsModal({
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [savingRoom, setSavingRoom] = useState(false);
-  const [roomSettings, setRoomSettings] = useState({ room_audience: room?.room_audience || 'coliving' });
+  const [roomSettings, setRoomSettings] = useState({
+    room_number: room?.room_number || '',
+    monthly_rent: room?.monthly_rent ?? 0,
+    capacity: room?.capacity ?? 1,
+    sharing_type: room?.sharing_type || 'single',
+    room_audience: room?.room_audience || 'coliving',
+  });
 
   useEffect(() => { TenantPaymentsModal.preload?.(); TenantProfileModal.preload?.(); }, []);
+  useEffect(() => {
+    if (!room) return;
+    setRoomSettings({ room_number:room.room_number || '', monthly_rent:room.monthly_rent ?? 0, capacity:room.capacity ?? 1, sharing_type:room.sharing_type || 'single', room_audience:room.room_audience || 'coliving' });
+  }, [room?.id]);
 
   if (!room) return null;
 
@@ -74,13 +84,26 @@ export default function RoomDetailsModal({
 
   const saveRoomSettings = async () => {
     if (savingRoom) return;
+    const roomNumber = roomSettings.room_number.trim();
+    const monthlyRent = Number(roomSettings.monthly_rent);
+    const capacity = Number(roomSettings.capacity);
+    if (!roomNumber) { toast.error('Room number is required'); return; }
+    if (!Number.isFinite(monthlyRent) || monthlyRent < 0) { toast.error('Monthly rent cannot be negative'); return; }
+    if (!Number.isInteger(capacity) || capacity <= 0) { toast.error('Capacity must be a positive whole number'); return; }
+    if (capacity < room.current_occupants) { toast.error('Capacity cannot be lower than current occupants'); return; }
     setSavingRoom(true);
     try {
-      const values = { room_audience: roomSettings.room_audience };
-      const { data, error } = await supabase.from('rooms').update(values).eq('id', room.id).select().single();
+      const { data, error } = await supabase.rpc('update_owner_room', {
+        p_room_id: room.id,
+        p_room_number: roomNumber,
+        p_monthly_rent: monthlyRent,
+        p_capacity: capacity,
+        p_sharing_type: roomSettings.sharing_type,
+        p_room_audience: roomSettings.room_audience,
+      });
       if (error) throw error;
-      onUpdated?.(data);
-      toast.success('Room application settings updated');
+      await onUpdated?.(data);
+      toast.success('Room updated');
     } catch (error) { toast.error('Failed to update room: ' + error.message); }
     finally { setSavingRoom(false); }
   };
@@ -121,11 +144,26 @@ export default function RoomDetailsModal({
             <div>
               <h3 className="font-semibold text-lg text-gray-800 mb-4 border-b border-gray-200 pb-2">Room Information</h3>
               <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Room Number:</span>
-                  <span className="font-medium text-gray-800">{room.room_number}</span>
+                <div>
+                  <label className="mb-1 block text-gray-500">Room Number</label>
+                  <input required value={roomSettings.room_number} onChange={event => setRoomSettings({...roomSettings, room_number:event.target.value})} className="w-full rounded-lg border px-3 py-2" />
                 </div>
-                <div className="border-t pt-3">
+                <div>
+                  <label className="mb-1 block text-gray-500">Monthly Rent</label>
+                  <input type="number" min="0" step="0.01" value={roomSettings.monthly_rent} onChange={event => setRoomSettings({...roomSettings, monthly_rent:event.target.value})} className="w-full rounded-lg border px-3 py-2" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-gray-500">Capacity</label>
+                  <input type="number" min={Math.max(1, room.current_occupants)} step="1" value={roomSettings.capacity} onChange={event => setRoomSettings({...roomSettings, capacity:event.target.value})} className="w-full rounded-lg border px-3 py-2" />
+                  <p className="mt-1 text-xs text-gray-400">Current occupants: {room.current_occupants}</p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-gray-500">Sharing Type</label>
+                  <select value={roomSettings.sharing_type} onChange={event => setRoomSettings({...roomSettings, sharing_type:event.target.value})} className="w-full rounded-lg border px-3 py-2">
+                    <option value="single">Single Sharing</option><option value="double">Double Sharing</option><option value="triple">Triple Sharing</option><option value="four">Four Sharing</option><option value="five">Five Sharing</option>
+                  </select>
+                </div>
+                <div>
                   <label className="mb-1 block text-gray-500">Room category</label>
                   <select value={roomSettings.room_audience} onChange={e => setRoomSettings({...roomSettings, room_audience:e.target.value})} className="w-full rounded-lg border px-3 py-2">
                     <option value="boys">Boys Room</option><option value="girls">Girls Room</option><option value="coliving">Co-living Room</option>
@@ -133,18 +171,6 @@ export default function RoomDetailsModal({
                 </div>
                 <div className="rounded-lg bg-emerald-50 p-3 text-emerald-800">Universal application deposit: <strong>₹3,000</strong></div>
                 <button onClick={saveRoomSettings} disabled={savingRoom} className="w-full rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white disabled:opacity-50">{savingRoom ? 'Saving…' : 'Save Room Settings'}</button>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Sharing Type:</span>
-                  <span className="font-medium text-gray-800 capitalize">{room.sharing_type}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Monthly Rent:</span>
-                  <span className="font-medium text-gray-800">{formatCurrency(room.monthly_rent)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Capacity:</span>
-                  <span className="font-medium text-gray-800">{room.capacity} persons</span>
-                </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Current Occupants:</span>
                   <span className="font-medium text-gray-800">{room.current_occupants}</span>

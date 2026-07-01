@@ -10,11 +10,13 @@ export function OwnerProvider({ children }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [properties, setProperties] = useState([]);
   const [property, setProperty] = useState(null);
   const [ownerProfile, setOwnerProfile] = useState(null);
   const [propertyImages, setPropertyImages] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [tenants, setTenants] = useState([]);
+  const [archivedTenants, setArchivedTenants] = useState([]);
   const [settings, setSettings] = useState({ joining_fee:0, advance_months:1, due_day:5, upi_id:'', upi_phone:'' });
   const [stats, setStats] = useState({ totalRooms:0, occupied:0, vacant:0, totalCollected:0, pendingAmount:0, totalComplaints:0, pendingVacate:0, overdueCount:0, noticePeriodCount:0, pendingPaymentCount:0, pendingRentConfirmations:0, monthlyIncome:0 });
   const [membershipActive, setMembershipActive] = useState(false);
@@ -40,48 +42,70 @@ export function OwnerProvider({ children }) {
     } else { setMembershipExpiry(null); setDaysLeft(null); }
   };
 
-  const loadData = useCallback(async (isBackground = false) => {
+  const loadData = useCallback(async (isBackground = false, preferredPropertyId = null) => {
     if (!isBackground) setLoading(true); else setIsRefreshing(true);
     try {
       const userId = localStorage.getItem('userId');
-      const { data: propertyData } = await supabase.from('properties').select('*').eq('owner_id', userId).maybeSingle();
+      const { data: propertyRows, error: propertiesError } = await supabase.from('properties').select('*').eq('owner_id', userId).order('created_at');
+      if (propertiesError) throw propertiesError;
+      const ownedProperties = propertyRows || [];
+      setProperties(ownedProperties);
+      const storedPropertyId = preferredPropertyId || localStorage.getItem('ownerPropertyId');
+      const propertyData = ownedProperties.find(item => item.id === storedPropertyId) || ownedProperties[0] || null;
       if (propertyData) {
+        localStorage.setItem('ownerPropertyId', propertyData.id);
         setProperty(propertyData); setPropertyImages(propertyData.photos || []); updateMembershipFromProperty(propertyData);
         
         // Rooms and tenants are independent after the property is known, so load them together.
-        const [{ data: roomsData, error: roomsError }, { data: tenantsData, error: tenantsError }] = await Promise.all([
+        const [{ data: roomsData, error: roomsError }, { data: tenantsData, error: tenantsError }, { data: archivedData, error: archivedError }] = await Promise.all([
           supabase.from('rooms').select('*').eq('property_id', propertyData.id).order('room_number'),
-          supabase.from('tenants').select('*').eq('property_id', propertyData.id),
+          supabase.from('tenants').select('*').eq('property_id', propertyData.id).in('status', ['active', 'notice_period', 'payment_pending']),
+          supabase.from('tenants').select('*, check_out_requests(expected_check_out, status, completed_at, created_at)').eq('property_id', propertyData.id).eq('status', 'inactive').order('archived_at', { ascending: false, nullsFirst: false }),
         ]);
         if (roomsError) throw roomsError;
         if (tenantsError) throw tenantsError;
+        if (archivedError) throw archivedError;
         setRooms(roomsData || []);
         const total = roomsData?.length || 0; const occupied = roomsData?.filter(r => r.current_occupants >= r.capacity).length || 0; const vacant = total - occupied;
         const tenantsWithRoomNumber = (tenantsData || []).map(t => { const room = roomsData?.find(r => r.id === t.room_id); return { ...t, room_number: room ? room.room_number : 'N/A', dueStatus: calculateRentDueStatus(t) } });
         setTenants(tenantsWithRoomNumber);
+        setArchivedTenants((archivedData || []).map(tenant => {
+          const latestCheckout = [...(tenant.check_out_requests || [])].sort((a, b) => new Date(b.completed_at || b.created_at) - new Date(a.completed_at || a.created_at))[0];
+          return { ...tenant, room_number: roomsData?.find(room => room.id === tenant.room_id)?.room_number || 'N/A', checkout_date:tenant.notice_period_end || latestCheckout?.expected_check_out || null };
+        }));
         // Rooms and tenants are enough to render a useful dashboard. Secondary
         // financial counters continue below without holding the whole screen.
         if (!isBackground) setLoading(false);
         
         // Stats and Finance
-        const totalCollected = tenantsData?.reduce((sum, t) => sum + Number(t.total_paid || 0), 0) || 0;
         const pendingAmount = tenantsData?.reduce((sum, t) => sum + Number(t.pending_amount || 0), 0) || 0;
         const overdueCount = tenantsWithRoomNumber.filter(t => t.dueStatus.status === 'overdue').length;
         const noticePeriodCount = tenantsWithRoomNumber.filter(t => t.status === 'notice_period').length;
         const pendingPaymentCount = tenantsWithRoomNumber.filter(t => t.status === 'payment_pending').length;
         const tenantIds = tenantsData?.map(t => t.id) || [];
         const now = new Date(); const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]; const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-        const [monthlyResult, pendingResult, complaintResult, vacateResult] = await Promise.all([
-          tenantIds.length
-            ? supabase.from('payment_history').select('amount').eq('status', 'success').gte('payment_date', startOfMonth).lte('payment_date', endOfMonth).in('tenant_id', tenantIds)
-            : Promise.resolve({ data: [] }),
+        const [revenueResult, pendingResult, complaintResult, vacateResult] = await Promise.all([
+          supabase.from('payment_history')
+            .select('amount, payment_date, tenants!inner(room_id, property_id)')
+            .eq('status', 'success')
+            .eq('tenants.property_id', propertyData.id),
           tenantIds.length
             ? supabase.from('payment_history').select('id').eq('status', 'payment_pending').in('tenant_id', tenantIds)
             : Promise.resolve({ data: [] }),
           supabase.from('complaints').select('*', { count: 'exact', head: true }).eq('property_id', propertyData.id).in('status', ['open', 'in_progress']),
           supabase.from('check_out_requests').select('*', { count: 'exact', head: true }).eq('property_id', propertyData.id).eq('status', 'pending'),
         ]);
-        const monthlyIncome = monthlyResult.data?.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) || 0;
+        if (revenueResult.error) throw revenueResult.error;
+        const successfulPayments = revenueResult.data || [];
+        const totalCollected = successfulPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+        const paymentsThisMonth = successfulPayments.filter(payment => payment.payment_date >= startOfMonth && payment.payment_date <= endOfMonth);
+        const monthlyIncome = paymentsThisMonth.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+        const incomeByRoom = paymentsThisMonth.reduce((result, payment) => {
+          const roomId = payment.tenants?.room_id;
+          if (roomId) result[roomId] = (result[roomId] || 0) + Number(payment.amount || 0);
+          return result;
+        }, {});
+        setRoomMonthlyIncome(incomeByRoom);
         const pendingRentConfirmations = pendingResult.data?.length || 0;
         const complaintCount = complaintResult.count;
         const vacateCount = vacateResult.count;
@@ -89,6 +113,7 @@ export function OwnerProvider({ children }) {
         setStats({ totalRooms:total, occupied, vacant, totalCollected, pendingAmount, totalComplaints:complaintCount||0, pendingVacate:vacateCount||0, overdueCount, noticePeriodCount, pendingPaymentCount, pendingRentConfirmations, monthlyIncome });
         return propertyData;
       }
+      setProperty(null); setRooms([]); setTenants([]); setArchivedTenants([]); setRoomMonthlyIncome({});
       return null;
     } catch (error) { console.error('Load error:', error); if (!isBackground) toast.error('Failed to load data: ' + error.message); return null; }
     finally { if (!isBackground) setLoading(false); else setIsRefreshing(false); }
@@ -113,11 +138,13 @@ export function OwnerProvider({ children }) {
 
   const loadSettings = async (loadedProperty = null) => {
     try {
+      const selectedProperty = loadedProperty || property;
       const userId = localStorage.getItem('userId');
-      const { data, error } = await supabase.from('owner_settings').select('*').eq('owner_id', userId).maybeSingle();
+      if (!selectedProperty?.id) return;
+      const { data, error } = await supabase.from('owner_settings').select('*').eq('owner_id', userId).eq('property_id', selectedProperty.id).maybeSingle();
       if (error) throw error;
       if (data) setSettings({ joining_fee:data.joining_fee||0, advance_months:data.advance_months||1, due_day:data.due_day||5, upi_id:data.upi_id||'', upi_phone:data.upi_phone||'' });
-      else setSettings({ joining_fee:0, advance_months:1, due_day:5, upi_id:(loadedProperty || property)?.owner_upi_id||'', upi_phone:'' });
+      else setSettings({ joining_fee:0, advance_months:1, due_day:5, upi_id:selectedProperty.owner_upi_id||'', upi_phone:'' });
     } catch (error) { console.error('Error loading settings:', error); toast.error('Failed to load settings'); }
   };
 
@@ -156,12 +183,13 @@ export function OwnerProvider({ children }) {
     await loadOwnerProfile();
   };
 
-  const loadMembershipRequest = async (ownerId = property?.owner_id) => {
-    if (!ownerId) return null;
+  const loadMembershipRequest = async (ownerId = property?.owner_id, propertyId = property?.id) => {
+    if (!ownerId || !propertyId) { setPendingMembershipRequest(null); return null; }
     const { data, error } = await supabase
       .from('membership_requests')
       .select('id, plan_id, amount, status, requested_at, admin_note')
       .eq('owner_id', ownerId)
+      .eq('property_id', propertyId)
       .eq('status', 'pending')
       .maybeSingle();
     if (error) throw error;
@@ -171,14 +199,30 @@ export function OwnerProvider({ children }) {
 
   const saveSettings = async (newSettings) => {
     const userId = localStorage.getItem('userId');
-    const { data: existing } = await supabase.from('owner_settings').select('id').eq('owner_id', userId).maybeSingle();
+    if (!property?.id) throw new Error('Select a property first');
+    const { data: existing } = await supabase.from('owner_settings').select('id').eq('owner_id', userId).eq('property_id', property.id).maybeSingle();
     const updateData = { joining_fee:newSettings.joining_fee, advance_months:newSettings.advance_months, due_day:newSettings.due_day, upi_id:newSettings.upi_id, upi_phone:newSettings.upi_phone, updated_at:new Date().toISOString() };
     let error;
-    if (existing) { const { error: updateError } = await supabase.from('owner_settings').update(updateData).eq('owner_id', userId); error = updateError; }
-    else { const { error: insertError } = await supabase.from('owner_settings').insert({ owner_id:userId, ...updateData }); error = insertError; }
+    if (existing) { const { error: updateError } = await supabase.from('owner_settings').update(updateData).eq('id', existing.id); error = updateError; }
+    else { const { error: insertError } = await supabase.from('owner_settings').insert({ owner_id:userId, property_id:property.id, ...updateData }); error = insertError; }
     if (error) throw error;
     if (property && newSettings.upi_id) await supabase.from('properties').update({ owner_upi_id:newSettings.upi_id }).eq('id', property.id);
     setSettings(newSettings); await loadData(true);
+  };
+
+  const selectProperty = async (propertyId) => {
+    if (!propertyId || propertyId === property?.id) return;
+    localStorage.setItem('ownerPropertyId', propertyId);
+    setLoading(true);
+    setProperty(null); setRooms([]); setTenants([]); setArchivedTenants([]); setRoomMonthlyIncome({});
+    setPendingMembershipRequest(null);
+    const loadedProperty = await loadData(false, propertyId);
+    if (loadedProperty) {
+      await Promise.all([
+        loadSettings(loadedProperty),
+        loadMembershipRequest(loadedProperty.owner_id, loadedProperty.id),
+      ]);
+    }
   };
 
   const requestMembership = async (planId, amount) => {
@@ -218,11 +262,11 @@ export function OwnerProvider({ children }) {
       const auth = await checkAuthAndRedirect();
       if (!auth) return; if (auth.role !== 'owner') { router.push('/login'); return; }
       localStorage.setItem('userId', auth.user.id); localStorage.setItem('userEmail', auth.user.email || ''); localStorage.setItem('userName', auth.user.user_metadata?.full_name || '');
-      const [loadedProperty] = await Promise.all([
-        loadData(false),
-        loadSettings(),
+      const loadedProperty = await loadData(false);
+      await Promise.all([
+        loadSettings(loadedProperty),
         loadOwnerProfile(auth.user.id),
-        loadMembershipRequest(auth.user.id),
+        loadMembershipRequest(auth.user.id, loadedProperty?.id),
       ]);
       const membershipExpired = loadedProperty?.membership_active && loadedProperty.membership_expiry && new Date(loadedProperty.membership_expiry) <= new Date();
       if (membershipExpired) { router.push('/owner/subscribe?reason=expired'); return; }
@@ -243,7 +287,7 @@ export function OwnerProvider({ children }) {
     };
     const channel = supabase
       .channel(`owner-core-live:${property.id}`)
-      .on('postgres_changes', { event:'*', schema:'public', table:'properties', filter:`id=eq.${property.id}` }, scheduleRefresh)
+      .on('postgres_changes', { event:'*', schema:'public', table:'properties', filter:`owner_id=eq.${property.owner_id}` }, scheduleRefresh)
       .on('postgres_changes', { event:'*', schema:'public', table:'rooms', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
       .on('postgres_changes', { event:'*', schema:'public', table:'tenants', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
       .on('postgres_changes', { event:'*', schema:'public', table:'payment_history' }, scheduleRefresh)
@@ -254,7 +298,7 @@ export function OwnerProvider({ children }) {
         timer = setTimeout(() => loadSettings(property), 300);
       })
       .on('postgres_changes', { event:'*', schema:'public', table:'membership_requests', filter:`owner_id=eq.${property.owner_id}` }, () => {
-        loadMembershipRequest(property.owner_id).catch((error) => console.error('Membership request refresh failed:', error));
+        loadMembershipRequest(property.owner_id, property.id).catch((error) => console.error('Membership request refresh failed:', error));
       })
       .subscribe((status) => setRealtimeConnected(status === 'SUBSCRIBED'));
 
@@ -267,7 +311,7 @@ export function OwnerProvider({ children }) {
 
   return (
     <OwnerContext.Provider value={{
-      loading, isRefreshing, realtimeConnected, property, propertyImages, setPropertyImages, rooms, tenants,
+      loading, isRefreshing, realtimeConnected, properties, property, selectProperty, propertyImages, setPropertyImages, rooms, tenants, archivedTenants,
       ownerProfile, loadOwnerProfile, updateOwnerProfile,
       settings, setSettings, stats, roomMonthlyIncome, setRoomMonthlyIncome,
       membershipActive, membershipLoading, membershipStatus, membershipExpiry, daysLeft,

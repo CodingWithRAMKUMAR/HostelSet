@@ -4,14 +4,20 @@ import toast from 'react-hot-toast';
 
 export function useVacate(tenant, setTenant) {
   const [existingVacateRequest, setExistingVacateRequest] = useState(null);
+  const [lastVacateDecision, setLastVacateDecision] = useState(null);
+  const [vacateLoaded, setVacateLoaded] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadVacate = async () => {
     if (!tenant?.id) return;
-    const { data, error } = await supabase.from('check_out_requests').select('*').eq('tenant_id', tenant.id).in('status', ['pending', 'approved']).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    const { data, error } = await supabase.from('check_out_requests').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(10);
     if (error) { console.error('Vacate status load failed:', error); return; }
-    setExistingVacateRequest(data || null);
-    if (data?.status === 'approved') setTenant(prev => ({ ...prev, status:'notice_period', check_out_requested:true, notice_period_end:data.expected_check_out }));
+    const requests = data || [];
+    const activeRequest = requests.find(request => ['pending', 'approved'].includes(request.status)) || null;
+    setExistingVacateRequest(activeRequest);
+    setLastVacateDecision(requests[0]?.status === 'rejected' ? requests[0] : null);
+    setVacateLoaded(true);
+    if (activeRequest?.status === 'approved') setTenant(prev => ({ ...prev, status:'notice_period', check_out_requested:true, notice_period_end:activeRequest.expected_check_out }));
   };
 
   const cancelVacateRequest = async () => {
@@ -43,6 +49,7 @@ export function useVacate(tenant, setTenant) {
 
   useEffect(() => {
     if (!tenant?.id) return;
+    setVacateLoaded(false);
     loadVacate();
     const channel = supabase.channel(`vacate-tenant-isolated:${tenant.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'check_out_requests', filter:`tenant_id=eq.${tenant.id}` }, (payload) => {
@@ -50,7 +57,7 @@ export function useVacate(tenant, setTenant) {
         if (changedRequest?.tenant_id === tenant.id) {
           if (payload.eventType === 'UPDATE') {
             if (payload.new.status === 'approved') { setTenant(prev => ({ ...prev, status:'notice_period', check_out_requested:true, notice_period_start:new Date().toISOString().split('T')[0], notice_period_end:payload.new.expected_check_out })); toast.success('✅ Your vacate request was approved!'); }
-            else if (payload.new.status === 'rejected') { setTenant(prev => ({ ...prev, status:'active' })); toast.error('❌ Your vacate request was rejected.'); }
+            else if (payload.new.status === 'rejected') { toast.error(`Your vacate request was rejected.${payload.new.rejection_reason ? ` ${payload.new.rejection_reason}` : ''}`); }
           }
         }
         loadVacate();
@@ -58,5 +65,5 @@ export function useVacate(tenant, setTenant) {
     return () => { supabase.removeChannel(channel); };
   }, [tenant?.id]);
 
-  return { existingVacateRequest, cancelVacateRequest, isSubmitting, refreshVacate: loadVacate };
+  return { existingVacateRequest, lastVacateDecision, vacateLoaded, cancelVacateRequest, isSubmitting, refreshVacate: loadVacate };
 }

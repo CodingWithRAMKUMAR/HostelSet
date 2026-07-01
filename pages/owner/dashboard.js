@@ -23,6 +23,7 @@ import StatsCards from '../../components/owner/StatsCards';
 
 const RoomList = dynamic(() => import('../../components/owner/RoomList'));
 const TenantTable = dynamic(() => import('../../components/owner/TenantTable'));
+const ArchivedTenantList = dynamic(() => import('../../components/owner/ArchivedTenantList'));
 const RentPaymentsList = dynamic(() => import('../../components/owner/RentPaymentsList'));
 const PaymentHistoryTable = dynamic(() => import('../../components/owner/PaymentHistoryTable'));
 const PreBookingList = dynamic(() => import('../../components/owner/PreBookingList'));
@@ -47,15 +48,22 @@ const ApplicationDetailModal = dynamic(() => import('../../components/owner/moda
 const TenantPaymentsModal = dynamic(() => import('../../components/owner/modals/TenantPaymentsModal'), { ssr: false });
 const TenantProfileModal = dynamic(() => import('../../components/owner/modals/TenantProfileModal'), { ssr: false });
 const RoomChangeReasonModal = dynamic(() => import('../../components/owner/modals/RoomChangeReasonModal'), { ssr: false });
+const VacateRejectionModal = dynamic(() => import('../../components/owner/modals/VacateRejectionModal'), { ssr: false });
 const ScreenshotModal = dynamic(() => import('../../components/owner/modals/ScreenshotModal'), { ssr: false });
 const OwnerProfileModal = dynamic(() => import('../../components/owner/modals/OwnerProfileModal'), { ssr: false });
+const ArchivedTenantHistoryModal = dynamic(() => import('../../components/owner/modals/ArchivedTenantHistoryModal'), { ssr: false });
 
 export default function OwnerDashboard() {
   return (
     <OwnerProvider>
-      <OwnerDashboardContent />
+      <OwnerDashboardShell />
     </OwnerProvider>
   );
+}
+
+function OwnerDashboardShell() {
+  const { property } = useOwner();
+  return <OwnerDashboardContent key={property?.id || 'no-property'} />;
 }
 
 function OwnerDashboardContent() {
@@ -64,12 +72,15 @@ function OwnerDashboardContent() {
   const { 
     loading,
     realtimeConnected,
+    properties,
     property, 
+    selectProperty,
     ownerProfile,
     updateOwnerProfile,
     rooms, 
     setRooms, 
     tenants, 
+    archivedTenants,
     setTenants, 
     settings, 
     setSettings, 
@@ -78,6 +89,9 @@ function OwnerDashboardContent() {
     roomMonthlyIncome, 
     membershipActive, 
     membershipLoading, 
+    membershipStatus,
+    membershipExpiry,
+    daysLeft,
     loadData, 
     saveSettings, 
     pendingMembershipRequest,
@@ -101,9 +115,9 @@ function OwnerDashboardContent() {
   const { showRoomModal, setShowRoomModal, roomForm, setRoomForm, sharingTypes, addRoom, deleteRoom } = useOwnerRooms(property, rooms, setRooms, setStats);
   const { formData, setFormData, addTenant } = useOwnerTenants(property, rooms, tenants, setTenants, setStats, loadData);
   const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, activeTab === 'complaints' || prefetchReady);
-  const { vacateRequests, approveVacateRequest } = useOwnerVacate(property, activeTab === 'vacate' || activeTab === 'rooms' || activeTab === 'tenants' || prefetchReady);
-  const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment } = useOwnerPayments(property, tenants, setStats, loadData, activeTab === 'rent-payments' || activeTab === 'payment-history' || prefetchReady);
-  const { notices, postNotice, deleteNotice } = useOwnerNotices(property, activeTab === 'notices' || prefetchReady);
+  const { vacateRequests, approveVacateRequest, rejectVacateRequest, rejectingId: vacateRejectingId } = useOwnerVacate(property, activeTab === 'vacate' || activeTab === 'rooms' || activeTab === 'tenants' || prefetchReady);
+  const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment, refreshPayments } = useOwnerPayments(property, tenants, archivedTenants, setStats, loadData, activeTab === 'rent-payments' || activeTab === 'payment-history' || prefetchReady);
+  const { notices, postNotice, deleteNotice } = useOwnerNotices(property, activeTab === 'overview' || activeTab === 'notices' || prefetchReady);
   const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, activeTab === 'room-change' || prefetchReady);
   const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, activeTab === 'applications' || prefetchReady);
   const { preBookings, approvePreBooking, rejectPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, activeTab === 'pre-bookings' || prefetchReady);
@@ -120,20 +134,24 @@ function OwnerDashboardContent() {
   const [showApplicationDetailModal, setShowApplicationDetailModal] = useState(false);
   const [showScreenshotModal, setShowScreenshotModal] = useState(false);
   const [showOwnerProfileModal, setShowOwnerProfileModal] = useState(false);
+  const [showArchivedHistoryModal, setShowArchivedHistoryModal] = useState(false);
   const [showRoomChangeReasonModal, setShowRoomChangeReasonModal] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [selectedComplaint, setSelectedComplaint] = useState(null);
   const [selectedApplication, setSelectedApplication] = useState(null);
   const [selectedRoomChangeRequest, setSelectedRoomChangeRequest] = useState(null);
+  const [selectedVacateRequest, setSelectedVacateRequest] = useState(null);
   const [confirmingTenant, setConfirmingTenant] = useState(null);
   const [tenantToDelete, setTenantToDelete] = useState(null);
   const [complaintResponse, setComplaintResponse] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
+  const [vacateRejectionReason, setVacateRejectionReason] = useState('');
   const [screenshotUrl, setScreenshotUrl] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [collectionRequestId, setCollectionRequestId] = useState(null);
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
 
   // Modal States for History & Profile
@@ -145,6 +163,8 @@ function OwnerDashboardContent() {
   const [tenantApplication, setTenantApplication] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [loadingPayments, setLoadingPayments] = useState(false);
+  const [archivedHistory, setArchivedHistory] = useState(null);
+  const [loadingArchivedTenantId, setLoadingArchivedTenantId] = useState(null);
   const profileCache = useRef(new Map());
   const paymentCache = useRef(new Map());
 
@@ -333,6 +353,96 @@ function OwnerDashboardContent() {
   const getRoomNumberById = (roomId) => { const room = rooms.find(r => r.id === roomId); return room ? room.room_number : 'N/A' }
   const getTenantsInRoom = (roomId) => tenants.filter(t => t.room_id === roomId)
 
+  const handleCollectRent = async () => {
+    if (isSubmitting || !selectedTenant || !collectionRequestId) return;
+    const amount = Number(paymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) { toast.error('Enter a valid collection amount'); return; }
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase.rpc('record_owner_rent_collection', {
+        p_tenant_id: selectedTenant.id,
+        p_amount: amount,
+        p_collection_id: collectionRequestId,
+      });
+      if (error) throw error;
+      await Promise.all([loadData(true), refreshPayments()]);
+      toast.success('Rent collection recorded');
+      setShowPaymentModal(false);
+      setSelectedTenant(null);
+      setPaymentAmount('');
+      setCollectionRequestId(null);
+    } catch (error) {
+      toast.error('Failed to collect rent: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const fetchArchivedTenantHistory = async (tenant) => {
+    if (loadingArchivedTenantId) return;
+    setLoadingArchivedTenantId(tenant.id);
+    setArchivedHistory(null);
+    setShowArchivedHistoryModal(true);
+    try {
+      const { data, error } = await supabase.rpc('get_archived_tenant_history', { p_tenant_id: tenant.id });
+      if (error) throw error;
+      setArchivedHistory(data);
+    } catch (error) {
+      toast.error('Failed to load archived tenant history: ' + error.message);
+      setShowArchivedHistoryModal(false);
+    } finally {
+      setLoadingArchivedTenantId(null);
+    }
+  };
+
+  const openPaymentConfirmation = (tenant) => {
+    const pendingPayment = safePendingRentPayments.find(payment => payment.tenant_id === tenant.id);
+    if (!pendingPayment) {
+      toast.error('This tenant has no payment awaiting confirmation.');
+      return;
+    }
+    setConfirmingTenant({
+      ...tenant,
+      pendingPaymentId: pendingPayment.id,
+      upi_transaction_id: pendingPayment.upi_transaction_id,
+      payment_screenshot: pendingPayment.payment_screenshot,
+    });
+    setShowPaymentConfirmModal(true);
+  };
+
+  const handleConfirmPendingPayment = async () => {
+    if (isSubmitting || !confirmingTenant?.pendingPaymentId) return;
+    setIsSubmitting(true);
+    try {
+      const confirmed = await confirmRentPayment(confirmingTenant.pendingPaymentId);
+      if (confirmed) {
+        setShowPaymentConfirmModal(false);
+        setConfirmingTenant(null);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleArchiveTenant = async () => {
+    if (isSubmitting || !tenantToDelete) return;
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase.rpc('archive_tenant', { p_tenant_id: tenantToDelete.id });
+      if (error) throw error;
+      profileCache.current.delete(tenantToDelete.id);
+      paymentCache.current.delete(tenantToDelete.id);
+      await loadData(true);
+      toast.success('Tenant removed from the active room and archived');
+      setShowConfirmDeleteModal(false);
+      setTenantToDelete(null);
+    } catch (error) {
+      toast.error('Failed to remove tenant: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSaveSettings = async (location) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
@@ -432,6 +542,7 @@ function OwnerDashboardContent() {
 
   const safeRooms = Array.isArray(rooms) ? rooms : []
   const safeTenants = Array.isArray(tenants) ? tenants : []
+  const safeArchivedTenants = Array.isArray(archivedTenants) ? archivedTenants : []
   const safeAllPayments = Array.isArray(allPayments) ? allPayments : []
   const safePendingRentPayments = Array.isArray(pendingRentPayments) ? pendingRentPayments : []
   const safeComplaints = Array.isArray(complaints) ? complaints : []
@@ -442,6 +553,7 @@ function OwnerDashboardContent() {
   const safePreBookings = Array.isArray(preBookings) ? preBookings : []
 
   const searchLower = searchTerm.trim().toLowerCase()
+  const filteredArchivedTenants = searchLower ? safeArchivedTenants.filter(tenant => [tenant.name, tenant.phone, tenant.email, tenant.room_number].some(value => String(value || '').toLowerCase().includes(searchLower))) : safeArchivedTenants
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] font-sans">
@@ -464,7 +576,13 @@ function OwnerDashboardContent() {
             </button>
             <button onClick={() => setShowOwnerProfileModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5" aria-label="Edit owner profile">👤</button>
             <button onClick={() => setShowSettingsModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5">⚙️</button>
-            <span className="text-sm hidden md:inline text-orange-300/80">{property.name}</span>
+            {properties.length > 1 ? (
+              <select aria-label="Current property" value={property.id} onChange={(event) => selectProperty(event.target.value)} className="max-w-48 rounded-lg border border-orange-500/30 bg-[#2a2a2a] px-3 py-1.5 text-sm text-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                {properties.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            ) : (
+              <span className="text-sm hidden md:inline text-orange-300/80">{property.name}</span>
+            )}
             <button onClick={async () => { await supabase.auth.signOut(); localStorage.clear(); router.push('/') }} className="text-red-400 hover:text-red-300 transition font-medium">Logout</button>
           </div>
         </div>
@@ -473,7 +591,7 @@ function OwnerDashboardContent() {
       <div className="container mx-auto px-3 sm:px-4 py-5 sm:py-8">
         
         {/* --- STATS CARDS --- */}
-        <StatsCards stats={stats} />
+        <StatsCards stats={{ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length }} />
 
         {/* --- ACTION BUTTONS (Glassmorphism) --- */}
         <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3 sm:gap-4 mb-6 sm:mb-8">
@@ -484,7 +602,7 @@ function OwnerDashboardContent() {
 
         {/* --- TABS --- */}
         <div className="flex flex-nowrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto dashboard-tabs">
-          {['overview', 'rooms', 'tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'applications', 'complaints', 'vacate', 'room-change', 'notices'].map((tab) => (
+          {['overview', 'rooms', 'tenants', 'archived-tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'applications', 'complaints', 'vacate', 'room-change', 'notices'].map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} disabled={!membershipActive} className={`shrink-0 px-4 sm:px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${activeTab === tab ? 'bg-[#1a1a1a] text-white shadow-sm border-b-2 border-orange-500' : membershipActive ? 'text-gray-600 hover:text-orange-600 hover:bg-orange-50' : 'text-gray-400 cursor-not-allowed'}`}>
               {tab === 'rent-payments' && `💸 Rent (${stats.pendingRentConfirmations})`}
               {tab === 'payment-history' && '💳 History'}
@@ -493,6 +611,7 @@ function OwnerDashboardContent() {
               {tab === 'overview' && '📊 Overview'}
               {tab === 'rooms' && `🏠 Rooms (${rooms.length})`}
               {tab === 'tenants' && `👥 Tenants (${tenants.length})`}
+              {tab === 'archived-tenants' && `📚 Archived (${archivedTenants.length})`}
               {tab === 'complaints' && `🔧 Complaints ${stats.totalComplaints > 0 ? `(${stats.totalComplaints})` : ''}`}
               {tab === 'vacate' && `🚪 Vacate ${stats.pendingVacate > 0 ? `(${stats.pendingVacate})` : ''}`}
               {tab === 'room-change' && `🔄 Change (${roomChangeRequests.length})`}
@@ -502,29 +621,51 @@ function OwnerDashboardContent() {
         </div>
 
         {/* --- TAB CONTENT --- */}
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+              <h2 className="font-semibold text-slate-800 mb-4">Membership</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                <div><p className="text-gray-500">Status</p><p className="font-semibold capitalize text-slate-800">{membershipStatus === 'active' ? 'Active' : membershipStatus === 'expired' ? 'Expired' : 'Inactive'}</p></div>
+                <div><p className="text-gray-500">Expiry Date</p><p className="font-semibold text-slate-800">{membershipExpiry ? membershipExpiry.toLocaleDateString('en-IN') : 'Not available'}</p></div>
+                <div><p className="text-gray-500">Remaining Days</p><p className="font-semibold text-slate-800">{daysLeft == null ? 'Not available' : Math.max(0, daysLeft)}</p></div>
+              </div>
+            </div>
+            <div>
+              <h2 className="font-semibold text-slate-800 mb-3">Active Notices</h2>
+              <NoticeList notices={safeNotices.slice(0, 5)} onDelete={deleteNotice} onPost={() => setShowNoticeModal(true)} isSubmitting={isSubmitting} />
+            </div>
+          </div>
+        )}
         {activeTab === 'rooms' && <RoomList rooms={safeRooms} tenants={safeTenants} vacateRequests={safeVacateRequests} roomMonthlyIncome={roomMonthlyIncome} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />}
-        {activeTab === 'tenants' && <TenantTable tenants={safeTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={(tenant) => { setConfirmingTenant(tenant); setShowPaymentConfirmModal(true) }} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
+        {activeTab === 'tenants' && <TenantTable tenants={safeTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setPaymentAmount(Number(tenant.pending_amount || tenant.rent_amount || 0)); setCollectionRequestId(crypto.randomUUID()); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
+        {activeTab === 'archived-tenants' && <ArchivedTenantList tenants={filteredArchivedTenants} onViewHistory={fetchArchivedTenantHistory} loadingId={loadingArchivedTenantId} />}
         {activeTab === 'rent-payments' && <RentPaymentsList payments={safePendingRentPayments} onConfirm={confirmRentPayment} onReject={rejectRentPayment} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
         {activeTab === 'payment-history' && <PaymentHistoryTable payments={safeAllPayments} getRoomNumberById={getRoomNumberById} />}
         {activeTab === 'pre-bookings' && <PreBookingList bookings={safePreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={Boolean(prebookingProcessingId)} />}
         {activeTab === 'applications' && <ApplicationList applications={safeApplications} onApprove={(id, data) => approveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} isSubmitting={Boolean(applicationProcessingId)} />}
         {activeTab === 'complaints' && <ComplaintList complaints={safeComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setComplaintResponse(''); setShowComplaintResponseModal(true) }} onResolve={resolveComplaint} isSubmitting={isSubmitting} />}
-        {activeTab === 'vacate' && <VacateRequestList requests={safeVacateRequests} onApprove={approveVacateRequest} isSubmitting={isSubmitting} />}
+        {activeTab === 'vacate' && <VacateRequestList requests={safeVacateRequests} onApprove={approveVacateRequest} onReject={(request) => { setSelectedVacateRequest(request); setVacateRejectionReason(''); }} isSubmitting={isSubmitting || Boolean(vacateRejectingId)} />}
         {activeTab === 'room-change' && <RoomChangeRequestList requests={safeRoomChangeRequests} onApprove={approveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />}
         {activeTab === 'notices' && <NoticeList notices={safeNotices} onDelete={deleteNotice} onPost={() => setShowNoticeModal(true)} isSubmitting={isSubmitting} />}
       </div>
 
       {/* --- MODALS --- */}
       <AnimatePresence>
+        {showPaymentModal && selectedTenant && <CollectRentModal tenant={selectedTenant} paymentAmount={paymentAmount} setPaymentAmount={setPaymentAmount} onCollect={handleCollectRent} onCancel={() => { if (!isSubmitting) { setShowPaymentModal(false); setSelectedTenant(null); setPaymentAmount(''); setCollectionRequestId(null); } }} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
+        {showConfirmDeleteModal && tenantToDelete && <ConfirmDeleteModal tenant={tenantToDelete} onArchive={handleArchiveTenant} onCancel={() => { if (!isSubmitting) { setShowConfirmDeleteModal(false); setTenantToDelete(null); } }} isSubmitting={isSubmitting} />}
         {showSettingsModal && <SettingsModal settings={settings} setSettings={setSettings} property={property} onSave={handleSaveSettings} onCancel={() => setShowSettingsModal(false)} isSubmitting={isSubmitting} />}
         {showAddModal && <AddTenantModal formData={formData} setFormData={setFormData} rooms={rooms} onAdd={() => addTenant(isSubmitting, setIsSubmitting)} onCancel={() => setShowAddModal(false)} isSubmitting={isSubmitting} />}
         {showRoomModal && <AddRoomModal roomForm={roomForm} setRoomForm={setRoomForm} sharingTypes={sharingTypes} onAdd={() => addRoom(isSubmitting, setIsSubmitting)} onCancel={() => setShowRoomModal(false)} isSubmitting={isSubmitting} />}
         {showNoticeModal && <PostNoticeModal noticeForm={noticeForm} setNoticeForm={setNoticeForm} onPost={() => postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent)} onCancel={() => setShowNoticeModal(false)} isSubmitting={isSubmitting} />}
         {showMembershipModal && <MembershipModal onSelectPlan={async (...args) => { const sent = await requestMembership(...args); if (sent) setShowMembershipModal(false); }} onCancel={() => setShowMembershipModal(false)} loading={membershipLoading} pendingRequest={pendingMembershipRequest} />}
         {showOwnerProfileModal && ownerProfile && <OwnerProfileModal profile={ownerProfile} onSave={handleSaveOwnerProfile} onCancel={() => setShowOwnerProfileModal(false)} isSubmitting={isSubmitting} />}
+        {showArchivedHistoryModal && <ArchivedTenantHistoryModal history={archivedHistory} loading={Boolean(loadingArchivedTenantId)} onClose={() => { setShowArchivedHistoryModal(false); setArchivedHistory(null); }} />}
         {showComplaintResponseModal && selectedComplaint && <ComplaintResponseModal complaint={selectedComplaint} response={complaintResponse} setResponse={setComplaintResponse} onSend={handleRespondToComplaint} onCancel={() => { setShowComplaintResponseModal(false); setSelectedComplaint(null); setComplaintResponse(''); }} isSubmitting={isSubmitting} />}
         {showRoomChangeReasonModal && selectedRoomChangeRequest && <RoomChangeReasonModal reason={rejectionReason} setReason={setRejectionReason} onReject={handleRejectRoomChange} onCancel={() => { setShowRoomChangeReasonModal(false); setSelectedRoomChangeRequest(null); setRejectionReason(''); }} isSubmitting={isSubmitting} />}
-        {showRoomDetailsModal && selectedRoom && <RoomDetailsModal room={selectedRoom} tenantsInRoom={getTenantsInRoom(selectedRoom.id)} onClose={() => setShowRoomDetailsModal(false)} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} onUpdated={(updated) => { setRooms(current => current.map(room => room.id === updated.id ? updated : room)); setSelectedRoom(updated); }} />}
+        {selectedVacateRequest && <VacateRejectionModal request={selectedVacateRequest} reason={vacateRejectionReason} setReason={setVacateRejectionReason} onReject={async () => { const rejected = await rejectVacateRequest(selectedVacateRequest.id, vacateRejectionReason); if (rejected) { setSelectedVacateRequest(null); setVacateRejectionReason(''); } }} onCancel={() => { if (!vacateRejectingId) { setSelectedVacateRequest(null); setVacateRejectionReason(''); } }} isSubmitting={Boolean(vacateRejectingId)} />}
+        {showPaymentConfirmModal && confirmingTenant && <PaymentConfirmModal tenant={confirmingTenant} onConfirm={handleConfirmPendingPayment} onCancel={() => { if (!isSubmitting) { setShowPaymentConfirmModal(false); setConfirmingTenant(null); } }} isSubmitting={isSubmitting} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true); }} />}
+        {showRoomDetailsModal && selectedRoom && <RoomDetailsModal room={selectedRoom} tenantsInRoom={getTenantsInRoom(selectedRoom.id)} onClose={() => setShowRoomDetailsModal(false)} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} onUpdated={async (updated) => { setRooms(current => current.map(room => room.id === updated.id ? updated : room)); setSelectedRoom(updated); await loadData(true); }} />}
         
         {/* History Modal */}
         {showTenantPaymentsModal && selectedTenantForPayments && (

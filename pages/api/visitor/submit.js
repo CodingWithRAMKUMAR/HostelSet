@@ -1,20 +1,13 @@
 import crypto from 'crypto'
 import { supabaseAdmin } from '../../../lib/supabase'
 import { cleanPhoneNumber } from '../../../lib/utils'
+import { allowPostOnly, enforceRateLimit, getClientIp, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 
 export const config = { api: { bodyParser: { sizeLimit: '1mb' } } }
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
-const attempts = new Map()
-
-function rateLimited(ip) {
-  const now = Date.now()
-  const recent = (attempts.get(ip) || []).filter(time => now - time < 15 * 60 * 1000)
-  recent.push(now)
-  attempts.set(ip, recent)
-  return recent.length > 8
-}
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function decodeFile(file, label, imageOnly = false) {
   if (!file?.data || !file?.type) throw new Error(`${label} is required`)
@@ -54,22 +47,24 @@ function privatePath(path, propertyId, category, label) {
   return value
 }
 
-async function verifyPrivateObject(path, label) {
+async function verifyPrivateObject(path, label, imageOnly = false) {
   const slash = path.lastIndexOf('/')
   const folder = path.slice(0, slash)
   const name = path.slice(slash + 1)
   const { data, error } = await supabaseAdmin.storage.from('tenant-documents').list(folder, { search: name, limit: 2 })
   const object = data?.find(item => item.name === name)
-  if (error || !object || Number(object.metadata?.size || 0) < 1 || Number(object.metadata?.size || 0) > MAX_FILE_SIZE) {
+  const mime = object?.metadata?.mimetype || object?.metadata?.contentType
+  if (error || !object || !ALLOWED.has(mime) || (imageOnly && mime === 'application/pdf') || Number(object.metadata?.size || 0) < 1 || Number(object.metadata?.size || 0) > MAX_FILE_SIZE) {
     throw new Error(`${label} upload was not completed`)
   }
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  setPrivateApiResponse(res)
+  if (!allowPostOnly(req, res) || !requireJson(req, res)) return
   if (!supabaseAdmin) return res.status(503).json({ error: 'Application service is unavailable' })
-  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim()
-  if (rateLimited(ip)) return res.status(429).json({ error: 'Too many attempts. Please try again later.' })
+  const ip = getClientIp(req)
+  if (!await enforceRateLimit(req, res, { scope: 'visitor-submit-ip', identifier: ip, limit: 8, windowSeconds: 900 })) return
 
   const uploaded = []
   let createdUserId = null
@@ -79,9 +74,10 @@ export default async function handler(req, res) {
     const email = String(form?.email || '').trim().toLowerCase().slice(0, 254)
     const phone = cleanPhoneNumber(form?.phone)
     const message = String(form?.message || '').trim().slice(0, 2000) || null
-    if (!['application', 'prebooking'].includes(kind) || !propertyId || !roomId || !name || !/^\S+@\S+\.\S+$/.test(email) || !/^\d{10}$/.test(phone)) {
+    if (!['application', 'prebooking'].includes(kind) || !UUID.test(String(propertyId || '')) || !UUID.test(String(roomId || '')) || !name || !/^\S+@\S+\.\S+$/.test(email) || !/^\d{10}$/.test(phone) || !files || typeof files !== 'object') {
       return res.status(400).json({ error: 'Please provide valid application details.' })
     }
+    if (!await enforceRateLimit(req, res, { scope: 'visitor-submit-identity', identifier: `${propertyId}:${email}:${phone}`, limit: 3, windowSeconds: 3600 })) return
 
     const { data: room, error: roomError } = await supabaseAdmin.from('rooms')
       .select('id, property_id, capacity, current_occupants, monthly_rent, deposit_amount')
@@ -105,7 +101,7 @@ export default async function handler(req, res) {
     const paymentPath = typeof files?.payment === 'string' ? privatePath(files.payment, propertyId, 'payments', 'Payment screenshot') : await uploadPrivate(files?.payment, `${propertyId}/payments`, 'Payment screenshot', true)
     uploaded.push(paymentPath)
     await Promise.all([
-      verifyPrivateObject(idPath, 'ID proof'), verifyPrivateObject(photoPath, 'Photo'), verifyPrivateObject(paymentPath, 'Payment screenshot'),
+      verifyPrivateObject(idPath, 'ID proof'), verifyPrivateObject(photoPath, 'Photo', true), verifyPrivateObject(paymentPath, 'Payment screenshot', true),
     ])
 
     if (kind === 'prebooking') {

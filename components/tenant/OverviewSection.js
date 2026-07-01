@@ -1,6 +1,6 @@
 import { formatCurrency, formatDate, getSharingDetails } from '../../lib/utils';
 
-export default function OverviewSection({ tenant, room, property, owner, pendingRoomChangeRequest, lastRoomChangeDecision, vacateRequest }) {
+export default function OverviewSection({ tenant, room, property, owner, pendingRoomChangeRequest, lastRoomChangeDecision, vacateRequest, lastVacateDecision }) {
   if (!tenant || !room) {
     return <div className="text-center py-12 text-gray-500">Loading your profile...</div>;
   }
@@ -37,6 +37,13 @@ export default function OverviewSection({ tenant, room, property, owner, pending
             <div className={`mt-3 rounded-lg border p-3 text-sm ${vacateRequest.status === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
               <strong>{vacateRequest.status === 'approved' ? 'Vacate request approved.' : 'Vacate request pending approval.'}</strong>
               <div className="mt-1">Expected checkout: {formatDate(vacateRequest.expected_check_out)}</div>
+            </div>
+          )}
+          {!vacateRequest && lastVacateDecision?.status === 'rejected' && (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="status">
+              <strong>Vacate request rejected.</strong>
+              <div className="mt-1">{lastVacateDecision.rejection_reason || 'The owner did not provide a reason.'}</div>
+              <div className="mt-2 text-xs text-red-500">You can submit another vacate request when eligible.</div>
             </div>
           )}
           {!vacateRequest && pendingRoomChangeRequest && (

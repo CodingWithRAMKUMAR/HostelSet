@@ -6,7 +6,8 @@ export function useNotices(tenant) {
   const [notices, setNotices] = useState([]);
   const loadNotices = async () => {
     if (!tenant?.property_id) return;
-    const { data } = await supabase.from('notices').select('*').or(`property_id.eq.${tenant.property_id},property_id.is.null`).order('created_at', { ascending: false }).limit(10);
+    const { data, error } = await supabase.from('notices').select('*').or(`property_id.eq.${tenant.property_id},property_id.is.null`).order('created_at', { ascending: false }).limit(10);
+    if (error) { console.error('Tenant notices load failed:', error.message); return; }
     setNotices(data || []);
   };
   useEffect(() => {

@@ -11,6 +11,22 @@ export default function App({ Component, pageProps }) {
 
   useEffect(() => {
     let active = true
+    let subscription
+    import('../lib/supabase').then(async ({ supabase, syncServerSession }) => {
+      if (!active) return
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) syncServerSession(session).catch(() => {})
+      const result = supabase.auth.onAuthStateChange((event, nextSession) => {
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') syncServerSession(nextSession).catch(() => {})
+        if (event === 'SIGNED_OUT') syncServerSession(null).catch(() => {})
+      })
+      subscription = result.data.subscription
+    }).catch(() => {})
+    return () => { active = false; subscription?.unsubscribe() }
+  }, [])
+
+  useEffect(() => {
+    let active = true
     const checkSession = async () => {
       try {
         const protectedRoutes = ['/owner', '/tenant', '/admin']

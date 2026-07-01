@@ -19,9 +19,6 @@ export function useOwnerRoomChange(property, enabled = true) {
     if (!confirm(`Approve room change?`)) return;
     const { error } = await supabase.rpc('move_tenant_room', { p_tenant_id: request.tenant_id, p_new_room_id: request.new_room_id, p_old_room_id: request.old_room_id });
     if (error) { toast.error('Failed to approve: ' + error.message); return false; }
-    const { error: requestError } = await supabase.from('room_change_requests').update({ status:'approved', processed_at:new Date().toISOString(), rejection_reason:null }).eq('id', request.id).eq('status', 'pending');
-    if (requestError) { toast.error('Room moved, but request status could not be updated: ' + requestError.message); return false; }
-    await supabase.from('check_out_requests').delete().eq('tenant_id', request.tenant_id);
     await loadRoomChangeRequests();
     toast.success('Room change approved!');
     return true;

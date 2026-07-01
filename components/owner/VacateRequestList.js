@@ -1,6 +1,6 @@
 import { formatDate } from '../../lib/utils';
 
-export default function VacateRequestList({ requests = [], onApprove = () => {}, isSubmitting = false }) {
+export default function VacateRequestList({ requests = [], onApprove = () => {}, onReject = () => {}, isSubmitting = false }) {
   if (!requests || requests.length === 0) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-xl">
@@ -34,13 +34,10 @@ export default function VacateRequestList({ requests = [], onApprove = () => {},
                 {req.reason && <p className="text-sm text-gray-500 mt-1">Reason: {req.reason}</p>}
               </div>
               {isPending && (
-                <button
-                  onClick={() => onApprove(req.id, req.tenant_id, req.expected_check_out)}
-                  disabled={isSubmitting}
-                  className="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-700 transition disabled:opacity-50"
-                >
-                  Approve
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => onApprove(req.id, req.tenant_id, req.expected_check_out)} disabled={isSubmitting} className="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-700 transition disabled:opacity-50">Approve</button>
+                  <button onClick={() => onReject(req)} disabled={isSubmitting} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition disabled:opacity-50">Reject</button>
+                </div>
               )}
             </div>
           </div>

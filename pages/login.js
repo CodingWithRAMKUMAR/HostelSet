@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
-import { supabase, signInWithEmail, resetPassword } from '../lib/supabase'
+import { supabase, signInWithEmail, resetPassword, syncServerSession } from '../lib/supabase'
 import { cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
 
@@ -51,6 +51,9 @@ export default function Login() {
       const result = await signInWithEmail(emailToUse, password)
 
       if (result.success) {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) throw new Error('Unable to establish your session')
+        await syncServerSession(session)
         toast.success(`Welcome back, ${result.userData.full_name}!`)
 
         const destination = result.role === 'admin'

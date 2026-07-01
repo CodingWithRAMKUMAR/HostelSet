@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { cleanPhoneNumber } from '../lib/utils';
 import toast from 'react-hot-toast';
@@ -16,19 +16,32 @@ export function useOwnerTenants(property, rooms, tenants, setTenants, setStats, 
     if (selectedRoom.current_occupants >= selectedRoom.capacity) { toast.error(`Room ${selectedRoom.room_number} is full!`); return; }
     setIsSubmitting(true);
     try {
-      const tenantEmail = formData.email.trim(); const joiningFee = parseInt(formData.joining_fee)||0; const advanceMonths = parseInt(formData.advance_amount)||0; const monthlyRent = parseInt(formData.rent_amount);
-      const totalJoiningAmount = (monthlyRent * advanceMonths) + joiningFee;
-      const { data:authData, error:authError } = await supabase.auth.signUp({ email:tenantEmail, password:Math.random().toString(36).slice(-8), options:{ data:{ full_name:formData.name, role:'tenant', phone:cleanPhone } } });
-      if (authError) throw authError;
-      const userId = authData.user.id;
-      await supabase.from('users').insert({ id:userId, email:tenantEmail, full_name:formData.name, phone:cleanPhone, role:'tenant', is_active:true });
-      const pendingAmount = advanceMonths > 0 ? 0 : monthlyRent; const rentStatus = advanceMonths > 0 ? 'paid' : 'pending';
-      const { data:newTenant, error:tenantError } = await supabase.from('tenants').insert({ user_id:userId, property_id:property.id, room_id:selectedRoom.id, name:formData.name, phone:cleanPhone, email:tenantEmail, rent_amount:monthlyRent, pending_amount:pendingAmount, total_paid:totalJoiningAmount, rent_status:rentStatus, move_in_date:new Date().toISOString().split('T')[0], status:'active' }).select().single();
-      if (tenantError) throw tenantError;
-      if (totalJoiningAmount > 0 && newTenant) { await supabase.from('payment_history').insert({ tenant_id:newTenant.id, amount:totalJoiningAmount, payment_date:new Date().toISOString().split('T')[0], payment_method:'advance', status:'success' }); }
-      await supabase.from('rooms').update({ current_occupants: selectedRoom.current_occupants + 1, status: selectedRoom.current_occupants + 1 >= selectedRoom.capacity ? 'occupied' : 'vacant' }).eq('id', selectedRoom.id);
-      await supabase.auth.resetPasswordForEmail(tenantEmail, { redirectTo:`${window.location.origin}/reset-password` }).catch(() => {});
-      toast.success(`Tenant "${formData.name}" added!`);
+      const tenantEmail = formData.email.trim().toLowerCase();
+      const joiningFee = Number(formData.joining_fee || 0);
+      const advanceMonths = Number(formData.advance_amount || 0);
+      const monthlyRent = Number(formData.rent_amount);
+      if (!Number.isFinite(monthlyRent) || monthlyRent <= 0 || !Number.isInteger(advanceMonths) || advanceMonths < 0 || !Number.isFinite(joiningFee) || joiningFee < 0) {
+        throw new Error('Enter valid rent, advance months, and joining fee');
+      }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Your session expired. Please log in again.');
+      const response = await fetch('/api/owner/tenants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          propertyId: property.id,
+          roomId: selectedRoom.id,
+          name: formData.name,
+          phone: cleanPhone,
+          email: tenantEmail,
+          monthlyRent,
+          advanceMonths,
+          joiningFee,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Tenant registration failed');
+      toast.success(result.emailSent ? `Tenant "${formData.name}" added and invited!` : `Tenant "${formData.name}" added. Password email can be resent.`);
       setFormData({ name:'', phone:'', email:'', rent_amount:'', room_id:'', advance_amount:'0', joining_fee:'0' });
       await loadData(true);
     } catch (error) { toast.error('Failed to add tenant: ' + error.message); }

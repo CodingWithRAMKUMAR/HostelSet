@@ -22,8 +22,9 @@ export function useAdminVacate(enabled = true) {
   };
 
   const rejectVacate = async (requestId) => {
-    if (!confirm('Reject this vacate request?')) return;
-    const { error } = await supabase.from('check_out_requests').update({ status: 'rejected', processed_at: new Date().toISOString() }).eq('id', requestId);
+    const reason = window.prompt('Optional reason for rejecting this vacate request:', '');
+    if (reason === null) return;
+    const { error } = await supabase.rpc('reject_vacate_request', { p_request_id: requestId, p_rejection_reason: reason.trim() || null });
     if (error) toast.error('Failed to reject vacate');
     else { toast.success('Vacate request rejected.'); await loadVacate(); }
   };

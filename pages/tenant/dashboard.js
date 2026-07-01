@@ -41,11 +41,12 @@ function TenantDashboardContent() {
   const { tenant, room, property, owner, roommates, loading, realtimeConnected, roommateVacateAlert, refreshData, setTenant } = core;
   
   const { notices = [] } = useNotices(tenant);
-  const { existingVacateRequest, cancelVacateRequest, refreshVacate } = useVacate(tenant, setTenant);
+  const { existingVacateRequest, lastVacateDecision, vacateLoaded, cancelVacateRequest, refreshVacate } = useVacate(tenant, setTenant);
   const { complaints = [], submitComplaint: hookSubmitComplaint, deleteComplaint: hookDeleteComplaint } = useComplaints(tenant);
   
   const { 
     paymentHistory = [], 
+    paymentsLoaded,
     paymentLoading, 
     ownerUpiId, 
     ownerUpiPhone, 
@@ -140,25 +141,18 @@ function TenantDashboardContent() {
 
   const requestVacate = async () => {
     if (isSubmitting) return
+    if (vacateBlockedReason) { toast.error(vacateBlockedReason); return }
     if (!vacateForm.expected_date) { toast.error('Please select expected check-out date'); return }
     if (vacateForm.rating === 0) { toast.error('Please rate your experience (1-5 stars)'); return }
     setIsSubmitting(true)
     try {
-      const vacateData = {
-        tenant_id: tenant.id, tenant_name: tenant.name, property_id: tenant.property_id,
-        room_id: tenant.room_id, room_number: room?.room_number || 'N/A',
-        expected_check_out: vacateForm.expected_date, reason: vacateForm.reason || null,
-        requested_date: new Date().toISOString().split('T')[0], status: 'pending',
-        created_at: new Date().toISOString()
-      }
-      const { error } = await supabase.from('check_out_requests').insert(vacateData)
-      if (error) throw new Error(error.message)
-      const { error: ratingError } = await supabase.from('ratings').insert({
-        tenant_id: tenant.id, property_id: tenant.property_id,
-        rating: vacateForm.rating, review: vacateForm.review || null,
-        created_at: new Date().toISOString()
+      const { error } = await supabase.rpc('request_tenant_vacate', {
+        p_expected_check_out: vacateForm.expected_date,
+        p_reason: vacateForm.reason || null,
+        p_rating: vacateForm.rating,
+        p_review: vacateForm.review || null
       })
-      if (ratingError) console.error('Rating submit error:', ratingError)
+      if (error) throw new Error(error.message)
       toast.success('Vacate request submitted! Owner will review it.')
       await refreshVacate()
       setShowVacateModal(false)
@@ -196,6 +190,17 @@ function TenantDashboardContent() {
 
   const rentStatus = getRentStatus() || { message: 'Loading...' }
   const isUrgent = rentStatus.urgent && (rentStatus.status === 'due_soon' || rentStatus.status === 'overdue')
+  const hasPaymentAwaitingApproval = paymentHistory.some((payment) => payment.status === 'payment_pending')
+  const hasOutstandingRent = Number(tenant?.pending_amount || 0) > 0 || tenant?.rent_status !== 'paid' || rentStatus.status !== 'paid'
+  const vacateBlockedReason = !vacateLoaded || !paymentsLoaded
+    ? 'Checking vacate eligibility...'
+    : existingVacateRequest
+      ? 'You already have an active vacate request.'
+      : hasPaymentAwaitingApproval
+        ? 'Your latest payment is awaiting owner verification.'
+        : hasOutstandingRent
+          ? 'Outstanding rent must be cleared before requesting vacate.'
+          : null
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -321,9 +326,12 @@ function TenantDashboardContent() {
           {existingVacateRequest ? (
             <button onClick={cancelVacateRequest} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-yellow-500/50 text-yellow-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition disabled:opacity-50">{existingVacateRequest.status === 'approved' ? '✓ Vacate Approved · Cancel' : '⏳ Vacate Request Pending · Cancel'}</button>
           ) : (
-            <button onClick={() => setShowVacateModal(true)} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-red-300/50 text-red-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50">🚪 Request Vacate</button>
+            <button onClick={() => setShowVacateModal(true)} disabled={isSubmitting || Boolean(vacateBlockedReason)} title={vacateBlockedReason || undefined} className="w-full sm:w-auto border-2 border-red-300/50 text-red-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed">🚪 Request Vacate</button>
           )}
         </div>
+        {vacateBlockedReason && (
+          <p className="-mt-4 mb-6 text-sm font-medium text-red-600" role="status">{vacateBlockedReason}</p>
+        )}
 
         {/* --- TABS (ONYX & GOLD) --- */}
         <div className="flex flex-nowrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto dashboard-tabs">
@@ -348,6 +356,7 @@ function TenantDashboardContent() {
             pendingRoomChangeRequest={pendingRoomChangeRequest}
             lastRoomChangeDecision={lastRoomChangeDecision}
             vacateRequest={existingVacateRequest}
+            lastVacateDecision={lastVacateDecision}
           />
         )}
         {activeTab === 'roommates' && <RoommatesSection roommates={roommates} room={room} />}
