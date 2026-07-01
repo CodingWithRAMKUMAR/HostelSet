@@ -30,6 +30,7 @@ export default function PropertyDetail() {
   const [paymentScreenshot, setPaymentScreenshot] = useState(null)
   const [transactionId, setTransactionId] = useState('')
   const [paymentSubmitting, setPaymentSubmitting] = useState(false)
+  const [paymentProgress, setPaymentProgress] = useState('')
 
   // Pre‑booking state
   const [vacateInfo, setVacateInfo] = useState({})
@@ -46,6 +47,7 @@ export default function PropertyDetail() {
   const [prebookPaymentScreenshot, setPrebookPaymentScreenshot] = useState(null)
   const [prebookTransactionId, setPrebookTransactionId] = useState('')
   const [prebookPaymentSubmitting, setPrebookPaymentSubmitting] = useState(false)
+  const [prebookPaymentProgress, setPrebookPaymentProgress] = useState('')
 
   // Apply form validation
   const [phoneError, setPhoneError] = useState('')
@@ -74,9 +76,10 @@ export default function PropertyDetail() {
     if (!background) setLoading(true)
     if (!background) setLoadError('')
     try {
-      const [{ data: propertyData, error: propertyError }, { data: roomsData, error: roomsError }] = await Promise.all([
+      const [{ data: propertyData, error: propertyError }, { data: roomsData, error: roomsError }, { data: settingsData }] = await Promise.all([
         supabase.from('properties').select('*').eq('id', id).eq('is_active', true).single(),
         supabase.from('rooms').select('*').eq('property_id', id).order('room_number'),
+        supabase.from('owner_settings').select('*').eq('property_id', id).maybeSingle(),
       ])
       if (propertyError) throw propertyError
       if (roomsError) throw roomsError
@@ -89,11 +92,6 @@ export default function PropertyDetail() {
       setRooms(roomsData || [])
 
       if (normalizedProperty) {
-        const { data: settingsData } = await supabase
-          .from('owner_settings')
-          .select('*')
-          .eq('owner_id', normalizedProperty.owner_id)
-          .maybeSingle()
         if (settingsData) {
           setOwnerSettings({
             upi_id: settingsData.upi_id || propertyData.owner_upi_id || '',
@@ -422,6 +420,8 @@ export default function PropertyDetail() {
 
   // Step 2: After payment proof, insert application and tenant
   const submitPayment = async () => {
+    if (paymentSubmitting) return
+    setPaymentProgress('Validating payment details...')
     if (!paymentScreenshot) {
       toast.error('Please upload payment screenshot')
       return
@@ -441,9 +441,11 @@ export default function PropertyDetail() {
     }
     setPaymentSubmitting(true)
     try {
+      setPaymentProgress('Uploading documents...')
       const [idPayload, photoPayload, paymentPayload] = await Promise.all([
         uploadPrivateFile(idProof, 'identity'), uploadPrivateFile(photo, 'photos'), uploadPrivateFile(paymentScreenshot, 'payments'),
       ])
+      setPaymentProgress('Submitting application and sending invite...')
       const response = await fetch('/api/visitor/submit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -462,6 +464,7 @@ export default function PropertyDetail() {
       toast.error(error.message || 'Application submission failed')
     } finally {
       setPaymentSubmitting(false)
+      setPaymentProgress('')
     }
     return
     setPaymentSubmitting(true)
@@ -685,6 +688,8 @@ export default function PropertyDetail() {
   }
 
   const submitPreBookingPayment = async () => {
+    if (prebookPaymentSubmitting) return
+    setPrebookPaymentProgress('Validating payment details...')
     if (!prebookPaymentScreenshot) {
       toast.error('Please upload payment screenshot')
       return
@@ -700,9 +705,11 @@ export default function PropertyDetail() {
     }
     setPrebookPaymentSubmitting(true)
     try {
+      setPrebookPaymentProgress('Uploading documents...')
       const [idPayload, photoPayload, paymentPayload] = await Promise.all([
         uploadPrivateFile(prebookIdProof, 'identity'), uploadPrivateFile(prebookPhoto, 'photos'), uploadPrivateFile(prebookPaymentScreenshot, 'payments'),
       ])
+      setPrebookPaymentProgress('Submitting pre-booking...')
       const response = await fetch('/api/visitor/submit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -759,6 +766,7 @@ export default function PropertyDetail() {
       toast.error('Failed to submit pre‑booking: ' + (error.message || 'Unknown error'))
     } finally {
       setPrebookPaymentSubmitting(false)
+      setPrebookPaymentProgress('')
     }
   }
 
@@ -776,6 +784,7 @@ export default function PropertyDetail() {
 
   // Reset form when closing payment modal (optional)
   const closePaymentModal = () => {
+    if (paymentSubmitting) return
     setShowPaymentModal(false)
     // Optionally clear payment screenshot but keep form data? We'll keep it for retry.
   }
@@ -1164,9 +1173,9 @@ export default function PropertyDetail() {
                   Submitting fake payment proof, wrong UPI transaction ID, or false documents may lead to rejection and legal/cybercrime action.
                 </div>
                 <button onClick={submitPayment} disabled={paymentSubmitting || !ownerSettings.upi_id} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50">
-                  {paymentSubmitting ? 'Processing...' : 'I Have Paid – Submit'}
+                  {paymentSubmitting ? paymentProgress || 'Processing...' : 'I Have Paid – Submit'}
                 </button>
-                <button onClick={closePaymentModal} className="w-full text-center text-gray-500 text-sm">Cancel</button>
+                <button onClick={closePaymentModal} disabled={paymentSubmitting} className="w-full text-center text-gray-500 text-sm disabled:opacity-50">Cancel</button>
               </div>
             </motion.div>
           </div>
@@ -1289,9 +1298,9 @@ export default function PropertyDetail() {
                   After payment, upload the screenshot and submit. Owner will verify and approve your pre‑booking.
                 </div>
                 <button onClick={submitPreBookingPayment} disabled={prebookPaymentSubmitting || !ownerSettings.upi_id} className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-50">
-                  {prebookPaymentSubmitting ? 'Submitting...' : 'Submit Payment Proof'}
+                  {prebookPaymentSubmitting ? prebookPaymentProgress || 'Submitting...' : 'Submit Payment Proof'}
                 </button>
-                <button onClick={() => setShowPrebookPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>
+                <button onClick={() => { if (!prebookPaymentSubmitting) setShowPrebookPaymentModal(false) }} disabled={prebookPaymentSubmitting} className="w-full text-center text-gray-500 text-sm disabled:opacity-50">Cancel</button>
               </div>
             </motion.div>
           </div>

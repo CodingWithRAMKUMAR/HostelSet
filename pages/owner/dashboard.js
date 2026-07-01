@@ -98,7 +98,6 @@ function OwnerDashboardContent() {
     requestMembership
   } = core;
   const [activeTab, setActiveTab] = useState('overview');
-  const [prefetchReady, setPrefetchReady] = useState(false);
 
   useEffect(() => {
     if (!property?.id) return undefined;
@@ -106,7 +105,6 @@ function OwnerDashboardContent() {
       [RoomList, TenantTable, RentPaymentsList, PaymentHistoryTable, PreBookingList, ApplicationList, ComplaintList, VacateRequestList, NoticeList, RoomChangeRequestList,
         AddTenantModal, AddRoomModal, CollectRentModal, PostNoticeModal, ComplaintResponseModal, RoomDetailsModal, PaymentConfirmModal, TenantPaymentsModal, TenantProfileModal,
       ].forEach(component => component.preload?.());
-      setPrefetchReady(true);
     };
     const idleId = typeof window.requestIdleCallback === 'function' ? window.requestIdleCallback(preload, { timeout: 800 }) : window.setTimeout(preload, 250);
     return () => typeof window.cancelIdleCallback === 'function' ? window.cancelIdleCallback(idleId) : window.clearTimeout(idleId);
@@ -114,13 +112,13 @@ function OwnerDashboardContent() {
   
   const { showRoomModal, setShowRoomModal, roomForm, setRoomForm, sharingTypes, addRoom, deleteRoom } = useOwnerRooms(property, rooms, setRooms, setStats);
   const { formData, setFormData, addTenant } = useOwnerTenants(property, rooms, tenants, setTenants, setStats, loadData);
-  const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, activeTab === 'overview' || activeTab === 'complaints' || prefetchReady);
-  const { vacateRequests, approveVacateRequest, rejectVacateRequest, rejectingId: vacateRejectingId } = useOwnerVacate(property, activeTab === 'overview' || activeTab === 'vacate' || activeTab === 'rooms' || activeTab === 'tenants' || prefetchReady);
-  const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment, refreshPayments } = useOwnerPayments(property, tenants, archivedTenants, setStats, loadData, activeTab === 'overview' || activeTab === 'rent-payments' || activeTab === 'payment-history' || prefetchReady);
-  const { notices, postNotice, deleteNotice } = useOwnerNotices(property, activeTab === 'overview' || activeTab === 'notices' || prefetchReady);
-  const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, activeTab === 'overview' || activeTab === 'room-change' || prefetchReady);
-  const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, activeTab === 'overview' || activeTab === 'applications' || prefetchReady);
-  const { preBookings, approvePreBooking, rejectPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, activeTab === 'pre-bookings' || prefetchReady);
+  const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, activeTab === 'overview' || activeTab === 'complaints');
+  const { vacateRequests, approveVacateRequest, rejectVacateRequest, rejectingId: vacateRejectingId } = useOwnerVacate(property, activeTab === 'overview' || activeTab === 'vacate' || activeTab === 'rooms' || activeTab === 'tenants');
+  const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment, refreshPayments } = useOwnerPayments(property, tenants, archivedTenants, setStats, loadData, activeTab === 'overview' || activeTab === 'rent-payments' || activeTab === 'payment-history');
+  const { notices, postNotice, deleteNotice } = useOwnerNotices(property, activeTab === 'overview' || activeTab === 'notices');
+  const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, activeTab === 'overview' || activeTab === 'room-change');
+  const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, activeTab === 'overview' || activeTab === 'applications');
+  const { preBookings, approvePreBooking, rejectPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, activeTab === 'pre-bookings');
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
-import { supabase, signInWithEmail, resetPassword, syncServerSession } from '../lib/supabase'
+import { signInWithEmail, resetPassword, syncServerSession } from '../lib/supabase'
 import { cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
 
@@ -13,22 +13,26 @@ export default function Login() {
   const [showReset, setShowReset] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [loginStatus, setLoginStatus] = useState('')
 
   const isEmail = (input) => input.includes('@')
   const isPhone = (input) => /^\d{10}$/.test(cleanPhoneNumber(input))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (loading) return
     if (!identifier || !password) {
       toast.error('Please enter email/phone and password')
       return
     }
     setLoading(true)
+    setLoginStatus('Signing in...')
 
     try {
       let emailToUse = identifier
 
       if (isPhone(identifier)) {
+        setLoginStatus('Finding your account...')
         const response = await fetch('/api/auth/resolve-phone', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -50,16 +54,15 @@ export default function Login() {
       const result = await signInWithEmail(emailToUse, password)
 
       if (result.success) {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) throw new Error('Unable to establish your session')
-        await syncServerSession(session)
-        toast.success(`Welcome back, ${result.userData.full_name}!`)
-
         const destination = result.role === 'admin'
           ? '/admin/dashboard'
           : result.role === 'owner'
             ? '/owner/dashboard'
             : '/tenant/dashboard'
+        if (!result.session) throw new Error('Unable to establish your session')
+        setLoginStatus('Opening your dashboard...')
+        await Promise.all([syncServerSession(result.session), router.prefetch(destination)])
+        toast.success(`Welcome back, ${result.userData.full_name}!`)
         await router.replace(destination)
       } else {
         // ✅ Better error messages based on error type
@@ -78,6 +81,7 @@ export default function Login() {
       toast.error('Login failed. Please try again.')
     } finally {
       setLoading(false)
+      setLoginStatus('')
     }
   }
 
@@ -149,7 +153,7 @@ export default function Login() {
               disabled={loading}
               className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50"
             >
-              {loading ? 'Logging in...' : 'Login →'}
+              {loading ? loginStatus || 'Logging in...' : 'Login →'}
             </button>
 
             <div className="text-center">

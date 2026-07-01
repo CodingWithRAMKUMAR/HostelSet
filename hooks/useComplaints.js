@@ -27,7 +27,7 @@ export function useComplaints(tenant) {
     if (!tenant?.id) return;
     loadComplaints();
     const channel = supabase.channel('complaints-tenant-isolated')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'complaints' }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'complaints', filter: `tenant_id=eq.${tenant.id}` }, (payload) => {
         if (payload.new?.tenant_id === tenant.id) {
           if (payload.eventType === 'UPDATE' && payload.new.status !== payload.old?.status) {
             toast.success(`📝 Complaint status updated to: ${payload.new.status}`);
