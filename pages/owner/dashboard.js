@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { supabase, signPrivateDocumentFields } from '../../lib/supabase';
+import { supabase, signPrivateDocumentFields, findTenantDocumentRecord } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 
 // Modular Imports
@@ -114,12 +114,12 @@ function OwnerDashboardContent() {
   
   const { showRoomModal, setShowRoomModal, roomForm, setRoomForm, sharingTypes, addRoom, deleteRoom } = useOwnerRooms(property, rooms, setRooms, setStats);
   const { formData, setFormData, addTenant } = useOwnerTenants(property, rooms, tenants, setTenants, setStats, loadData);
-  const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, activeTab === 'complaints' || prefetchReady);
-  const { vacateRequests, approveVacateRequest, rejectVacateRequest, rejectingId: vacateRejectingId } = useOwnerVacate(property, activeTab === 'vacate' || activeTab === 'rooms' || activeTab === 'tenants' || prefetchReady);
-  const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment, refreshPayments } = useOwnerPayments(property, tenants, archivedTenants, setStats, loadData, activeTab === 'rent-payments' || activeTab === 'payment-history' || prefetchReady);
+  const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, activeTab === 'overview' || activeTab === 'complaints' || prefetchReady);
+  const { vacateRequests, approveVacateRequest, rejectVacateRequest, rejectingId: vacateRejectingId } = useOwnerVacate(property, activeTab === 'overview' || activeTab === 'vacate' || activeTab === 'rooms' || activeTab === 'tenants' || prefetchReady);
+  const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment, refreshPayments } = useOwnerPayments(property, tenants, archivedTenants, setStats, loadData, activeTab === 'overview' || activeTab === 'rent-payments' || activeTab === 'payment-history' || prefetchReady);
   const { notices, postNotice, deleteNotice } = useOwnerNotices(property, activeTab === 'overview' || activeTab === 'notices' || prefetchReady);
-  const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, activeTab === 'room-change' || prefetchReady);
-  const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, activeTab === 'applications' || prefetchReady);
+  const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, activeTab === 'overview' || activeTab === 'room-change' || prefetchReady);
+  const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, activeTab === 'overview' || activeTab === 'applications' || prefetchReady);
   const { preBookings, approvePreBooking, rejectPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, activeTab === 'pre-bookings' || prefetchReady);
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -160,8 +160,7 @@ function OwnerDashboardContent() {
   const [selectedTenantForPayments, setSelectedTenantForPayments] = useState(null);
   const [selectedProfileTenant, setSelectedProfileTenant] = useState(null);
   const [tenantPayments, setTenantPayments] = useState([]);
-  const [tenantApplication, setTenantApplication] = useState(null);
-  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [tenantApplication, setTenantApplication] = useState(null);  const [tenantExtraDocuments, setTenantExtraDocuments] = useState([]);  const [loadingProfile, setLoadingProfile] = useState(false);
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [archivedHistory, setArchivedHistory] = useState(null);
   const [loadingArchivedTenantId, setLoadingArchivedTenantId] = useState(null);
@@ -194,20 +193,38 @@ function OwnerDashboardContent() {
   const fetchTenantApplication = async (tenant) => {
     setSelectedProfileTenant(tenant);
     setShowTenantProfileModal(true);
-    if (profileCache.current.has(tenant.id)) { setTenantApplication(profileCache.current.get(tenant.id)); setLoadingProfile(false); return; }
+    if (profileCache.current.has(tenant.id)) {
+      const cached = profileCache.current.get(tenant.id);
+      setSelectedProfileTenant(cached.tenant);
+      setTenantApplication(cached.application);
+      setTenantExtraDocuments(cached.extraDocuments || []);
+      setLoadingProfile(false);
+      return;
+    }
     setLoadingProfile(true);
     try {
-      const { data, error } = await supabase
-        .from('applications')
-        .select('*')
-        .or(`phone.eq.${tenant.phone},email.eq.${tenant.email}`)
-        .eq('property_id', property.id)
-        .order('created_at', { ascending: false })
-        .limit(1);
-      if (error) throw error;
-      const signed = data?.[0] ? await signPrivateDocumentFields(data[0], ['id_proof', 'photo', 'payment_screenshot']) : null;
-      profileCache.current.set(tenant.id, signed);
+      const [tenantResult, paymentHistoryResult] = await Promise.all([
+        supabase.from('tenants').select('*').eq('id', tenant.id).eq('property_id', property.id).single(),
+        supabase.from('payment_history')
+          .select('id, payment_screenshot, payment_date, payment_method, status')
+          .eq('tenant_id', tenant.id)
+          .order('payment_date', { ascending: false })
+          .limit(10),
+      ]);
+      if (tenantResult.error) throw tenantResult.error;
+      if (paymentHistoryResult.error) throw paymentHistoryResult.error;
+      const fullTenant = tenantResult.data;
+      const signedTenant = await signPrivateDocumentFields(fullTenant, ['payment_screenshot']);
+      const { record, source_type } = await findTenantDocumentRecord(fullTenant, property.id);
+      const signed = record ? await signPrivateDocumentFields({ ...record, source_type }, ['id_proof', 'photo', 'payment_screenshot']) : null;
+      const signedHistory = await Promise.all((paymentHistoryResult.data || []).map(item => signPrivateDocumentFields(item, ['payment_screenshot'])));
+      const extraDocuments = signedHistory
+        .filter(item => item.payment_screenshot)
+        .map((item, index) => ({ label: `Payment receipt ${index + 1}`, url: item.payment_screenshot }));
+      profileCache.current.set(tenant.id, { tenant: signedTenant, application: signed, extraDocuments });
+      setSelectedProfileTenant(signedTenant);
       setTenantApplication(signed);
+      setTenantExtraDocuments(extraDocuments);
     } catch (error) {
       toast.error('Could not fetch documents');
     } finally {
@@ -553,7 +570,31 @@ function OwnerDashboardContent() {
   const safePreBookings = Array.isArray(preBookings) ? preBookings : []
 
   const searchLower = searchTerm.trim().toLowerCase()
-  const filteredArchivedTenants = searchLower ? safeArchivedTenants.filter(tenant => [tenant.name, tenant.phone, tenant.email, tenant.room_number].some(value => String(value || '').toLowerCase().includes(searchLower))) : safeArchivedTenants
+  const matchesSearch = (...values) => !searchLower || values.some(value => String(value ?? '').toLowerCase().includes(searchLower))
+  const filteredRooms = safeRooms.filter(room => matchesSearch(room.room_number, room.status, room.sharing_type, room.room_audience))
+  const filteredTenants = safeTenants.filter(tenant => matchesSearch(tenant.name, tenant.phone, tenant.email, tenant.room_number, tenant.pending_amount, tenant.rent_status, tenant.status, tenant.dueStatus?.status))
+  const filteredArchivedTenants = safeArchivedTenants.filter(tenant => matchesSearch(tenant.name, tenant.phone, tenant.email, tenant.room_number))
+  const filteredPendingPayments = safePendingRentPayments.filter(payment => matchesSearch(payment.tenants?.name, payment.tenants?.phone, payment.tenants?.email, payment.tenants?.rooms?.room_number, payment.amount, payment.status, payment.upi_transaction_id))
+  const filteredAllPayments = safeAllPayments.filter(payment => matchesSearch(payment.tenants?.name, payment.tenants?.phone, payment.tenants?.email, payment.tenants?.rooms?.room_number, payment.amount, payment.status, payment.payment_method, payment.upi_transaction_id))
+  const filteredApplications = safeApplications.filter(application => matchesSearch(application.name, application.phone, application.email, application.status, application.rooms?.room_number, application.payment_transaction_id))
+  const filteredPreBookings = safePreBookings.filter(booking => matchesSearch(booking.name, booking.phone, booking.email, booking.status, booking.room_number, booking.payment_transaction_id))
+  const filteredComplaints = safeComplaints.filter(complaint => matchesSearch(complaint.tenant_name, complaint.room_number, complaint.title, complaint.description, complaint.priority, complaint.status, complaint.admin_response))
+  const filteredNotices = safeNotices.filter(notice => matchesSearch(notice.title, notice.content, notice.type))
+  const filteredVacateRequests = safeVacateRequests.filter(request => matchesSearch(request.tenant_name, request.room_number, request.status, request.reason, request.expected_check_out))
+  const filteredRoomChangeRequests = safeRoomChangeRequests.filter(request => matchesSearch(request.tenants?.name, request.tenants?.phone, request.tenants?.email, request.old_room?.room_number, request.new_room?.room_number, request.reason, request.status))
+  const searchGroups = [
+    ['tenants', 'Tenants', filteredTenants.length],
+    ['archived-tenants', 'Archived tenants', filteredArchivedTenants.length],
+    ['rooms', 'Rooms', filteredRooms.length],
+    ['rent-payments', 'Pending payments', filteredPendingPayments.length],
+    ['payment-history', 'Payment history', filteredAllPayments.length],
+    ['applications', 'Applications', filteredApplications.length],
+    ['pre-bookings', 'Pre-bookings', filteredPreBookings.length],
+    ['complaints', 'Complaints', filteredComplaints.length],
+    ['notices', 'Notices', filteredNotices.length],
+    ['vacate', 'Vacate requests', filteredVacateRequests.length],
+    ['room-change', 'Room changes', filteredRoomChangeRequests.length],
+  ].filter(([, , count]) => count > 0)
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] font-sans">
@@ -591,7 +632,14 @@ function OwnerDashboardContent() {
       <div className="container mx-auto px-3 sm:px-4 py-5 sm:py-8">
         
         {/* --- STATS CARDS --- */}
-        <StatsCards stats={{ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length }} />
+        <StatsCards stats={{ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length, pendingApplications: safeApplications.length, totalComplaints: safeComplaints.length, pendingVacate: safeVacateRequests.filter(request => request.status === 'pending').length, pendingRoomChanges: safeRoomChangeRequests.length, pendingRentConfirmations: safePendingRentPayments.length }} />
+
+        {searchLower && (
+          <div className="mb-6 rounded-xl border border-orange-100 bg-white p-4 shadow-sm">
+            <p className="mb-3 text-sm font-semibold text-slate-700">Search results for “{searchTerm.trim()}”</p>
+            {searchGroups.length ? <div className="flex flex-wrap gap-2">{searchGroups.map(([tab, label, count]) => <button key={tab} onClick={() => setActiveTab(tab)} className="rounded-full bg-orange-50 px-3 py-1.5 text-sm font-medium text-orange-700 hover:bg-orange-100">{label} ({count})</button>)}</div> : <p className="text-sm text-gray-500">No matching dashboard records.</p>}
+          </div>
+        )}
 
         {/* --- ACTION BUTTONS (Glassmorphism) --- */}
         <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3 sm:gap-4 mb-6 sm:mb-8">
@@ -607,7 +655,7 @@ function OwnerDashboardContent() {
               {tab === 'rent-payments' && `💸 Rent (${stats.pendingRentConfirmations})`}
               {tab === 'payment-history' && '💳 History'}
               {tab === 'pre-bookings' && `📋 Pre-Bookings`}
-              {tab === 'applications' && `📝 Applications`}
+              {tab === 'applications' && `📝 Applications (${safeApplications.length})`}
               {tab === 'overview' && '📊 Overview'}
               {tab === 'rooms' && `🏠 Rooms (${rooms.length})`}
               {tab === 'tenants' && `👥 Tenants (${tenants.length})`}
@@ -637,17 +685,17 @@ function OwnerDashboardContent() {
             </div>
           </div>
         )}
-        {activeTab === 'rooms' && <RoomList rooms={safeRooms} tenants={safeTenants} vacateRequests={safeVacateRequests} roomMonthlyIncome={roomMonthlyIncome} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />}
-        {activeTab === 'tenants' && <TenantTable tenants={safeTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setPaymentAmount(Number(tenant.pending_amount || tenant.rent_amount || 0)); setCollectionRequestId(crypto.randomUUID()); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
+        {activeTab === 'rooms' && <RoomList rooms={filteredRooms} tenants={safeTenants} vacateRequests={safeVacateRequests} roomMonthlyIncome={roomMonthlyIncome} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />}
+        {activeTab === 'tenants' && <TenantTable tenants={filteredTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setPaymentAmount(Number(tenant.pending_amount || tenant.rent_amount || 0)); setCollectionRequestId(crypto.randomUUID()); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
         {activeTab === 'archived-tenants' && <ArchivedTenantList tenants={filteredArchivedTenants} onViewHistory={fetchArchivedTenantHistory} loadingId={loadingArchivedTenantId} />}
-        {activeTab === 'rent-payments' && <RentPaymentsList payments={safePendingRentPayments} onConfirm={confirmRentPayment} onReject={rejectRentPayment} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
-        {activeTab === 'payment-history' && <PaymentHistoryTable payments={safeAllPayments} getRoomNumberById={getRoomNumberById} />}
-        {activeTab === 'pre-bookings' && <PreBookingList bookings={safePreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={Boolean(prebookingProcessingId)} />}
-        {activeTab === 'applications' && <ApplicationList applications={safeApplications} onApprove={(id, data) => approveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} isSubmitting={Boolean(applicationProcessingId)} />}
-        {activeTab === 'complaints' && <ComplaintList complaints={safeComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setComplaintResponse(''); setShowComplaintResponseModal(true) }} onResolve={resolveComplaint} isSubmitting={isSubmitting} />}
-        {activeTab === 'vacate' && <VacateRequestList requests={safeVacateRequests} onApprove={approveVacateRequest} onReject={(request) => { setSelectedVacateRequest(request); setVacateRejectionReason(''); }} isSubmitting={isSubmitting || Boolean(vacateRejectingId)} />}
-        {activeTab === 'room-change' && <RoomChangeRequestList requests={safeRoomChangeRequests} onApprove={approveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />}
-        {activeTab === 'notices' && <NoticeList notices={safeNotices} onDelete={deleteNotice} onPost={() => setShowNoticeModal(true)} isSubmitting={isSubmitting} />}
+        {activeTab === 'rent-payments' && <RentPaymentsList payments={filteredPendingPayments} onConfirm={confirmRentPayment} onReject={rejectRentPayment} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
+        {activeTab === 'payment-history' && <PaymentHistoryTable payments={filteredAllPayments} getRoomNumberById={getRoomNumberById} />}
+        {activeTab === 'pre-bookings' && <PreBookingList bookings={filteredPreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={Boolean(prebookingProcessingId)} />}
+        {activeTab === 'applications' && <ApplicationList applications={filteredApplications} onApprove={(id, data) => approveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} isSubmitting={Boolean(applicationProcessingId)} />}
+        {activeTab === 'complaints' && <ComplaintList complaints={filteredComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setComplaintResponse(''); setShowComplaintResponseModal(true) }} onResolve={resolveComplaint} isSubmitting={isSubmitting} />}
+        {activeTab === 'vacate' && <VacateRequestList requests={filteredVacateRequests} onApprove={approveVacateRequest} onReject={(request) => { setSelectedVacateRequest(request); setVacateRejectionReason(''); }} isSubmitting={isSubmitting || Boolean(vacateRejectingId)} />}
+        {activeTab === 'room-change' && <RoomChangeRequestList requests={filteredRoomChangeRequests} onApprove={approveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />}
+        {activeTab === 'notices' && <NoticeList notices={filteredNotices} onDelete={deleteNotice} onPost={() => setShowNoticeModal(true)} isSubmitting={isSubmitting} />}
       </div>
 
       {/* --- MODALS --- */}
@@ -683,10 +731,14 @@ function OwnerDashboardContent() {
           <TenantProfileModal
             tenant={selectedProfileTenant}
             application={tenantApplication}
+            extraDocuments={tenantExtraDocuments}
             loading={loadingProfile}
-            onClose={() => setShowTenantProfileModal(false)}
+            onClose={() => { setShowTenantProfileModal(false); setTenantExtraDocuments([]) }}
             onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }}
           />
+        )}
+        {showScreenshotModal && (
+          <ScreenshotModal url={screenshotUrl} onClose={() => { setShowScreenshotModal(false); setScreenshotUrl(''); }} />
         )}
       </AnimatePresence>
     </div>

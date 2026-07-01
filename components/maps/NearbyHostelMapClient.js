@@ -10,8 +10,12 @@ const userIcon = L.divIcon({ className: '', html: '<div style="width:18px;height
 function Fit({ properties, userLocation }) {
   const map = useMap()
   useEffect(() => {
-    const points = properties.map(p => [p.latitude, p.longitude]).filter(p => p.every(Number.isFinite))
-    if (userLocation) points.push([userLocation.latitude, userLocation.longitude])
+    const points = properties
+      .map(p => [Number(p.latitude), Number(p.longitude)])
+      .filter(p => p.every(Number.isFinite))
+    if (userLocation && Number.isFinite(Number(userLocation.latitude)) && Number.isFinite(Number(userLocation.longitude))) {
+      points.push([Number(userLocation.latitude), Number(userLocation.longitude)])
+    }
     if (points.length === 1) map.setView(points[0], 14)
     else if (points.length > 1) map.fitBounds(points, { padding: [35, 35], maxZoom: 15 })
   }, [properties, userLocation, map])

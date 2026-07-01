@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import dynamic from 'next/dynamic';
-import { supabase, signPrivateDocumentFields } from '../../../lib/supabase';
+import { supabase, signPrivateDocumentFields, findTenantDocumentRecord } from '../../../lib/supabase';
 import { formatCurrency, formatDate } from '../../../lib/utils';
 import toast from 'react-hot-toast';
 
 // Dynamically import the sub-modals (lazy-loaded)
 const TenantPaymentsModal = dynamic(() => import('./TenantPaymentsModal'), { ssr: false });
 const TenantProfileModal = dynamic(() => import('./TenantProfileModal'), { ssr: false });
+const ScreenshotModal = dynamic(() => import('./ScreenshotModal'), { ssr: false });
 
 export default function RoomDetailsModal({ 
   room, 
@@ -24,8 +25,10 @@ export default function RoomDetailsModal({
   const [selectedTenantForProfile, setSelectedTenantForProfile] = useState(null);
   const [tenantPayments, setTenantPayments] = useState([]);
   const [tenantApplication, setTenantApplication] = useState(null);
+  const [tenantExtraDocuments, setTenantExtraDocuments] = useState([]);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [loadingPayments, setLoadingPayments] = useState(false);
+  const [screenshotUrl, setScreenshotUrl] = useState('');
   const [savingRoom, setSavingRoom] = useState(false);
   const [roomSettings, setRoomSettings] = useState({
     room_number: room?.room_number || '',
@@ -66,15 +69,27 @@ export default function RoomDetailsModal({
     setShowTenantProfile(true);
     setLoadingProfile(true);
     try {
-      const { data, error } = await supabase
-        .from('applications')
-        .select('*')
-        .or(`phone.eq.${tenant.phone},email.eq.${tenant.email}`)
-        .eq('property_id', room.property_id)
-        .order('created_at', { ascending: false })
-        .limit(1);
-      if (error) throw error;
-      setTenantApplication(data?.[0] ? await signPrivateDocumentFields(data[0], ['id_proof', 'photo', 'payment_screenshot']) : null);
+      const [tenantResult, paymentHistoryResult] = await Promise.all([
+        supabase.from('tenants').select('*').eq('id', tenant.id).eq('property_id', room.property_id).single(),
+        supabase.from('payment_history')
+          .select('id, payment_screenshot, payment_date, payment_method, status')
+          .eq('tenant_id', tenant.id)
+          .order('payment_date', { ascending: false })
+          .limit(10),
+      ]);
+      if (tenantResult.error) throw tenantResult.error;
+      if (paymentHistoryResult.error) throw paymentHistoryResult.error;
+      const fullTenant = tenantResult.data;
+      const signedTenant = await signPrivateDocumentFields(fullTenant, ['payment_screenshot']);
+      const { record, source_type } = await findTenantDocumentRecord(fullTenant, room.property_id);
+      const signed = record ? await signPrivateDocumentFields({ ...record, source_type }, ['id_proof', 'photo', 'payment_screenshot']) : null;
+      const signedHistory = await Promise.all((paymentHistoryResult.data || []).map(item => signPrivateDocumentFields(item, ['payment_screenshot'])));
+      const extraDocuments = signedHistory
+        .filter(item => item.payment_screenshot)
+        .map((item, index) => ({ label: `Payment receipt ${index + 1}`, url: item.payment_screenshot }));
+      setSelectedTenantForProfile(signedTenant);
+      setTenantApplication(signed);
+      setTenantExtraDocuments(extraDocuments);
     } catch (error) {
       toast.error('Could not fetch documents');
     } finally {
@@ -246,6 +261,7 @@ export default function RoomDetailsModal({
           payments={tenantPayments}
           loading={loadingPayments}
           onClose={() => setShowTenantPayments(false)}
+          onViewScreenshot={setScreenshotUrl}
         />
       )}
 
@@ -255,8 +271,11 @@ export default function RoomDetailsModal({
           application={tenantApplication}
           loading={loadingProfile}
           onClose={() => setShowTenantProfile(false)}
+          onViewScreenshot={setScreenshotUrl}
         />
       )}
+
+      {screenshotUrl && <ScreenshotModal url={screenshotUrl} onClose={() => setScreenshotUrl('')} />}
     </motion.div>
   );
 }

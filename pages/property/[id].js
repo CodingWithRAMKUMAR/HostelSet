@@ -80,14 +80,19 @@ export default function PropertyDetail() {
       ])
       if (propertyError) throw propertyError
       if (roomsError) throw roomsError
-      setProperty(propertyData)
+      const normalizedProperty = propertyData ? {
+        ...propertyData,
+        latitude: propertyData.latitude != null ? Number(propertyData.latitude) : null,
+        longitude: propertyData.longitude != null ? Number(propertyData.longitude) : null,
+      } : propertyData
+      setProperty(normalizedProperty)
       setRooms(roomsData || [])
 
-      if (propertyData) {
+      if (normalizedProperty) {
         const { data: settingsData } = await supabase
           .from('owner_settings')
           .select('*')
-          .eq('owner_id', propertyData.owner_id)
+          .eq('owner_id', normalizedProperty.owner_id)
           .maybeSingle()
         if (settingsData) {
           setOwnerSettings({
@@ -156,12 +161,23 @@ export default function PropertyDetail() {
     reader.readAsDataURL(file)
   })
 
+  const readApiResponse = async (response, fallbackMessage) => {
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase()
+    if (!contentType.includes('application/json')) {
+      await response.text().catch(() => '')
+      throw new Error(response.ok ? fallbackMessage : `${fallbackMessage}. The server returned an invalid response; please retry.`)
+    }
+    const payload = await response.json().catch(() => null)
+    if (!payload || typeof payload !== 'object') throw new Error(fallbackMessage)
+    return payload
+  }
+
   const uploadPrivateFile = async (file, category) => {
     const response = await fetch('/api/visitor/upload-url', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ propertyId: id, category, contentType: file.type, size: file.size }),
     })
-    const signed = await response.json()
+    const signed = await readApiResponse(response, 'Could not prepare upload')
     if (!response.ok) throw new Error(signed.error || 'Could not prepare upload')
     const { error } = await supabase.storage.from('tenant-documents').uploadToSignedUrl(signed.path, signed.token, file, { contentType: file.type })
     if (error) throw error
@@ -414,9 +430,9 @@ export default function PropertyDetail() {
       toast.error('Enter the UPI transaction/reference ID')
       return
     }
-    if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) {
+    if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(paymentScreenshot.type)) {
       toast.error('Use a JPEG, PNG, WEBP, or PDF file')
-      e.target.value = ''
+      setPaymentScreenshot(null)
       return
     }
     if (!ownerSettings.upi_id) {
@@ -435,7 +451,7 @@ export default function PropertyDetail() {
           files: { idProof: idPayload, photo: photoPayload, payment: paymentPayload }, transactionId,
         }),
       })
-      const result = await response.json()
+      const result = await readApiResponse(response, 'Application submission failed')
       if (!response.ok) throw new Error(result.error || 'Submission failed')
       toast.success('Application submitted. You will receive a password setup email after approval.', { duration: 8000 })
       setShowPaymentModal(false)
@@ -696,7 +712,7 @@ export default function PropertyDetail() {
           transactionId: prebookTransactionId,
         }),
       })
-      const result = await response.json()
+      const result = await readApiResponse(response, 'Pre-booking submission failed')
       if (!response.ok) throw new Error(result.error || 'Submission failed')
       toast.success('Pre-booking request sent! Owner will verify payment and approve.')
       setShowPrebookPaymentModal(false)
@@ -1103,16 +1119,17 @@ export default function PropertyDetail() {
         )}
       </AnimatePresence>
 
-      {/* Payment Modal – updated to show security deposit only */}
+      {/* Application/security confirmation payment modal */}
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={closePaymentModal}>
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-2xl font-bold mb-4">Pay Security Deposit</h2>
+              <h2 className="text-2xl font-bold mb-4">Application / Security Deposit</h2>
               <div className="bg-gray-50 rounded-lg p-4 mb-4">
                 <p className="text-sm text-gray-600">Room {rooms.find(r => r.id === selectedRoom)?.room_number} – {getSharingDetails(rooms.find(r => r.id === selectedRoom)?.sharing_type)?.label}</p>
-                <p className="text-lg font-bold mt-1">Security Deposit: {formatCurrency(calculateTotalAmount())}</p>
-                <p className="text-xs text-gray-500 mt-1">(Refundable at move‑out)</p>
+                <p className="text-lg font-bold mt-1">Application / Security Deposit: {formatCurrency(calculateTotalAmount())}</p>
+                <p className="text-sm font-semibold text-red-700 mt-1">Non-refundable</p>
+                <p className="text-xs text-gray-600 mt-2">This deposit is only for application/security confirmation. Room rent is separate and must be paid after joining.</p>
               </div>
               {ownerSettings.upi_id && (
                 <div className="bg-blue-50 p-3 rounded-lg mb-4">
@@ -1128,17 +1145,25 @@ export default function PropertyDetail() {
               )}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label>
+                  <label className="block text-sm font-semibold mb-1">UPI Transaction ID / UTR *</label>
                   <input type="text" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={transactionId} onChange={e => setTransactionId(e.target.value)} />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold mb-1">Payment Screenshot *</label>
                   <input type="file" accept="image/*" onChange={e => handleFileChange(e, setPaymentScreenshot)} className="w-full" />
                 </div>
+                {!ownerSettings.upi_id && (
+                  <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                    Owner payment details are not configured. You cannot submit payment until the owner sets a UPI ID.
+                  </div>
+                )}
                 <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
                   After payment, your application will be submitted. You will receive an email once the owner approves.
                 </div>
-                <button onClick={submitPayment} disabled={paymentSubmitting} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50">
+                <div className="bg-red-50 border border-red-100 p-3 rounded-lg text-sm text-red-800">
+                  Submitting fake payment proof, wrong UPI transaction ID, or false documents may lead to rejection and legal/cybercrime action.
+                </div>
+                <button onClick={submitPayment} disabled={paymentSubmitting || !ownerSettings.upi_id} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50">
                   {paymentSubmitting ? 'Processing...' : 'I Have Paid – Submit'}
                 </button>
                 <button onClick={closePaymentModal} className="w-full text-center text-gray-500 text-sm">Cancel</button>
@@ -1248,17 +1273,22 @@ export default function PropertyDetail() {
               )}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label>
+                  <label className="block text-sm font-semibold mb-1">UPI Transaction ID / UTR *</label>
                   <input type="text" className="w-full px-4 py-3 border border-gray-200 rounded-xl" value={prebookTransactionId} onChange={e => setPrebookTransactionId(e.target.value)} />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold mb-1">Payment Screenshot *</label>
                   <input type="file" accept="image/*" onChange={e => handleFileChange(e, setPrebookPaymentScreenshot)} className="w-full" required />
                 </div>
+                {!ownerSettings.upi_id && (
+                  <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                    Owner payment details are not configured. You cannot submit payment until the owner sets a UPI ID.
+                  </div>
+                )}
                 <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
                   After payment, upload the screenshot and submit. Owner will verify and approve your pre‑booking.
                 </div>
-                <button onClick={submitPreBookingPayment} disabled={prebookPaymentSubmitting} className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-50">
+                <button onClick={submitPreBookingPayment} disabled={prebookPaymentSubmitting || !ownerSettings.upi_id} className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-50">
                   {prebookPaymentSubmitting ? 'Submitting...' : 'Submit Payment Proof'}
                 </button>
                 <button onClick={() => setShowPrebookPaymentModal(false)} className="w-full text-center text-gray-500 text-sm">Cancel</button>

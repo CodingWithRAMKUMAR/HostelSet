@@ -1,5 +1,32 @@
 -- Complete RLS, storage, RPC, index and realtime foundation.
 
+-- Reconcile older manually-created owner_settings tables before policies use
+-- the property scope introduced by the repository baseline.
+alter table public.owner_settings
+  add column if not exists property_id uuid references public.properties(id) on delete cascade;
+
+update public.owner_settings settings
+set property_id = (
+  select property.id
+  from public.properties property
+  where property.owner_id = settings.owner_id
+  order by property.created_at, property.id
+  limit 1
+)
+where settings.property_id is null;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.owner_settings'::regclass
+      and conname = 'owner_settings_property_unique'
+  ) then
+    alter table public.owner_settings
+      add constraint owner_settings_property_unique unique(property_id);
+  end if;
+end $$;
+
 -- RLS is explicitly enabled everywhere reached by browser clients.
 alter table public.users enable row level security;
 alter table public.properties enable row level security;
@@ -102,6 +129,8 @@ drop policy if exists ratings_tenant_insert on public.ratings;
 create policy ratings_tenant_insert on public.ratings for insert to authenticated with check (exists(select 1 from public.tenants t where t.id=tenant_id and t.user_id=auth.uid() and t.property_id=property_id));
 
 -- Atomic, permission-checked room transfer used by owner/admin dashboards.
+drop function if exists public.move_tenant_room(uuid, uuid, uuid);
+
 create or replace function public.move_tenant_room(p_tenant_id uuid,p_new_room_id uuid,p_old_room_id uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare t public.tenants%rowtype; oldr public.rooms%rowtype; newr public.rooms%rowtype;
@@ -208,6 +237,15 @@ revoke all on function public.sync_room_public_availability() from public,anon,a
 -- Realtime is limited to tables that currently have active subscriptions.
 do $$ declare n text; keep text[]:=array['users','properties','rooms','tenants','payment_history','applications','pre_bookings','complaints','check_out_requests','room_change_requests','notices','owner_settings','membership_requests'];
 begin
+  -- A FOR ALL TABLES publication cannot be altered table-by-table. Preserve
+  -- that valid project-level configuration instead of failing the migration.
+  if exists (
+    select 1 from pg_publication
+    where pubname = 'supabase_realtime' and puballtables
+  ) then
+    return;
+  end if;
+
   for n in select tablename from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' loop
     if not (n=any(keep)) then execute format('alter publication supabase_realtime drop table public.%I',n); end if;
   end loop;

@@ -59,7 +59,7 @@ async function verifyPrivateObject(path, label, imageOnly = false) {
   }
 }
 
-export default async function handler(req, res) {
+async function processVisitorSubmission(req, res) {
   setPrivateApiResponse(res)
   if (!allowPostOnly(req, res) || !requireJson(req, res)) return
   if (!supabaseAdmin) return res.status(503).json({ error: 'Application service is unavailable' })
@@ -74,8 +74,9 @@ export default async function handler(req, res) {
     const email = String(form?.email || '').trim().toLowerCase().slice(0, 254)
     const phone = cleanPhoneNumber(form?.phone)
     const message = String(form?.message || '').trim().slice(0, 2000) || null
-    if (!['application', 'prebooking'].includes(kind) || !UUID.test(String(propertyId || '')) || !UUID.test(String(roomId || '')) || !name || !/^\S+@\S+\.\S+$/.test(email) || !/^\d{10}$/.test(phone) || !files || typeof files !== 'object') {
-      return res.status(400).json({ error: 'Please provide valid application details.' })
+    const normalizedTransactionId = String(transactionId || '').trim()
+    if (!['application', 'prebooking'].includes(kind) || !UUID.test(String(propertyId || '')) || !UUID.test(String(roomId || '')) || !name || !/^\S+@\S+\.\S+$/.test(email) || !/^\d{10}$/.test(phone) || !normalizedTransactionId || !files || typeof files !== 'object') {
+      return res.status(400).json({ error: 'Please provide valid application details, including a UPI transaction reference.' })
     }
     if (!await enforceRateLimit(req, res, { scope: 'visitor-submit-identity', identifier: `${propertyId}:${email}:${phone}`, limit: 3, windowSeconds: 3600 })) return
 
@@ -125,9 +126,10 @@ export default async function handler(req, res) {
       if (byPhone?.[0] && byEmail?.[0] && byPhone[0].id !== byEmail[0].id) throw new Error('The phone and email belong to different accounts')
       let userId = byPhone?.[0]?.id || byEmail?.[0]?.id
       if (!userId) {
-        const password = `${crypto.randomBytes(18).toString('base64url')}Aa1!`
-        const { data: auth, error: authError } = await supabaseAdmin.auth.admin.createUser({
-          email, password, email_confirm: true, user_metadata: { full_name: name, phone, role: 'tenant' },
+        const redirectTo = `${(process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')}/reset-password`
+        const { data: auth, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+          redirectTo,
+          data: { full_name: name, phone, role: 'tenant' },
         })
         if (authError) throw authError
         userId = auth.user.id
@@ -152,5 +154,16 @@ export default async function handler(req, res) {
     console.error('Visitor submission failed:', error)
     const conflict = error?.code === '23505'
     return res.status(conflict ? 409 : 400).json({ error: conflict ? 'An active request already exists.' : (error.message || 'Submission failed') })
+  }
+}
+
+export default async function handler(req, res) {
+  try {
+    return await processVisitorSubmission(req, res)
+  } catch (error) {
+    console.error('Unhandled visitor submission failure:', error)
+    if (res.headersSent) return res.end()
+    setPrivateApiResponse(res)
+    return res.status(500).json({ error: 'Application submission failed. Please try again.' })
   }
 }

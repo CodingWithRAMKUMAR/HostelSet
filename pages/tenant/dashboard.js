@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
-import { supabase } from '../../lib/supabase'
+import { supabase, syncServerSession } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
 // ---------------- MODULAR IMPORTS ----------------
@@ -74,7 +74,6 @@ function TenantDashboardContent() {
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [complaintForm, setComplaintForm] = useState({ title:'', description:'', priority:'medium' })
   const [vacateForm, setVacateForm] = useState({ expected_date:'', reason:'', rating:0, review:'' })
-  const [paymentAmount, setPaymentAmount] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
   const [editProfile, setEditProfile] = useState(false)
@@ -86,34 +85,31 @@ function TenantDashboardContent() {
   const [screenshotUrl, setScreenshotUrl] = useState('')
 
   // ----- Helper Functions -----
-  const initiateUPIPayment = (upiId, amount) => {
-    const cleanUpi = upiId.trim()
-    if (!cleanUpi) { toast.error('Owner UPI ID not available'); return }
-    const payee = encodeURIComponent(cleanUpi)
-    const payeeName = encodeURIComponent('HostelSet Rent')
-    const amt = encodeURIComponent(amount)
-    const cu = encodeURIComponent('INR')
-    const tr = encodeURIComponent(`RENT_${Date.now()}`)
-    const tn = encodeURIComponent(`Rent payment for ${tenant?.name||'tenant'}`)
-    const upiUrl = `upi://pay?pa=${payee}&pn=${payeeName}&am=${amt}&cu=${cu}&tr=${tr}&tn=${tn}`
-    window.location.href = upiUrl
-    setTimeout(() => {
-      if (document.hasFocus()) {
-        navigator.clipboard.writeText(cleanUpi)
-        toast.error('Unable to open UPI app. UPI ID copied.', { duration:5000 })
-      }
-    }, 2500)
-  }
   const copyUpiId = (upiId) => { navigator.clipboard.writeText(upiId); toast.success('UPI ID copied!') }
   const copyUpiPhone = (phone) => { navigator.clipboard.writeText(phone); toast.success('UPI Phone Number copied!') }
 
+  const submitRentPaymentProof = async () => {
+    const submitted = await submitPaymentWithProof(paymentScreenshot, paymentTransactionId)
+    if (submitted) {
+      setPaymentScreenshot(null)
+      setPaymentTransactionId('')
+      setShowPaymentModal(false)
+    }
+  }
+
   // ----- Profile -----
+  const openProfile = () => {
+    setProfileForm({ name: tenant?.name || '', phone: tenant?.phone || '', email: tenant?.email || '' })
+    setEditProfile(false)
+    setShowProfileModal(true)
+  }
+
   const updateProfile = async () => {
     if (isSubmitting) return
     if (!profileForm.name) { toast.error('Name is required'); return }
     setIsSubmitting(true)
     try {
-      const { error } = await supabase.from('tenants').update({ name:profileForm.name, phone:profileForm.phone, email:profileForm.email }).eq('id', tenant.id)
+      const { error } = await supabase.rpc('update_tenant_profile', { p_name:profileForm.name, p_phone:profileForm.phone })
       if (error) throw error
       toast.success('Profile updated successfully!')
       setEditProfile(false)
@@ -204,8 +200,8 @@ function TenantDashboardContent() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('userRole');
+    await syncServerSession(null).catch(() => {});
+    localStorage.clear();
     router.push('/login');
   }
 
@@ -235,7 +231,7 @@ function TenantDashboardContent() {
               <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
               {realtimeConnected ? 'Live' : 'Connecting'}
             </span>
-            <button onClick={() => setShowProfileModal(true)} className="flex items-center gap-2 text-gray-400 hover:text-orange-400 transition">
+            <button onClick={openProfile} className="flex items-center gap-2 text-gray-400 hover:text-orange-400 transition">
               <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
                 {tenant?.name?.charAt(0) || 'U'}
               </div>
@@ -391,10 +387,9 @@ function TenantDashboardContent() {
             setPaymentScreenshot={setPaymentScreenshot}
             paymentLoading={paymentLoading}
             isSubmitting={isSubmitting}
-            initiateUPIPayment={initiateUPIPayment}
             copyUpiId={copyUpiId}
             copyUpiPhone={copyUpiPhone}
-            submitPaymentWithProof={submitPaymentWithProof}
+            submitPaymentWithProof={submitRentPaymentProof}
             onCancel={() => setShowPaymentModal(false)}
           />
         )}

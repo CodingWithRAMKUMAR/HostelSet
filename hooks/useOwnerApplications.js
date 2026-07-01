@@ -9,12 +9,13 @@ export function useOwnerApplications(property, enabled = true) {
 
   const loadApplications = async () => {
     if (!property?.id) return;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('applications')
       .select('*, rooms(room_number, monthly_rent, capacity)')
       .eq('property_id', property.id)
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
+    if (error) { console.error('Owner applications load failed:', error.message); return; }
     const signed = await Promise.all((data || []).map(item => signPrivateDocumentFields(item, ['id_proof', 'photo', 'payment_screenshot'])));
     setApplications(signed);
   };
@@ -37,7 +38,7 @@ export function useOwnerApplications(property, enabled = true) {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Approval failed');
-      toast.success(result.emailSent ? 'Application approved and password email sent.' : 'Application approved. Use Resend if the email was not delivered.');
+      toast.success(result.notificationEmailSent ? 'Application approved and notification email sent.' : 'Application approved successfully.');
       await loadApplications();
     } catch (error) {
       console.error('Approve error:', error);

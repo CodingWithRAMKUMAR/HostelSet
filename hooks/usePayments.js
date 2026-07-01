@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { signPrivateDocumentFields, supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 export function usePayments(tenant, refreshData, owner) {
@@ -18,17 +18,17 @@ export function usePayments(tenant, refreshData, owner) {
       .order('payment_date', { ascending: false });
     if (error) console.error('Payment history load failed:', error);
     else {
-      setPaymentHistory(data || []);
+      setPaymentHistory(await Promise.all((data || []).map(payment => signPrivateDocumentFields(payment, ['payment_screenshot']))));
       setPaymentsLoaded(true);
     }
   };
 
   const loadUPIDetails = async () => {
-    if (!tenant?.property?.owner_id) return;
+    if (!tenant?.property_id) return;
     const { data } = await supabase
       .from('owner_settings')
       .select('upi_id, upi_phone')
-      .eq('owner_id', tenant.property.owner_id)
+      .eq('property_id', tenant.property_id)
       .maybeSingle();
     setOwnerUpiId(data?.upi_id || tenant.property?.owner_upi_id || '');
     setOwnerUpiPhone(data?.upi_phone || owner?.phone || '');
@@ -40,12 +40,12 @@ export function usePayments(tenant, refreshData, owner) {
       .from('tenant-documents')
       .upload(fileName, file, { cacheControl: '3600' });
     if (error) throw error;
-    const { data: { publicUrl } } = supabase.storage.from('tenant-documents').getPublicUrl(fileName);
-    return publicUrl;
+    return data.path;
   };
 
   const submitPaymentWithProof = async (paymentScreenshot, paymentTransactionId) => {
     if (!paymentScreenshot) { toast.error('Please upload payment screenshot'); return false; }
+    if (!paymentTransactionId?.trim()) { toast.error('Please enter the UPI transaction ID'); return false; }
     if (!paymentScreenshot.type?.startsWith('image/') || paymentScreenshot.size > 5 * 1024 * 1024) {
       toast.error('Upload an image smaller than 5MB');
       return false;
@@ -65,7 +65,7 @@ export function usePayments(tenant, refreshData, owner) {
         payment_method: 'upi',
         status: 'payment_pending',
         payment_screenshot: screenshotUrl,
-        upi_transaction_id: paymentTransactionId || null
+        upi_transaction_id: paymentTransactionId.trim()
       });
       if (paymentError) throw paymentError;
       toast.success('Payment proof submitted!');
@@ -98,7 +98,7 @@ export function usePayments(tenant, refreshData, owner) {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [tenant?.id, tenant?.property?.owner_id, tenant?.property?.owner_upi_id, owner?.phone]);
+  }, [tenant?.id, tenant?.property_id, tenant?.property?.owner_id, tenant?.property?.owner_upi_id, owner?.phone]);
 
   return {
     paymentHistory,

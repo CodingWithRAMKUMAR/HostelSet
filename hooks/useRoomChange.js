@@ -44,17 +44,7 @@ export function useRoomChange(tenant, refreshData) {
         .neq('id', tenant.room_id);
       if (error) throw error;
 
-      const { data: pendingChanges } = await supabase
-        .from('room_change_requests')
-        .select('new_room_id')
-        .eq('property_id', tenant.property_id)
-        .eq('status', 'pending');
-      const pendingRoomIds = pendingChanges?.map(p => p.new_room_id) || [];
-
-      const available = allRooms.filter(room => 
-        room.current_occupants < room.capacity && 
-        !pendingRoomIds.includes(room.id)
-      );
+      const available = allRooms.filter(room => room.current_occupants < room.capacity);
       setAvailableRooms(available);
       if (available.length === 0) toast.info('No rooms available for change.');
     } catch (error) {

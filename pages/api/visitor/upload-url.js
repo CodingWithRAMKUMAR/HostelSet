@@ -7,10 +7,16 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 
 export const config = { api: { bodyParser: { sizeLimit: '16kb' } } }
 
-export default async function handler(req, res) {
+async function processUploadRequest(req, res) {
   setPrivateApiResponse(res)
   if (!allowPostOnly(req, res) || !requireJson(req, res)) return
-  if (!supabaseAdmin) return res.status(503).json({ error: 'Upload service unavailable' })
+  if (!supabaseAdmin) {
+    const errorMessage = process.env.NODE_ENV === 'production'
+      ? 'Upload service unavailable'
+      : 'Upload service unavailable: missing SUPABASE_SERVICE_ROLE_KEY'
+    return res.status(503).json({ error: errorMessage })
+  }
+
   const ip = getClientIp(req)
   if (!await enforceRateLimit(req, res, { scope: 'visitor-upload-ip', identifier: ip, limit: 12, windowSeconds: 900 })) return
   const { propertyId, category, contentType, size } = req.body || {}
@@ -22,11 +28,34 @@ export default async function handler(req, res) {
   }
   if (category !== 'identity' && contentType === 'application/pdf') return res.status(400).json({ error: 'An image is required' })
   if (!await enforceRateLimit(req, res, { scope: 'visitor-upload-property', identifier: `${ip}:${propertyId}`, limit: 9, windowSeconds: 900 })) return
+
   const { data: property, error: propertyError } = await supabaseAdmin.from('properties').select('id').eq('id', propertyId).eq('is_active', true).maybeSingle()
-  if (propertyError) return res.status(503).json({ error: 'Upload service temporarily unavailable' })
+  if (propertyError) {
+    const errorMessage = process.env.NODE_ENV === 'production'
+      ? 'Upload service temporarily unavailable'
+      : `Upload service temporarily unavailable: ${propertyError.message}`
+    return res.status(503).json({ error: errorMessage })
+  }
   if (!property) return res.status(404).json({ error: 'Property not found' })
+
   const path = `${propertyId}/${category}/${crypto.randomUUID()}.${ALLOWED[contentType]}`
   const { data, error } = await supabaseAdmin.storage.from('tenant-documents').createSignedUploadUrl(path)
-  if (error) return res.status(502).json({ error: 'Unable to prepare upload' })
+  if (error) {
+    const errorMessage = process.env.NODE_ENV === 'production'
+      ? 'Unable to prepare upload'
+      : `Unable to prepare upload: ${error.message}`
+    return res.status(502).json({ error: errorMessage })
+  }
   return res.status(200).json({ path, token: data.token })
+}
+
+export default async function handler(req, res) {
+  try {
+    return await processUploadRequest(req, res)
+  } catch (error) {
+    console.error('Visitor upload URL failure:', error)
+    if (res.headersSent) return res.end()
+    setPrivateApiResponse(res)
+    return res.status(500).json({ error: 'Unable to prepare upload. Please try again.' })
+  }
 }

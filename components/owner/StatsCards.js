@@ -11,6 +11,10 @@ export default function StatsCards({ stats }) {
     { label: 'This Month', value: formatCurrency(stats?.monthlyIncome || 0), icon: '📈', color: 'bg-green-100 text-green-600' },
     { label: 'Pending Payments', value: stats?.pendingRentConfirmations || 0, icon: '⏳', color: 'bg-purple-100 text-purple-600' },
     { label: 'Active Notices', value: stats?.activeNotices || 0, icon: '📢', color: 'bg-cyan-100 text-cyan-600' },
+    { label: 'Applications', value: stats?.pendingApplications || 0, icon: '📝', color: 'bg-fuchsia-100 text-fuchsia-600' },
+    { label: 'Complaints', value: stats?.totalComplaints || 0, icon: '🔧', color: 'bg-rose-100 text-rose-600' },
+    { label: 'Vacate Requests', value: stats?.pendingVacate || 0, icon: '🚪', color: 'bg-yellow-100 text-yellow-700' },
+    { label: 'Room Changes', value: stats?.pendingRoomChanges || 0, icon: '🔄', color: 'bg-sky-100 text-sky-600' },
   ];
 
   return (

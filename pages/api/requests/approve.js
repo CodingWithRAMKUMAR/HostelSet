@@ -2,6 +2,36 @@ import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from '../../../lib/supabase'
 
+async function sendApprovalNotification({ email, name }) {
+  const apiKey = process.env.BREVO_API_KEY
+  const templateId = Number(process.env.BREVO_APPLICATION_APPROVED_TEMPLATE_ID)
+  if (!apiKey || !Number.isInteger(templateId) || templateId <= 0) {
+    console.warn('Application approved, but Brevo approval notification is not configured')
+    return false
+  }
+
+  const loginUrl = `${(process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')}/login`
+  const message = 'Your hostel application has been approved. Please log in to HostelSet to view your room and pay any remaining dues.'
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { accept: 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      to: [{ email, name: name || 'Tenant' }],
+      templateId,
+      params: {
+        applicant_name: name || 'Tenant',
+        message,
+        login_url: loginUrl,
+      },
+      tags: ['application-approved'],
+    }),
+    signal: AbortSignal.timeout(10000),
+  })
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(result.message || `Brevo returned HTTP ${response.status}`)
+  return true
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
   if (!supabaseAdmin) return res.status(503).json({ error: 'Approval service is unavailable' })
@@ -58,17 +88,16 @@ export default async function handler(req, res) {
       result = response.data
     }
 
-    // Approval remains committed even if mail delivery temporarily fails; owners
-    // retain the existing resend control for recovery.
-    let emailSent = true
-    const { error: mailError } = await supabaseAdmin.auth.resetPasswordForEmail(result.email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com'}/reset-password`,
-    })
-    if (mailError) {
-      emailSent = false
-      console.error('Approval password email failed:', mailError)
+    // Approval is committed independently of the informational notification.
+    let notificationEmailSent = false
+    try {
+      const table = type === 'application' ? 'applications' : 'pre_bookings'
+      const { data: approvedRequest } = await supabaseAdmin.from(table).select('name').eq('id', id).maybeSingle()
+      notificationEmailSent = await sendApprovalNotification({ email: result.email, name: approvedRequest?.name })
+    } catch (notificationError) {
+      console.warn('Application approved, but approval notification failed:', notificationError.message)
     }
-    return res.status(200).json({ success: true, emailSent })
+    return res.status(200).json({ success: true, notificationEmailSent })
   } catch (error) {
     if (createdUserId) await supabaseAdmin.auth.admin.deleteUser(createdUserId).catch(() => {})
     console.error('Approval failed:', error)

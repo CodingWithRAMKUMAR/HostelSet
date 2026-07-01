@@ -13,6 +13,7 @@ export function useComplaints(tenant) {
     if (!formData.title || !formData.description) { toast.error('Please fill all fields'); return false; }
     const { error } = await supabase.from('complaints').insert({ tenant_id:tenant.id, property_id:tenant.property_id, room_id:tenant.room_id, tenant_name:tenant.name, room_number:tenant.rooms?.room_number, title:formData.title, description:formData.description, priority:formData.priority, status:'open', created_at:new Date().toISOString() });
     if (error) { toast.error('Failed to submit complaint: ' + error.message); return false; }
+    await loadComplaints();
     toast.success('Complaint submitted successfully!'); return true;
   };
   const deleteComplaint = async (complaintId) => {

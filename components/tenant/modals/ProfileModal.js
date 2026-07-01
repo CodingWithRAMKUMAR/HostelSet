@@ -24,7 +24,8 @@ export default function ProfileModal({
           <div className="space-y-4">
             <input type="text" placeholder="Full Name" className="w-full px-4 py-3 border rounded-xl" value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} />
             <input type="tel" placeholder="Phone Number" className="w-full px-4 py-3 border rounded-xl" value={profileForm.phone} onChange={e => setProfileForm({...profileForm, phone: e.target.value})} />
-            <input type="email" placeholder="Email" className="w-full px-4 py-3 border rounded-xl" value={profileForm.email} onChange={e => setProfileForm({...profileForm, email: e.target.value})} />
+            <input type="email" aria-label="Email cannot be changed" className="w-full px-4 py-3 border rounded-xl bg-gray-100 text-gray-500" value={profileForm.email} readOnly />
+            <p className="text-xs text-gray-500">Email, room, rent and payment fields are protected. Contact support to change your login email.</p>
             <div className="flex gap-3 mt-6"><button onClick={onUpdate} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl">{isSubmitting ? 'Saving...' : 'Save Changes'}</button><button onClick={() => setEditProfile(false)} className="flex-1 border-2 border-gray-300 py-3 rounded-xl">Cancel</button></div>
           </div>
         )}

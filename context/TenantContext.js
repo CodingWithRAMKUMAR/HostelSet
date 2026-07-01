@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { supabase } from '../lib/supabase';
+import { supabase, syncServerSession } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 const TenantContext = createContext();
@@ -140,10 +140,12 @@ export function TenantProvider({ children }) {
   useEffect(() => {
     refreshData(false);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         localStorage.clear();
         router.push('/login');
+      } else if (event === 'TOKEN_REFRESHED' && session) {
+        syncServerSession(session).catch((sessionError) => console.error('Unable to refresh server session:', sessionError));
       }
     });
 

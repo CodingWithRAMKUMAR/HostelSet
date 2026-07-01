@@ -15,7 +15,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
 
   const isEmail = (input) => input.includes('@')
-  const isPhone = (input) => /^\d{10}$/.test(input)
+  const isPhone = (input) => /^\d{10}$/.test(cleanPhoneNumber(input))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -29,19 +29,18 @@ export default function Login() {
       let emailToUse = identifier
 
       if (isPhone(identifier)) {
-        const cleanPhone = cleanPhoneNumber(identifier)
-        const { data, error } = await supabase
-          .from('users')
-          .select('email')
-          .eq('phone', cleanPhone)
-          .maybeSingle()
-
-        if (error || !data || !data.email) {
+        const response = await fetch('/api/auth/resolve-phone', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: identifier }),
+        })
+        const payload = await response.json()
+        if (!response.ok || !payload.email) {
           toast.error('No account found with this phone number. Please register.')
           setLoading(false)
           return
         }
-        emailToUse = data.email
+        emailToUse = payload.email
       } else if (!isEmail(identifier)) {
         toast.error('Enter a valid email or 10-digit mobile number')
         setLoading(false)

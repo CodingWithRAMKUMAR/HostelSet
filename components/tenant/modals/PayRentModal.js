@@ -12,7 +12,6 @@ export default function PayRentModal({
   setPaymentScreenshot = () => {},
   paymentLoading = false,
   isSubmitting = false,
-  initiateUPIPayment = () => {},
   copyUpiId = () => {},
   copyUpiPhone = () => {},
   submitPaymentWithProof = () => {},
@@ -37,7 +36,6 @@ export default function PayRentModal({
                 <p className="text-sm font-semibold mb-2">Pay to UPI ID</p>
                 <p className="font-mono text-sm break-all mb-2">{ownerUpiId}</p>
                 <div className="flex flex-wrap gap-2">
-                  <button onClick={() => initiateUPIPayment(ownerUpiId, amount)} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Pay Now</button>
                   <button onClick={() => copyUpiId(ownerUpiId)} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy UPI ID</button>
                 </div>
               </div>
@@ -47,16 +45,15 @@ export default function PayRentModal({
                 <p className="text-sm font-semibold mb-2">Pay to UPI Phone Number</p>
                 <p className="font-mono text-sm break-all mb-2">{ownerUpiPhone}</p>
                 <div className="flex flex-wrap gap-2">
-                  <button onClick={() => initiateUPIPayment(ownerUpiPhone, amount)} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition">Pay Now</button>
                   <button onClick={() => copyUpiPhone(ownerUpiPhone)} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy Phone</button>
                 </div>
               </div>
             )}
             <div className="border-t pt-4 mt-2">
-              <div><label className="block text-sm font-semibold mb-1">UPI Transaction ID (optional)</label><input type="text" className="w-full px-4 py-3 border rounded-xl" value={paymentTransactionId} onChange={e => setPaymentTransactionId(e.target.value)} /></div>
+              <div><label className="block text-sm font-semibold mb-1">UPI Transaction ID *</label><input type="text" required className="w-full px-4 py-3 border rounded-xl" value={paymentTransactionId} onChange={e => setPaymentTransactionId(e.target.value)} /></div>
               <div className="mt-3"><label className="block text-sm font-semibold mb-1">Payment Screenshot *</label><input type="file" accept="image/*" onChange={e => { if (e.target.files[0]) setPaymentScreenshot(e.target.files[0]) }} className="w-full" /></div>
               <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800 mt-3">After payment, upload the screenshot and submit. Owner will verify.</div>
-              <button onClick={submitPaymentWithProof} disabled={paymentLoading || isSubmitting} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold mt-4 disabled:opacity-50">{paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}</button>
+              <button onClick={submitPaymentWithProof} disabled={paymentLoading || isSubmitting || !paymentScreenshot || !paymentTransactionId.trim()} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold mt-4 disabled:opacity-50">{paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}</button>
               <button onClick={onCancel} className="w-full text-center text-gray-500 text-sm mt-3">Cancel</button>
             </div>
           </div>
