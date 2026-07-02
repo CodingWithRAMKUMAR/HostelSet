@@ -57,6 +57,13 @@ export default function MembershipManager({
     if (await revokeMembership(id)) setManualRevokeId('');
   };
 
+  const membershipRows = owners.flatMap((owner) => {
+    const properties = owner.properties || [];
+    return properties.length
+      ? properties.map((property) => ({ owner, property }))
+      : [{ owner, property: null }];
+  });
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
       <div className="mb-6 border-b border-gray-100 pb-4 flex justify-between items-center">
@@ -151,6 +158,7 @@ export default function MembershipManager({
             <tr>
               <th className="px-6 py-4 font-medium tracking-wide">Owner Name</th>
               <th className="px-6 py-4 font-medium tracking-wide">Email</th>
+              <th className="px-6 py-4 font-medium tracking-wide">Property</th>
               <th className="px-6 py-4 font-medium tracking-wide">Owner UUID</th>
               <th className="px-6 py-4 font-medium tracking-wide">Membership Status</th>
               <th className="px-6 py-4 font-medium tracking-wide">Days Left</th>
@@ -159,12 +167,11 @@ export default function MembershipManager({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-400">Loading membership data...</td></tr>
-            ) : owners.length === 0 ? (
-              <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-400">No owners found.</td></tr>
+              <tr><td colSpan="7" className="px-6 py-12 text-center text-gray-400">Loading membership data...</td></tr>
+            ) : membershipRows.length === 0 ? (
+              <tr><td colSpan="7" className="px-6 py-12 text-center text-gray-400">No owners found.</td></tr>
             ) : (
-              owners.map((owner) => {
-                const property = owner.properties?.[0];
+              membershipRows.map(({ owner, property }) => {
                 const isActive = property?.membership_active;
                 const daysLeft = getDaysLeft(property?.membership_expiry);
                 
@@ -183,9 +190,10 @@ export default function MembershipManager({
                 }
 
                 return (
-                  <tr key={owner.id} className="hover:bg-orange-50/50 transition">
+                  <tr key={`${owner.id}:${property?.id || 'no-property'}`} className="hover:bg-orange-50/50 transition">
                     <td className="px-6 py-4 font-semibold text-gray-800">{owner.full_name}</td>
                     <td className="px-6 py-4 text-gray-500">{owner.email}</td>
+                    <td className="px-6 py-4 text-gray-500">{property?.name || 'No property'}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2 min-w-[250px]">
                         <code className="text-xs text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-2 py-1.5 select-all">{owner.id}</code>

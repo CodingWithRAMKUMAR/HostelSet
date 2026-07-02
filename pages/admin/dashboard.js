@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { useRouter } from 'next/router';
 import dynamic from 'next/dynamic';
-import { supabase } from '../../lib/supabase';
+import { signOut } from '../../lib/supabase';
 import { formatCurrency } from '../../lib/utils';
 import { AdminProvider, useAdmin } from '../../context/AdminContext';
 import { useAdminProperties } from '../../hooks/useAdminProperties';
@@ -67,7 +66,6 @@ const DetailModal = ({ isOpen, onClose, title, data }) => {
 
 // ----------------- MAIN DASHBOARD CONTENT -----------------
 function AdminDashboardContent() {
-  const router = useRouter();
   const { globalStats, statsLoading, realtimeConnected, refreshStats } = useAdmin();
   const [activeTab, setActiveTab] = useState('overview');
   
@@ -91,15 +89,17 @@ function AdminDashboardContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    localStorage.clear();
-    router.push('/login');
+    await signOut();
+    window.location.replace('/login');
   };
 
   // STATS CARDS
   const statsData = [
     { label: 'Properties', value: statsLoading ? '—' : globalStats.totalProperties, icon: '🏢', color: 'bg-orange-100 text-orange-600' },
     { label: 'Active Tenants', value: statsLoading ? '—' : globalStats.totalTenants, icon: '👥', color: 'bg-blue-100 text-blue-600' },
+    { label: 'Owners', value: statsLoading ? '—' : globalStats.totalOwners, icon: '👤', color: 'bg-violet-100 text-violet-600' },
+    { label: 'Active Owners', value: statsLoading ? '—' : globalStats.activeOwners, icon: '✅', color: 'bg-green-100 text-green-600' },
+    { label: 'Memberships', value: statsLoading ? '—' : globalStats.activeMemberships, icon: '📋', color: 'bg-amber-100 text-amber-600' },
     { label: 'Total Revenue', value: statsLoading ? '—' : formatCurrency(globalStats.totalRevenue), icon: '💰', color: 'bg-emerald-100 text-emerald-600' },
     { label: 'Pending Complaints', value: statsLoading ? '—' : globalStats.pendingComplaints, icon: '🔧', color: 'bg-red-100 text-red-600' },
     { label: 'Pending Vacates', value: statsLoading ? '—' : globalStats.pendingVacates, icon: '🚪', color: 'bg-amber-100 text-amber-600' },
@@ -147,7 +147,7 @@ function AdminDashboardContent() {
       <div className="container mx-auto px-3 sm:px-4 py-5 sm:py-8">
         
         {/* ----- STATS CARDS ----- */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4 mb-6 sm:mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
           {statsData.map((stat, index) => (
             <div key={index} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm border border-gray-200/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
               <div className={`w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center text-base sm:text-xl shadow-sm ${stat.color}`}>
@@ -192,12 +192,13 @@ function AdminDashboardContent() {
         {activeTab === 'properties' && (
           <AdminTable
             loading={propertiesLoading}
-            headers={['Property Name', 'Owner', 'Property ID (UUID)', 'Actions']}
+            headers={['Property Name', 'Owner', 'Status', 'Property ID (UUID)', 'Actions']}
             data={properties}
             renderRow={(p) => (
               <tr key={p.id} className="hover:bg-orange-50/50 transition">
                 <td className="px-6 py-4 font-semibold text-gray-800">{p.name}</td>
                 <td className="px-6 py-4">{p.users?.full_name || 'N/A'}</td>
+                <td className="px-6 py-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${p.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{p.is_active ? 'Active' : 'Inactive'}</span></td>
                 <td className="px-6 py-4 font-mono text-xs text-orange-600 bg-orange-50 rounded px-2 py-1 inline-block">{p.id}</td>
                 <td className="px-6 py-4 flex gap-2">
                   <button onClick={() => viewPropertyDetails(p)} className="text-blue-600 hover:text-blue-800 font-semibold text-xs uppercase tracking-wider">View</button>
@@ -531,7 +532,7 @@ function AdminDashboardContent() {
                 </div>
               </div>
               <textarea placeholder="Notice Content" rows="3" value={noticeForm.content} onChange={(e) => setNoticeForm({ ...noticeForm, content: e.target.value })} className="w-full mt-4 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" />
-              <button onClick={async () => { setIsSubmitting(true); await postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent); setNoticeForm({ title:'', content:'', type:'general', is_urgent:false }); setIsSubmitting(false); }} disabled={isSubmitting} className="mt-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2 rounded-full font-semibold transition shadow-md disabled:opacity-50">Post Notice</button>
+              <button onClick={async () => { if (isSubmitting) return; setIsSubmitting(true); try { const posted = await postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent); if (posted) setNoticeForm({ title:'', content:'', type:'general', is_urgent:false }); } finally { setIsSubmitting(false); } }} disabled={isSubmitting} className="mt-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2 rounded-full font-semibold transition shadow-md disabled:opacity-50">{isSubmitting ? 'Posting…' : 'Post Notice'}</button>
             </div>
             <AdminTable loading={noticesLoading} headers={['Title', 'Type', 'Date', 'Actions']} data={notices} renderRow={(n) => (
               <tr key={n.id} className="hover:bg-orange-50/50 transition">

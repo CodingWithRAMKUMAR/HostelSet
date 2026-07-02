@@ -16,10 +16,12 @@ export function useAdminNotices(enabled = true) {
   };
 
   const postNotice = async (title, content, type, isUrgent) => {
-    if (!title || !content) { toast.error('Please fill both title and content'); return; }
+    if (!title || !content) { toast.error('Please fill both title and content'); return false; }
     const { error } = await supabase.from('notices').insert({ title, content, type, is_urgent: isUrgent, created_at: new Date().toISOString() });
-    if (error) toast.error('Failed to post notice: ' + error.message);
-    else { toast.success('Global notice posted!'); await loadNotices(); }
+    if (error) { toast.error('Failed to post notice: ' + error.message); return false; }
+    toast.success('Global notice posted!');
+    await loadNotices();
+    return true;
   };
 
   const deleteNotice = async (noticeId) => {

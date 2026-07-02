@@ -20,7 +20,7 @@ export function useAdminRoomChange(enabled = true) {
   const approveRoomChange = async (requestId, tenantId, newRoomId, oldRoomId) => {
     const { error } = await supabase.rpc('move_tenant_room', { p_tenant_id: tenantId, p_new_room_id: newRoomId, p_old_room_id: oldRoomId });
     if (error) toast.error('Failed to approve room change');
-    else { await supabase.from('room_change_requests').update({ status: 'approved', processed_at: new Date().toISOString() }).eq('id', requestId); toast.success('Room change approved.'); await loadRoomChanges(); }
+    else { toast.success('Room change approved.'); await loadRoomChanges(); }
   };
 
   const rejectRoomChange = async (requestId) => {

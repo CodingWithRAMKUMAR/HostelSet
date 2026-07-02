@@ -14,6 +14,9 @@ export function AdminProvider({ children }) {
   const [globalStats, setGlobalStats] = useState({
     totalProperties: 0,
     totalTenants: 0,
+    totalOwners: 0,
+    activeOwners: 0,
+    activeMemberships: 0,
     totalRevenue: 0,
     pendingComplaints: 0,
     pendingVacates: 0,
@@ -39,6 +42,9 @@ export function AdminProvider({ children }) {
         setGlobalStats({
           totalProperties: Number(aggregateStats.totalProperties || 0),
           totalTenants: Number(aggregateStats.totalTenants || 0),
+          totalOwners: Number(aggregateStats.totalOwners || 0),
+          activeOwners: Number(aggregateStats.activeOwners || 0),
+          activeMemberships: Number(aggregateStats.activeMemberships || 0),
           totalRevenue: Number(aggregateStats.totalRevenue || 0),
           pendingComplaints: Number(aggregateStats.pendingComplaints || 0),
           pendingVacates: Number(aggregateStats.pendingVacates || 0),
@@ -47,9 +53,12 @@ export function AdminProvider({ children }) {
       }
 
       // Safe rollout fallback while the performance migration is being applied.
-      const [{ count: propCount }, { count: tenantCount }, { data: payments }, { count: complaintCount }, { count: vacateCount }] = await Promise.all([
+      const [{ count: propCount }, { count: tenantCount }, { count: ownerCount }, { count: activeOwnerCount }, { count: activeMembershipCount }, { data: payments }, { count: complaintCount }, { count: vacateCount }] = await Promise.all([
         supabase.from('properties').select('*', { count: 'exact', head: true }),
-        supabase.from('tenants').select('*', { count: 'exact', head: true }),
+        supabase.from('tenants').select('*', { count: 'exact', head: true }).in('status', ['active', 'notice_period', 'payment_pending']),
+        supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'owner'),
+        supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'owner').eq('is_active', true),
+        supabase.from('properties').select('*', { count: 'exact', head: true }).eq('membership_active', true).gt('membership_expiry', new Date().toISOString()),
         supabase.from('payment_history').select('amount').eq('status', 'success'),
         supabase.from('complaints').select('*', { count: 'exact', head: true }).in('status', ['open', 'in_progress']),
         supabase.from('check_out_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
@@ -59,6 +68,9 @@ export function AdminProvider({ children }) {
       setGlobalStats({
         totalProperties: propCount || 0,
         totalTenants: tenantCount || 0,
+        totalOwners: ownerCount || 0,
+        activeOwners: activeOwnerCount || 0,
+        activeMemberships: activeMembershipCount || 0,
         totalRevenue,
         pendingComplaints: complaintCount || 0,
         pendingVacates: vacateCount || 0,
@@ -73,7 +85,7 @@ export function AdminProvider({ children }) {
 
   const realtimeConnected = useRealtimeRefresh(
     'admin-global-stats-live',
-    ['properties', 'tenants', 'payment_history', 'complaints', 'check_out_requests'],
+    ['users', 'properties', 'tenants', 'payment_history', 'complaints', 'check_out_requests'],
     loadGlobalStats,
     Boolean(admin),
     350,
