@@ -1,12 +1,10 @@
 import { useState } from 'react'
-import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { signInWithEmail, resetPassword, syncServerSession } from '../lib/supabase'
 import { cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
 
 export default function Login() {
-  const router = useRouter()
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -18,34 +16,6 @@ export default function Login() {
   const isEmail = (input) => input.includes('@')
   const isPhone = (input) => /^\d{10}$/.test(cleanPhoneNumber(input))
 
-  const redirectToDashboard = (destination) => new Promise((resolve) => {
-    let completed = false
-    const cleanup = () => {
-      router.events.off('routeChangeComplete', handleComplete)
-      router.events.off('routeChangeError', handleError)
-      window.clearTimeout(fallbackTimer)
-    }
-    const handleComplete = (url) => {
-      if (!url.startsWith(destination)) return
-      completed = true
-      cleanup()
-      resolve()
-    }
-    const hardRedirect = () => {
-      if (completed) return
-      cleanup()
-      window.location.assign(destination)
-    }
-    const handleError = () => hardRedirect()
-    const fallbackTimer = window.setTimeout(hardRedirect, 1000)
-
-    router.events.on('routeChangeComplete', handleComplete)
-    router.events.on('routeChangeError', handleError)
-    router.push(destination).then((started) => {
-      if (!started) hardRedirect()
-    }).catch(hardRedirect)
-  })
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (loading) return
@@ -55,6 +25,7 @@ export default function Login() {
     }
     setLoading(true)
     setLoginStatus('Signing in...')
+    let redirectStarted = false
 
     try {
       let emailToUse = identifier
@@ -91,7 +62,12 @@ export default function Login() {
         setLoginStatus('Opening your dashboard...')
         await syncServerSession(result.session)
         toast.success(`Welcome back, ${result.userData.full_name}!`)
-        await redirectToDashboard(destination)
+        window.location.replace(destination)
+        redirectStarted = true
+        window.setTimeout(() => {
+          setLoading(false)
+          setLoginStatus('')
+        }, 1000)
       } else {
         // ✅ Better error messages based on error type
         if (result.error?.includes('Email not confirmed')) {
@@ -108,8 +84,10 @@ export default function Login() {
       console.error('Login error:', error)
       toast.error('Login failed. Please try again.')
     } finally {
-      setLoading(false)
-      setLoginStatus('')
+      if (!redirectStarted) {
+        setLoading(false)
+        setLoginStatus('')
+      }
     }
   }
 
