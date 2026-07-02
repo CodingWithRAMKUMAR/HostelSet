@@ -7,6 +7,7 @@ import { formatCurrency, getSharingDetails, getPropertyTypeLabel, cleanPhoneNumb
 import toast from 'react-hot-toast'
 import NearbyHostelMap from '../../components/maps/NearbyHostelMap'
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
+import BrandLogo from '../../components/BrandLogo'
 
 export default function PropertyDetail() {
   const router = useRouter()
@@ -829,8 +830,7 @@ export default function PropertyDetail() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
             <Link href="/" className="flex items-center gap-2">
-              <span className="text-2xl">🏠</span>
-              <span className="text-xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">HOSTELSET</span>
+              <BrandLogo />
             </Link>
             <div className="flex items-center gap-4">
               <Link href="/login" className="text-gray-600 hover:text-slate-800 transition">Login / Signup</Link>

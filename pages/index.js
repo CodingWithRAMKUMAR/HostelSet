@@ -3,6 +3,7 @@ import Link from 'next/link'
 import Head from 'next/head'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { useRouter } from 'next/router'
+import BrandLogo from '../components/BrandLogo'
 
 export default function Home() {
   const [scrolled, setScrolled] = useState(false)
@@ -82,17 +83,8 @@ export default function Home() {
         }`}>
           <div className="container mx-auto px-4 md:px-8">
             <div className="flex justify-between items-center">
-              <Link href="/" className="flex items-center gap-3 group">
-                <motion.div 
-                  whileHover={{ rotate: 360, scale: 1.1 }}
-                  transition={{ duration: 0.5 }}
-                  className="text-3xl text-orange-500"
-                >
-                  🏠
-                </motion.div>
-                <span className="text-2xl font-bold bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text text-transparent">
-                  HOSTELSET
-                </span>
+              <Link href="/" className="flex items-center" aria-label="HostelSet home">
+                <BrandLogo priority />
               </Link>
               
               <div className="hidden md:flex items-center gap-4">
@@ -381,11 +373,8 @@ export default function Home() {
           <div className="container mx-auto px-4 md:px-8">
             <div className="grid md:grid-cols-4 gap-12">
               <div>
-                <div className="flex items-center gap-3 mb-6">
-                  <span className="text-3xl text-orange-500">🏠</span>
-                  <span className="text-2xl font-bold bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text text-transparent">
-                    HOSTELSET
-                  </span>
+                <div className="flex items-center mb-6">
+                  <BrandLogo size="footer" />
                 </div>
                 <p className="text-gray-500 mb-6 leading-relaxed">
                   Set Your Hostel, Simplify Life. India's most trusted PG and hostel management platform.

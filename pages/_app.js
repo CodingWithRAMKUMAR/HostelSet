@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { ErrorBoundary } from '../components/ErrorBoundary'
+import Head from 'next/head'
 
 export default function App({ Component, pageProps }) {
   const router = useRouter()
@@ -55,6 +56,18 @@ export default function App({ Component, pageProps }) {
 
   return (
     <>
+      <Head>
+        <meta name="application-name" content="HostelSet" />
+        <meta name="theme-color" content="#4f46e5" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="HostelSet" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+      </Head>
       <Toaster 
         position="top-center"
         toastOptions={{

@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic';
 import { signOut } from '../../lib/supabase';
 import { formatCurrency } from '../../lib/utils';
 import { AdminProvider, useAdmin } from '../../context/AdminContext';
+import BrandLogo from '../../components/BrandLogo';
 import { useAdminProperties } from '../../hooks/useAdminProperties';
 import { useAdminTenants } from '../../hooks/useAdminTenants';
 import { useAdminOwners } from '../../hooks/useAdminOwners';
@@ -138,7 +139,7 @@ function AdminDashboardContent() {
       <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-3 sm:px-6 py-3 sm:py-4 shadow-md border-b-2 border-orange-500/80">
         <div className="container mx-auto flex flex-wrap justify-between items-center gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            <h1 className="text-lg sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent whitespace-nowrap">🏠 HOSTELSET</h1>
+            <BrandLogo priority />
             <span className="text-[10px] sm:text-xs bg-[#2a2a2a] text-orange-400/90 border border-orange-500/30 px-2 sm:px-3 py-1 rounded-full whitespace-nowrap">Admin</span>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">

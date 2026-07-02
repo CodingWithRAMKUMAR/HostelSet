@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { supabase, syncServerSession } from '../../lib/supabase'
 import toast from 'react-hot-toast'
+import BrandLogo from '../../components/BrandLogo'
 
 // ---------------- MODULAR IMPORTS ----------------
 import { useTenant, TenantProvider } from '../../context/TenantContext'
@@ -223,7 +224,7 @@ function TenantDashboardContent() {
       <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-3 sm:px-6 py-3 sm:py-4 shadow-lg border-b-2 border-orange-500/80">
         <div className="container mx-auto flex justify-between items-center gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-lg sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent whitespace-nowrap">🏠 HOSTELSET</h1>
+            <BrandLogo priority />
             <span className="text-xs bg-[#2a2a2a] text-orange-400/90 border border-orange-500/30 px-3 py-1 rounded-full">Tenant</span>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">

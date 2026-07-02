@@ -5,6 +5,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { supabase, signPrivateDocumentFields, findTenantDocumentRecord } from '../../lib/supabase';
 import toast from 'react-hot-toast';
+import BrandLogo from '../../components/BrandLogo';
 
 // Modular Imports
 import { useOwner, OwnerProvider } from '../../context/OwnerContext';
@@ -582,7 +583,7 @@ function OwnerDashboardContent() {
     return (
       <div className="min-h-screen bg-white">
         <nav className="bg-[#1a1a1a] border-b border-orange-500/30 px-6 py-4 flex justify-between items-center text-white">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">🏠 HOSTELSET</h1>
+          <BrandLogo />
           <button onClick={async () => { await supabase.auth.signOut(); localStorage.clear(); router.push('/') }} className="text-red-400 hover:text-red-300 transition">Logout</button>
         </nav>
         <div className="text-center py-20">
@@ -642,7 +643,7 @@ function OwnerDashboardContent() {
       <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-3 sm:px-6 py-3 sm:py-4 shadow-lg border-b-2 border-orange-500/80">
         <div className="container mx-auto flex flex-wrap justify-between items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-3">
-            <h1 className="text-lg sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent whitespace-nowrap">🏠 HOSTELSET</h1>
+            <BrandLogo priority />
             <span className="text-xs bg-[#2a2a2a] text-orange-400/90 border border-orange-500/30 px-3 py-1 rounded-full">Owner</span>
           </div>
           <div className="flex items-center justify-end gap-2 sm:gap-4 flex-wrap flex-1 min-w-0">

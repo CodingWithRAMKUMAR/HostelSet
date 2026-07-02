@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { signInWithEmail, resetPassword, syncServerSession } from '../lib/supabase'
 import { cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
+import BrandLogo from '../components/BrandLogo'
 
 export default function Login() {
   const [identifier, setIdentifier] = useState('')
@@ -111,10 +112,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 to-white">
       <div className="bg-white rounded-2xl shadow-xl p-5 sm:p-8 max-w-md w-full border border-gray-100 animate-fade-in">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-r from-slate-700 to-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-md">
-            <span className="text-3xl">🏠</span>
-          </div>
-          <h1 className="text-2xl font-bold text-slate-800">HOSTELSET</h1>
+          <BrandLogo size="login" priority className="mx-auto mb-2" />
           <p className="text-gray-500 mt-1">Login with email or mobile number</p>
         </div>
 
