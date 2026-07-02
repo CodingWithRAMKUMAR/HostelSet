@@ -27,14 +27,14 @@ export default function RentPaymentsList({ payments = [], onConfirm = () => {}, 
               disabled={isSubmitting} 
               className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50"
             >
-              Received
+              {isSubmitting ? 'Processing…' : 'Received'}
             </button>
             <button 
               onClick={() => onReject(p.id)} 
               disabled={isSubmitting} 
               className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition disabled:opacity-50"
             >
-              Not Received
+              {isSubmitting ? 'Processing…' : 'Not Received'}
             </button>
           </div>
         </div>

@@ -40,14 +40,14 @@ export default function RoomChangeRequestList({ requests = [], onApprove = () =>
                   disabled={isSubmitting}
                   className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50"
                 >
-                  Approve
+                  {isSubmitting ? 'Processing…' : 'Approve'}
                 </button>
                 <button
                   onClick={() => onReject(request)}
                   disabled={isSubmitting}
                   className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition disabled:opacity-50"
                 >
-                  Reject
+                  {isSubmitting ? 'Processing…' : 'Reject'}
                 </button>
               </div>
             </div>

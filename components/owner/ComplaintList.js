@@ -27,10 +27,10 @@ export default function ComplaintList({ complaints = [], onRespond = () => {}, o
             </div>
             <div className="flex gap-2">
               {c.status === 'open' && (
-                <button onClick={() => onRespond(c)} disabled={isSubmitting} className="bg-slate-800 text-white px-3 py-1 rounded text-sm disabled:opacity-50">Respond</button>
+                <button onClick={() => onRespond(c)} disabled={isSubmitting} className="bg-slate-800 text-white px-3 py-1 rounded text-sm disabled:opacity-50">{isSubmitting ? 'Processing…' : 'Respond'}</button>
               )}
               {c.status === 'in_progress' && (
-                <button onClick={() => onResolve(c.id)} disabled={isSubmitting} className="bg-green-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50">Resolve</button>
+                <button onClick={() => onResolve(c.id)} disabled={isSubmitting} className="bg-green-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50">{isSubmitting ? 'Processing…' : 'Resolve'}</button>
               )}
             </div>
           </div>

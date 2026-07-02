@@ -28,7 +28,7 @@ const AdminTable = ({ headers, data, renderRow, emptyMessage, loading = false })
           <tr>{headers.map((h, i) => <th key={i} className="px-6 py-4 whitespace-nowrap font-medium tracking-wide">{h}</th>)}</tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {loading ? (
+          {loading && data.length === 0 ? (
             <tr><td colSpan={headers.length} className="px-6 py-12 text-center text-orange-600 font-medium">Loading live data…</td></tr>
           ) : data.length === 0 ? (
             <tr><td colSpan={headers.length} className="px-6 py-12 text-center text-gray-400 italic">{emptyMessage}</td></tr>
@@ -87,6 +87,14 @@ function AdminDashboardContent() {
 
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [actionKey, setActionKey] = useState(null);
+
+  const runAdminAction = async (key, action) => {
+    if (actionKey) return;
+    setActionKey(key);
+    try { await action(); }
+    finally { setActionKey(null); }
+  };
 
   const handleLogout = async () => {
     await signOut();
@@ -360,8 +368,8 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 flex gap-2">
                   {p.status === 'payment_pending' && (
                     <>
-                      <button onClick={() => confirmPayment(p.id)} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider">Confirm</button>
-                      <button onClick={() => rejectPayment(p.id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Reject</button>
+                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => confirmPayment(p.id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `payment:${p.id}` ? 'Processing…' : 'Confirm'}</button>
+                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => rejectPayment(p.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `payment:${p.id}` ? 'Processing…' : 'Reject'}</button>
                     </>
                   )}
                 </td>
@@ -384,8 +392,8 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 text-gray-500">{b.rooms?.properties?.name || 'N/A'}</td>
                 <td className="px-6 py-4 text-gray-500">{formatCurrency(b.pre_booking_fee_amount || 0)}</td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button onClick={() => approvePreBooking(b.id, b.user_id, b.room_id, b.property_id, b.name, b.phone, b.email, b.rooms?.monthly_rent)} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider">Approve</button>
-                  <button onClick={() => rejectPreBooking(b.id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Reject</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${b.id}`, () => approvePreBooking(b.id, b.user_id, b.room_id, b.property_id, b.name, b.phone, b.email, b.rooms?.monthly_rent))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processing…' : 'Approve'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${b.id}`, () => rejectPreBooking(b.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processing…' : 'Reject'}</button>
                 </td>
               </tr>
             )}
@@ -405,8 +413,8 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 text-gray-500">{a.phone}</td>
                 <td className="px-6 py-4 text-gray-500">{a.rooms?.room_number || 'N/A'}</td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button onClick={() => approveApplication(a, a.user_id)} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider">Approve</button>
-                  <button onClick={() => rejectApplication(a.id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Reject</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${a.id}`, () => approveApplication(a, a.user_id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `application:${a.id}` ? 'Processing…' : 'Approve'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${a.id}`, () => rejectApplication(a.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `application:${a.id}` ? 'Processing…' : 'Reject'}</button>
                 </td>
               </tr>
             )}
@@ -452,8 +460,8 @@ function AdminDashboardContent() {
                   </span>
                 </td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button onClick={() => resolveComplaint(c.id)} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider">Resolve</button>
-                  <button onClick={() => deleteComplaint(c.id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Delete</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${c.id}`, () => resolveComplaint(c.id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `complaint:${c.id}` ? 'Processing…' : 'Resolve'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${c.id}`, () => deleteComplaint(c.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `complaint:${c.id}` ? 'Processing…' : 'Delete'}</button>
                 </td>
               </tr>
             )}
@@ -480,8 +488,8 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 flex gap-2">
                   {v.status === 'pending' && (
                     <>
-                      <button onClick={() => approveVacate(v.id, v.tenant_id, v.expected_check_out)} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider">Approve</button>
-                      <button onClick={() => rejectVacate(v.id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Reject</button>
+                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${v.id}`, () => approveVacate(v.id, v.tenant_id, v.expected_check_out))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `vacate:${v.id}` ? 'Processing…' : 'Approve'}</button>
+                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${v.id}`, () => rejectVacate(v.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `vacate:${v.id}` ? 'Processing…' : 'Reject'}</button>
                     </>
                   )}
                 </td>
@@ -503,8 +511,8 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 text-gray-500">{r.old_room?.room_number || 'N/A'}</td>
                 <td className="px-6 py-4 text-gray-500">{r.new_room?.room_number || 'N/A'}</td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button onClick={() => approveRoomChange(r.id, r.tenant_id, r.new_room_id, r.old_room_id)} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider">Approve</button>
-                  <button onClick={() => rejectRoomChange(r.id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Reject</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${r.id}`, () => approveRoomChange(r.id, r.tenant_id, r.new_room_id, r.old_room_id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `roomchange:${r.id}` ? 'Processing…' : 'Approve'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${r.id}`, () => rejectRoomChange(r.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `roomchange:${r.id}` ? 'Processing…' : 'Reject'}</button>
                 </td>
               </tr>
             )}

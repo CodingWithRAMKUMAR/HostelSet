@@ -42,7 +42,7 @@ export default function PostNoticeModal({ noticeForm, setNoticeForm, onPost, onC
             <button onClick={onPost} disabled={isSubmitting} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
               {isSubmitting ? 'Posting...' : 'Post Notice'}
             </button>
-            <button onClick={onCancel} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">
+            <button onClick={onCancel} disabled={isSubmitting} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold disabled:opacity-50">
               Cancel
             </button>
           </div>

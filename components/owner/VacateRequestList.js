@@ -35,8 +35,8 @@ export default function VacateRequestList({ requests = [], onApprove = () => {},
               </div>
               {isPending && (
                 <div className="flex gap-2">
-                  <button onClick={() => onApprove(req.id, req.tenant_id, req.expected_check_out)} disabled={isSubmitting} className="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-700 transition disabled:opacity-50">Approve</button>
-                  <button onClick={() => onReject(req)} disabled={isSubmitting} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition disabled:opacity-50">Reject</button>
+                  <button onClick={() => onApprove(req.id, req.tenant_id, req.expected_check_out)} disabled={isSubmitting} className="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-700 transition disabled:opacity-50">{isSubmitting ? 'Processing…' : 'Approve'}</button>
+                  <button onClick={() => onReject(req)} disabled={isSubmitting} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition disabled:opacity-50">{isSubmitting ? 'Processing…' : 'Reject'}</button>
                 </div>
               )}
             </div>

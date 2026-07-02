@@ -67,7 +67,7 @@ export default function PropertiesPage() {
       // Fetch all active properties
       const { data: propertiesData, error: propError } = await supabase
         .from('properties')
-        .select('id, name, city, photos, property_type, address, formatted_address, latitude, longitude, location_verified')
+        .select('id, name, city, photos, property_type, address, formatted_address, latitude, longitude, location_verified, rooms(monthly_rent, capacity, current_occupants)')
         .eq('is_active', true)
 
       if (propError) throw propError
@@ -78,23 +78,15 @@ export default function PropertiesPage() {
         return
       }
 
-      // Fetch rooms for all these properties
-      const propertyIds = propertiesData.map(p => p.id)
-      const { data: roomsData, error: roomsError } = await supabase
-        .from('rooms')
-        .select('property_id, monthly_rent, capacity, current_occupants')
-        .in('property_id', propertyIds)
-
-      if (roomsError) throw roomsError
-
       // Attach room stats to each property
       const propertiesWithStats = propertiesData.map(property => {
-        const rooms = roomsData?.filter(r => r.property_id === property.id) || []
+        const rooms = property.rooms || []
         const totalRooms = rooms.length
         const occupiedRooms = rooms.filter(r => r.current_occupants >= r.capacity).length
         const lowestRent = rooms.length > 0 ? Math.min(...rooms.map(r => r.monthly_rent)) : null
         return {
           ...property,
+          rooms: undefined,
           totalRooms,
           occupiedRooms,
           lowestRent,

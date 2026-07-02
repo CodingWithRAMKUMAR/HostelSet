@@ -231,7 +231,7 @@ function TenantDashboardContent() {
               <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
               {realtimeConnected ? 'Live' : 'Connecting'}
             </span>
-            <button onClick={openProfile} className="flex items-center gap-2 text-gray-400 hover:text-orange-400 transition">
+            <button onPointerEnter={() => ProfileModal.preload?.()} onFocus={() => ProfileModal.preload?.()} onClick={openProfile} className="flex items-center gap-2 text-gray-400 hover:text-orange-400 transition">
               <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
                 {tenant?.name?.charAt(0) || 'U'}
               </div>
@@ -312,17 +312,17 @@ function TenantDashboardContent() {
 
         {/* --- ACTION BUTTONS (GRADIENT & GLASS) --- */}
         <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3 mb-6 sm:mb-8">
-          <button onClick={() => setShowPaymentModal(true)} disabled={isSubmitting} className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold shadow-md transition disabled:opacity-50">💳 Pay Rent (UPI)</button>
-          <button onClick={() => setShowComplaintModal(true)} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-orange-300/50 text-orange-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition disabled:opacity-50">📝 Raise Complaint</button>
+          <button onPointerEnter={() => PayRentModal.preload?.()} onFocus={() => PayRentModal.preload?.()} onClick={() => setShowPaymentModal(true)} disabled={isSubmitting} className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold shadow-md transition disabled:opacity-50">💳 Pay Rent (UPI)</button>
+          <button onPointerEnter={() => ComplaintModal.preload?.()} onFocus={() => ComplaintModal.preload?.()} onClick={() => setShowComplaintModal(true)} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-orange-300/50 text-orange-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition disabled:opacity-50">📝 Raise Complaint</button>
           {!pendingRoomChangeRequest ? (
-            <button onClick={openRoomChangeModal} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-blue-300/50 text-blue-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-50 transition disabled:opacity-50">🔄 Request Room Change</button>
+            <button onPointerEnter={() => RoomChangeModal.preload?.()} onFocus={() => RoomChangeModal.preload?.()} onClick={openRoomChangeModal} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-blue-300/50 text-blue-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-50 transition disabled:opacity-50">🔄 Request Room Change</button>
           ) : (
             <button disabled className="w-full sm:w-auto border-2 border-gray-300/50 text-gray-500 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold cursor-not-allowed">⏳ Room Change Pending</button>
           )}
           {existingVacateRequest ? (
             <button onClick={cancelVacateRequest} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-yellow-500/50 text-yellow-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition disabled:opacity-50">{existingVacateRequest.status === 'approved' ? '✓ Vacate Approved · Cancel' : '⏳ Vacate Request Pending · Cancel'}</button>
           ) : (
-            <button onClick={() => setShowVacateModal(true)} disabled={isSubmitting || Boolean(vacateBlockedReason)} title={vacateBlockedReason || undefined} className="w-full sm:w-auto border-2 border-red-300/50 text-red-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed">🚪 Request Vacate</button>
+            <button onPointerEnter={() => VacateModal.preload?.()} onFocus={() => VacateModal.preload?.()} onClick={() => setShowVacateModal(true)} disabled={isSubmitting || Boolean(vacateBlockedReason)} title={vacateBlockedReason || undefined} className="w-full sm:w-auto border-2 border-red-300/50 text-red-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed">🚪 Request Vacate</button>
           )}
         </div>
         {vacateBlockedReason && (

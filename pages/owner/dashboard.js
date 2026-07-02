@@ -526,6 +526,47 @@ function OwnerDashboardContent() {
     }
   };
 
+  const handleApproveRoomChange = async (request) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try { await approveRoomChange(request); }
+    finally { setIsSubmitting(false); }
+  };
+
+  const handleApproveVacate = async (requestId, tenantId, expectedDate) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try { await approveVacateRequest(requestId, tenantId, expectedDate); }
+    finally { setIsSubmitting(false); }
+  };
+
+  const handleResolveComplaint = async (complaintId) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try { await resolveComplaint(complaintId); }
+    finally { setIsSubmitting(false); }
+  };
+
+  const handleReviewRentPayment = async (paymentId, approve) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      return approve ? await confirmRentPayment(paymentId) : await rejectRentPayment(paymentId);
+    } finally { setIsSubmitting(false); }
+  };
+
+  const handlePostNotice = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const posted = await postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent);
+      if (posted) {
+        setNoticeForm({ title:'', content:'', type:'general', is_urgent:false });
+        setShowNoticeModal(false);
+      }
+    } finally { setIsSubmitting(false); }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#1a1a1a]">
@@ -686,13 +727,13 @@ function OwnerDashboardContent() {
         {activeTab === 'rooms' && <RoomList rooms={filteredRooms} tenants={safeTenants} vacateRequests={safeVacateRequests} roomMonthlyIncome={roomMonthlyIncome} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />}
         {activeTab === 'tenants' && <TenantTable tenants={filteredTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setPaymentAmount(Number(tenant.pending_amount || tenant.rent_amount || 0)); setCollectionRequestId(crypto.randomUUID()); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
         {activeTab === 'archived-tenants' && <ArchivedTenantList tenants={filteredArchivedTenants} onViewHistory={fetchArchivedTenantHistory} loadingId={loadingArchivedTenantId} />}
-        {activeTab === 'rent-payments' && <RentPaymentsList payments={filteredPendingPayments} onConfirm={confirmRentPayment} onReject={rejectRentPayment} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
+        {activeTab === 'rent-payments' && <RentPaymentsList payments={filteredPendingPayments} onConfirm={(id) => handleReviewRentPayment(id, true)} onReject={(id) => handleReviewRentPayment(id, false)} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
         {activeTab === 'payment-history' && <PaymentHistoryTable payments={filteredAllPayments} getRoomNumberById={getRoomNumberById} />}
         {activeTab === 'pre-bookings' && <PreBookingList bookings={filteredPreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={Boolean(prebookingProcessingId)} />}
         {activeTab === 'applications' && <ApplicationList applications={filteredApplications} onApprove={(id, data) => approveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} isSubmitting={Boolean(applicationProcessingId)} />}
-        {activeTab === 'complaints' && <ComplaintList complaints={filteredComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setComplaintResponse(''); setShowComplaintResponseModal(true) }} onResolve={resolveComplaint} isSubmitting={isSubmitting} />}
-        {activeTab === 'vacate' && <VacateRequestList requests={filteredVacateRequests} onApprove={approveVacateRequest} onReject={(request) => { setSelectedVacateRequest(request); setVacateRejectionReason(''); }} isSubmitting={isSubmitting || Boolean(vacateRejectingId)} />}
-        {activeTab === 'room-change' && <RoomChangeRequestList requests={filteredRoomChangeRequests} onApprove={approveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />}
+        {activeTab === 'complaints' && <ComplaintList complaints={filteredComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setComplaintResponse(''); setShowComplaintResponseModal(true) }} onResolve={handleResolveComplaint} isSubmitting={isSubmitting} />}
+        {activeTab === 'vacate' && <VacateRequestList requests={filteredVacateRequests} onApprove={handleApproveVacate} onReject={(request) => { setSelectedVacateRequest(request); setVacateRejectionReason(''); }} isSubmitting={isSubmitting || Boolean(vacateRejectingId)} />}
+        {activeTab === 'room-change' && <RoomChangeRequestList requests={filteredRoomChangeRequests} onApprove={handleApproveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />}
         {activeTab === 'notices' && <NoticeList notices={filteredNotices} onDelete={deleteNotice} onPost={() => setShowNoticeModal(true)} isSubmitting={isSubmitting} />}
       </div>
 
@@ -703,7 +744,7 @@ function OwnerDashboardContent() {
         {showSettingsModal && <SettingsModal settings={settings} setSettings={setSettings} property={property} onSave={handleSaveSettings} onCancel={() => setShowSettingsModal(false)} isSubmitting={isSubmitting} />}
         {showAddModal && <AddTenantModal formData={formData} setFormData={setFormData} rooms={rooms} onAdd={() => addTenant(isSubmitting, setIsSubmitting)} onCancel={() => setShowAddModal(false)} isSubmitting={isSubmitting} />}
         {showRoomModal && <AddRoomModal roomForm={roomForm} setRoomForm={setRoomForm} sharingTypes={sharingTypes} onAdd={() => addRoom(isSubmitting, setIsSubmitting)} onCancel={() => setShowRoomModal(false)} isSubmitting={isSubmitting} />}
-        {showNoticeModal && <PostNoticeModal noticeForm={noticeForm} setNoticeForm={setNoticeForm} onPost={() => postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent)} onCancel={() => setShowNoticeModal(false)} isSubmitting={isSubmitting} />}
+        {showNoticeModal && <PostNoticeModal noticeForm={noticeForm} setNoticeForm={setNoticeForm} onPost={handlePostNotice} onCancel={() => { if (!isSubmitting) setShowNoticeModal(false); }} isSubmitting={isSubmitting} />}
         {showMembershipModal && <MembershipModal onSelectPlan={async (...args) => { const sent = await requestMembership(...args); if (sent) setShowMembershipModal(false); }} onCancel={() => setShowMembershipModal(false)} loading={membershipLoading} pendingRequest={pendingMembershipRequest} />}
         {showOwnerProfileModal && ownerProfile && <OwnerProfileModal profile={ownerProfile} onSave={handleSaveOwnerProfile} onCancel={() => setShowOwnerProfileModal(false)} isSubmitting={isSubmitting} />}
         {showArchivedHistoryModal && <ArchivedTenantHistoryModal history={archivedHistory} loading={Boolean(loadingArchivedTenantId)} onClose={() => { setShowArchivedHistoryModal(false); setArchivedHistory(null); }} />}
