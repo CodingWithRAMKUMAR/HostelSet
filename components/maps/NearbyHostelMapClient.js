@@ -3,6 +3,7 @@ import L from 'leaflet'
 import Link from 'next/link'
 import { useEffect } from 'react'
 import { formatCurrency } from '../../lib/utils'
+import { propertyPublicPath } from '../../lib/propertySlug'
 
 const hostelIcon = L.divIcon({ className: '', html: '<div style="background:#0f172a;color:white;border:3px solid white;border-radius:18px;padding:5px 9px;box-shadow:0 3px 12px #0005;font-weight:700;white-space:nowrap">PG</div>', iconSize: [42, 30], iconAnchor: [21, 30] })
 const userIcon = L.divIcon({ className: '', html: '<div style="width:18px;height:18px;background:#2563eb;border:4px solid white;border-radius:50%;box-shadow:0 0 0 4px #2563eb55"></div>', iconSize: [18, 18], iconAnchor: [9, 9] })
@@ -30,7 +31,7 @@ export default function NearbyHostelMapClient({ properties, userLocation, compac
       <TileLayer attribution='&copy; OpenStreetMap contributors | Powered by <a href="https://www.geoapify.com/">Geoapify</a>' url={`https://maps.geoapify.com/v1/tile/positron/{z}/{x}/{y}.png?apiKey=${key}`} />
       <Fit properties={properties} userLocation={userLocation} />
       {userLocation && <Marker position={[userLocation.latitude, userLocation.longitude]} icon={userIcon}><Popup>Your current location</Popup></Marker>}
-      {properties.filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude)).map(property => <Marker key={property.id} position={[property.latitude, property.longitude]} icon={hostelIcon}><Popup><div className="min-w-44"><strong>{property.name}</strong><br/><span>{property.city}</span>{property.lowestRent != null && <><br/><span>From {formatCurrency(property.lowestRent)}/month</span></>}<div className="mt-2 flex gap-2"><Link href={`/property/${property.id}`} className="font-semibold text-blue-700">View</Link><a href={`https://www.google.com/maps/dir/?api=1&destination=${property.latitude},${property.longitude}`} target="_blank" rel="noreferrer" className="font-semibold text-green-700">Directions</a></div></div></Popup></Marker>)}
+      {properties.filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude)).map(property => <Marker key={property.id} position={[property.latitude, property.longitude]} icon={hostelIcon}><Popup><div className="min-w-44"><strong>{property.name}</strong><br/><span>{property.city}</span>{property.lowestRent != null && <><br/><span>From {formatCurrency(property.lowestRent)}/month</span></>}<div className="mt-2 flex gap-2"><Link href={propertyPublicPath(property)} className="font-semibold text-blue-700">View</Link><a href={`https://www.google.com/maps/dir/?api=1&destination=${property.latitude},${property.longitude}`} target="_blank" rel="noreferrer" className="font-semibold text-green-700">Directions</a></div></div></Popup></Marker>)}
     </MapContainer>
   </div>
 }

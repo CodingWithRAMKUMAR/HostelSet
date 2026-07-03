@@ -9,8 +9,10 @@ import NearbyHostelMap from '../../components/maps/NearbyHostelMap'
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
 import BrandLogo from '../../components/BrandLogo'
 import Head from 'next/head'
+import Image from 'next/image'
 import PublicFooter from '../../components/PublicFooter'
 import { fetchWithTimeout } from '../../lib/fetchWithTimeout'
+import { propertyPublicPath, UUID_PATTERN } from '../../lib/propertySlug'
 
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')
 
@@ -45,6 +47,8 @@ const buildVacateInfo = roomRows => {
 const buildApprovedPrebookings = roomRows => Object.fromEntries(
   roomRows.filter(room => room.has_approved_prebooking).map(room => [room.id, true]),
 )
+
+const propertyImageLoader = ({ src }) => src
 
 export default function PropertyDetail({ initialProperty = null, initialRooms = [], initialSettings = null, similarProperties = [] }) {
   const router = useRouter()
@@ -106,13 +110,14 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   // To disable pre‑book button if room already has an approved pre‑booking
   const [approvedPrebookings, setApprovedPrebookings] = useState(() => buildApprovedPrebookings(initialRooms))
   const redirectTimerRef = useRef(null)
+  const resolvedPropertyId = property?.id || (UUID_PATTERN.test(String(id || '')) ? id : null)
 
   useEffect(() => () => clearTimeout(redirectTimerRef.current), [])
 
   useEffect(() => {
     if (!id) return
 
-    if (initialProperty?.id === id) {
+    if (initialProperty && (initialProperty.id === id || initialProperty.slug === id)) {
       const normalizedProperty = normalizeProperty(initialProperty)
       setProperty(normalizedProperty)
       setRooms(initialRooms)
@@ -131,12 +136,14 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
     if (!background) setLoading(true)
     if (!background) setLoadError('')
     try {
-      const [{ data: propertyData, error: propertyError }, { data: roomsData, error: roomsError }, { data: settingsData }] = await Promise.all([
-        supabase.from('properties').select('*').eq('id', id).eq('is_active', true).single(),
-        supabase.from('rooms').select('*').eq('property_id', id).order('room_number'),
-        supabase.from('owner_settings').select('*').eq('property_id', id).maybeSingle(),
-      ])
+      let propertyQuery = supabase.from('properties').select('*').eq('is_active', true)
+      propertyQuery = UUID_PATTERN.test(String(id || '')) ? propertyQuery.eq('id', id) : propertyQuery.eq('slug', id)
+      const { data: propertyData, error: propertyError } = await propertyQuery.single()
       if (propertyError) throw propertyError
+      const [{ data: roomsData, error: roomsError }, { data: settingsData }] = await Promise.all([
+        supabase.from('rooms').select('*').eq('property_id', propertyData.id).order('room_number'),
+        supabase.from('owner_settings').select('*').eq('property_id', propertyData.id).maybeSingle(),
+      ])
       if (roomsError) throw roomsError
       const normalizedProperty = normalizeProperty(propertyData)
       setProperty(normalizedProperty)
@@ -199,7 +206,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const uploadPrivateFile = async (file, category) => {
     const response = await fetchWithTimeout('/api/visitor/upload-url', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ propertyId: id, category, contentType: file.type, size: file.size }),
+      body: JSON.stringify({ propertyId: resolvedPropertyId, category, contentType: file.type, size: file.size }),
     }, 15000)
     const signed = await readApiResponse(response, 'Could not prepare upload')
     if (!response.ok) throw new Error(signed.error || 'Could not prepare upload')
@@ -298,7 +305,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
         .from('pre_bookings')
         .select('id')
         .eq('phone', cleanPhone)
-        .eq('property_id', id)
+        .eq('property_id', resolvedPropertyId)
         .in('status', ['pending', 'approved'])
         .maybeSingle()
       if (existingPrebook) {
@@ -351,7 +358,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
         .from('pre_bookings')
         .select('id')
         .eq('email', email)
-        .eq('property_id', id)
+        .eq('property_id', resolvedPropertyId)
         .in('status', ['pending', 'approved'])
         .maybeSingle()
       if (existingPrebook) {
@@ -475,7 +482,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       const response = await fetchWithTimeout('/api/visitor/submit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          kind: 'application', propertyId: id, roomId: selectedRoom, form: applyForm,
+          kind: 'application', propertyId: resolvedPropertyId, roomId: selectedRoom, form: applyForm,
           files: { idProof: idPayload, photo: photoPayload, payment: paymentPayload }, transactionId,
         }),
       }, 30000)
@@ -741,7 +748,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       const response = await fetchWithTimeout('/api/visitor/submit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          kind: 'prebooking', propertyId: id, roomId: prebookRoomId, form: prebookForm,
+          kind: 'prebooking', propertyId: resolvedPropertyId, roomId: prebookRoomId, form: prebookForm,
           expectedMoveIn: prebookForm.move_in_date,
           files: { idProof: idPayload, photo: photoPayload, payment: paymentPayload },
           transactionId: prebookTransactionId,
@@ -857,9 +864,14 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const maxRent = rents.length ? Math.max(...rents) : null
   const rentText = minRent == null ? 'Contact the property for current rent' : minRent === maxRent ? `${formatCurrency(minRent)} per month` : `${formatCurrency(minRent)}–${formatCurrency(maxRent)} per month`
   const roomTypes = [...new Set(rooms.map(room => getSharingDetails(room.sharing_type)?.label).filter(Boolean))]
+  const availableSlots = rooms.reduce((total, room) => total + Math.max(0, Number(room.capacity || 0) - Number(room.current_occupants || 0)), 0)
+  const genderLabel = property.property_type === 'boys' ? 'Boys' : property.property_type === 'girls' ? 'Girls' : 'Co-living'
+  const locality = property.address || city
+  const fullAddress = property.formatted_address || [property.address, property.city, property.pincode].filter(Boolean).join(', ')
+  const foodAmenity = amenities.find(amenity => /food|meal|mess/i.test(amenity))
   const seoTitle = `${property.name} in ${city} | Rooms, Rent & Hostel Details - HostelSet`
   const seoDescription = `View ${property.name} in ${city} on HostelSet. Check room details, rent, amenities, location, and apply online.`
-  const canonicalUrl = `${SITE_URL}/property/${property.id}`
+  const canonicalUrl = `${SITE_URL}${propertyPublicPath(property)}`
   const absoluteImage = (() => {
     const candidate = property.photos?.[0] || '/brand/logo-primary.png'
     try { return new URL(candidate, SITE_URL).toString() }
@@ -867,7 +879,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   })()
   const imageAlt = `${property.name} hostel in ${city}`
   const lodgingSchema = {
-    '@context': 'https://schema.org', '@type': 'LodgingBusiness', name: property.name,
+    '@context': 'https://schema.org', '@type': ['LodgingBusiness', 'LocalBusiness'], name: property.name,
     description: property.description || seoDescription,
     image: property.photos?.length ? property.photos.map(photo => { try { return new URL(photo, SITE_URL).toString() } catch { return absoluteImage } }) : [absoluteImage],
     url: canonicalUrl,
@@ -876,6 +888,15 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
     amenityFeature: amenities.map(amenity => ({ '@type': 'LocationFeatureSpecification', name: amenity, value: true })),
     geo: Number.isFinite(property.latitude) && Number.isFinite(property.longitude) ? { '@type': 'GeoCoordinates', latitude: property.latitude, longitude: property.longitude } : undefined,
     priceRange: minRent == null ? undefined : rentText,
+    makesOffer: rooms.map(room => ({
+      '@type': 'Offer',
+      name: `${getSharingDetails(room.sharing_type)?.label || 'Room'} at ${property.name}`,
+      price: Number(room.monthly_rent),
+      priceCurrency: 'INR',
+      availability: Number(room.current_occupants || 0) < Number(room.capacity || 0) ? 'https://schema.org/InStock' : 'https://schema.org/SoldOut',
+      url: canonicalUrl,
+    })),
+    subjectOf: property.photos?.map((photo, index) => ({ '@type': 'ImageObject', contentUrl: (() => { try { return new URL(photo, SITE_URL).toString() } catch { return absoluteImage } })(), caption: `${imageAlt} - photo ${index + 1}` })),
   }
   const breadcrumbSchema = {
     '@context': 'https://schema.org', '@type': 'BreadcrumbList',
@@ -942,7 +963,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
           <div className="relative bg-gray-900/5 backdrop-blur-sm">
             {property.photos && property.photos.length > 0 ? (
               <>
-                <img src={property.photos[currentImageIndex]} alt={imageAlt} loading="eager" decoding="async" className="w-full h-[260px] sm:h-[400px] md:h-[500px] object-cover" />
+                <div className="relative h-[260px] w-full sm:h-[400px] md:h-[500px]"><Image loader={propertyImageLoader} unoptimized src={property.photos[currentImageIndex]} alt={imageAlt} fill priority sizes="(max-width: 768px) 100vw, 1152px" className="object-cover" /></div>
                 {property.photos.length > 1 && (
                   <>
                     <button onClick={prevImage} className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-slate-800 p-2 rounded-full shadow-md transition backdrop-blur-sm">←</button>
@@ -963,7 +984,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
             <div className="flex gap-2 mt-3 overflow-x-auto pb-2">
               {property.photos.map((photo, i) => (
                 <button key={i} onClick={() => setCurrentImageIndex(i)} className={`w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${i === currentImageIndex ? 'border-slate-800' : 'border-transparent opacity-70 hover:opacity-100'}`}>
-                  <img src={photo} alt={`${imageAlt} - photo ${i + 1}`} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                  <Image loader={propertyImageLoader} unoptimized src={photo} alt={`${imageAlt} - photo ${i + 1}`} width={80} height={80} loading="lazy" className="h-full w-full object-cover" />
                 </button>
               ))}
             </div>
@@ -1135,33 +1156,66 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
         )}
 
         <section className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" aria-labelledby="property-answers-title">
-          <h2 id="property-answers-title" className="text-2xl font-bold text-slate-800">About this hostel/PG</h2>
+          <h2 id="property-answers-title" className="text-2xl font-bold text-slate-800">What is this property?</h2>
           <p className="mt-3 text-slate-600">{property.description || `${property.name} is a ${propertyType.toLowerCase()} accommodation listing in ${city}. Review the available rooms, rent and facilities below before applying.`}</p>
+
+          <dl className="mt-6 grid gap-x-8 gap-y-3 rounded-xl bg-slate-50 p-5 text-sm sm:grid-cols-2">
+            <div><dt className="font-semibold text-slate-700">Hostel type and gender</dt><dd className="mt-1 text-slate-600">{propertyType} · {genderLabel}</dd></div>
+            <div><dt className="font-semibold text-slate-700">City</dt><dd className="mt-1 text-slate-600">{city}</dd></div>
+            <div><dt className="font-semibold text-slate-700">Locality</dt><dd className="mt-1 text-slate-600">{locality}</dd></div>
+            <div><dt className="font-semibold text-slate-700">Pin code</dt><dd className="mt-1 text-slate-600">{property.pincode || 'Not provided'}</dd></div>
+            <div className="sm:col-span-2"><dt className="font-semibold text-slate-700">Full address</dt><dd className="mt-1 text-slate-600">{fullAddress}</dd></div>
+            <div><dt className="font-semibold text-slate-700">Nearby landmark</dt><dd className="mt-1 text-slate-600">{property.nearby_landmark || 'No landmark has been listed.'}</dd></div>
+            <div><dt className="font-semibold text-slate-700">Map coordinates</dt><dd className="mt-1 text-slate-600">{Number.isFinite(property.latitude) && Number.isFinite(property.longitude) ? `${property.latitude}, ${property.longitude}` : 'Not available'}</dd></div>
+            <div><dt className="font-semibold text-slate-700">Room types</dt><dd className="mt-1 text-slate-600">{roomTypes.length ? roomTypes.join(', ') : 'No rooms currently listed'}</dd></div>
+            <div><dt className="font-semibold text-slate-700">Rent range</dt><dd className="mt-1 text-slate-600">{rentText}</dd></div>
+            <div className="sm:col-span-2"><dt className="font-semibold text-slate-700">Amenities</dt><dd className="mt-1 text-slate-600">{amenities.length ? amenities.join(', ') : 'No amenities have been listed.'}</dd></div>
+          </dl>
 
           <div className="mt-8 grid gap-7 md:grid-cols-2">
             <div>
-              <h3 className="text-lg font-semibold text-slate-800">Rooms and rent</h3>
-              <p className="mt-2 text-slate-600">{rooms.length ? `${rooms.length} room option${rooms.length === 1 ? '' : 's'} listed${roomTypes.length ? `, including ${roomTypes.join(', ')}` : ''}. Current listed rent: ${rentText}.` : 'No rooms are currently listed for this property.'}</p>
+              <h3 className="text-lg font-semibold text-slate-800">Who is it suitable for?</h3>
+              <p className="mt-2 text-slate-600">This listing is marked for {genderLabel.toLowerCase()} accommodation. Applicants should review the individual room audience and property rules before applying.</p>
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-slate-800">Amenities</h3>
-              <p className="mt-2 text-slate-600">{amenities.length ? amenities.join(', ') : 'No amenities have been listed yet.'}</p>
+              <h3 className="text-lg font-semibold text-slate-800">Is this hostel available?</h3>
+              <p className="mt-2 text-slate-600">{availableSlots > 0 ? `Yes. The currently listed rooms show ${availableSlots} available slot${availableSlots === 1 ? '' : 's'} in total.` : 'No immediate room slots are shown. A room may still offer pre-booking when an approved vacate date is listed.'}</p>
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-slate-800">Location</h3>
-              <p className="mt-2 text-slate-600">{property.formatted_address || property.address}, {city}{property.pincode ? ` – ${property.pincode}` : ''}.</p>
+              <h3 className="text-lg font-semibold text-slate-800">What room types are available?</h3>
+              <p className="mt-2 text-slate-600">{rooms.length ? `${rooms.length} room option${rooms.length === 1 ? '' : 's'} ${roomTypes.length ? `include ${roomTypes.join(', ')}` : 'are listed'}.` : 'No rooms are currently listed for this property.'}</p>
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-slate-800">How to apply</h3>
+              <h3 className="text-lg font-semibold text-slate-800">How much is the rent?</h3>
+              <p className="mt-2 text-slate-600">The current listed room rent is {rentText}. Check the selected room and confirm current charges with the owner before joining.</p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800">What amenities are included?</h3>
+              <p className="mt-2 text-slate-600">{amenities.length ? `The owner has listed: ${amenities.join(', ')}.` : 'The owner has not listed any amenities yet.'}</p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800">Is food included?</h3>
+              <p className="mt-2 text-slate-600">{foodAmenity ? `${foodAmenity} is included in the amenities listed by the owner. Confirm meal timings and charges directly with the owner.` : 'Food is not specified as an included amenity in this listing. Ask the owner before applying.'}</p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800">How can I apply?</h3>
               <p className="mt-2 text-slate-600">Choose an available room, select Apply Now, provide the requested applicant details and documents, then submit the application payment reference and proof for owner review.</p>
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-slate-800">Is rent included in the application/security deposit?</h3>
-              <p className="mt-2 text-slate-600">No. The application/security deposit confirms the application only. Room rent is separate and is paid according to the tenancy details after joining.</p>
+              <h3 className="text-lg font-semibold text-slate-800">How does payment work?</h3>
+              <p className="mt-2 text-slate-600">Pay using the owner’s displayed UPI details, then submit the UPI transaction reference and screenshot. The owner manually verifies the proof. Room rent is separate from the application/security deposit unless clearly stated otherwise.</p>
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-slate-800">How is payment proof verified?</h3>
-              <p className="mt-2 text-slate-600">The applicant submits the UPI transaction reference and screenshot. The property owner manually reviews that proof before approving or rejecting the request.</p>
+              <h3 className="text-lg font-semibold text-slate-800">What documents are required?</h3>
+              <p className="mt-2 text-slate-600">The application asks for an ID proof such as Aadhaar or PAN, a passport-size photo, and payment proof with the UPI transaction reference.</p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800">How do I contact the owner?</h3>
+              <p className="mt-2 text-slate-600">{property.contact_number ? `The public contact number listed for this property is ${property.contact_number}.` : 'A public owner contact number is not listed. Submit an application or use HostelSet support for platform assistance.'}</p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800">How far is it from major landmarks?</h3>
+              <p className="mt-2 text-slate-600">{property.nearby_landmark ? `${property.nearby_landmark} is the nearby landmark supplied by the owner. Use the map directions below to check the exact route and distance.` : 'No major landmark distance has been supplied. Use the map and directions below to calculate the route from your destination.'}</p>
             </div>
           </div>
 
@@ -1169,14 +1223,16 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
             <Link href="/properties" className="font-semibold text-indigo-700 hover:text-indigo-800">Browse all properties</Link>
             {similarProperties.length > 0 && (
               <div className="mt-4">
-                <h3 className="font-semibold text-slate-800">Similar properties in {city}</h3>
+                <h3 className="font-semibold text-slate-800">More properties in {city}</h3>
                 <div className="mt-2 flex flex-wrap gap-3">
                   {similarProperties.map(similar => (
-                    <Link key={similar.id} href={`/property/${similar.id}`} className="rounded-full bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">{similar.name}</Link>
+                    <Link key={similar.id} href={propertyPublicPath(similar)} className="rounded-full bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">{similar.name}</Link>
                   ))}
                 </div>
               </div>
             )}
+            {similarProperties.some(similar => similar.address || similar.formatted_address) && <div className="mt-4"><h3 className="font-semibold text-slate-800">Nearby localities</h3><div className="mt-2 flex flex-wrap gap-3">{similarProperties.filter(similar => similar.address || similar.formatted_address).map(similar => <Link key={`locality-${similar.id}`} href={propertyPublicPath(similar)} className="text-sm font-medium text-indigo-700 underline">{similar.address || similar.formatted_address}</Link>)}</div></div>}
+            <div className="mt-4 flex flex-wrap gap-4 text-sm"><Link href="/about" className="font-semibold text-indigo-700 hover:text-indigo-800">About HostelSet</Link><Link href="/support" className="font-semibold text-indigo-700 hover:text-indigo-800">Support</Link></div>
           </div>
         </section>
 
@@ -1442,43 +1498,45 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
 export async function getStaticPaths() {
   const { data } = await supabase
     .from('properties')
-    .select('id')
+    .select('id, slug')
     .eq('is_active', true)
 
   return {
-    paths: (data || []).map(property => ({ params: { id: property.id } })),
+    paths: (data || []).map(property => ({ params: { id: property.slug || property.id } })),
     fallback: 'blocking',
   }
 }
 
 export async function getStaticProps({ params }) {
   const propertyId = params?.id
-  const [propertyResult, roomsResult, settingsResult] = await Promise.all([
-    supabase.from('properties').select('*').eq('id', propertyId).eq('is_active', true).maybeSingle(),
-    supabase.from('rooms').select('*').eq('property_id', propertyId).order('room_number'),
-    supabase
-      .from('owner_settings')
-      .select('upi_id, advance_months, joining_fee, pre_booking_fee')
-      .eq('property_id', propertyId)
-      .maybeSingle(),
-  ])
+  const usesUuid = UUID_PATTERN.test(String(propertyId || ''))
+  let propertyQuery = supabase.from('properties').select('*').eq('is_active', true)
+  propertyQuery = usesUuid ? propertyQuery.eq('id', propertyId) : propertyQuery.eq('slug', propertyId)
+  const propertyResult = await propertyQuery.maybeSingle()
 
   if (propertyResult.error || !propertyResult.data) {
     return { notFound: true, revalidate: 60 }
   }
 
-  if (roomsResult.error) {
-    throw roomsResult.error
+  if (usesUuid && propertyResult.data.slug) {
+    return { redirect: { destination: propertyPublicPath(propertyResult.data), statusCode: 301 } }
   }
+
+  const [resolvedRoomsResult, resolvedSettingsResult] = await Promise.all([
+    supabase.from('rooms').select('*').eq('property_id', propertyResult.data.id).order('room_number'),
+    supabase.from('owner_settings').select('upi_id, advance_months, joining_fee, pre_booking_fee').eq('property_id', propertyResult.data.id).maybeSingle(),
+  ])
+
+  if (resolvedRoomsResult.error) throw resolvedRoomsResult.error
 
   let similarProperties = []
   if (propertyResult.data.city) {
     const { data } = await supabase
       .from('properties')
-      .select('id, name, city')
+      .select('id, slug, name, city, address, formatted_address')
       .eq('is_active', true)
       .eq('city', propertyResult.data.city)
-      .neq('id', propertyId)
+      .neq('id', propertyResult.data.id)
       .limit(4)
     similarProperties = data || []
   }
@@ -1486,8 +1544,8 @@ export async function getStaticProps({ params }) {
   return {
     props: {
       initialProperty: propertyResult.data,
-      initialRooms: roomsResult.data || [],
-      initialSettings: settingsResult.error ? null : settingsResult.data,
+      initialRooms: resolvedRoomsResult.data || [],
+      initialSettings: resolvedSettingsResult.error ? null : resolvedSettingsResult.data,
       similarProperties,
     },
     revalidate: 300,

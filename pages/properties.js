@@ -6,6 +6,7 @@ import { formatCurrency } from '../lib/utils'
 import NearbyHostelMap from '../components/maps/NearbyHostelMap'
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
 import PublicFooter from '../components/PublicFooter'
+import { propertyPublicPath } from '../lib/propertySlug'
 
 function distanceKm(origin, property) {
   if (!origin || !Number.isFinite(property.latitude) || !Number.isFinite(property.longitude)) return null
@@ -68,7 +69,7 @@ export default function PropertiesPage() {
       // Fetch all active properties
       const { data: propertiesData, error: propError } = await supabase
         .from('properties')
-        .select('id, name, city, photos, property_type, address, formatted_address, latitude, longitude, location_verified, rooms(monthly_rent, capacity, current_occupants)')
+        .select('id, slug, name, city, photos, property_type, address, formatted_address, latitude, longitude, location_verified, rooms(monthly_rent, capacity, current_occupants)')
         .eq('is_active', true)
 
       if (propError) throw propError
@@ -218,7 +219,7 @@ export default function PropertiesPage() {
                     <span>🛏️ {property.occupiedRooms}/{property.totalRooms} occupied</span>
                   </div>
                   <Link
-                    href={`/property/${property.id}`}
+                    href={propertyPublicPath(property)}
                     className="block w-full bg-slate-800 text-white text-center py-2.5 rounded-full font-semibold hover:bg-slate-700 transition"
                   >
                     View Details →

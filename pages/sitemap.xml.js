@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { propertyPublicPath } from '../lib/propertySlug'
 
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')
 const PUBLIC_PATHS = [
@@ -27,7 +28,7 @@ const urlEntry = ({ path, lastmod }) => `  <url>
 export async function getServerSideProps({ res }) {
   const { data: properties, error } = await supabase
     .from('properties')
-    .select('id, updated_at, created_at')
+    .select('id, slug, updated_at, created_at')
     .eq('is_active', true)
     .order('created_at', { ascending: false })
 
@@ -36,7 +37,7 @@ export async function getServerSideProps({ res }) {
   const urls = [
     ...PUBLIC_PATHS.map(path => ({ path })),
     ...(properties || []).map(property => ({
-      path: `/property/${property.id}`,
+      path: propertyPublicPath(property),
       lastmod: property.updated_at || property.created_at,
     })),
   ]
