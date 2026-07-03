@@ -398,18 +398,16 @@ export default function Home() {
               <div>
                 <h4 className="font-bold text-white mb-6 text-lg">Company</h4>
                 <ul className="space-y-3 text-gray-500">
-                  <li><a href="#" className="hover:text-orange-400 transition">About Us</a></li>
-                  <li><a href="#" className="hover:text-orange-400 transition">Contact</a></li>
-                  <li><a href="#" className="hover:text-orange-400 transition">Blog</a></li>
-                  <li><a href="#" className="hover:text-orange-400 transition">Careers</a></li>
+                  <li><Link href="/about" className="hover:text-orange-400 transition">About Us</Link></li>
+                  <li><Link href="/contact" className="hover:text-orange-400 transition">Contact</Link></li>
+                  <li><Link href="/support" className="hover:text-orange-400 transition">Support</Link></li>
                 </ul>
               </div>
               <div>
                 <h4 className="font-bold text-white mb-6 text-lg">Legal</h4>
                 <ul className="space-y-3 text-gray-500">
-                  <li><Link href="/privacy" className="hover:text-orange-400 transition">Privacy Policy</Link></li>
+                  <li><Link href="/privacy-policy" className="hover:text-orange-400 transition">Privacy Policy</Link></li>
                   <li><Link href="/terms" className="hover:text-orange-400 transition">Terms of Service</Link></li>
-                  <li><a href="#" className="hover:text-orange-400 transition">Cookie Policy</a></li>
                   <li><Link href="/refund-policy" className="hover:text-orange-400 transition">Refund Policy</Link></li>
                 </ul>
               </div>

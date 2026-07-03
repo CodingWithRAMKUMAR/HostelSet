@@ -9,6 +9,7 @@ import NearbyHostelMap from '../../components/maps/NearbyHostelMap'
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
 import BrandLogo from '../../components/BrandLogo'
 import Head from 'next/head'
+import PublicFooter from '../../components/PublicFooter'
 
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')
 
@@ -1427,11 +1428,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
         )}
       </AnimatePresence>
 
-      <footer className="bg-white/50 backdrop-blur-sm border-t border-gray-100 mt-12 py-8">
-        <div className="container mx-auto px-4 text-center text-gray-500 text-sm">
-          <p>&copy; 2026 HOSTELSET. All rights reserved.</p>
-        </div>
-      </footer>
+      <PublicFooter />
     </div>
   )
 }

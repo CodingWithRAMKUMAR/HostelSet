@@ -1,2 +1,14 @@
-import Link from 'next/link'
-export default function RefundPolicy() { return <main className="min-h-screen bg-slate-50 px-4 py-12"><article className="mx-auto max-w-3xl rounded-2xl bg-white p-6 shadow-sm sm:p-10"><h1 className="text-3xl font-bold">Refund Policy</h1><p className="mt-2 text-sm text-slate-500">Effective 30 June 2026</p><div className="mt-8 space-y-5 leading-7 text-slate-700"><p>Payments shown on HostelSet are made directly to the property owner. Refund requests must be reviewed and issued by that owner.</p><p>Security-deposit refunds follow the property agreement and move-out inspection. A fee marked non-refundable is generally not refundable after a room is reserved, except where the owner cannot provide accommodation or law requires otherwise.</p><p>Keep the transaction reference and payment screenshot when reporting a discrepancy.</p></div><Link href="/" className="mt-8 inline-block font-semibold underline">Back to HostelSet</Link></article></main> }
+import PublicInfoPage from '../components/PublicInfoPage'
+
+export default function RefundPolicy() {
+  return <PublicInfoPage title="Refund Policy" description="Understand how payment and refund requests are handled between HostelSet users and property owners." path="/refund-policy">
+    <p className="text-sm text-slate-500">Effective 30 June 2026</p>
+    <p>HostelSet does not directly process or hold tenant, rent, application, security-deposit, or pre-booking payments. Payments are made directly to the relevant hostel or property owner.</p>
+    <h2 className="text-xl font-semibold text-slate-900">Owner refund policies</h2>
+    <p>Whether an application or security deposit is refundable depends on the hostel or owner’s displayed policy, the property agreement, and applicable law. Refund requests must be reviewed and, where approved, issued by the recipient property owner.</p>
+    <h2 className="text-xl font-semibold text-slate-900">Non-refundable amounts</h2>
+    <p>Any non-refundable application, security, or pre-booking amount must be clearly shown before submission. Review the displayed wording and property terms before paying.</p>
+    <h2 className="text-xl font-semibold text-slate-900">Payment evidence</h2>
+    <p>Keep the UPI transaction reference, payment screenshot, and relevant communication when raising a payment or refund discrepancy with the property owner.</p>
+  </PublicInfoPage>
+}

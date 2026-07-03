@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { formatCurrency } from '../lib/utils'
 import NearbyHostelMap from '../components/maps/NearbyHostelMap'
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
+import PublicFooter from '../components/PublicFooter'
 
 function distanceKm(origin, property) {
   if (!origin || !Number.isFinite(property.latitude) || !Number.isFinite(property.longitude)) return null
@@ -229,6 +230,7 @@ export default function PropertiesPage() {
           </div>
         )}
       </div>
+      <PublicFooter />
     </div>
   )
 }
