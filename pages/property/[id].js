@@ -8,13 +8,48 @@ import toast from 'react-hot-toast'
 import NearbyHostelMap from '../../components/maps/NearbyHostelMap'
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
 import BrandLogo from '../../components/BrandLogo'
+import Head from 'next/head'
 
-export default function PropertyDetail() {
+const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')
+
+const normalizeProperty = property => property ? {
+  ...property,
+  latitude: property.latitude != null ? Number(property.latitude) : null,
+  longitude: property.longitude != null ? Number(property.longitude) : null,
+} : null
+
+const settingsFor = (property, settings) => ({
+  upi_id: settings?.upi_id || property?.owner_upi_id || '',
+  advance_months: settings?.advance_months || 1,
+  joining_fee: settings?.joining_fee || 0,
+  pre_booking_fee: settings?.pre_booking_fee ?? 999,
+})
+
+const buildVacateInfo = roomRows => {
+  const info = {}
+  const today = new Date()
+  roomRows.forEach(room => {
+    if (!room.next_vacate_date) return
+    const vacateDate = new Date(`${room.next_vacate_date}T23:59:59`)
+    if (Number.isNaN(vacateDate.getTime())) return
+    info[room.id] = {
+      daysLeft: Math.ceil((vacateDate - today) / (1000 * 60 * 60 * 24)),
+      vacateDate: room.next_vacate_date,
+    }
+  })
+  return info
+}
+
+const buildApprovedPrebookings = roomRows => Object.fromEntries(
+  roomRows.filter(room => room.has_approved_prebooking).map(room => [room.id, true]),
+)
+
+export default function PropertyDetail({ initialProperty = null, initialRooms = [], initialSettings = null, similarProperties = [] }) {
   const router = useRouter()
   const { id } = router.query
-  const [property, setProperty] = useState(null)
-  const [rooms, setRooms] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [property, setProperty] = useState(() => normalizeProperty(initialProperty))
+  const [rooms, setRooms] = useState(initialRooms)
+  const [loading, setLoading] = useState(!initialProperty)
   const [loadError, setLoadError] = useState('')
   const [selectedRoom, setSelectedRoom] = useState(null)
   const [showApplyModal, setShowApplyModal] = useState(false)
@@ -23,7 +58,7 @@ export default function PropertyDetail() {
   const [photo, setPhoto] = useState(null)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [activeTab, setActiveTab] = useState('rooms')
-  const [ownerSettings, setOwnerSettings] = useState({ upi_id: '', advance_months: 1, joining_fee: 0, pre_booking_fee: 0 })
+  const [ownerSettings, setOwnerSettings] = useState(() => settingsFor(initialProperty, initialSettings))
   const [applySubmitting, setApplySubmitting] = useState(false)
 
   // Regular payment modal
@@ -34,7 +69,7 @@ export default function PropertyDetail() {
   const [paymentProgress, setPaymentProgress] = useState('')
 
   // Pre‑booking state
-  const [vacateInfo, setVacateInfo] = useState({})
+  const [vacateInfo, setVacateInfo] = useState(() => buildVacateInfo(initialRooms))
   const [showPrebookModal, setShowPrebookModal] = useState(false)
   const [prebookRoomId, setPrebookRoomId] = useState(null)
   const [prebookForm, setPrebookForm] = useState({ name: '', phone: '', email: '', move_in_date: '', message: '' })
@@ -67,11 +102,25 @@ export default function PropertyDetail() {
   const [prebookCheckingEmail, setPrebookCheckingEmail] = useState(false)
 
   // To disable pre‑book button if room already has an approved pre‑booking
-  const [approvedPrebookings, setApprovedPrebookings] = useState({})
+  const [approvedPrebookings, setApprovedPrebookings] = useState(() => buildApprovedPrebookings(initialRooms))
 
   useEffect(() => {
-    if (id) loadData()
-  }, [id])
+    if (!id) return
+
+    if (initialProperty?.id === id) {
+      const normalizedProperty = normalizeProperty(initialProperty)
+      setProperty(normalizedProperty)
+      setRooms(initialRooms)
+      setOwnerSettings(settingsFor(normalizedProperty, initialSettings))
+      setVacateInfo(buildVacateInfo(initialRooms))
+      setApprovedPrebookings(buildApprovedPrebookings(initialRooms))
+      setLoadError('')
+      setLoading(false)
+      return
+    }
+
+    loadData()
+  }, [id, initialProperty?.id])
 
   const loadData = async (background = false) => {
     if (!background) setLoading(true)
@@ -84,30 +133,12 @@ export default function PropertyDetail() {
       ])
       if (propertyError) throw propertyError
       if (roomsError) throw roomsError
-      const normalizedProperty = propertyData ? {
-        ...propertyData,
-        latitude: propertyData.latitude != null ? Number(propertyData.latitude) : null,
-        longitude: propertyData.longitude != null ? Number(propertyData.longitude) : null,
-      } : propertyData
+      const normalizedProperty = normalizeProperty(propertyData)
       setProperty(normalizedProperty)
       setRooms(roomsData || [])
 
       if (normalizedProperty) {
-        if (settingsData) {
-          setOwnerSettings({
-            upi_id: settingsData.upi_id || propertyData.owner_upi_id || '',
-            advance_months: settingsData.advance_months || 1,
-            joining_fee: settingsData.joining_fee || 0,
-            pre_booking_fee: settingsData.pre_booking_fee ?? 999,
-          })
-        } else if (propertyData.owner_upi_id) {
-          setOwnerSettings({
-            upi_id: propertyData.owner_upi_id,
-            advance_months: 1,
-            joining_fee: 0,
-            pre_booking_fee: 999,
-          })
-        }
+        setOwnerSettings(settingsFor(propertyData, settingsData))
       }
 
       loadVacateInfo(roomsData || [])
@@ -121,22 +152,11 @@ export default function PropertyDetail() {
   }
 
   const loadVacateInfo = (roomRows) => {
-    const info = {}
-    const today = new Date()
-    roomRows.forEach(room => {
-      if (!room.next_vacate_date) return
-      const vacateDate = new Date(`${room.next_vacate_date}T23:59:59`)
-      if (Number.isNaN(vacateDate.getTime())) return
-      const daysLeft = Math.ceil((vacateDate - today) / (1000 * 60 * 60 * 24))
-      info[room.id] = { daysLeft, vacateDate: room.next_vacate_date }
-    })
-    setVacateInfo(info)
+    setVacateInfo(buildVacateInfo(roomRows))
   }
 
   const loadApprovedPrebookings = (roomRows) => {
-    const map = {}
-    roomRows.forEach(room => { if (room.has_approved_prebooking) map[room.id] = true })
-    setApprovedPrebookings(map)
+    setApprovedPrebookings(buildApprovedPrebookings(roomRows))
   }
 
   const calculateTotalAmount = () => {
@@ -822,9 +842,63 @@ export default function PropertyDetail() {
   const hasNoRooms = rooms.length === 0
   const isApplyFormValid = applyForm.name && phoneValid && emailValid && idProof && photo
   const isPrebookFormValid = prebookForm.name && prebookPhoneValid && prebookEmailValid && prebookIdProof && prebookPhoto && agreeTerms && prebookForm.move_in_date
+  const city = property.city || 'India'
+  const propertyType = getPropertyTypeLabel(property.property_type)
+  const amenities = Array.isArray(property.amenities) ? property.amenities.filter(Boolean) : []
+  const rents = rooms.map(room => Number(room.monthly_rent)).filter(Number.isFinite)
+  const minRent = rents.length ? Math.min(...rents) : null
+  const maxRent = rents.length ? Math.max(...rents) : null
+  const rentText = minRent == null ? 'Contact the property for current rent' : minRent === maxRent ? `${formatCurrency(minRent)} per month` : `${formatCurrency(minRent)}–${formatCurrency(maxRent)} per month`
+  const roomTypes = [...new Set(rooms.map(room => getSharingDetails(room.sharing_type)?.label).filter(Boolean))]
+  const seoTitle = `${property.name} in ${city} | Rooms, Rent & Hostel Details - HostelSet`
+  const seoDescription = `View ${property.name} in ${city} on HostelSet. Check room details, rent, amenities, location, and apply online.`
+  const canonicalUrl = `${SITE_URL}/property/${property.id}`
+  const absoluteImage = (() => {
+    const candidate = property.photos?.[0] || '/brand/logo-primary.png'
+    try { return new URL(candidate, SITE_URL).toString() }
+    catch { return `${SITE_URL}/brand/logo-primary.png` }
+  })()
+  const imageAlt = `${property.name} hostel in ${city}`
+  const lodgingSchema = {
+    '@context': 'https://schema.org', '@type': 'LodgingBusiness', name: property.name,
+    description: property.description || seoDescription,
+    image: property.photos?.length ? property.photos.map(photo => { try { return new URL(photo, SITE_URL).toString() } catch { return absoluteImage } }) : [absoluteImage],
+    url: canonicalUrl,
+    address: { '@type': 'PostalAddress', streetAddress: property.formatted_address || property.address, addressLocality: city, postalCode: property.pincode || undefined, addressCountry: 'IN' },
+    telephone: property.contact_number || undefined,
+    amenityFeature: amenities.map(amenity => ({ '@type': 'LocationFeatureSpecification', name: amenity, value: true })),
+    geo: Number.isFinite(property.latitude) && Number.isFinite(property.longitude) ? { '@type': 'GeoCoordinates', latitude: property.latitude, longitude: property.longitude } : undefined,
+    priceRange: minRent == null ? undefined : rentText,
+  }
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org', '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+      { '@type': 'ListItem', position: 2, name: 'Properties', item: `${SITE_URL}/properties` },
+      { '@type': 'ListItem', position: 3, name: property.name, item: canonicalUrl },
+    ],
+  }
+  const jsonLd = JSON.stringify([lodgingSchema, breadcrumbSchema]).replace(/</g, '\\u003c')
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50">
+      <Head>
+        <title>{seoTitle}</title>
+        <meta name="description" content={seoDescription} />
+        <link rel="canonical" href={canonicalUrl} />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="HostelSet" />
+        <meta property="og:title" content={seoTitle} />
+        <meta property="og:description" content={seoDescription} />
+        <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:image" content={absoluteImage} />
+        <meta property="og:image:alt" content={imageAlt} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={seoTitle} />
+        <meta name="twitter:description" content={seoDescription} />
+        <meta name="twitter:image" content={absoluteImage} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd }} />
+      </Head>
       {/* Header – unchanged */}
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
@@ -843,9 +917,9 @@ export default function PropertyDetail() {
       </header>
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
-        <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-500 hover:text-slate-800 mb-6 transition group">
+        <Link href="/properties" className="flex items-center gap-2 text-gray-500 hover:text-slate-800 mb-6 transition group">
           <span className="group-hover:-translate-x-1 transition">←</span> Back to Search
-        </button>
+        </Link>
 
         <div className="mb-8">
           <h1 className="text-3xl md:text-4xl font-bold text-slate-800 mb-2">{property.name}</h1>
@@ -861,7 +935,7 @@ export default function PropertyDetail() {
           <div className="relative bg-gray-900/5 backdrop-blur-sm">
             {property.photos && property.photos.length > 0 ? (
               <>
-                <img src={property.photos[currentImageIndex]} alt={property.name} loading="eager" decoding="async" className="w-full h-[260px] sm:h-[400px] md:h-[500px] object-cover" />
+                <img src={property.photos[currentImageIndex]} alt={imageAlt} loading="eager" decoding="async" className="w-full h-[260px] sm:h-[400px] md:h-[500px] object-cover" />
                 {property.photos.length > 1 && (
                   <>
                     <button onClick={prevImage} className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-slate-800 p-2 rounded-full shadow-md transition backdrop-blur-sm">←</button>
@@ -882,7 +956,7 @@ export default function PropertyDetail() {
             <div className="flex gap-2 mt-3 overflow-x-auto pb-2">
               {property.photos.map((photo, i) => (
                 <button key={i} onClick={() => setCurrentImageIndex(i)} className={`w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${i === currentImageIndex ? 'border-slate-800' : 'border-transparent opacity-70 hover:opacity-100'}`}>
-                  <img src={photo} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                  <img src={photo} alt={`${imageAlt} - photo ${i + 1}`} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>
@@ -1052,6 +1126,52 @@ export default function PropertyDetail() {
             </div>
           </div>
         )}
+
+        <section className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" aria-labelledby="property-answers-title">
+          <h2 id="property-answers-title" className="text-2xl font-bold text-slate-800">About this hostel/PG</h2>
+          <p className="mt-3 text-slate-600">{property.description || `${property.name} is a ${propertyType.toLowerCase()} accommodation listing in ${city}. Review the available rooms, rent and facilities below before applying.`}</p>
+
+          <div className="mt-8 grid gap-7 md:grid-cols-2">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800">Rooms and rent</h3>
+              <p className="mt-2 text-slate-600">{rooms.length ? `${rooms.length} room option${rooms.length === 1 ? '' : 's'} listed${roomTypes.length ? `, including ${roomTypes.join(', ')}` : ''}. Current listed rent: ${rentText}.` : 'No rooms are currently listed for this property.'}</p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800">Amenities</h3>
+              <p className="mt-2 text-slate-600">{amenities.length ? amenities.join(', ') : 'No amenities have been listed yet.'}</p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800">Location</h3>
+              <p className="mt-2 text-slate-600">{property.formatted_address || property.address}, {city}{property.pincode ? ` – ${property.pincode}` : ''}.</p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800">How to apply</h3>
+              <p className="mt-2 text-slate-600">Choose an available room, select Apply Now, provide the requested applicant details and documents, then submit the application payment reference and proof for owner review.</p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800">Is rent included in the application/security deposit?</h3>
+              <p className="mt-2 text-slate-600">No. The application/security deposit confirms the application only. Room rent is separate and is paid according to the tenancy details after joining.</p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800">How is payment proof verified?</h3>
+              <p className="mt-2 text-slate-600">The applicant submits the UPI transaction reference and screenshot. The property owner manually reviews that proof before approving or rejecting the request.</p>
+            </div>
+          </div>
+
+          <div className="mt-8 border-t border-slate-200 pt-6">
+            <Link href="/properties" className="font-semibold text-indigo-700 hover:text-indigo-800">Browse all properties</Link>
+            {similarProperties.length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-semibold text-slate-800">Similar properties in {city}</h3>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  {similarProperties.map(similar => (
+                    <Link key={similar.id} href={`/property/${similar.id}`} className="rounded-full bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">{similar.name}</Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
 
         {Number.isFinite(property.latitude) && Number.isFinite(property.longitude) && (
           <section className="mt-10 border-t border-slate-200 pt-8" aria-labelledby="property-location-title">
@@ -1314,4 +1434,59 @@ export default function PropertyDetail() {
       </footer>
     </div>
   )
+}
+
+export async function getStaticPaths() {
+  const { data } = await supabase
+    .from('properties')
+    .select('id')
+    .eq('is_active', true)
+
+  return {
+    paths: (data || []).map(property => ({ params: { id: property.id } })),
+    fallback: 'blocking',
+  }
+}
+
+export async function getStaticProps({ params }) {
+  const propertyId = params?.id
+  const [propertyResult, roomsResult, settingsResult] = await Promise.all([
+    supabase.from('properties').select('*').eq('id', propertyId).eq('is_active', true).maybeSingle(),
+    supabase.from('rooms').select('*').eq('property_id', propertyId).order('room_number'),
+    supabase
+      .from('owner_settings')
+      .select('upi_id, advance_months, joining_fee, pre_booking_fee')
+      .eq('property_id', propertyId)
+      .maybeSingle(),
+  ])
+
+  if (propertyResult.error || !propertyResult.data) {
+    return { notFound: true, revalidate: 60 }
+  }
+
+  if (roomsResult.error) {
+    throw roomsResult.error
+  }
+
+  let similarProperties = []
+  if (propertyResult.data.city) {
+    const { data } = await supabase
+      .from('properties')
+      .select('id, name, city')
+      .eq('is_active', true)
+      .eq('city', propertyResult.data.city)
+      .neq('id', propertyId)
+      .limit(4)
+    similarProperties = data || []
+  }
+
+  return {
+    props: {
+      initialProperty: propertyResult.data,
+      initialRooms: roomsResult.data || [],
+      initialSettings: settingsResult.error ? null : settingsResult.data,
+      similarProperties,
+    },
+    revalidate: 300,
+  }
 }

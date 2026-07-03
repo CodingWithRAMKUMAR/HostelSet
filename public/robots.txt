@@ -4,5 +4,7 @@ Disallow: /api/
 Disallow: /admin/
 Disallow: /owner/
 Disallow: /tenant/
+Disallow: /login
 Disallow: /reset-password
 
+Sitemap: https://hostelset.com/sitemap.xml
