@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -10,6 +10,7 @@ import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
 import BrandLogo from '../../components/BrandLogo'
 import Head from 'next/head'
 import PublicFooter from '../../components/PublicFooter'
+import { fetchWithTimeout } from '../../lib/fetchWithTimeout'
 
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')
 
@@ -104,6 +105,9 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
 
   // To disable pre‑book button if room already has an approved pre‑booking
   const [approvedPrebookings, setApprovedPrebookings] = useState(() => buildApprovedPrebookings(initialRooms))
+  const redirectTimerRef = useRef(null)
+
+  useEffect(() => () => clearTimeout(redirectTimerRef.current), [])
 
   useEffect(() => {
     if (!id) return
@@ -193,10 +197,10 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   }
 
   const uploadPrivateFile = async (file, category) => {
-    const response = await fetch('/api/visitor/upload-url', {
+    const response = await fetchWithTimeout('/api/visitor/upload-url', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ propertyId: id, category, contentType: file.type, size: file.size }),
-    })
+    }, 15000)
     const signed = await readApiResponse(response, 'Could not prepare upload')
     if (!response.ok) throw new Error(signed.error || 'Could not prepare upload')
     const { error } = await supabase.storage.from('tenant-documents').uploadToSignedUrl(signed.path, signed.token, file, { contentType: file.type })
@@ -468,20 +472,21 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
         uploadPrivateFile(idProof, 'identity'), uploadPrivateFile(photo, 'photos'), uploadPrivateFile(paymentScreenshot, 'payments'),
       ])
       setPaymentProgress('Submitting application and sending invite...')
-      const response = await fetch('/api/visitor/submit', {
+      const response = await fetchWithTimeout('/api/visitor/submit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           kind: 'application', propertyId: id, roomId: selectedRoom, form: applyForm,
           files: { idProof: idPayload, photo: photoPayload, payment: paymentPayload }, transactionId,
         }),
-      })
+      }, 30000)
       const result = await readApiResponse(response, 'Application submission failed')
       if (!response.ok) throw new Error(result.error || 'Submission failed')
       toast.success('Application submitted. You will receive a password setup email after approval.', { duration: 8000 })
       setShowPaymentModal(false)
       setApplyForm({ name: '', phone: '', email: '', message: '' })
       setIdProof(null); setPhoto(null); setPaymentScreenshot(null); setTransactionId('')
-      setTimeout(() => router.push('/login'), 8000)
+      clearTimeout(redirectTimerRef.current)
+      redirectTimerRef.current = setTimeout(() => router.push('/login'), 8000)
     } catch (error) {
       toast.error(error.message || 'Application submission failed')
     } finally {
@@ -643,7 +648,8 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       setPhoto(null)
       setPaymentScreenshot(null)
       setTransactionId('')
-      setTimeout(() => router.push('/login'), 8000)
+      clearTimeout(redirectTimerRef.current)
+      redirectTimerRef.current = setTimeout(() => router.push('/login'), 8000)
     } catch (error) {
       console.error('Payment submission error:', error)
       toast.error('Something went wrong: ' + error.message)
@@ -732,7 +738,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
         uploadPrivateFile(prebookIdProof, 'identity'), uploadPrivateFile(prebookPhoto, 'photos'), uploadPrivateFile(prebookPaymentScreenshot, 'payments'),
       ])
       setPrebookPaymentProgress('Submitting pre-booking...')
-      const response = await fetch('/api/visitor/submit', {
+      const response = await fetchWithTimeout('/api/visitor/submit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           kind: 'prebooking', propertyId: id, roomId: prebookRoomId, form: prebookForm,
@@ -740,7 +746,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
           files: { idProof: idPayload, photo: photoPayload, payment: paymentPayload },
           transactionId: prebookTransactionId,
         }),
-      })
+      }, 30000)
       const result = await readApiResponse(response, 'Pre-booking submission failed')
       if (!response.ok) throw new Error(result.error || 'Submission failed')
       toast.success('Pre-booking request sent! Owner will verify payment and approve.')
@@ -1021,8 +1027,8 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                       key={room.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className={`group bg-white rounded-2xl border shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden ${
+                      transition={{ duration: 0.18 }}
+                      className={`group bg-white rounded-2xl border shadow-sm hover:shadow-xl transition-all duration-150 overflow-hidden ${
                         isAvailable && !isReserved ? 'border-green-200 hover:border-green-400' : (isPrebookable ? 'border-blue-200 hover:border-blue-400' : 'border-gray-200 opacity-70')
                       }`}
                     >
@@ -1048,7 +1054,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                             <span className="text-slate-600">{room.current_occupants}/{room.capacity}</span>
                           </div>
                           <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div className="bg-slate-600 h-2 rounded-full transition-all duration-500" style={{ width: `${(room.current_occupants / room.capacity) * 100}%` }} />
+                            <div className="bg-slate-600 h-2 rounded-full transition-all duration-150" style={{ width: `${(room.current_occupants / room.capacity) * 100}%` }} />
                           </div>
                         </div>
                         {isPrebookable && !isReserved && (

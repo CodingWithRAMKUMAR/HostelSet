@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { formatCurrency } from '../../../lib/utils'
+import { useModalAccessibility } from '../../../hooks/useModalAccessibility'
 
 export default function PayRentModal({
   tenant = {},
@@ -18,11 +19,13 @@ export default function PayRentModal({
   onCancel = () => {},
 }) {
   const amount = Number(tenant?.pending_amount ?? tenant?.rent_amount ?? 0)
+  const busy = paymentLoading || isSubmitting
+  const dialogRef = useModalAccessibility(onCancel, busy)
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onCancel}>
-      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-2xl font-bold mb-4">💳 Pay Rent via UPI</h2>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { if (!busy) onCancel() }}>
+      <motion.div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="pay-rent-modal-title" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto outline-none" onClick={(e) => e.stopPropagation()}>
+        <h2 id="pay-rent-modal-title" className="text-2xl font-bold mb-4">💳 Pay Rent via UPI</h2>
         <div className="bg-gray-50 rounded-xl p-4 mb-4">
           <p className="font-semibold">{tenant?.name}</p>
           <p className="text-sm text-gray-500">Room {room?.room_number}</p>
@@ -54,7 +57,7 @@ export default function PayRentModal({
               <div className="mt-3"><label className="block text-sm font-semibold mb-1">Payment Screenshot *</label><input type="file" accept="image/*" onChange={e => { if (e.target.files[0]) setPaymentScreenshot(e.target.files[0]) }} className="w-full" /></div>
               <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800 mt-3">After payment, upload the screenshot and submit. Owner will verify.</div>
               <button onClick={submitPaymentWithProof} disabled={paymentLoading || isSubmitting || !paymentScreenshot || !paymentTransactionId.trim()} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold mt-4 disabled:opacity-50">{paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}</button>
-              <button onClick={onCancel} className="w-full text-center text-gray-500 text-sm mt-3">Cancel</button>
+              <button onClick={onCancel} disabled={busy} className="w-full text-center text-gray-500 text-sm mt-3 disabled:opacity-50">Cancel</button>
             </div>
           </div>
         ) : (

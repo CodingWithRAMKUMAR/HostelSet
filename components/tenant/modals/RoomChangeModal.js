@@ -1,4 +1,5 @@
 import { formatCurrency, getSharingDetails } from '../../../lib/utils'
+import { useModalAccessibility } from '../../../hooks/useModalAccessibility'
 
 export default function RoomChangeModal({
   availableRooms = [],
@@ -10,10 +11,11 @@ export default function RoomChangeModal({
   onSubmit,
   onCancel,
 }) {
+  const dialogRef = useModalAccessibility(onCancel, isSubmitting)
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onCancel}>
-      <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-2xl font-bold mb-4">🔄 Request Room Change</h2>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { if (!isSubmitting) onCancel() }}>
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="room-change-modal-title" className="bg-white rounded-2xl max-w-md w-full p-6 outline-none" onClick={(e) => e.stopPropagation()}>
+        <h2 id="room-change-modal-title" className="text-2xl font-bold mb-4">🔄 Request Room Change</h2>
         <p className="text-sm text-gray-600 mb-4">Select a new room from the same property. Owner will review and approve.</p>
         <div className="space-y-4">
           <select 
@@ -42,7 +44,7 @@ export default function RoomChangeModal({
             <button onClick={onSubmit} disabled={isSubmitting || !selectedNewRoom} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold disabled:opacity-50">
               {isSubmitting ? 'Submitting...' : 'Submit Request'}
             </button>
-            <button onClick={onCancel} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold">Cancel</button>
+            <button onClick={onCancel} disabled={isSubmitting} className="flex-1 border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold disabled:opacity-50">Cancel</button>
           </div>
         </div>
       </div>

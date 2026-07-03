@@ -90,7 +90,7 @@ export default function RoomList({
                 </div>
                 <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div 
-                    className="h-full bg-gradient-to-r from-orange-400 to-amber-500 rounded-full transition-all duration-500"
+                    className="h-full bg-gradient-to-r from-orange-400 to-amber-500 rounded-full transition-all duration-150"
                     style={{ width: `${(room.current_occupants / room.capacity) * 100}%` }}
                   />
                 </div>

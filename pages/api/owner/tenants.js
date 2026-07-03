@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from '../../../lib/supabase'
 import { cleanPhoneNumber } from '../../../lib/utils'
 import { allowPostOnly, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
+import { logger } from '../../../lib/logger'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -81,16 +82,16 @@ export default async function handler(req, res) {
     })
     if (mailError) {
       emailSent = false
-      console.error('Owner-created tenant password email failed:', mailError)
+      logger.error('Owner-created tenant password email failed', mailError, { route: '/api/owner/tenants' })
     }
 
     return res.status(201).json({ success: true, tenantId: data?.tenant_id, emailSent })
   } catch (error) {
     if (createdUserId) {
       const { error: cleanupError } = await supabaseAdmin.auth.admin.deleteUser(createdUserId)
-      if (cleanupError) console.error('Tenant auth rollback failed:', cleanupError)
+      if (cleanupError) logger.error('Tenant auth rollback failed', cleanupError, { route: '/api/owner/tenants' })
     }
-    console.error('Owner tenant registration failed:', error)
+    logger.error('Owner tenant registration failed', error, { route: '/api/owner/tenants' })
     const conflict = error?.code === '23505' || /already|registered|exists/i.test(error?.message || '')
     return res.status(conflict ? 409 : 400).json({ error: conflict ? 'A tenant account already exists for this email or phone.' : (error.message || 'Tenant registration failed') })
   }

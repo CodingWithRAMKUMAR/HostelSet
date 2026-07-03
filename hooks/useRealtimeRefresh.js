@@ -13,6 +13,8 @@ export function useRealtimeRefresh(channelName, tables, onChange, enabled = true
     if (!enabled || !tables.length) return undefined;
 
     let timer;
+    let active = true;
+    setConnected(false);
     let channel = supabase.channel(channelName);
     const scheduleRefresh = () => {
       clearTimeout(timer);
@@ -22,11 +24,11 @@ export function useRealtimeRefresh(channelName, tables, onChange, enabled = true
     tables.forEach((table) => {
       channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, scheduleRefresh);
     });
-    channel.subscribe((status) => setConnected(status === 'SUBSCRIBED'));
+    channel.subscribe((status) => { if (active) setConnected(status === 'SUBSCRIBED'); });
 
     return () => {
+      active = false;
       clearTimeout(timer);
-      setConnected(false);
       supabase.removeChannel(channel);
     };
   }, [channelName, enabled, delay, tables.join(',')]);

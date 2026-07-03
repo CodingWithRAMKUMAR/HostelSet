@@ -5,7 +5,7 @@ export default function NoticesSection({ notices = [] }) {
     return (
       <div className="text-center py-12">
         <div className="text-5xl mb-3">📢</div>
-        <p>No notices yet</p>
+        <p className="font-semibold text-slate-700">No notices yet</p><p className="mt-1 text-sm text-slate-500">Property and HostelSet announcements will appear here.</p>
       </div>
     );
   }

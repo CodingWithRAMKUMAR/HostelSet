@@ -5,6 +5,11 @@ import { motion, useScroll, useTransform } from 'framer-motion'
 import { useRouter } from 'next/router'
 import BrandLogo from '../components/BrandLogo'
 
+const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')
+const HOME_TITLE = 'HostelSet | Discover and Manage Hostels & PGs'
+const HOME_DESCRIPTION = 'Browse hostel and PG properties, review rooms and rent, apply online, or manage properties, tenants, payments, notices, and requests with HostelSet.'
+const HOME_IMAGE = `${SITE_URL}/brand/logo-primary.png`
+
 export default function Home() {
   const [scrolled, setScrolled] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -60,18 +65,45 @@ export default function Home() {
     { number: '03', title: 'Start Earning', desc: 'Collect rent online, track payments, grow business', icon: '💰', color: 'from-amber-500 to-orange-600' },
   ]
 
+  const publicSchemas = JSON.stringify([
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      name: 'HostelSet',
+      url: SITE_URL,
+      logo: HOME_IMAGE,
+      email: 'contact@hostelset.com',
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: 'HostelSet',
+      applicationCategory: 'BusinessApplication',
+      operatingSystem: 'Web',
+      url: SITE_URL,
+      description: HOME_DESCRIPTION,
+    },
+  ]).replace(/</g, '\\u003c')
+
   return (
     <>
       <Head>
-        <title>HOSTELSET – Find Your Perfect PG | Smart Hostel Management</title>
-        <meta name="description" content="India's most trusted platform for PG and hostel management. Browse properties, apply online, and pay rent directly to owners." />
+        <title>{HOME_TITLE}</title>
+        <meta name="description" content={HOME_DESCRIPTION} />
+        <link rel="canonical" href={SITE_URL} />
         <link rel="icon" href="/favicon.ico" />
-        <meta property="og:title" content="HOSTELSET – Find Your Perfect PG" />
-        <meta property="og:description" content="Set Your Hostel, Simplify Life. Browse PGs, apply instantly, and pay rent securely." />
+        <meta property="og:site_name" content="HostelSet" />
+        <meta property="og:title" content={HOME_TITLE} />
+        <meta property="og:description" content={HOME_DESCRIPTION} />
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://hostelset.com" />
-        <meta property="og:image" content="https://hostelset.com/og-image.png" />
+        <meta property="og:url" content={SITE_URL} />
+        <meta property="og:image" content={HOME_IMAGE} />
+        <meta property="og:image:alt" content="HostelSet" />
         <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={HOME_TITLE} />
+        <meta name="twitter:description" content={HOME_DESCRIPTION} />
+        <meta name="twitter:image" content={HOME_IMAGE} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: publicSchemas }} />
       </Head>
 
       <div className="min-h-screen bg-black text-white">
@@ -172,7 +204,7 @@ export default function Home() {
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8 }}
+                transition={{ duration: 0.18 }}
               >
                 <motion.div 
                   initial={{ scale: 0 }}
@@ -208,7 +240,7 @@ export default function Home() {
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.4 }}
+                transition={{ duration: 0.18, delay: 0.05 }}
                 className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto"
               >
                 {stats.map((stat, index) => (

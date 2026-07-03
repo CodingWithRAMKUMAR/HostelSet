@@ -184,7 +184,7 @@ export default function PropertiesPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
                 whileHover={{ y: -5 }}
-                className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100"
+                className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-150 overflow-hidden border border-gray-100"
               >
                 {/* Image */}
                 <div className="h-48 bg-gray-100 relative">

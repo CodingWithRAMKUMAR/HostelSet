@@ -1,12 +1,13 @@
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from '../../../lib/supabase'
+import { logger } from '../../../lib/logger'
 
 async function sendApprovalNotification({ email, name }) {
   const apiKey = process.env.BREVO_API_KEY
   const templateId = Number(process.env.BREVO_APPLICATION_APPROVED_TEMPLATE_ID)
   if (!apiKey || !Number.isInteger(templateId) || templateId <= 0) {
-    console.warn('Application approved, but Brevo approval notification is not configured')
+    logger.warn('Application approved, but Brevo approval notification is not configured')
     return false
   }
 
@@ -95,12 +96,12 @@ export default async function handler(req, res) {
       const { data: approvedRequest } = await supabaseAdmin.from(table).select('name').eq('id', id).maybeSingle()
       notificationEmailSent = await sendApprovalNotification({ email: result.email, name: approvedRequest?.name })
     } catch (notificationError) {
-      console.warn('Application approved, but approval notification failed:', notificationError.message)
+      logger.warn('Application approved, but approval notification failed', { message: notificationError.message })
     }
     return res.status(200).json({ success: true, notificationEmailSent })
   } catch (error) {
     if (createdUserId) await supabaseAdmin.auth.admin.deleteUser(createdUserId).catch(() => {})
-    console.error('Approval failed:', error)
+    logger.error('Approval failed', error, { route: '/api/requests/approve', type })
     return res.status(400).json({ error: error.message || 'Approval failed' })
   }
 }

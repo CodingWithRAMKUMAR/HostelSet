@@ -3,6 +3,7 @@ import Link from 'next/link'
 import PublicFooter from './PublicFooter'
 
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')
+const SOCIAL_IMAGE = `${SITE_URL}/brand/logo-primary.png`
 
 export default function PublicInfoPage({ title, description, path, children }) {
   return (
@@ -11,6 +12,17 @@ export default function PublicInfoPage({ title, description, path, children }) {
         <title>{title} - HostelSet</title>
         <meta name="description" content={description} />
         <link rel="canonical" href={`${SITE_URL}${path}`} />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="HostelSet" />
+        <meta property="og:title" content={`${title} - HostelSet`} />
+        <meta property="og:description" content={description} />
+        <meta property="og:url" content={`${SITE_URL}${path}`} />
+        <meta property="og:image" content={SOCIAL_IMAGE} />
+        <meta property="og:image:alt" content="HostelSet" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={`${title} - HostelSet`} />
+        <meta name="twitter:description" content={description} />
+        <meta name="twitter:image" content={SOCIAL_IMAGE} />
       </Head>
       <main className="min-h-[calc(100vh-140px)] bg-slate-50 px-4 py-12">
         <article className="mx-auto max-w-3xl rounded-2xl bg-white p-6 shadow-sm sm:p-10">

@@ -156,6 +156,8 @@ export function TenantProvider({ children }) {
     if (!tenant?.id || !room?.id || !property?.id) return undefined;
 
     let timer;
+    let active = true;
+    setRealtimeConnected(false);
     const scheduleRefresh = () => {
       clearTimeout(timer);
       timer = setTimeout(() => refreshData(true), 200);
@@ -172,10 +174,10 @@ export function TenantProvider({ children }) {
       channel = channel.on('postgres_changes', { event: '*', schema: 'public', table: 'users', filter: `id=eq.${property.owner_id}` }, scheduleRefresh);
     }
 
-    channel.subscribe((status) => setRealtimeConnected(status === 'SUBSCRIBED'));
+    channel.subscribe((status) => { if (active) setRealtimeConnected(status === 'SUBSCRIBED'); });
     return () => {
+      active = false;
       clearTimeout(timer);
-      setRealtimeConnected(false);
       supabase.removeChannel(channel);
     };
   }, [tenant?.id, tenant?.user_id, room?.id, property?.id, property?.owner_id, refreshData]);

@@ -476,6 +476,14 @@ button, a, input, select, textarea {
 .dashboard-tabs::-webkit-scrollbar { display: none; }
 .dashboard-tabs > * { scroll-snap-align: start; }
 
+/* Keep interaction feedback crisp across legacy Tailwind duration utilities. */
+.duration-300,
+.duration-500,
+.duration-700,
+.duration-1000 {
+  transition-duration: 180ms !important;
+}
+
 @media (max-width: 640px) {
   .table-container table { min-width: 680px; }
   .modal-content { border-radius: 18px; padding: 18px; }

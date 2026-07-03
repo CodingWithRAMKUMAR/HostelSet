@@ -14,17 +14,27 @@ const supabaseWebSocketOrigin = supabaseHttpOrigin
 
 const compact = (values) => values.filter(Boolean)
 
+const optionalOrigin = (value) => {
+  try { return value ? new URL(value).origin : null } catch { return null }
+}
+
+const sentryOrigin = optionalOrigin(process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN)
+const posthogOrigin = process.env.NEXT_PUBLIC_POSTHOG_KEY
+  ? optionalOrigin(process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com')
+  : null
+const analyticsEnabled = Boolean(process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID)
+
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
-  `script-src ${compact(["'self'", "'unsafe-inline'", !isProduction && "'unsafe-eval'"]).join(' ')}`,
+  `script-src ${compact(["'self'", "'unsafe-inline'", !isProduction && "'unsafe-eval'", analyticsEnabled && 'https://www.googletagmanager.com', posthogOrigin]).join(' ')}`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   `img-src ${compact(["'self'", 'data:', 'blob:', 'https://*.supabase.co', supabaseHttpOrigin, 'https://maps.geoapify.com']).join(' ')}`,
-  `connect-src ${compact(["'self'", 'https://*.supabase.co', 'wss://*.supabase.co', supabaseHttpOrigin, supabaseWebSocketOrigin, 'https://api.geoapify.com', 'https://maps.geoapify.com']).join(' ')}`,
+  `connect-src ${compact(["'self'", 'https://*.supabase.co', 'wss://*.supabase.co', supabaseHttpOrigin, supabaseWebSocketOrigin, 'https://api.geoapify.com', 'https://maps.geoapify.com', analyticsEnabled && 'https://www.google-analytics.com', analyticsEnabled && 'https://region1.google-analytics.com', sentryOrigin, posthogOrigin]).join(' ')}`,
   `media-src ${compact(["'self'", 'blob:', 'https://*.supabase.co', supabaseHttpOrigin]).join(' ')}`,
   "worker-src 'self' blob:",
   "manifest-src 'self'",

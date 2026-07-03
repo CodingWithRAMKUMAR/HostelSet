@@ -4,6 +4,7 @@ import { signInWithEmail, resetPassword, syncServerSession } from '../lib/supaba
 import { cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
 import BrandLogo from '../components/BrandLogo'
+import { fetchWithTimeout } from '../lib/fetchWithTimeout'
 
 export default function Login() {
   const [identifier, setIdentifier] = useState('')
@@ -33,11 +34,11 @@ export default function Login() {
 
       if (isPhone(identifier)) {
         setLoginStatus('Finding your account...')
-        const response = await fetch('/api/auth/resolve-phone', {
+        const response = await fetchWithTimeout('/api/auth/resolve-phone', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone: identifier }),
-        })
+        }, 10000)
         const payload = await response.json()
         if (!response.ok || !payload.email) {
           toast.error('No account found with this phone number. Please register.')

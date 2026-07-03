@@ -1,4 +1,6 @@
 import { supabaseAdmin } from '../../../lib/supabase';
+import { fetchWithTimeout } from '../../../lib/fetchWithTimeout';
+import { logger } from '../../../lib/logger';
 
 const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
@@ -41,7 +43,7 @@ export default async function handler(req, res) {
         <p>Thank you for choosing HostelSet.</p>
       </div>`;
 
-    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    const response = await fetchWithTimeout('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: { accept: 'application/json', 'content-type': 'application/json', 'api-key': brevoApiKey },
       body: JSON.stringify({
@@ -50,12 +52,12 @@ export default async function handler(req, res) {
         subject: 'HostelSet Membership Renewal Reminder',
         htmlContent: emailHtml,
       }),
-    });
+    }, 10000);
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || `Email service error (${response.status})`);
     return res.status(200).json({ success: true, message: 'Renewal email sent successfully' });
   } catch (error) {
-    console.error('Renewal email failed:', error);
+    logger.error('Renewal email failed', error, { route: '/api/admin/send-renewal-email' });
     return res.status(500).json({ success: false, error: error.message });
   }
 }

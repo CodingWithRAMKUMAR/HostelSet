@@ -1,4 +1,5 @@
 import React from 'react';
+import { logger } from '../lib/logger';
 
 export class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -11,7 +12,7 @@ export class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('Dashboard render failed:', error, errorInfo);
+    logger.error('React render failed', error, { componentStack: errorInfo?.componentStack });
   }
 
   render() {

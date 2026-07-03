@@ -1,10 +1,11 @@
 import '../styles/globals.css'
 import 'leaflet/dist/leaflet.css'
-import { Toaster } from 'react-hot-toast'
+import { Toaster, toast } from 'react-hot-toast'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import Head from 'next/head'
+import MonitoringScripts from '../components/MonitoringScripts'
 
 export default function App({ Component, pageProps }) {
   const router = useRouter()
@@ -54,6 +55,18 @@ export default function App({ Component, pageProps }) {
     return () => { active = false }
   }, [router.pathname])
 
+  useEffect(() => {
+    const handleOffline = () => toast.error('You are offline. Your information is preserved; reconnect before trying again.', { id: 'network-status' })
+    const handleOnline = () => toast.success('Connection restored.', { id: 'network-status' })
+    window.addEventListener('offline', handleOffline)
+    window.addEventListener('online', handleOnline)
+    if (!navigator.onLine) handleOffline()
+    return () => {
+      window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [])
+
   return (
     <>
       <Head>
@@ -68,6 +81,7 @@ export default function App({ Component, pageProps }) {
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
         <link rel="icon" href="/favicon.ico" sizes="any" />
       </Head>
+      <MonitoringScripts />
       <Toaster 
         position="top-center"
         toastOptions={{

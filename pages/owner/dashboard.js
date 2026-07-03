@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AnimatePresence } from 'framer-motion';
+import { DashboardSkeleton } from '../../components/ui/Skeleton';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { supabase, signPrivateDocumentFields, findTenantDocumentRecord } from '../../lib/supabase';
@@ -569,14 +570,7 @@ function OwnerDashboardContent() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#1a1a1a]">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-orange-400">Loading your golden suite...</p>
-        </div>
-      </div>
-    )
+    return <DashboardSkeleton cards={12} />
   }
 
   if (!property) {

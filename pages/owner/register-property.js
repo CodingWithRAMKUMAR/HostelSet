@@ -6,6 +6,7 @@ import { uploadImage } from '../../lib/supabase'
 import { cleanPhoneNumber } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import LocationPicker from '../../components/maps/LocationPicker'
+import { fetchWithTimeout } from '../../lib/fetchWithTimeout'
 
 export default function RegisterProperty() {
   const router = useRouter()
@@ -77,6 +78,7 @@ export default function RegisterProperty() {
   }
 
   const handleSubmit = async () => {
+    if (loading) return
     // Validate password
     if (!formData.password || formData.password.length < 6) {
       toast.error('Password must be at least 6 characters')
@@ -102,7 +104,7 @@ export default function RegisterProperty() {
       }
 
       // Call the API route
-      const response = await fetch('/api/register-owner', {
+      const response = await fetchWithTimeout('/api/register-owner', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -120,7 +122,7 @@ export default function RegisterProperty() {
           photos: propertyImages,
           location,
         }),
-      })
+      }, 30000)
 
       const result = await response.json()
 

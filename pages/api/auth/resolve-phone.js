@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../../lib/supabase'
+import { logger } from '../../../lib/logger'
 import { allowPostOnly, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { cleanPhoneNumber } from '../../../lib/utils'
 
@@ -54,7 +55,7 @@ export default async function handler(req, res) {
 
     return res.status(404).json({ error: 'No account found with this phone number.' })
   } catch (error) {
-    console.error('Phone resolution failed:', error.message || error)
+    logger.error('Phone resolution failed', error, { route: '/api/auth/resolve-phone' })
     const message = process.env.NODE_ENV === 'production'
       ? 'Unable to resolve phone login'
       : `Phone resolution failed: ${error.message || error}`

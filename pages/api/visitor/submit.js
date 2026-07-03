@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import { supabaseAdmin } from '../../../lib/supabase'
 import { cleanPhoneNumber } from '../../../lib/utils'
 import { allowPostOnly, enforceRateLimit, getClientIp, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
+import { logger } from '../../../lib/logger'
 
 export const config = { api: { bodyParser: { sizeLimit: '1mb' } } }
 
@@ -151,7 +152,7 @@ async function processVisitorSubmission(req, res) {
   } catch (error) {
     await removeFiles(uploaded)
     if (createdUserId) await supabaseAdmin.auth.admin.deleteUser(createdUserId).catch(() => {})
-    console.error('Visitor submission failed:', error)
+    logger.error('Visitor submission failed', error, { route: '/api/visitor/submit', stage: 'processing' })
     const conflict = error?.code === '23505'
     return res.status(conflict ? 409 : 400).json({ error: conflict ? 'An active request already exists.' : (error.message || 'Submission failed') })
   }
@@ -161,7 +162,7 @@ export default async function handler(req, res) {
   try {
     return await processVisitorSubmission(req, res)
   } catch (error) {
-    console.error('Unhandled visitor submission failure:', error)
+    logger.error('Unhandled visitor submission failure', error, { route: '/api/visitor/submit' })
     if (res.headersSent) return res.end()
     setPrivateApiResponse(res)
     return res.status(500).json({ error: 'Application submission failed. Please try again.' })

@@ -18,6 +18,8 @@ import { useAdminRoomChange } from '../../hooks/useAdminRoomChange';
 import { useAdminNotices } from '../../hooks/useAdminNotices';
 import { useAdminMembershipManager } from '../../hooks/useAdminMembershipManager';
 import { useAdminModals } from '../../hooks/useAdminModals';
+import { Skeleton, TableSkeletonRows } from '../../components/ui/Skeleton';
+import { useModalAccessibility } from '../../hooks/useModalAccessibility';
 const MembershipManager = dynamic(() => import('../../components/admin/MembershipManager'));
 
 // ----------------- UTILITY TABLE COMPONENT -----------------
@@ -30,7 +32,7 @@ const AdminTable = ({ headers, data, renderRow, emptyMessage, loading = false })
         </thead>
         <tbody className="divide-y divide-gray-100">
           {loading && data.length === 0 ? (
-            <tr><td colSpan={headers.length} className="px-6 py-12 text-center text-orange-600 font-medium">Loading live data…</td></tr>
+            <TableSkeletonRows columns={headers.length} />
           ) : data.length === 0 ? (
             <tr><td colSpan={headers.length} className="px-6 py-12 text-center text-gray-400 italic">{emptyMessage}</td></tr>
           ) : (
@@ -44,13 +46,14 @@ const AdminTable = ({ headers, data, renderRow, emptyMessage, loading = false })
 
 // ----------------- DETAIL MODAL COMPONENT -----------------
 const DetailModal = ({ isOpen, onClose, title, data }) => {
+  const dialogRef = useModalAccessibility(onClose, false, isOpen);
   if (!isOpen || !data) return null;
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl border border-orange-500/20">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="admin-detail-title" className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl border border-orange-500/20 outline-none" onClick={event => event.stopPropagation()}>
         <div className="bg-[#1a1a1a] p-5 flex justify-between items-center border-b border-orange-500/30">
-          <h3 className="text-white text-lg font-bold tracking-wide">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl font-bold">&times;</button>
+          <h3 id="admin-detail-title" className="text-white text-lg font-bold tracking-wide">{title}</h3>
+          <button onClick={onClose} aria-label="Close details" className="text-gray-400 hover:text-white text-xl font-bold">&times;</button>
         </div>
         <div className="p-6 overflow-y-auto max-h-[60vh]">
           <pre className="text-sm bg-gray-50 p-4 rounded-lg border border-gray-200 overflow-x-auto">
@@ -164,7 +167,7 @@ function AdminDashboardContent() {
               </div>
               <div>
                 <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">{stat.label}</p>
-                <p className="text-base sm:text-xl font-bold text-gray-800 tracking-tight truncate">{stat.value}</p>
+                {statsLoading ? <Skeleton className="mt-2 h-6 w-16" /> : <p className="text-base sm:text-xl font-bold text-gray-800 tracking-tight truncate">{stat.value}</p>}
               </div>
             </div>
           ))}

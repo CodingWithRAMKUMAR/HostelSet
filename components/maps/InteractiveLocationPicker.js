@@ -11,7 +11,7 @@ const markerIcon = L.divIcon({
 function MapController({ value, onChange }) {
   const map = useMap()
   useEffect(() => {
-    if (value?.latitude && value?.longitude) map.flyTo([value.latitude, value.longitude], 16, { duration: 0.5 })
+    if (value?.latitude && value?.longitude) map.flyTo([value.latitude, value.longitude], 16, { duration: 0.18 })
   }, [value?.latitude, value?.longitude, map])
   useMapEvents({
     click(event) {

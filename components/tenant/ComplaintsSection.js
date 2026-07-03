@@ -10,7 +10,7 @@ export default function ComplaintsSection({
     return (
       <div className="text-center py-12">
         <div className="text-5xl mb-3">📝</div>
-        <p>No complaints filed yet</p>
+        <p className="font-semibold text-slate-700">No complaints filed yet</p><p className="mt-1 text-sm text-slate-500">If something needs attention, you can raise a complaint for the owner.</p>
         <button onClick={onRaiseComplaint} className="mt-3 text-slate-600 underline">Raise a complaint</button>
       </div>
     );
@@ -23,7 +23,8 @@ export default function ComplaintsSection({
           <button
             onClick={() => onDelete(complaint.id)}
             disabled={isSubmitting}
-            className="absolute top-4 right-4 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition disabled:opacity-50"
+            aria-label={`Delete complaint: ${complaint.title}`}
+            className="absolute top-4 right-4 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 focus:opacity-100 transition disabled:opacity-50"
           >
             🗑️ Delete
           </button>

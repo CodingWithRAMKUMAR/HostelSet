@@ -9,6 +9,7 @@ export function useRoomChange(tenant, refreshData) {
   const [showRoomChangeModal, setShowRoomChangeModal] = useState(false);
   const [selectedNewRoom, setSelectedNewRoom] = useState('');
   const [roomChangeReason, setRoomChangeReason] = useState('');
+  const [roomChangeSubmitting, setRoomChangeSubmitting] = useState(false);
 
   const loadRoomChangeState = async () => {
     if (!tenant?.id) return;
@@ -62,8 +63,10 @@ export function useRoomChange(tenant, refreshData) {
   };
 
   const submitRoomChangeRequest = async () => {
+    if (roomChangeSubmitting) return false;
     if (!selectedNewRoom) { toast.error('Please select a room'); return false; }
     if (pendingRoomChangeRequest) { toast.error('You already have a pending room change request'); return false; }
+    setRoomChangeSubmitting(true);
     try {
       const { data, error } = await supabase.from('room_change_requests').insert({
         tenant_id: tenant.id,
@@ -87,6 +90,8 @@ export function useRoomChange(tenant, refreshData) {
       console.error('Room change request error:', error);
       toast.error('Failed to submit request: ' + error.message);
       return false;
+    } finally {
+      setRoomChangeSubmitting(false);
     }
   };
 
@@ -127,6 +132,7 @@ export function useRoomChange(tenant, refreshData) {
     roomChangeReason,
     setRoomChangeReason,
     openRoomChangeModal,
-    submitRoomChangeRequest
+    submitRoomChangeRequest,
+    roomChangeSubmitting
   };
 }

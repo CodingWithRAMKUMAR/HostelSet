@@ -281,6 +281,8 @@ export function OwnerProvider({ children }) {
     if (!property?.id) return undefined;
 
     let timer;
+    let active = true;
+    setRealtimeConnected(false);
     const scheduleRefresh = () => {
       clearTimeout(timer);
       timer = setTimeout(() => loadData(true), 300);
@@ -300,11 +302,11 @@ export function OwnerProvider({ children }) {
       .on('postgres_changes', { event:'*', schema:'public', table:'membership_requests', filter:`owner_id=eq.${property.owner_id}` }, () => {
         loadMembershipRequest(property.owner_id, property.id).catch((error) => console.error('Membership request refresh failed:', error));
       })
-      .subscribe((status) => setRealtimeConnected(status === 'SUBSCRIBED'));
+      .subscribe((status) => { if (active) setRealtimeConnected(status === 'SUBSCRIBED'); });
 
     return () => {
+      active = false;
       clearTimeout(timer);
-      setRealtimeConnected(false);
       supabase.removeChannel(channel);
     };
   }, [property?.id, property?.owner_id]);

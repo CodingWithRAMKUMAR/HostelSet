@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { supabase, syncServerSession } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 import BrandLogo from '../../components/BrandLogo'
+import { DashboardSkeleton } from '../../components/ui/Skeleton'
 
 // ---------------- MODULAR IMPORTS ----------------
 import { useTenant, TenantProvider } from '../../context/TenantContext'
@@ -65,7 +66,8 @@ function TenantDashboardContent() {
     roomChangeReason,
     setRoomChangeReason,
     openRoomChangeModal,
-    submitRoomChangeRequest
+    submitRoomChangeRequest,
+    roomChangeSubmitting
   } = useRoomChange(tenant, refreshData);
 
   // ----- UI States remaining -----
@@ -86,8 +88,16 @@ function TenantDashboardContent() {
   const [screenshotUrl, setScreenshotUrl] = useState('')
 
   // ----- Helper Functions -----
-  const copyUpiId = (upiId) => { navigator.clipboard.writeText(upiId); toast.success('UPI ID copied!') }
-  const copyUpiPhone = (phone) => { navigator.clipboard.writeText(phone); toast.success('UPI Phone Number copied!') }
+  const copyPaymentDetail = async (value, label) => {
+    try {
+      await navigator.clipboard.writeText(value)
+      toast.success(`${label} copied!`)
+    } catch {
+      toast.error(`Could not copy ${label.toLowerCase()}. Please copy it manually.`)
+    }
+  }
+  const copyUpiId = (upiId) => copyPaymentDetail(upiId, 'UPI ID')
+  const copyUpiPhone = (phone) => copyPaymentDetail(phone, 'UPI phone number')
 
   const submitRentPaymentProof = async () => {
     const submitted = await submitPaymentWithProof(paymentScreenshot, paymentTransactionId)
@@ -207,14 +217,7 @@ function TenantDashboardContent() {
   }
 
   if (loading || !tenant) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#1a1a1a]">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-orange-400">Loading your premium suite...</p>
-        </div>
-      </div>
-    )
+    return <DashboardSkeleton cards={6} />
   }
 
   return (
@@ -447,7 +450,7 @@ function TenantDashboardContent() {
             setSelectedNewRoom={setSelectedNewRoom}
             roomChangeReason={roomChangeReason}
             setRoomChangeReason={setRoomChangeReason}
-            isSubmitting={isSubmitting}
+            isSubmitting={isSubmitting || roomChangeSubmitting}
             onSubmit={submitRoomChangeRequest}
             onCancel={() => setShowRoomChangeModal(false)}
           />

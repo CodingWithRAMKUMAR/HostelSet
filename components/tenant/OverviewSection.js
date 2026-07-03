@@ -1,8 +1,9 @@
 import { formatCurrency, formatDate, getSharingDetails } from '../../lib/utils';
+import { Skeleton } from '../ui/Skeleton';
 
 export default function OverviewSection({ tenant, room, property, owner, pendingRoomChangeRequest, lastRoomChangeDecision, vacateRequest, lastVacateDecision }) {
   if (!tenant || !room) {
-    return <div className="text-center py-12 text-gray-500">Loading your profile...</div>;
+    return <div className="grid gap-6 md:grid-cols-2" aria-busy="true" aria-label="Loading profile"><Skeleton className="h-72 rounded-xl"/><Skeleton className="h-72 rounded-xl"/></div>;
   }
 
   return (

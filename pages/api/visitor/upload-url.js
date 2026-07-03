@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { supabaseAdmin } from '../../../lib/supabase'
 import { allowPostOnly, enforceRateLimit, getClientIp, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
+import { logger } from '../../../lib/logger'
 
 const ALLOWED = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -53,7 +54,7 @@ export default async function handler(req, res) {
   try {
     return await processUploadRequest(req, res)
   } catch (error) {
-    console.error('Visitor upload URL failure:', error)
+    logger.error('Visitor upload URL failure', error, { route: '/api/visitor/upload-url' })
     if (res.headersSent) return res.end()
     setPrivateApiResponse(res)
     return res.status(500).json({ error: 'Unable to prepare upload. Please try again.' })
