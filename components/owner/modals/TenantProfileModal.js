@@ -27,7 +27,7 @@ const Detail = ({ label, value }) => value !== null && value !== undefined && va
 export default function TenantProfileModal({ tenant, application, extraDocuments = [], loading, onClose, onViewScreenshot = () => {} }) {
   const tenantPaymentProof = tenant?.payment_screenshot ? [{ label: 'Tenant Payment Proof', url: tenant.payment_screenshot }] : []
   const applicationDocuments = application ? [
-    { label: 'Tenant Photo', url: application.photo },
+    { label: application.source_type === 'existing_tenant_import' ? 'Profile Photo' : 'Tenant Photo', url: application.photo },
     { label: 'ID Proof / Aadhaar / PAN', url: application.id_proof },
     { label: 'Payment Proof', url: application.payment_screenshot },
   ] : []
@@ -78,7 +78,7 @@ export default function TenantProfileModal({ tenant, application, extraDocuments
 
             {application && (
               <section className="border-t pt-4">
-                <h3 className="mb-2 text-lg font-semibold">{application.source_type === 'pre_booking' ? 'Linked Pre-booking Details' : 'Linked Application Details'}</h3>
+                <h3 className="mb-2 text-lg font-semibold">{application.source_type === 'pre_booking' ? 'Linked Pre-booking Details' : application.source_type === 'existing_tenant_import' ? 'Linked Import Details' : 'Linked Application Details'}</h3>
                 <div className="grid gap-2 text-sm sm:grid-cols-2">
                   <Detail label="Applicant name" value={application.name} />
                   <Detail label="Applicant phone" value={application.phone} />

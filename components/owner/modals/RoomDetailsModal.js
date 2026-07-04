@@ -269,6 +269,7 @@ export default function RoomDetailsModal({
         <TenantProfileModal
           tenant={selectedTenantForProfile}
           application={tenantApplication}
+          extraDocuments={tenantExtraDocuments}
           loading={loadingProfile}
           onClose={() => setShowTenantProfile(false)}
           onViewScreenshot={setScreenshotUrl}

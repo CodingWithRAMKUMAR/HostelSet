@@ -19,6 +19,7 @@ import { useOwnerNotices } from '../../hooks/useOwnerNotices';
 import { useOwnerRoomChange } from '../../hooks/useOwnerRoomChange';
 import { useOwnerApplications } from '../../hooks/useOwnerApplications';
 import { useOwnerPreBookings } from '../../hooks/useOwnerPreBookings';
+import { useExistingTenantImports } from '../../hooks/useExistingTenantImports';
 
 // Content Components
 import StatsCards from '../../components/owner/StatsCards';
@@ -34,6 +35,8 @@ const ComplaintList = dynamic(() => import('../../components/owner/ComplaintList
 const VacateRequestList = dynamic(() => import('../../components/owner/VacateRequestList'));
 const NoticeList = dynamic(() => import('../../components/owner/NoticeList'));
 const RoomChangeRequestList = dynamic(() => import('../../components/owner/RoomChangeRequestList'));
+const ExistingTenantImportList = dynamic(() => import('../../components/owner/ExistingTenantImportList'));
+const ExistingTenantImportSettings = dynamic(() => import('../../components/owner/ExistingTenantImportSettings'));
 
 // Modal Components
 const ConfirmDeleteModal = dynamic(() => import('../../components/owner/modals/ConfirmDeleteModal'), { ssr: false });
@@ -121,6 +124,7 @@ function OwnerDashboardContent() {
   const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, activeTab === 'overview' || activeTab === 'room-change');
   const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, activeTab === 'overview' || activeTab === 'applications');
   const { preBookings, approvePreBooking, rejectPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, activeTab === 'pre-bookings');
+  const existingImports = useExistingTenantImports(property, activeTab === 'existing-imports', () => loadData(true));
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -602,6 +606,7 @@ function OwnerDashboardContent() {
   const safeRoomChangeRequests = Array.isArray(roomChangeRequests) ? roomChangeRequests : []
   const safeApplications = Array.isArray(applications) ? applications : []
   const safePreBookings = Array.isArray(preBookings) ? preBookings : []
+  const safeExistingImports = Array.isArray(existingImports.imports) ? existingImports.imports : []
 
   const searchLower = searchTerm.trim().toLowerCase()
   const matchesSearch = (...values) => !searchLower || values.some(value => String(value ?? '').toLowerCase().includes(searchLower))
@@ -611,6 +616,7 @@ function OwnerDashboardContent() {
   const filteredPendingPayments = safePendingRentPayments.filter(payment => matchesSearch(payment.tenants?.name, payment.tenants?.phone, payment.tenants?.email, payment.tenants?.rooms?.room_number, payment.amount, payment.status, payment.upi_transaction_id))
   const filteredAllPayments = safeAllPayments.filter(payment => matchesSearch(payment.tenants?.name, payment.tenants?.phone, payment.tenants?.email, payment.tenants?.rooms?.room_number, payment.amount, payment.status, payment.payment_method, payment.upi_transaction_id))
   const filteredApplications = safeApplications.filter(application => matchesSearch(application.name, application.phone, application.email, application.status, application.rooms?.room_number, application.payment_transaction_id))
+  const filteredExistingImports = safeExistingImports.filter(item => matchesSearch(item.full_name, item.phone, item.email, item.status, item.room_number, item.occupation))
   const filteredPreBookings = safePreBookings.filter(booking => matchesSearch(booking.name, booking.phone, booking.email, booking.status, booking.room_number, booking.payment_transaction_id))
   const filteredComplaints = safeComplaints.filter(complaint => matchesSearch(complaint.tenant_name, complaint.room_number, complaint.title, complaint.description, complaint.priority, complaint.status, complaint.admin_response))
   const filteredNotices = safeNotices.filter(notice => matchesSearch(notice.title, notice.content, notice.type))
@@ -623,6 +629,7 @@ function OwnerDashboardContent() {
     ['rent-payments', 'Pending payments', filteredPendingPayments.length],
     ['payment-history', 'Payment history', filteredAllPayments.length],
     ['applications', 'Applications', filteredApplications.length],
+    ['existing-imports', 'Existing tenant imports', filteredExistingImports.length],
     ['pre-bookings', 'Pre-bookings', filteredPreBookings.length],
     ['complaints', 'Complaints', filteredComplaints.length],
     ['notices', 'Notices', filteredNotices.length],
@@ -666,7 +673,7 @@ function OwnerDashboardContent() {
       <div className="container mx-auto px-3 sm:px-4 py-5 sm:py-8">
         
         {/* --- STATS CARDS --- */}
-        <StatsCards stats={{ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length, pendingApplications: safeApplications.length, totalComplaints: safeComplaints.length, pendingVacate: safeVacateRequests.filter(request => request.status === 'pending').length, pendingRoomChanges: safeRoomChangeRequests.length, pendingRentConfirmations: safePendingRentPayments.length }} />
+        <StatsCards stats={{ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length, pendingApplications: safeApplications.length, pendingImports: existingImports.pendingCount, totalComplaints: safeComplaints.length, pendingVacate: safeVacateRequests.filter(request => request.status === 'pending').length, pendingRoomChanges: safeRoomChangeRequests.length, pendingRentConfirmations: safePendingRentPayments.length }} />
 
         {searchLower && (
           <div className="mb-6 rounded-xl border border-orange-100 bg-white p-4 shadow-sm">
@@ -684,12 +691,13 @@ function OwnerDashboardContent() {
 
         {/* --- TABS --- */}
         <div className="flex flex-nowrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto dashboard-tabs">
-          {['overview', 'rooms', 'tenants', 'archived-tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'applications', 'complaints', 'vacate', 'room-change', 'notices'].map((tab) => (
+          {['overview', 'rooms', 'tenants', 'archived-tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'applications', 'existing-imports', 'complaints', 'vacate', 'room-change', 'notices'].map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} disabled={!membershipActive} className={`shrink-0 px-4 sm:px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${activeTab === tab ? 'bg-[#1a1a1a] text-white shadow-sm border-b-2 border-orange-500' : membershipActive ? 'text-gray-600 hover:text-orange-600 hover:bg-orange-50' : 'text-gray-400 cursor-not-allowed'}`}>
               {tab === 'rent-payments' && `💸 Rent (${stats.pendingRentConfirmations})`}
               {tab === 'payment-history' && '💳 History'}
               {tab === 'pre-bookings' && `📋 Pre-Bookings`}
               {tab === 'applications' && `📝 Applications (${safeApplications.length})`}
+              {tab === 'existing-imports' && `📥 Existing Imports (${existingImports.pendingCount})`}
               {tab === 'overview' && '📊 Overview'}
               {tab === 'rooms' && `🏠 Rooms (${rooms.length})`}
               {tab === 'tenants' && `👥 Tenants (${tenants.length})`}
@@ -726,6 +734,7 @@ function OwnerDashboardContent() {
         {activeTab === 'payment-history' && <PaymentHistoryTable payments={filteredAllPayments} getRoomNumberById={getRoomNumberById} />}
         {activeTab === 'pre-bookings' && <PreBookingList bookings={filteredPreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={Boolean(prebookingProcessingId)} />}
         {activeTab === 'applications' && <ApplicationList applications={filteredApplications} onApprove={(id, data) => approveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} isSubmitting={Boolean(applicationProcessingId)} />}
+        {activeTab === 'existing-imports' && <div className="space-y-5"><ExistingTenantImportSettings link={existingImports.link} property={property} busy={existingImports.linkBusy} onGenerate={existingImports.rotateLink} onToggle={existingImports.setLinkEnabled} /><ExistingTenantImportList imports={filteredExistingImports} loading={existingImports.loading} total={existingImports.total} page={existingImports.page} pageSize={existingImports.pageSize} processingId={existingImports.processingId} onApprove={existingImports.approve} onReject={existingImports.reject} onPage={existingImports.loadPage} /></div>}
         {activeTab === 'complaints' && <ComplaintList complaints={filteredComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setComplaintResponse(''); setShowComplaintResponseModal(true) }} onResolve={handleResolveComplaint} isSubmitting={isSubmitting} />}
         {activeTab === 'vacate' && <VacateRequestList requests={filteredVacateRequests} onApprove={handleApproveVacate} onReject={(request) => { setSelectedVacateRequest(request); setVacateRejectionReason(''); }} isSubmitting={isSubmitting || Boolean(vacateRejectingId)} />}
         {activeTab === 'room-change' && <RoomChangeRequestList requests={filteredRoomChangeRequests} onApprove={handleApproveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />}
