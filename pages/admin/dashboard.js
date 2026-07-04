@@ -21,6 +21,7 @@ import { useAdminModals } from '../../hooks/useAdminModals';
 import { Skeleton, TableSkeletonRows } from '../../components/ui/Skeleton';
 import { useModalAccessibility } from '../../hooks/useModalAccessibility';
 const MembershipManager = dynamic(() => import('../../components/admin/MembershipManager'));
+const EnterpriseAdminConsole = dynamic(() => import('../../components/admin/EnterpriseAdminConsole'), { ssr: false });
 
 // ----------------- UTILITY TABLE COMPONENT -----------------
 const AdminTable = ({ headers, data, renderRow, emptyMessage, loading = false }) => (
@@ -189,16 +190,9 @@ function AdminDashboardContent() {
             </button>
           ))}
         </div>
-
         {/* ----- OVERVIEW ----- */}
-        {activeTab === 'overview' && (
-          <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm text-center relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-orange-50 to-transparent rounded-full -mr-20 -mt-20 opacity-50" />
-            <div className="text-6xl mb-4 relative z-10">🚀</div>
-            <h2 className="text-3xl font-bold text-[#1a1a1a] mb-2 relative z-10">Welcome to the Control Center</h2>
-            <p className="text-gray-500 relative z-10">All data is live. <span className="text-orange-500 font-semibold">Real-time updates</span> active.</p>
-          </div>
-        )}
+        {activeTab === 'overview' && <EnterpriseAdminConsole />}
+
 
         {/* ----- PROPERTIES ----- */}
         {activeTab === 'properties' && (

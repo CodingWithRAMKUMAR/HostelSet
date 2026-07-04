@@ -8,10 +8,23 @@ import toast from 'react-hot-toast'
 import LocationPicker from '../components/maps/LocationPicker'
 import { fetchWithTimeout } from '../lib/fetchWithTimeout'
 
+const DUPLICATE_ACCOUNT_MESSAGE = 'An owner account already exists with these details. Please login to add another property.'
+
+function getRegistrationFailure(response, result = {}) {
+  const apiMessage = typeof result.error === 'string' ? result.error : ''
+  const isDuplicate = response.status === 409 || /already|exists|duplicate|registered/i.test(apiMessage)
+  if (isDuplicate) return { message: DUPLICATE_ACCOUNT_MESSAGE, duplicate: true }
+  if (response.status === 400) return { message: apiMessage || 'Please check the registration details and try again.', duplicate: false }
+  if (response.status === 503) return { message: 'Registration service is temporarily unavailable. Please try again in a few minutes.', duplicate: false }
+  if (response.status >= 500) return { message: 'Registration could not be completed right now. Please try again.', duplicate: false }
+  return { message: apiMessage || 'Registration failed. Please try again.', duplicate: false }
+}
+
 export default function Register() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [uploadingImages, setUploadingImages] = useState(false)
+  const [registrationError, setRegistrationError] = useState(null)
   const [step, setStep] = useState(1)
   const [propertyImages, setPropertyImages] = useState([])
   const [location, setLocation] = useState(null)
@@ -38,10 +51,12 @@ export default function Register() {
   ]
 
   const handleChange = (e) => {
+    setRegistrationError(null)
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
 
   const toggleAmenity = (amenity) => {
+    setRegistrationError(null)
     setFormData(prev => ({
       ...prev,
       amenities: prev.amenities.includes(amenity)
@@ -79,6 +94,7 @@ export default function Register() {
 
   const handleSubmit = async () => {
     if (loading) return
+    setRegistrationError(null)
     // Validate password
     if (!formData.password || formData.password.length < 6) {
       toast.error('Password must be at least 6 characters')
@@ -123,17 +139,23 @@ export default function Register() {
         }),
       }, 30000)
 
-      const result = await response.json()
+      const result = await response.json().catch(() => ({}))
 
       if (!response.ok) {
-        throw new Error(result.error || 'Registration failed')
+        const failure = getRegistrationFailure(response, result)
+        setRegistrationError(failure)
+        if (failure.duplicate) setStep(2)
+        toast.error(failure.message)
+        return
       }
 
       toast.success('Property registered successfully! Please login.')
       router.push('/login')
     } catch (error) {
-      console.error('Registration error:', error)
-      toast.error(error.message || 'Registration failed. Please try again.')
+      if (process.env.NODE_ENV !== 'production') console.error('Registration request failed:', error)
+      const message = error.name === 'AbortError' ? 'Registration request timed out. Please try again.' : 'Registration service is unavailable. Please try again.'
+      setRegistrationError({ message, duplicate: false })
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -160,34 +182,34 @@ export default function Register() {
 
             {step === 1 && (
               <div className="space-y-4">
-                <input name="name" placeholder="Property Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
-                <textarea name="description" placeholder="Property Description" rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} />
+                <input name="name" value={formData.name} placeholder="Property Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                <textarea name="description" value={formData.description} placeholder="Property Description" rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} />
                 <input name="address" value={formData.address} placeholder="Full Address *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <input name="city" value={formData.city} placeholder="City *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
                   <input name="pincode" value={formData.pincode} placeholder="Pincode" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} />
                 </div>
-                <select name="propertyType" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange}>
+                <select name="propertyType" value={formData.propertyType} className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange}>
                   <option value="boys">Boys PG</option>
                   <option value="girls">Girls PG</option>
                   <option value="co-ed">Co-ed PG</option>
                   <option value="professionals">Working Professionals</option>
                 </select>
-                <input name="totalRooms" type="number" placeholder="Total Rooms *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                <input name="totalRooms" value={formData.totalRooms} type="number" placeholder="Total Rooms *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
                 <LocationPicker value={location} onChange={next => { setLocation(next); setFormData(current => ({ ...current, address: next.formatted_address || current.address, city: next.city || current.city, pincode: next.pincode || current.pincode })) }} />
               </div>
             )}
 
             {step === 2 && (
               <div className="space-y-4">
-                <input name="ownerName" placeholder="Owner Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                <input name="ownerName" value={formData.ownerName} placeholder="Owner Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
                 <div className="flex gap-2">
                   <span className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200">+91</span>
-                  <input name="phone" placeholder="Phone Number *" className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                  <input name="phone" value={formData.phone} placeholder="Phone Number *" className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
                 </div>
-                <input name="email" type="email" placeholder="Email *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
-                <input name="password" type="password" placeholder="Password * (min 6 characters)" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
-                <input name="confirmPassword" type="password" placeholder="Confirm Password *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                <input name="email" value={formData.email} type="email" placeholder="Email *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                <input name="password" value={formData.password} type="password" placeholder="Password * (min 6 characters)" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                <input name="confirmPassword" value={formData.confirmPassword} type="password" placeholder="Confirm Password *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
               </div>
             )}
 
@@ -243,6 +265,17 @@ export default function Register() {
                   <div className="md:col-span-2"><p className="text-gray-500">Map location:</p><p className="font-semibold text-slate-700">{location?.formatted_address || 'Not selected'}</p></div>
                 </div>
                 <p className="text-gray-400 text-sm text-center mt-4">Click Complete Registration to finish</p>
+              </div>
+            )}
+
+            {registrationError && (
+              <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4">
+                <p className="text-sm font-semibold text-red-700">{registrationError.message}</p>
+                {registrationError.duplicate && (
+                  <Link href="/login?next=/owner/register-property" className="mt-3 inline-flex rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">
+                    Login to add property
+                  </Link>
+                )}
               </div>
             )}
 

@@ -665,6 +665,9 @@ function OwnerDashboardContent() {
             ) : (
               <span className="text-sm hidden md:inline text-orange-300/80">{property.name}</span>
             )}
+            <Link href="/owner/register-property" className="rounded-lg border border-orange-500/30 px-3 py-1.5 text-sm font-semibold text-orange-300 hover:bg-white/5">
+              + Add Property
+            </Link>
             <button onClick={async () => { await supabase.auth.signOut(); localStorage.clear(); router.push('/') }} className="text-red-400 hover:text-red-300 transition font-medium">Logout</button>
           </div>
         </div>
