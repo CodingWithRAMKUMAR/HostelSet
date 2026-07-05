@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase'
 import { propertyPublicPath } from '../lib/propertySlug'
 
-const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')
+const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.hostelset.com').replace(/\/$/, '')
 const PUBLIC_PATHS = [
   '/',
   '/properties',

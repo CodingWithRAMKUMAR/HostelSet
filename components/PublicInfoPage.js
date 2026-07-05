@@ -2,7 +2,7 @@ import Head from 'next/head'
 import Link from 'next/link'
 import PublicFooter from './PublicFooter'
 
-const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')
+const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.hostelset.com').replace(/\/$/, '')
 const SOCIAL_IMAGE = `${SITE_URL}/brand/logo-primary.png`
 
 export default function PublicInfoPage({ title, description, path, children }) {
@@ -22,6 +22,7 @@ export default function PublicInfoPage({ title, description, path, children }) {
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={`${title} - HostelSet`} />
         <meta name="twitter:description" content={description} />
+        <meta name="twitter:url" content={`${SITE_URL}${path}`} />
         <meta name="twitter:image" content={SOCIAL_IMAGE} />
       </Head>
       <main className="min-h-[calc(100vh-140px)] bg-slate-50 px-4 py-12">

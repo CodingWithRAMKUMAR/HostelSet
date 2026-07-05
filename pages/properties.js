@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import Head from 'next/head'
 import { motion } from 'framer-motion'
 import { supabase } from '../lib/supabase'
 import { formatCurrency } from '../lib/utils'
@@ -7,6 +8,11 @@ import NearbyHostelMap from '../components/maps/NearbyHostelMap'
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
 import PublicFooter from '../components/PublicFooter'
 import { propertyPublicPath } from '../lib/propertySlug'
+
+const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.hostelset.com').replace(/\/$/, '')
+const PAGE_TITLE = 'Browse Hostels and PGs | HostelSet'
+const PAGE_DESCRIPTION = 'Search active hostel and PG properties on HostelSet by city, room availability, rent, and location.'
+const SOCIAL_IMAGE = `${SITE_URL}/brand/logo-primary.png`
 
 function distanceKm(origin, property) {
   if (!origin || !Number.isFinite(property.latitude) || !Number.isFinite(property.longitude)) return null
@@ -112,7 +118,25 @@ export default function PropertiesPage() {
   useRealtimeRefresh('public-properties-live', ['properties', 'rooms'], loadProperties, true, 120)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-gray-50">
+    <>
+      <Head>
+        <title>{PAGE_TITLE}</title>
+        <meta name="description" content={PAGE_DESCRIPTION} />
+        <link rel="canonical" href={`${SITE_URL}/properties`} />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="HostelSet" />
+        <meta property="og:title" content={PAGE_TITLE} />
+        <meta property="og:description" content={PAGE_DESCRIPTION} />
+        <meta property="og:url" content={`${SITE_URL}/properties`} />
+        <meta property="og:image" content={SOCIAL_IMAGE} />
+        <meta property="og:image:alt" content="HostelSet" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={PAGE_TITLE} />
+        <meta name="twitter:description" content={PAGE_DESCRIPTION} />
+        <meta name="twitter:url" content={`${SITE_URL}/properties`} />
+        <meta name="twitter:image" content={SOCIAL_IMAGE} />
+      </Head>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-6 py-10">
         <div className="container mx-auto text-center">
@@ -232,6 +256,7 @@ export default function PropertiesPage() {
         )}
       </div>
       <PublicFooter />
-    </div>
+      </div>
+    </>
   )
 }

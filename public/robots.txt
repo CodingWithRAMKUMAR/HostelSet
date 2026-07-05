@@ -7,4 +7,4 @@ Disallow: /tenant/
 Disallow: /login
 Disallow: /reset-password
 
-Sitemap: https://hostelset.com/sitemap.xml
+Sitemap: https://www.hostelset.com/sitemap.xml

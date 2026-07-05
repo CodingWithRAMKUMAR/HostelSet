@@ -14,7 +14,7 @@ import PublicFooter from '../../components/PublicFooter'
 import { fetchWithTimeout } from '../../lib/fetchWithTimeout'
 import { propertyPublicPath, UUID_PATTERN } from '../../lib/propertySlug'
 
-const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')
+const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.hostelset.com').replace(/\/$/, '')
 
 const normalizeProperty = property => property ? {
   ...property,
@@ -924,6 +924,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={seoTitle} />
         <meta name="twitter:description" content={seoDescription} />
+        <meta name="twitter:url" content={canonicalUrl} />
         <meta name="twitter:image" content={absoluteImage} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd }} />
       </Head>

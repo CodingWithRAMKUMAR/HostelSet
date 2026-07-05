@@ -5,7 +5,7 @@ import { motion, useScroll, useTransform } from 'framer-motion'
 import { useRouter } from 'next/router'
 import BrandLogo from '../components/BrandLogo'
 
-const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')
+const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.hostelset.com').replace(/\/$/, '')
 const HOME_TITLE = 'HostelSet | Discover and Manage Hostels & PGs'
 const HOME_DESCRIPTION = 'Browse hostel and PG properties, review rooms and rent, apply online, or manage properties, tenants, payments, notices, and requests with HostelSet.'
 const HOME_IMAGE = `${SITE_URL}/brand/logo-primary.png`
@@ -98,7 +98,6 @@ export default function Home() {
         <title>{HOME_TITLE}</title>
         <meta name="description" content={HOME_DESCRIPTION} />
         <link rel="canonical" href={SITE_URL} />
-        <link rel="icon" href="/favicon.ico" />
         <meta property="og:site_name" content="HostelSet" />
         <meta property="og:title" content={HOME_TITLE} />
         <meta property="og:description" content={HOME_DESCRIPTION} />
@@ -109,6 +108,7 @@ export default function Home() {
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={HOME_TITLE} />
         <meta name="twitter:description" content={HOME_DESCRIPTION} />
+        <meta name="twitter:url" content={SITE_URL} />
         <meta name="twitter:image" content={HOME_IMAGE} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: publicSchemas }} />
       </Head>
