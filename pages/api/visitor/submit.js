@@ -90,8 +90,8 @@ async function processVisitorSubmission(req, res) {
 
     const table = kind === 'prebooking' ? 'pre_bookings' : 'applications'
     const [{ data: duplicatePhone }, { data: duplicateEmail }] = await Promise.all([
-      supabaseAdmin.from(table).select('id').eq('property_id', propertyId).eq('phone', phone).in('status', ['pending', 'approved']).limit(1),
-      supabaseAdmin.from(table).select('id').eq('property_id', propertyId).eq('email', email).in('status', ['pending', 'approved']).limit(1),
+      supabaseAdmin.from(table).select('id').eq('property_id', propertyId).eq('phone', phone).in('status', ['pending', 'approved']).is('deleted_at', null).limit(1),
+      supabaseAdmin.from(table).select('id').eq('property_id', propertyId).eq('email', email).in('status', ['pending', 'approved']).is('deleted_at', null).limit(1),
     ])
     if (duplicatePhone?.length || duplicateEmail?.length) return res.status(409).json({ error: 'An active request already exists for these details.' })
 

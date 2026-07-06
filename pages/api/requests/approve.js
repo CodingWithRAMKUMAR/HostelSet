@@ -34,6 +34,29 @@ async function sendApprovalNotification({ email, name }) {
   return true
 }
 
+async function inviteTenantForSetup({ email, name, phone }) {
+  const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+    redirectTo: getResetPasswordUrl(),
+    data: { full_name: name, phone, role: 'tenant' },
+  })
+  if (inviteError) throw inviteError
+  return invited.user.id
+}
+
+async function replaceStaleTenantProfile({ userId, email, name, phone }) {
+  const { count, error: activeTenantError } = await supabaseAdmin
+    .from('tenants')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .in('status', ['active', 'notice_period', 'payment_pending'])
+  if (activeTenantError) throw activeTenantError
+  if (count > 0) throw new Error('An active tenant account already exists for these details')
+
+  const { error: deleteProfileError } = await supabaseAdmin.from('users').delete().eq('id', userId).eq('role', 'tenant')
+  if (deleteProfileError) throw deleteProfileError
+  return inviteTenantForSetup({ email, name, phone })
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
   if (!supabaseAdmin) return res.status(503).json({ error: 'Approval service is unavailable' })
@@ -75,20 +98,22 @@ export default async function handler(req, res) {
         userId = existing?.id
       }
       if (!userId) {
-        const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(application.email, {
-          redirectTo: getResetPasswordUrl(),
-          data: { full_name: application.name, phone: application.phone, role: 'tenant' },
-        })
-        if (inviteError) throw inviteError
-        userId = invited.user.id
+        userId = await inviteTenantForSetup({ email: application.email, name: application.name, phone: application.phone })
         createdUserId = userId
         setupEmailSent = true
       } else {
-        const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(application.email, {
-          redirectTo: getResetPasswordUrl(),
-        })
-        if (resetError) logger.warn('Application approved, but password setup email failed', { message: resetError.message })
-        else setupEmailSent = true
+        const { data: authUser, error: authLookupError } = await supabaseAdmin.auth.admin.getUserById(userId)
+        if (authLookupError || !authUser?.user) {
+          userId = await replaceStaleTenantProfile({ userId, email: application.email, name: application.name, phone: application.phone })
+          createdUserId = userId
+          setupEmailSent = true
+        } else {
+          const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(application.email, {
+            redirectTo: getResetPasswordUrl(),
+          })
+          if (resetError) logger.warn('Application approved, but password setup email failed', { message: resetError.message })
+          else setupEmailSent = true
+        }
       }
       const { error: userError } = await supabaseAdmin.from('users').upsert({
         id: userId,

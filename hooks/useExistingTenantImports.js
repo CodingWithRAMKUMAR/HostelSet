@@ -19,7 +19,7 @@ export function useExistingTenantImports(property, listEnabled = false, onApprov
     if (!property?.id) return
     const [linkResult, countResult] = await Promise.all([
       supabase.from('existing_tenant_import_links').select('*').eq('property_id', property.id).maybeSingle(),
-      supabase.from('existing_tenant_imports').select('id', { count: 'exact', head: true }).eq('property_id', property.id).eq('status', 'pending_owner_review'),
+      supabase.from('existing_tenant_imports').select('id', { count: 'exact', head: true }).eq('property_id', property.id).eq('status', 'pending_owner_review').is('deleted_at', null),
     ])
     if (linkResult.error) throw linkResult.error
     if (countResult.error) throw countResult.error
@@ -32,7 +32,7 @@ export function useExistingTenantImports(property, listEnabled = false, onApprov
     try {
       const from = targetPage * PAGE_SIZE
       const { data, error, count } = await supabase.from('existing_tenant_imports').select('*,rooms(room_number)', { count: 'exact' })
-        .eq('property_id', property.id).order('created_at', { ascending: false }).range(from, from + PAGE_SIZE - 1)
+        .eq('property_id', property.id).is('deleted_at', null).order('created_at', { ascending: false }).range(from, from + PAGE_SIZE - 1)
       if (error) throw error
       const signed = await Promise.all((data || []).map(item => signPrivateDocumentFields(item, ['id_proof', 'profile_photo'])))
       setImports(signed); setTotal(count || 0); setPage(targetPage)

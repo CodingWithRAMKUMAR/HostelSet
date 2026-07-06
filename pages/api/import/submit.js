@@ -109,8 +109,8 @@ export default async function handler(req, res) {
     if (roomError) throw roomError
     if (!room) return res.status(404).json({ error: 'The selected room does not exist for this property.' })
     const [{ data: phoneDuplicate }, { data: emailDuplicate }] = await Promise.all([
-      supabaseAdmin.from('existing_tenant_imports').select('id').eq('property_id', link.property_id).eq('phone', phone).in('status', ['pending_owner_review', 'approved']).limit(1),
-      supabaseAdmin.from('existing_tenant_imports').select('id').eq('property_id', link.property_id).eq('email', email).in('status', ['pending_owner_review', 'approved']).limit(1),
+      supabaseAdmin.from('existing_tenant_imports').select('id').eq('property_id', link.property_id).eq('phone', phone).in('status', ['pending_owner_review', 'approved']).is('deleted_at', null).limit(1),
+      supabaseAdmin.from('existing_tenant_imports').select('id').eq('property_id', link.property_id).eq('email', email).in('status', ['pending_owner_review', 'approved']).is('deleted_at', null).limit(1),
     ])
     if (phoneDuplicate?.length || emailDuplicate?.length) return res.status(409).json({ error: 'A tenant with this phone or email is already submitted for this property.' })
 

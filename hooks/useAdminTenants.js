@@ -24,12 +24,20 @@ export function useAdminTenants(enabled = true) {
 
   const deleteTenant = async (tenantId, userId) => {
     if (!confirm('Permanently delete this tenant? This will remove their user account.')) return;
-    const { error } = await supabase.from('tenants').delete().eq('id', tenantId);
-    if (error) toast.error('Failed to delete tenant: ' + error.message);
-    else {
-      if (userId) await supabase.from('users').delete().eq('id', userId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Your session expired. Please log in again.');
+      const response = await fetch('/api/admin/delete-tenant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ tenantId }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Failed to delete tenant');
       toast.success('Tenant deleted permanently.');
-      setTenants(prev => prev.filter(t => t.id !== tenantId));
+      await loadTenants(true);
+    } catch (error) {
+      toast.error('Failed to delete tenant: ' + error.message);
     }
   };
 

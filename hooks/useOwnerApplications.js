@@ -11,9 +11,10 @@ export function useOwnerApplications(property, enabled = true) {
     if (!property?.id) return;
     const { data, error } = await supabase
       .from('applications')
-      .select('*, rooms(room_number, monthly_rent, capacity)')
+      .select('*, rooms(room_number, monthly_rent, deposit_amount, capacity)')
       .eq('property_id', property.id)
       .eq('status', 'pending')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
     if (error) { console.error('Owner applications load failed:', error.message); return; }
     const signed = await Promise.all((data || []).map(item => signPrivateDocumentFields(item, ['id_proof', 'photo', 'payment_screenshot'])));

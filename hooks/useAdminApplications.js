@@ -13,6 +13,7 @@ export function useAdminApplications(enabled = true) {
       .from('applications')
       .select('*, rooms(room_number, monthly_rent, property_id)')
       .eq('status', 'pending')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
     if (error) toast.error('Failed to load applications');
     else setApplications(await Promise.all((data || []).map(item => signPrivateDocumentFields(item, ['id_proof', 'photo', 'payment_screenshot']))));

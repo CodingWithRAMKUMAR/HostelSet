@@ -307,6 +307,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
         .eq('phone', cleanPhone)
         .eq('property_id', resolvedPropertyId)
         .in('status', ['pending', 'approved'])
+        .is('deleted_at', null)
         .maybeSingle()
       if (existingPrebook) {
         if (existingPrebook.status === 'approved') {
@@ -360,6 +361,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
         .eq('email', email)
         .eq('property_id', resolvedPropertyId)
         .in('status', ['pending', 'approved'])
+        .is('deleted_at', null)
         .maybeSingle()
       if (existingPrebook) {
         if (existingPrebook.status === 'approved') {

@@ -8,6 +8,29 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 
 export const config = { api: { bodyParser: { sizeLimit: '8kb' } } }
 
+async function inviteTenantForSetup(importRecord) {
+  const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(importRecord.email, {
+    redirectTo: getResetPasswordUrl(),
+    data: { full_name: importRecord.full_name, phone: importRecord.phone, role: 'tenant' },
+  })
+  if (inviteError) throw inviteError
+  return invited.user.id
+}
+
+async function replaceStaleTenantProfile(userId, importRecord) {
+  const { count, error: activeTenantError } = await supabaseAdmin
+    .from('tenants')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .in('status', ['active', 'notice_period', 'payment_pending'])
+  if (activeTenantError) throw activeTenantError
+  if (count > 0) throw new Error('An active tenant account already exists for these details')
+
+  const { error: deleteProfileError } = await supabaseAdmin.from('users').delete().eq('id', userId).eq('role', 'tenant')
+  if (deleteProfileError) throw deleteProfileError
+  return inviteTenantForSetup(importRecord)
+}
+
 export default async function handler(req, res) {
   setPrivateApiResponse(res)
   if (!allowPostOnly(req, res) || !requireJson(req, res)) return
@@ -64,20 +87,22 @@ export default async function handler(req, res) {
 
     let inviteEmailSent = false
     if (!userId) {
-      const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(importRecord.email, {
-        redirectTo: getResetPasswordUrl(),
-        data: { full_name: importRecord.full_name, phone: importRecord.phone, role: 'tenant' },
-      })
-      if (inviteError) throw inviteError
-      userId = invited.user.id
+      userId = await inviteTenantForSetup(importRecord)
       createdUserId = userId
       inviteEmailSent = true
     } else {
-      const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(importRecord.email, {
-        redirectTo: getResetPasswordUrl(),
-      })
-      if (resetError) logger.warn('Existing import approved, but password setup email failed', { message: resetError.message })
-      else inviteEmailSent = true
+      const { data: authUser, error: authLookupError } = await supabaseAdmin.auth.admin.getUserById(userId)
+      if (authLookupError || !authUser?.user) {
+        userId = await replaceStaleTenantProfile(userId, importRecord)
+        createdUserId = userId
+        inviteEmailSent = true
+      } else {
+        const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(importRecord.email, {
+          redirectTo: getResetPasswordUrl(),
+        })
+        if (resetError) logger.warn('Existing import approved, but password setup email failed', { message: resetError.message })
+        else inviteEmailSent = true
+      }
     }
 
     const { error: profileError } = await supabaseAdmin.from('users').upsert({

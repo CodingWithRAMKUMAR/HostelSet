@@ -13,6 +13,7 @@ export function useAdminApprovedApplications(enabled = true) {
       .from('applications')
       .select('*, rooms(room_number, property_id)')
       .in('status', ['approved', 'rejected'])
+      .is('deleted_at', null)
       .order('processed_at', { ascending: false });
     if (error) toast.error('Failed to load approved applications');
     else setApprovedApps(data || []);

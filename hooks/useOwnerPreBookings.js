@@ -11,7 +11,9 @@ export function useOwnerPreBookings(property, enabled = true) {
     if (!property?.id) return
     const { data, error } = await supabase.from('pre_bookings')
       .select('*, rooms(room_number, monthly_rent, capacity)')
-      .eq('property_id', property.id).order('created_at', { ascending: false })
+      .eq('property_id', property.id)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
     if (error) toast.error('Failed to load pre-bookings')
     else setPreBookings(await Promise.all((data || []).map(item => signPrivateDocumentFields(item, ['id_proof', 'photo', 'payment_screenshot']))))
   }
