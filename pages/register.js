@@ -7,6 +7,7 @@ import { cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
 import LocationPicker from '../components/maps/LocationPicker'
 import { fetchWithTimeout } from '../lib/fetchWithTimeout'
+import ThemeToggle from '../components/common/ThemeToggle'
 
 const DUPLICATE_ACCOUNT_MESSAGE = 'An owner account already exists with these details. Please login to add another property.'
 
@@ -166,8 +167,13 @@ export default function Register() {
       <div className="container mx-auto max-w-3xl px-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
           <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-8 py-6">
-            <h1 className="text-2xl font-bold text-white">🏠 Register Your Property</h1>
-            <p className="text-slate-300 text-sm mt-1">Join India's fastest-growing PG network</p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-bold text-white">🏠 Register Your Property</h1>
+                <p className="text-slate-300 text-sm mt-1">Join India's fastest-growing PG network</p>
+              </div>
+              <ThemeToggle />
+            </div>
           </div>
 
           <div className="p-8">

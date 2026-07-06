@@ -4,6 +4,7 @@ import Head from 'next/head'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { useRouter } from 'next/router'
 import BrandLogo from '../components/BrandLogo'
+import ThemeToggle from '../components/common/ThemeToggle'
 
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.hostelset.com').replace(/\/$/, '')
 const HOME_TITLE = 'HostelSet | Discover and Manage Hostels & PGs'
@@ -127,6 +128,7 @@ export default function Home() {
               </Link>
               
               <div className="hidden md:flex items-center gap-4">
+                <ThemeToggle />
                 <Link 
                   href="/properties" 
                   className="px-5 py-2.5 rounded-full border-2 border-orange-600 text-orange-400 font-semibold hover:bg-orange-600 hover:text-white transition-all duration-300 flex items-center gap-2"
@@ -169,6 +171,9 @@ export default function Home() {
             className="fixed top-20 left-4 right-4 bg-black/95 backdrop-blur-xl rounded-2xl shadow-2xl z-40 md:hidden border border-gray-800"
           >
             <div className="p-4">
+              <div className="mb-3 flex justify-center">
+                <ThemeToggle />
+              </div>
               <Link 
                 href="/properties" 
                 className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-orange-600 text-orange-400 font-semibold hover:bg-orange-600 hover:text-white transition-all duration-300 mb-3"

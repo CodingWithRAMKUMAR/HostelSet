@@ -7,6 +7,7 @@ import { ErrorBoundary } from '../components/ErrorBoundary'
 import Head from 'next/head'
 import MonitoringScripts from '../components/MonitoringScripts'
 import { NotificationProvider } from '../context/NotificationContext'
+import { ThemeProvider } from '../context/ThemeContext'
 
 function ProtectedRouteLoading() {
   return (
@@ -119,13 +120,15 @@ export default function App({ Component, pageProps }) {
           error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
         }}
       />
-      {(!router.pathname.startsWith('/owner') && !router.pathname.startsWith('/tenant') && !router.pathname.startsWith('/admin')) || authorized ? (
-        <NotificationProvider>
-          <ErrorBoundary key={router.asPath}>
-            <Component {...pageProps} />
-          </ErrorBoundary>
-        </NotificationProvider>
-      ) : <ProtectedRouteLoading />}
+      <ThemeProvider>
+        {(!router.pathname.startsWith('/owner') && !router.pathname.startsWith('/tenant') && !router.pathname.startsWith('/admin')) || authorized ? (
+          <NotificationProvider>
+            <ErrorBoundary key={router.asPath}>
+              <Component {...pageProps} />
+            </ErrorBoundary>
+          </NotificationProvider>
+        ) : <ProtectedRouteLoading />}
+      </ThemeProvider>
     </>
   )
 }

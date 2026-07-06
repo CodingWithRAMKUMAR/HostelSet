@@ -8,6 +8,7 @@ import NearbyHostelMap from '../components/maps/NearbyHostelMap'
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
 import PublicFooter from '../components/PublicFooter'
 import { propertyPublicPath } from '../lib/propertySlug'
+import ThemeToggle from '../components/common/ThemeToggle'
 
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.hostelset.com').replace(/\/$/, '')
 const PAGE_TITLE = 'Browse Hostels and PGs | HostelSet'
@@ -138,7 +139,10 @@ export default function PropertiesPage() {
       </Head>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-6 py-10">
+      <div className="bg-white border-b border-gray-100 px-6 py-6">
+        <div className="container mx-auto mb-6 flex justify-end">
+          <ThemeToggle className="text-slate-700 dark:text-white border-slate-200 dark:border-white/20 bg-white dark:bg-white/10" />
+        </div>
         <div className="container mx-auto text-center">
           <motion.h1
             initial={{ opacity: 0, y: -20 }}

@@ -8,6 +8,7 @@ import { supabase, signOut, signPrivateDocumentFields, findTenantDocumentRecord 
 import toast from 'react-hot-toast';
 import BrandLogo from '../../components/BrandLogo';
 import NotificationBell from '../../components/common/NotificationBell';
+import ThemeToggle from '../../components/common/ThemeToggle';
 
 // Modular Imports
 import { useOwner, OwnerProvider } from '../../context/OwnerContext';
@@ -590,8 +591,11 @@ function OwnerDashboardContent() {
       <div className="min-h-screen bg-white">
         <nav className="bg-[#1a1a1a] border-b border-orange-500/30 px-6 py-4 flex justify-between items-center text-white">
           <BrandLogo />
-          <NotificationBell />
-          <button onClick={async () => { await signOut(); window.location.replace('/login') }} className="text-red-400 hover:text-red-300 transition">Logout</button>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <NotificationBell />
+            <button onClick={async () => { await signOut(); window.location.replace('/login') }} className="text-red-400 hover:text-red-300 transition">Logout</button>
+          </div>
         </nav>
         <div className="text-center py-20">
           <div className="text-6xl mb-6">🏠</div>
@@ -667,6 +671,7 @@ function OwnerDashboardContent() {
             </button>
             <button onClick={() => setShowOwnerProfileModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5" aria-label="Edit owner profile">👤</button>
             <button onClick={() => setShowSettingsModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5">⚙️</button>
+            <ThemeToggle />
             <NotificationBell />
             {properties.length > 1 ? (
               <select aria-label="Current property" value={property.id} onChange={(event) => selectProperty(event.target.value)} className="max-w-48 rounded-lg border border-orange-500/30 bg-[#2a2a2a] px-3 py-1.5 text-sm text-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-500">

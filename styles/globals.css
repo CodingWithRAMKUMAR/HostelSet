@@ -2,6 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --hs-bg: #ffffff;
+  --hs-surface: #ffffff;
+  --hs-surface-muted: #f8fafc;
+  --hs-text: #1e293b;
+  --hs-text-muted: #64748b;
+  --hs-border: #e2e8f0;
+  --hs-accent: #f97316;
+}
+
+.dark {
+  --hs-bg: #0b1120;
+  --hs-surface: #111827;
+  --hs-surface-muted: #1f2937;
+  --hs-text: #f8fafc;
+  --hs-text-muted: #cbd5e1;
+  --hs-border: #334155;
+  --hs-accent: #fb923c;
+}
+
 /* Premium White & Slate Theme */
 * {
   margin: 0;
@@ -10,9 +30,9 @@
 }
 
 body {
-  background: #ffffff;
+  background: var(--hs-bg);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: #1e293b;
+  color: var(--hs-text);
   min-height: 100vh;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
@@ -33,11 +53,11 @@ button, a, input, select, textarea {
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--hs-surface-muted);
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #94a3b8;
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
@@ -449,11 +469,85 @@ button, a, input, select, textarea {
 
 /* Navbar */
 .navbar {
-  background: white;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--hs-surface);
+  border-bottom: 1px solid var(--hs-border);
   position: sticky;
   top: 0;
   z-index: 100;
+}
+
+.dark .bg-white,
+.dark .bg-white\/80,
+.dark .bg-gray-50,
+.dark .bg-slate-50,
+.dark .bg-\[\#f8f9fa\],
+.dark .from-gray-50,
+.dark .from-slate-50,
+.dark .via-white,
+.dark .to-gray-50,
+.dark .to-white {
+  background-color: var(--hs-surface) !important;
+  --tw-gradient-from: var(--hs-bg) var(--tw-gradient-from-position) !important;
+  --tw-gradient-via: var(--hs-surface) var(--tw-gradient-via-position) !important;
+  --tw-gradient-to: var(--hs-bg) var(--tw-gradient-to-position) !important;
+}
+
+.dark .bg-gray-100,
+.dark .bg-slate-100,
+.dark .bg-orange-50,
+.dark .bg-orange-50\/60,
+.dark .bg-slate-900 {
+  background-color: var(--hs-surface-muted) !important;
+}
+
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-gray-800,
+.dark .text-gray-700,
+.dark .text-slate-700 {
+  color: var(--hs-text) !important;
+}
+
+.dark .text-slate-600,
+.dark .text-slate-500,
+.dark .text-gray-600,
+.dark .text-gray-500,
+.dark .text-gray-400,
+.dark .text-slate-400 {
+  color: var(--hs-text-muted) !important;
+}
+
+.dark .border-gray-100,
+.dark .border-gray-200,
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .border-white\/20 {
+  border-color: var(--hs-border) !important;
+}
+
+.dark input,
+.dark select,
+.dark textarea,
+.dark .input,
+.dark .file-input {
+  background-color: var(--hs-surface-muted);
+  border-color: var(--hs-border);
+  color: var(--hs-text);
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #94a3b8;
+}
+
+.dark .card,
+.dark .stat-card,
+.dark .room-card,
+.dark .table-container,
+.dark .modal-content {
+  background: var(--hs-surface);
+  border-color: var(--hs-border);
+  color: var(--hs-text);
 }
 
 /* Grids */

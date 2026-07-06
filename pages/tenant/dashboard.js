@@ -6,6 +6,7 @@ import { supabase, signOut } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 import BrandLogo from '../../components/BrandLogo'
 import NotificationBell from '../../components/common/NotificationBell'
+import ThemeToggle from '../../components/common/ThemeToggle'
 import { DashboardSkeleton } from '../../components/ui/Skeleton'
 
 // ---------------- MODULAR IMPORTS ----------------
@@ -245,6 +246,7 @@ function TenantDashboardContent() {
               </div>
               <span className="text-sm hidden md:inline font-medium text-orange-300/80">{tenant?.name}</span>
             </button>
+            <ThemeToggle />
             <NotificationBell />
             <button onClick={handleLogout} className="text-red-400 hover:text-red-300 transition font-medium">Logout</button>
           </div>

@@ -6,6 +6,7 @@ import { cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
 import BrandLogo from '../components/BrandLogo'
 import { fetchWithTimeout } from '../lib/fetchWithTimeout'
+import ThemeToggle from '../components/common/ThemeToggle'
 
 export default function Login() {
   const router = useRouter()
@@ -116,6 +117,9 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 to-white">
       <div className="bg-white rounded-2xl shadow-xl p-5 sm:p-8 max-w-md w-full border border-gray-100 animate-fade-in">
+        <div className="mb-4 flex justify-end">
+          <ThemeToggle className="text-slate-700 dark:text-white border-slate-200 dark:border-white/20 bg-white dark:bg-white/10" />
+        </div>
         <div className="text-center mb-8">
           <BrandLogo size="login" priority className="mx-auto mb-2" />
           <p className="text-gray-500 mt-1">Login with email or mobile number</p>

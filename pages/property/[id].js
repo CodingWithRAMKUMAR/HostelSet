@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import NearbyHostelMap from '../../components/maps/NearbyHostelMap'
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
 import BrandLogo from '../../components/BrandLogo'
+import ThemeToggle from '../../components/common/ThemeToggle'
 import Head from 'next/head'
 import Image from 'next/image'
 import PublicFooter from '../../components/PublicFooter'
@@ -938,6 +939,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
               <BrandLogo />
             </Link>
             <div className="flex items-center gap-4">
+              <ThemeToggle className="hidden sm:inline-flex text-slate-700 dark:text-white border-slate-200 dark:border-white/20 bg-white dark:bg-white/10" />
               <Link href="/login" className="text-gray-600 hover:text-slate-800 transition">Login / Signup</Link>
               <Link href="/owner/register-property" className="bg-slate-800 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-slate-700 transition shadow-md">
                 List Property
