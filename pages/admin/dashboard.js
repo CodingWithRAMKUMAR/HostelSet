@@ -137,6 +137,17 @@ function AdminDashboardContent() {
     { id: 'membership', label: '📋 Membership' },
   ];
 
+  const tabForStat = (label) => ({
+    Properties: 'properties',
+    'Active Tenants': 'tenants',
+    Owners: 'owners',
+    'Active Owners': 'owners',
+    'Rent Revenue': 'payments',
+    Deposits: 'payments',
+    'Pending Complaints': 'complaints',
+    'Pending Vacates': 'vacate',
+  })[label];
+
   return (
     <div className="min-h-screen bg-[#f8f9fa] font-sans selection:bg-orange-500 selection:text-white">
       
@@ -162,8 +173,11 @@ function AdminDashboardContent() {
         
         {/* ----- STATS CARDS ----- */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
-          {statsData.map((stat, index) => (
-            <div key={index} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm border border-gray-200/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
+          {statsData.map((stat, index) => {
+            const targetTab = tabForStat(stat.label);
+            const Card = targetTab ? 'button' : 'div';
+            return (
+            <Card key={index} type={targetTab ? 'button' : undefined} onClick={targetTab ? () => setActiveTab(targetTab) : undefined} className={`bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm border border-gray-200/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left ${targetTab ? 'cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300' : ''}`}>
               <div className={`w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center text-base sm:text-xl shadow-sm ${stat.color}`}>
                 {stat.icon}
               </div>
@@ -171,8 +185,8 @@ function AdminDashboardContent() {
                 <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">{stat.label}</p>
                 {statsLoading ? <Skeleton className="mt-2 h-6 w-16" /> : <p className="text-base sm:text-xl font-bold text-gray-800 tracking-tight truncate">{stat.value}</p>}
               </div>
-            </div>
-          ))}
+            </Card>
+          )})}
         </div>
 
         {/* ----- TABS ----- */}

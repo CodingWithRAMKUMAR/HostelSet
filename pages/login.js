@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import { signInWithEmail, resetPassword, syncServerSession } from '../lib/supabase'
 import { cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
@@ -7,6 +8,7 @@ import BrandLogo from '../components/BrandLogo'
 import { fetchWithTimeout } from '../lib/fetchWithTimeout'
 
 export default function Login() {
+  const router = useRouter()
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -55,11 +57,13 @@ export default function Login() {
       const result = await signInWithEmail(emailToUse, password)
 
       if (result.success) {
-        const destination = result.role === 'admin'
+        const roleDestination = result.role === 'admin'
           ? '/admin/dashboard'
           : result.role === 'owner'
             ? '/owner/dashboard'
             : '/tenant/dashboard'
+        const requestedNext = typeof router.query.next === 'string' ? router.query.next : ''
+        const destination = requestedNext.startsWith(roleDestination) ? requestedNext : roleDestination
         if (!result.session) throw new Error('Unable to establish your session')
         setLoginStatus('Opening your dashboard...')
         await syncServerSession(result.session)

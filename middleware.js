@@ -7,7 +7,9 @@ const PUBLIC_OWNER_ROUTES = new Set(['/owner/register-property'])
 function loginRedirect(request, clearCookie = false) {
   const url = request.nextUrl.clone()
   url.pathname = '/login'
+  const nextPath = `${request.nextUrl.pathname}${request.nextUrl.search}`
   url.search = ''
+  if (nextPath && nextPath !== '/login') url.searchParams.set('next', nextPath)
   const response = NextResponse.redirect(url)
   if (clearCookie) {
     response.cookies.set(COOKIE_NAME, '', { path: '/', maxAge: 0 })

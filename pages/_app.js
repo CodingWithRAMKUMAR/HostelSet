@@ -7,6 +7,17 @@ import { ErrorBoundary } from '../components/ErrorBoundary'
 import Head from 'next/head'
 import MonitoringScripts from '../components/MonitoringScripts'
 
+function ProtectedRouteLoading() {
+  return (
+    <main className="min-h-screen bg-slate-50 flex items-center justify-center" aria-busy="true" aria-label="Checking session">
+      <div className="text-center">
+        <div className="w-10 h-10 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto" />
+        <p className="mt-4 text-sm font-medium text-gray-500">Checking your session...</p>
+      </div>
+    </main>
+  )
+}
+
 export default function App({ Component, pageProps }) {
   const router = useRouter()
   const [authorized, setAuthorized] = useState(false)
@@ -40,12 +51,12 @@ export default function App({ Component, pageProps }) {
         const { data: { session } } = await supabase.auth.getSession()
         if (!active) return
         if (session) setAuthorized(true)
-        else if (router.pathname !== '/login') router.replace('/login')
+        else if (router.pathname !== '/login') router.replace(`/login?next=${encodeURIComponent(router.asPath)}`)
       } catch (e) {
         // If accessing localStorage fails, treat as not authorized for protected routes
         const protectedRoutes = ['/owner', '/tenant', '/admin']
         const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
-        if (isProtectedRoute && router.pathname !== '/login') router.replace('/login')
+        if (isProtectedRoute && router.pathname !== '/login') router.replace(`/login?next=${encodeURIComponent(router.asPath)}`)
         else setAuthorized(true)
       }
     }
@@ -53,7 +64,21 @@ export default function App({ Component, pageProps }) {
     setAuthorized(false)
     checkSession()
     return () => { active = false }
-  }, [router.pathname])
+  }, [router.pathname, router.asPath])
+
+  useEffect(() => {
+    const handlePageShow = async (event) => {
+      if (!event.persisted) return
+      const protectedRoutes = ['/owner', '/tenant', '/admin']
+      const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
+      if (!isProtectedRoute) return
+      const { supabase } = await import('../lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) router.replace(`/login?next=${encodeURIComponent(router.asPath)}`)
+    }
+    window.addEventListener('pageshow', handlePageShow)
+    return () => window.removeEventListener('pageshow', handlePageShow)
+  }, [router])
 
   useEffect(() => {
     const handleOffline = () => toast.error('You are offline. Your information is preserved; reconnect before trying again.', { id: 'network-status' })
@@ -97,7 +122,7 @@ export default function App({ Component, pageProps }) {
         <ErrorBoundary key={router.asPath}>
           <Component {...pageProps} />
         </ErrorBoundary>
-      ) : null}
+      ) : <ProtectedRouteLoading />}
     </>
   )
 }

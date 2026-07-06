@@ -4,7 +4,7 @@ import { AnimatePresence } from 'framer-motion';
 import { DashboardSkeleton } from '../../components/ui/Skeleton';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { supabase, signPrivateDocumentFields, findTenantDocumentRecord } from '../../lib/supabase';
+import { supabase, signOut, signPrivateDocumentFields, findTenantDocumentRecord } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 import BrandLogo from '../../components/BrandLogo';
 
@@ -583,7 +583,7 @@ function OwnerDashboardContent() {
       <div className="min-h-screen bg-white">
         <nav className="bg-[#1a1a1a] border-b border-orange-500/30 px-6 py-4 flex justify-between items-center text-white">
           <BrandLogo />
-          <button onClick={async () => { await supabase.auth.signOut(); localStorage.clear(); router.push('/') }} className="text-red-400 hover:text-red-300 transition">Logout</button>
+          <button onClick={async () => { await signOut(); window.location.replace('/login') }} className="text-red-400 hover:text-red-300 transition">Logout</button>
         </nav>
         <div className="text-center py-20">
           <div className="text-6xl mb-6">🏠</div>
@@ -669,7 +669,7 @@ function OwnerDashboardContent() {
             <Link href="/owner/register-property" className="rounded-lg border border-orange-500/30 px-3 py-1.5 text-sm font-semibold text-orange-300 hover:bg-white/5">
               + Add Property
             </Link>
-            <button onClick={async () => { await supabase.auth.signOut(); localStorage.clear(); router.push('/') }} className="text-red-400 hover:text-red-300 transition font-medium">Logout</button>
+            <button onClick={async () => { await signOut(); window.location.replace('/login') }} className="text-red-400 hover:text-red-300 transition font-medium">Logout</button>
           </div>
         </div>
       </nav>
@@ -677,7 +677,7 @@ function OwnerDashboardContent() {
       <div className="container mx-auto px-3 sm:px-4 py-5 sm:py-8">
         
         {/* --- STATS CARDS --- */}
-        <StatsCards stats={{ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length, pendingApplications: safeApplications.length, pendingImports: existingImports.pendingCount, totalComplaints: safeComplaints.length, pendingVacate: safeVacateRequests.filter(request => request.status === 'pending').length, pendingRoomChanges: safeRoomChangeRequests.length, pendingRentConfirmations: safePendingRentPayments.length }} />
+        <StatsCards stats={{ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length, pendingApplications: safeApplications.length, pendingImports: existingImports.pendingCount, totalComplaints: safeComplaints.length, pendingVacate: safeVacateRequests.filter(request => request.status === 'pending').length, pendingRoomChanges: safeRoomChangeRequests.length, pendingRentConfirmations: safePendingRentPayments.length }} onSelect={setActiveTab} />
 
         {searchLower && (
           <div className="mb-6 rounded-xl border border-orange-100 bg-white p-4 shadow-sm">

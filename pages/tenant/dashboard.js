@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
-import { supabase, syncServerSession } from '../../lib/supabase'
+import { supabase, signOut } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 import BrandLogo from '../../components/BrandLogo'
 import { DashboardSkeleton } from '../../components/ui/Skeleton'
@@ -210,10 +210,8 @@ function TenantDashboardContent() {
           : null
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    await syncServerSession(null).catch(() => {});
-    localStorage.clear();
-    router.push('/login');
+    await signOut();
+    window.location.replace('/login');
   }
 
   if (loading || !tenant) {
@@ -284,41 +282,69 @@ function TenantDashboardContent() {
 
         {/* --- STATS CARDS (PREMIUM GLASS) --- */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
-          <div className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
+          <button type="button" onClick={() => setActiveTab('payments')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-orange-100/50 flex items-center justify-center text-base sm:text-xl text-orange-600">💰</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Monthly Rent</p>
               <p className="text-base sm:text-xl font-bold text-gray-800 truncate">{formatCurrency(tenant?.rent_amount)}</p>
             </div>
-          </div>
-          <div className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
+          </button>
+          <button type="button" onClick={() => setActiveTab('payments')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-emerald-100/50 flex items-center justify-center text-base sm:text-xl text-emerald-600">✅</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Total Paid</p>
               <p className="text-base sm:text-xl font-bold text-emerald-600 truncate">{formatCurrency(tenant?.total_paid || 0)}</p>
             </div>
-          </div>
-          <div className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
+          </button>
+          <button type="button" onClick={() => setActiveTab('payments')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-red-100/50 flex items-center justify-center text-base sm:text-xl text-red-600">⚠️</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Pending Amount</p>
               <p className="text-base sm:text-xl font-bold text-red-500 truncate">{formatCurrency(tenant?.pending_amount || 0)}</p>
             </div>
-          </div>
-          <div className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
+          </button>
+          <button type="button" onClick={() => setActiveTab('payments')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-slate-100/50 flex items-center justify-center text-base sm:text-xl text-slate-600">₹</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Deposit</p>
               <p className="text-base sm:text-xl font-bold text-gray-800 truncate">{formatCurrency(tenant?.security_deposit_amount || 0)}</p>
             </div>
-          </div>
-          <div className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
+          </button>
+          <button type="button" onClick={() => setActiveTab('roommates')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-purple-100/50 flex items-center justify-center text-base sm:text-xl text-purple-600">👥</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Roommates</p>
               <p className="text-base sm:text-xl font-bold text-gray-800">{roommates?.length || 0}</p>
             </div>
-          </div>
+          </button>
+          <button type="button" onClick={() => setActiveTab('notices')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-cyan-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-cyan-700">Note</div>
+            <div>
+              <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Notices</p>
+              <p className="text-base sm:text-xl font-bold text-gray-800">{notices?.length || 0}</p>
+            </div>
+          </button>
+          <button type="button" onClick={() => setActiveTab('complaints')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-rose-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-rose-700">Fix</div>
+            <div>
+              <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Complaints</p>
+              <p className="text-base sm:text-xl font-bold text-gray-800">{complaints?.length || 0}</p>
+            </div>
+          </button>
+          <button type="button" onClick={openRoomChangeModal} disabled={isSubmitting || Boolean(pendingRoomChangeRequest)} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300 disabled:cursor-not-allowed disabled:opacity-70">
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-blue-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-blue-700">Move</div>
+            <div>
+              <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Room Change</p>
+              <p className="text-base sm:text-xl font-bold text-gray-800">{pendingRoomChangeRequest ? 'Pending' : 'Request'}</p>
+            </div>
+          </button>
+          <button type="button" onClick={() => existingVacateRequest ? setActiveTab('overview') : setShowVacateModal(true)} disabled={isSubmitting || Boolean(vacateBlockedReason)} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300 disabled:cursor-not-allowed disabled:opacity-70">
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-yellow-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-yellow-700">Out</div>
+            <div>
+              <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Vacate</p>
+              <p className="text-base sm:text-xl font-bold text-gray-800 capitalize">{existingVacateRequest ? existingVacateRequest.status : 'Request'}</p>
+            </div>
+          </button>
         </div>
 
         {/* --- ACTION BUTTONS (GRADIENT & GLASS) --- */}
