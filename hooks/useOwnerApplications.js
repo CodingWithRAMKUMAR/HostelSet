@@ -17,7 +17,7 @@ export function useOwnerApplications(property, enabled = true) {
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
     if (error) { console.error('Owner applications load failed:', error.message); return; }
-    const signed = await Promise.all((data || []).map(item => signPrivateDocumentFields(item, ['id_proof', 'photo', 'payment_screenshot'])));
+    const signed = await Promise.all((data || []).map(item => signPrivateDocumentFields({ ...item, source_type: 'application' }, ['id_proof', 'photo', 'payment_screenshot'])));
     setApplications(signed);
   };
 

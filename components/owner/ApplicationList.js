@@ -6,6 +6,7 @@ export default function ApplicationList({
   onApprove,
   onReject,
   onResendEmail,
+  onViewScreenshot,
   isSubmitting
 }) {
   if (!applications || applications.length === 0) {
@@ -53,8 +54,27 @@ export default function ApplicationList({
               <div className="mt-3 grid gap-1 text-xs text-gray-600 sm:grid-cols-2">
                 <span>Monthly rent: Rs {monthlyRent.toLocaleString('en-IN')}</span>
                 <span>Security deposit: Rs {securityDeposit.toLocaleString('en-IN')}</span>
+                <span>UTR: {app.payment_transaction_id || 'Not provided'}</span>
+                <span>Payment date: {formatDate(app.created_at)}</span>
+                <span>Payment status: Pending owner verification</span>
                 <span className="sm:col-span-2 text-gray-500">Deposit is tracked separately from rent.</span>
               </div>
+              {app.payment_screenshot && (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => onViewScreenshot?.(app.payment_screenshot)}
+                    className="group block w-36 overflow-hidden rounded-lg border border-gray-200 text-left"
+                  >
+                    <img
+                      src={app.payment_screenshot}
+                      alt="Application payment screenshot"
+                      className="h-24 w-full object-cover transition group-hover:opacity-80"
+                    />
+                    <span className="block px-2 py-1 text-xs font-semibold text-blue-700">View payment proof</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 w-full md:w-auto flex-wrap">
