@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   try {
     if (!supabaseAdmin) return res.status(503).json({ error: 'Document service is unavailable' })
 
-    const token = readCookie(req, COOKIE_NAME)
+    const token = readCookie(req, COOKIE_NAME) || String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
     if (!token || token.length > 8192) return res.status(401).json({ error: 'Authentication required' })
     const { data: auth, error: authError } = await supabaseAdmin.auth.getUser(token)
     if (authError || !auth?.user) return res.status(401).json({ error: 'Authentication required' })

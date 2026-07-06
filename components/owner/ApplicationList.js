@@ -23,6 +23,8 @@ export default function ApplicationList({
       {applications.map((app) => {
         const monthlyRent = Number(app.rooms?.monthly_rent || 0);
         const securityDeposit = Number(app.payment_amount || app.rooms?.deposit_amount || 0);
+        const paymentStatus = String(app.payment_status || 'pending_owner_verification').replaceAll('_', ' ');
+        const paymentProofUrl = app.payment_screenshot_url || null;
         return (
           <motion.div
             key={app.id}
@@ -55,19 +57,19 @@ export default function ApplicationList({
                 <span>Monthly rent: Rs {monthlyRent.toLocaleString('en-IN')}</span>
                 <span>Security deposit: Rs {securityDeposit.toLocaleString('en-IN')}</span>
                 <span>UTR: {app.payment_transaction_id || 'Not provided'}</span>
-                <span>Payment date: {formatDate(app.created_at)}</span>
-                <span>Payment status: Pending owner verification</span>
+                <span>Payment date: {formatDate(app.payment_date || app.created_at)}</span>
+                <span className="capitalize">Payment status: {paymentStatus}</span>
                 <span className="sm:col-span-2 text-gray-500">Deposit is tracked separately from rent.</span>
               </div>
-              {app.payment_screenshot && (
+              {paymentProofUrl && (
                 <div className="mt-3">
                   <button
                     type="button"
-                    onClick={() => onViewScreenshot?.(app.payment_screenshot)}
+                    onClick={() => onViewScreenshot?.(paymentProofUrl)}
                     className="group block w-36 overflow-hidden rounded-lg border border-gray-200 text-left"
                   >
                     <img
-                      src={app.payment_screenshot}
+                      src={paymentProofUrl}
                       alt="Application payment screenshot"
                       className="h-24 w-full object-cover transition group-hover:opacity-80"
                     />
