@@ -39,6 +39,7 @@ export function useOwnerComplaints(property, enabled = true) {
   };
 
   useEffect(() => {
+    setComplaints([]);
     if (property?.id && enabled) loadComplaints();
   }, [property?.id, enabled]);
   useRealtimeRefresh(`owner-complaints-live:${property?.id || 'waiting'}`, ['complaints'], loadComplaints, Boolean(property?.id && enabled));

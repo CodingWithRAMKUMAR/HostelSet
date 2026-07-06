@@ -38,7 +38,7 @@ export function useOwnerApplications(property, enabled = true) {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Approval failed');
-      toast.success(result.notificationEmailSent ? 'Application approved and notification email sent.' : 'Application approved successfully.');
+      toast.success(result.setupEmailSent ? 'Application approved and password setup email sent.' : 'Application approved successfully.');
       await loadApplications();
     } catch (error) {
       console.error('Approve error:', error);
@@ -70,6 +70,7 @@ export function useOwnerApplications(property, enabled = true) {
   };
 
   useEffect(() => {
+    setApplications([]);
     if (property?.id && enabled) loadApplications();
   }, [property?.id, enabled]);
   useRealtimeRefresh(`owner-applications-live:${property?.id || 'waiting'}`, ['applications', 'rooms'], loadApplications, Boolean(property?.id && enabled));

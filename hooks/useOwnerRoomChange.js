@@ -42,6 +42,7 @@ export function useOwnerRoomChange(property, enabled = true) {
   };
 
   useEffect(() => {
+    setRoomChangeRequests([]);
     if (property?.id && enabled) loadRoomChangeRequests();
   }, [property?.id, enabled]);
   useRealtimeRefresh(`owner-room-changes-live:${property?.id || 'waiting'}`, ['room_change_requests', 'tenants', 'rooms'], loadRoomChangeRequests, Boolean(property?.id && enabled));

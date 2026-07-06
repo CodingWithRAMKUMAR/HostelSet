@@ -12,7 +12,7 @@ export default function AdminStatsCards({ stats }) {
         <p className="text-3xl font-bold">{stats.totalTenants}</p>
       </div>
       <div className="bg-gradient-to-br from-emerald-800 to-green-800 rounded-xl p-5 shadow-lg">
-        <p className="text-white/80 text-sm">Revenue (₹)</p>
+        <p className="text-white/80 text-sm">Rent Revenue</p>
         <p className="text-3xl font-bold">{formatCurrency(stats.totalRevenue)}</p>
       </div>
       <div className="bg-gradient-to-br from-blue-800 to-cyan-800 rounded-xl p-5 shadow-lg">

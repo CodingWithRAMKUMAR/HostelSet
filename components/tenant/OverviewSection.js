@@ -25,6 +25,10 @@ export default function OverviewSection({ tenant, room, property, owner, pending
             <span className="text-green-600 font-semibold">{formatCurrency(room.monthly_rent || 0)}</span>
           </div>
           <div className="flex justify-between py-2 border-b">
+            <span>Security Deposit:</span>
+            <span className="font-semibold">{formatCurrency(tenant.security_deposit_amount || 0)} ({tenant.security_deposit_status?.replaceAll('_', ' ') || 'not required'})</span>
+          </div>
+          <div className="flex justify-between py-2 border-b">
             <span>Move-in Date:</span>
             <span>{formatDate(tenant.move_in_date)}</span>
           </div>

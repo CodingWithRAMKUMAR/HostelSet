@@ -19,9 +19,9 @@ export function useAdminPayments(enabled = true) {
   };
 
   const confirmPayment = async (paymentId) => {
-    const { error } = await supabase.rpc('review_rent_payment', { p_payment_id: paymentId, p_approve: true });
+    const { data, error } = await supabase.rpc('review_rent_payment', { p_payment_id: paymentId, p_approve: true });
     if (error) { toast.error('Failed to confirm: ' + error.message); return; }
-    toast.success('✅ Payment confirmed!');
+    toast.success(data?.payment_type === 'security_deposit' ? 'Security deposit confirmed.' : 'Payment confirmed!');
     await loadPayments();
   };
 

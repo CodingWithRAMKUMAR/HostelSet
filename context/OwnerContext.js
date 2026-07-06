@@ -18,7 +18,7 @@ export function OwnerProvider({ children }) {
   const [tenants, setTenants] = useState([]);
   const [archivedTenants, setArchivedTenants] = useState([]);
   const [settings, setSettings] = useState({ joining_fee:0, advance_months:1, due_day:5, upi_id:'', upi_phone:'' });
-  const [stats, setStats] = useState({ totalRooms:0, occupied:0, vacant:0, totalCollected:0, pendingAmount:0, totalComplaints:0, pendingVacate:0, overdueCount:0, noticePeriodCount:0, pendingPaymentCount:0, pendingRentConfirmations:0, monthlyIncome:0 });
+  const [stats, setStats] = useState({ totalRooms:0, occupied:0, vacant:0, totalCollected:0, depositCollected:0, pendingAmount:0, totalComplaints:0, pendingVacate:0, overdueCount:0, noticePeriodCount:0, pendingPaymentCount:0, pendingRentConfirmations:0, monthlyIncome:0 });
   const [membershipActive, setMembershipActive] = useState(false);
   const [membershipLoading, setMembershipLoading] = useState(false);
   const [membershipStatus, setMembershipStatus] = useState('loading');
@@ -86,7 +86,7 @@ export function OwnerProvider({ children }) {
         const now = new Date(); const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]; const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
         const [revenueResult, pendingResult, complaintResult, vacateResult] = await Promise.all([
           supabase.from('payment_history')
-            .select('amount, payment_date, tenants!inner(room_id, property_id)')
+            .select('amount, payment_date, payment_method, tenants!inner(room_id, property_id)')
             .eq('status', 'success')
             .eq('tenants.property_id', propertyData.id),
           tenantIds.length
@@ -97,8 +97,11 @@ export function OwnerProvider({ children }) {
         ]);
         if (revenueResult.error) throw revenueResult.error;
         const successfulPayments = revenueResult.data || [];
-        const totalCollected = successfulPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-        const paymentsThisMonth = successfulPayments.filter(payment => payment.payment_date >= startOfMonth && payment.payment_date <= endOfMonth);
+        const rentPayments = successfulPayments.filter(payment => payment.payment_method !== 'security_deposit');
+        const depositPayments = successfulPayments.filter(payment => payment.payment_method === 'security_deposit');
+        const totalCollected = rentPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+        const depositCollected = depositPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+        const paymentsThisMonth = rentPayments.filter(payment => payment.payment_date >= startOfMonth && payment.payment_date <= endOfMonth);
         const monthlyIncome = paymentsThisMonth.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
         const incomeByRoom = paymentsThisMonth.reduce((result, payment) => {
           const roomId = payment.tenants?.room_id;
@@ -110,7 +113,7 @@ export function OwnerProvider({ children }) {
         const complaintCount = complaintResult.count;
         const vacateCount = vacateResult.count;
 
-        setStats({ totalRooms:total, occupied, vacant, totalCollected, pendingAmount, totalComplaints:complaintCount||0, pendingVacate:vacateCount||0, overdueCount, noticePeriodCount, pendingPaymentCount, pendingRentConfirmations, monthlyIncome });
+        setStats({ totalRooms:total, occupied, vacant, totalCollected, depositCollected, pendingAmount, totalComplaints:complaintCount||0, pendingVacate:vacateCount||0, overdueCount, noticePeriodCount, pendingPaymentCount, pendingRentConfirmations, monthlyIncome });
         return propertyData;
       }
       setProperty(null); setRooms([]); setTenants([]); setArchivedTenants([]); setRoomMonthlyIncome({});

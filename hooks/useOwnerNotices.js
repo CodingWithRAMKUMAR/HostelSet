@@ -28,6 +28,7 @@ export function useOwnerNotices(property, enabled = true) {
   };
 
   useEffect(() => {
+    setNotices([]);
     if (property?.id && enabled) loadNotices();
   }, [property?.id, enabled]);
   useRealtimeRefresh(`owner-notices-live:${property?.id || 'waiting'}`, ['notices'], loadNotices, Boolean(property?.id && enabled));

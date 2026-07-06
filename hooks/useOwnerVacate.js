@@ -43,6 +43,7 @@ export function useOwnerVacate(property, enabled = true) {
   };
 
   useEffect(() => {
+    setVacateRequests([]);
     if (property?.id && enabled) loadVacateRequests();
   }, [property?.id, enabled]);
   useRealtimeRefresh(`owner-vacates-live:${property?.id || 'waiting'}`, ['check_out_requests', 'tenants', 'rooms'], loadVacateRequests, Boolean(property?.id && enabled));

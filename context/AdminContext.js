@@ -18,6 +18,7 @@ export function AdminProvider({ children }) {
     activeOwners: 0,
     activeMemberships: 0,
     totalRevenue: 0,
+    totalDeposits: 0,
     pendingComplaints: 0,
     pendingVacates: 0,
   });
@@ -46,6 +47,7 @@ export function AdminProvider({ children }) {
           activeOwners: Number(aggregateStats.activeOwners || 0),
           activeMemberships: Number(aggregateStats.activeMemberships || 0),
           totalRevenue: Number(aggregateStats.totalRevenue || 0),
+          totalDeposits: Number(aggregateStats.totalDeposits || 0),
           pendingComplaints: Number(aggregateStats.pendingComplaints || 0),
           pendingVacates: Number(aggregateStats.pendingVacates || 0),
         });
@@ -59,11 +61,12 @@ export function AdminProvider({ children }) {
         supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'owner'),
         supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'owner').eq('is_active', true),
         supabase.from('properties').select('*', { count: 'exact', head: true }).eq('membership_active', true).gt('membership_expiry', new Date().toISOString()),
-        supabase.from('payment_history').select('amount').eq('status', 'success'),
+        supabase.from('payment_history').select('amount,payment_method').eq('status', 'success'),
         supabase.from('complaints').select('*', { count: 'exact', head: true }).in('status', ['open', 'in_progress']),
         supabase.from('check_out_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
       ]);
-      const totalRevenue = payments?.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) || 0;
+      const totalRevenue = payments?.filter(payment => payment.payment_method !== 'security_deposit').reduce((sum, payment) => sum + Number(payment.amount || 0), 0) || 0;
+      const totalDeposits = payments?.filter(payment => payment.payment_method === 'security_deposit').reduce((sum, payment) => sum + Number(payment.amount || 0), 0) || 0;
       
       setGlobalStats({
         totalProperties: propCount || 0,
@@ -72,6 +75,7 @@ export function AdminProvider({ children }) {
         activeOwners: activeOwnerCount || 0,
         activeMemberships: activeMembershipCount || 0,
         totalRevenue,
+        totalDeposits,
         pendingComplaints: complaintCount || 0,
         pendingVacates: vacateCount || 0,
       });

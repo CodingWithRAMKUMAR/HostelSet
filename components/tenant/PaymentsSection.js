@@ -30,7 +30,7 @@ const PaymentsSection = ({ payments = [], onViewScreenshot = () => {} }) => {
               <tr key={payment.id} className="border-b hover:bg-gray-50 transition">
                 <td className="px-4 py-3 text-sm text-gray-600">{formatDate(payment.payment_date)}</td>
                 <td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(payment.amount)}</td>
-                <td className="px-4 py-3 text-sm text-gray-500 capitalize">{payment.payment_method}</td>
+                <td className="px-4 py-3 text-sm text-gray-500 capitalize">{String(payment.payment_method || '').replaceAll('_', ' ')}</td>
                 <td className="px-4 py-3 text-xs text-gray-500 font-mono">{payment.upi_transaction_id || '—'}</td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-1 rounded-full text-xs ${

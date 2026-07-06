@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from '../../../lib/supabase'
 import { logger } from '../../../lib/logger'
+import { getLoginUrl, getResetPasswordUrl } from '../../../lib/server/appUrl'
 
 async function sendApprovalNotification({ email, name }) {
   const apiKey = process.env.BREVO_API_KEY
@@ -11,7 +12,7 @@ async function sendApprovalNotification({ email, name }) {
     return false
   }
 
-  const loginUrl = `${(process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')}/login`
+  const loginUrl = getLoginUrl()
   const message = 'Your hostel application has been approved. Please log in to HostelSet to view your room and pay any remaining dues.'
   const response = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
@@ -52,7 +53,55 @@ export default async function handler(req, res) {
   let createdUserId = null
   try {
     let result
+    let setupEmailSent = false
     if (type === 'application') {
+      const { data: application, error: applicationError } = await supabaseAdmin
+        .from('applications')
+        .select('id,email,phone,name,user_id,status')
+        .eq('id', id)
+        .single()
+      if (applicationError) throw applicationError
+      if (application.status !== 'pending') throw new Error('Application has already been processed')
+
+      let userId = application.user_id
+      if (!userId) {
+        const [{ data: byPhone }, { data: byEmail }] = await Promise.all([
+          supabaseAdmin.from('users').select('id,role,is_active,email').eq('phone', application.phone).limit(1),
+          supabaseAdmin.from('users').select('id,role,is_active,phone').eq('email', application.email).limit(1),
+        ])
+        if (byPhone?.[0] && byEmail?.[0] && byPhone[0].id !== byEmail[0].id) throw new Error('The phone and email belong to different accounts')
+        const existing = byPhone?.[0] || byEmail?.[0]
+        if (existing && existing.role !== 'tenant') throw new Error('These details belong to an existing non-tenant account')
+        userId = existing?.id
+      }
+      if (!userId) {
+        const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(application.email, {
+          redirectTo: getResetPasswordUrl(),
+          data: { full_name: application.name, phone: application.phone, role: 'tenant' },
+        })
+        if (inviteError) throw inviteError
+        userId = invited.user.id
+        createdUserId = userId
+        setupEmailSent = true
+      } else {
+        const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(application.email, {
+          redirectTo: getResetPasswordUrl(),
+        })
+        if (resetError) logger.warn('Application approved, but password setup email failed', { message: resetError.message })
+        else setupEmailSent = true
+      }
+      const { error: userError } = await supabaseAdmin.from('users').upsert({
+        id: userId,
+        email: application.email,
+        phone: application.phone,
+        full_name: application.name,
+        role: 'tenant',
+        is_active: true,
+      }, { onConflict: 'id' })
+      if (userError) throw userError
+      const { error: linkError } = await supabaseAdmin.from('applications').update({ user_id: userId }).eq('id', id)
+      if (linkError) throw linkError
+
       const response = await caller.rpc('approve_application_atomic', { p_application_id: id })
       if (response.error) throw response.error
       result = response.data
@@ -98,7 +147,7 @@ export default async function handler(req, res) {
     } catch (notificationError) {
       logger.warn('Application approved, but approval notification failed', { message: notificationError.message })
     }
-    return res.status(200).json({ success: true, notificationEmailSent })
+    return res.status(200).json({ success: true, notificationEmailSent, setupEmailSent })
   } catch (error) {
     if (createdUserId) await supabaseAdmin.auth.admin.deleteUser(createdUserId).catch(() => {})
     logger.error('Approval failed', error, { route: '/api/requests/approve', type })

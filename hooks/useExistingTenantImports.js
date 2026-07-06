@@ -92,7 +92,7 @@ export function useExistingTenantImports(property, listEnabled = false, onApprov
   }
 
   useEffect(() => { loadSummary().catch(error => toast.error(error.message)) }, [loadSummary])
-  useEffect(() => { if (listEnabled) loadImports(0) }, [property?.id, listEnabled])
+  useEffect(() => { setImports([]); setTotal(0); setPage(0); if (listEnabled) loadImports(0) }, [property?.id, listEnabled])
   useEffect(() => {
     if (!property?.id) return undefined
     const channel = supabase.channel(`existing-imports:${property.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'existing_tenant_imports', filter: `property_id=eq.${property.id}` }, () => {

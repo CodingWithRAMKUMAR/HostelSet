@@ -117,14 +117,15 @@ function OwnerDashboardContent() {
   
   const { showRoomModal, setShowRoomModal, roomForm, setRoomForm, sharingTypes, addRoom, deleteRoom } = useOwnerRooms(property, rooms, setRooms, setStats);
   const { formData, setFormData, addTenant } = useOwnerTenants(property, rooms, tenants, setTenants, setStats, loadData);
-  const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, activeTab === 'overview' || activeTab === 'complaints');
-  const { vacateRequests, approveVacateRequest, rejectVacateRequest, rejectingId: vacateRejectingId } = useOwnerVacate(property, activeTab === 'overview' || activeTab === 'vacate' || activeTab === 'rooms' || activeTab === 'tenants');
-  const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment, refreshPayments } = useOwnerPayments(property, tenants, archivedTenants, setStats, loadData, activeTab === 'overview' || activeTab === 'rent-payments' || activeTab === 'payment-history');
-  const { notices, postNotice, deleteNotice } = useOwnerNotices(property, activeTab === 'overview' || activeTab === 'notices');
-  const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, activeTab === 'overview' || activeTab === 'room-change');
-  const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, activeTab === 'overview' || activeTab === 'applications');
-  const { preBookings, approvePreBooking, rejectPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, activeTab === 'pre-bookings');
-  const existingImports = useExistingTenantImports(property, activeTab === 'existing-imports', () => loadData(true));
+  const propertyReady = Boolean(property?.id);
+  const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, propertyReady);
+  const { vacateRequests, approveVacateRequest, rejectVacateRequest, rejectingId: vacateRejectingId } = useOwnerVacate(property, propertyReady);
+  const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment, refreshPayments } = useOwnerPayments(property, tenants, archivedTenants, setStats, loadData, propertyReady);
+  const { notices, postNotice, deleteNotice } = useOwnerNotices(property, propertyReady);
+  const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, propertyReady);
+  const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, propertyReady);
+  const { preBookings, approvePreBooking, rejectPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, propertyReady);
+  const existingImports = useExistingTenantImports(property, propertyReady, () => loadData(true));
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);

@@ -14,7 +14,7 @@
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` exists only in server/Function environments.
 - [ ] All repository migrations are applied in order and migration history is clean.
 - [ ] RLS, storage policies, scheduled jobs, and required extensions are enabled.
-- [ ] Auth Site URL is `https://hostelset.com` and permitted redirect URLs include the production reset-password route.
+- [ ] Auth Site URL is `https://www.hostelset.com` and permitted redirect URLs include the production reset-password route.
 - [ ] Rent-reminder Edge Function is deployed with JWT/settings matching the documented scheduler design.
 - [ ] Realtime is enabled only for required tables.
 
@@ -35,7 +35,7 @@
 
 ## Search and sitemap
 
-- [ ] `NEXT_PUBLIC_APP_URL=https://hostelset.com` is set before building.
+- [ ] `NEXT_PUBLIC_APP_URL=https://www.hostelset.com` is set before building.
 - [ ] `/robots.txt` is publicly reachable and references `/sitemap.xml`.
 - [ ] `/sitemap.xml` contains active public properties and no protected routes.
 - [ ] Submit the sitemap in Google Search Console and verify domain ownership.

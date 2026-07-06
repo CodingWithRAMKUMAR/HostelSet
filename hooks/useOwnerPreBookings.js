@@ -46,7 +46,7 @@ export function useOwnerPreBookings(property, enabled = true) {
     else { toast.success('Pre-booking rejected.'); await loadPreBookings() }
   }
 
-  useEffect(() => { if (property?.id && enabled) loadPreBookings() }, [property?.id, enabled])
+  useEffect(() => { setPreBookings([]); if (property?.id && enabled) loadPreBookings() }, [property?.id, enabled])
   useRealtimeRefresh(`owner-prebookings-live:${property?.id || 'waiting'}`, ['pre_bookings', 'rooms'], loadPreBookings, Boolean(property?.id && enabled))
 
   return { preBookings, approvePreBooking, rejectPreBooking, processingId }

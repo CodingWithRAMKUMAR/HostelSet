@@ -306,6 +306,13 @@ function TenantDashboardContent() {
             </div>
           </div>
           <div className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-slate-100/50 flex items-center justify-center text-base sm:text-xl text-slate-600">₹</div>
+            <div>
+              <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Deposit</p>
+              <p className="text-base sm:text-xl font-bold text-gray-800 truncate">{formatCurrency(tenant?.security_deposit_amount || 0)}</p>
+            </div>
+          </div>
+          <div className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-purple-100/50 flex items-center justify-center text-base sm:text-xl text-purple-600">👥</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Roommates</p>

@@ -27,7 +27,7 @@ export default function PaymentHistoryTable({ payments = [], getRoomNumberById =
                 {p.tenants?.rooms?.room_number || getRoomNumberById(p.tenants?.room_id)}
               </td>
               <td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(p.amount)}</td>
-              <td className="px-4 py-3 capitalize text-gray-500">{p.payment_method}</td>
+              <td className="px-4 py-3 capitalize text-gray-500">{String(p.payment_method || '').replaceAll('_', ' ')}</td>
               <td className="px-4 py-3">
                 <span className={`px-2 py-1 rounded-full text-xs ${
                   p.status === 'success' ? 'bg-green-100 text-green-700' :

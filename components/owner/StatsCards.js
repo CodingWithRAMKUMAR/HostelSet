@@ -7,6 +7,7 @@ export default function StatsCards({ stats }) {
     { label: 'Available', value: stats?.vacant || 0, icon: '🟡', color: 'bg-amber-100 text-amber-600' },
     { label: 'Tenants', value: stats?.tenantCount || 0, icon: '👥', color: 'bg-indigo-100 text-indigo-600' },
     { label: 'Collected', value: formatCurrency(stats?.totalCollected || 0), icon: '💰', color: 'bg-orange-100 text-orange-600' },
+    { label: 'Deposits', value: formatCurrency(stats?.depositCollected || 0), icon: '₹', color: 'bg-slate-100 text-slate-600' },
     { label: 'Pending Rent', value: formatCurrency(stats?.pendingAmount || 0), icon: '🧾', color: 'bg-red-100 text-red-600' },
     { label: 'This Month', value: formatCurrency(stats?.monthlyIncome || 0), icon: '📈', color: 'bg-green-100 text-green-600' },
     { label: 'Pending Payments', value: stats?.pendingRentConfirmations || 0, icon: '⏳', color: 'bg-purple-100 text-purple-600' },

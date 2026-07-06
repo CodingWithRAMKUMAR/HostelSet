@@ -68,7 +68,6 @@ async function processVisitorSubmission(req, res) {
   if (!await enforceRateLimit(req, res, { scope: 'visitor-submit-ip', identifier: ip, limit: 8, windowSeconds: 900 })) return
 
   const uploaded = []
-  let createdUserId = null
   try {
     const { kind = 'application', propertyId, roomId, form, files, transactionId, expectedMoveIn } = req.body || {}
     const name = String(form?.name || '').trim().slice(0, 120)
@@ -125,19 +124,7 @@ async function processVisitorSubmission(req, res) {
         supabaseAdmin.from('users').select('id, phone').eq('email', email).limit(1),
       ])
       if (byPhone?.[0] && byEmail?.[0] && byPhone[0].id !== byEmail[0].id) throw new Error('The phone and email belong to different accounts')
-      let userId = byPhone?.[0]?.id || byEmail?.[0]?.id
-      if (!userId) {
-        const redirectTo = `${(process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')}/reset-password`
-        const { data: auth, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-          redirectTo,
-          data: { full_name: name, phone, role: 'tenant' },
-        })
-        if (authError) throw authError
-        userId = auth.user.id
-        createdUserId = userId
-        const { error: userError } = await supabaseAdmin.from('users').upsert({ id: userId, email, full_name: name, phone, role: 'tenant', is_active: true })
-        if (userError) throw userError
-      }
+      const userId = byPhone?.[0]?.id || byEmail?.[0]?.id || null
       const deposit = 3000
       const { error } = await supabaseAdmin.from('applications').insert({
         user_id: userId, property_id: propertyId, room_id: roomId, name, phone, email, message,
@@ -151,7 +138,6 @@ async function processVisitorSubmission(req, res) {
     return res.status(201).json({ success: true })
   } catch (error) {
     await removeFiles(uploaded)
-    if (createdUserId) await supabaseAdmin.auth.admin.deleteUser(createdUserId).catch(() => {})
     logger.error('Visitor submission failed', error, { route: '/api/visitor/submit', stage: 'processing' })
     const conflict = error?.code === '23505'
     return res.status(conflict ? 409 : 400).json({ error: conflict ? 'An active request already exists.' : (error.message || 'Submission failed') })

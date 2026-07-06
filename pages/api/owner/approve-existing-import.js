@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from '../../../lib/supabase'
 import { allowPostOnly, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { logger } from '../../../lib/logger'
+import { getResetPasswordUrl } from '../../../lib/server/appUrl'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -63,15 +64,20 @@ export default async function handler(req, res) {
 
     let inviteEmailSent = false
     if (!userId) {
-      const redirectTo = `${(process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com').replace(/\/$/, '')}/reset-password`
       const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(importRecord.email, {
-        redirectTo,
+        redirectTo: getResetPasswordUrl(),
         data: { full_name: importRecord.full_name, phone: importRecord.phone, role: 'tenant' },
       })
       if (inviteError) throw inviteError
       userId = invited.user.id
       createdUserId = userId
       inviteEmailSent = true
+    } else {
+      const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(importRecord.email, {
+        redirectTo: getResetPasswordUrl(),
+      })
+      if (resetError) logger.warn('Existing import approved, but password setup email failed', { message: resetError.message })
+      else inviteEmailSent = true
     }
 
     const { error: profileError } = await supabaseAdmin.from('users').upsert({

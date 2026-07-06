@@ -113,7 +113,8 @@ function AdminDashboardContent() {
     { label: 'Owners', value: statsLoading ? '—' : globalStats.totalOwners, icon: '👤', color: 'bg-violet-100 text-violet-600' },
     { label: 'Active Owners', value: statsLoading ? '—' : globalStats.activeOwners, icon: '✅', color: 'bg-green-100 text-green-600' },
     { label: 'Memberships', value: statsLoading ? '—' : globalStats.activeMemberships, icon: '📋', color: 'bg-amber-100 text-amber-600' },
-    { label: 'Total Revenue', value: statsLoading ? '—' : formatCurrency(globalStats.totalRevenue), icon: '💰', color: 'bg-emerald-100 text-emerald-600' },
+    { label: 'Rent Revenue', value: statsLoading ? '—' : formatCurrency(globalStats.totalRevenue), icon: '💰', color: 'bg-emerald-100 text-emerald-600' },
+    { label: 'Deposits', value: statsLoading ? '—' : formatCurrency(globalStats.totalDeposits), icon: '₹', color: 'bg-slate-100 text-slate-600' },
     { label: 'Pending Complaints', value: statsLoading ? '—' : globalStats.pendingComplaints, icon: '🔧', color: 'bg-red-100 text-red-600' },
     { label: 'Pending Vacates', value: statsLoading ? '—' : globalStats.pendingVacates, icon: '🚪', color: 'bg-amber-100 text-amber-600' },
   ];
