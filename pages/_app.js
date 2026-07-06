@@ -6,6 +6,7 @@ import { useRouter } from 'next/router'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import Head from 'next/head'
 import MonitoringScripts from '../components/MonitoringScripts'
+import { NotificationProvider } from '../context/NotificationContext'
 
 function ProtectedRouteLoading() {
   return (
@@ -119,9 +120,11 @@ export default function App({ Component, pageProps }) {
         }}
       />
       {(!router.pathname.startsWith('/owner') && !router.pathname.startsWith('/tenant') && !router.pathname.startsWith('/admin')) || authorized ? (
-        <ErrorBoundary key={router.asPath}>
-          <Component {...pageProps} />
-        </ErrorBoundary>
+        <NotificationProvider>
+          <ErrorBoundary key={router.asPath}>
+            <Component {...pageProps} />
+          </ErrorBoundary>
+        </NotificationProvider>
       ) : <ProtectedRouteLoading />}
     </>
   )

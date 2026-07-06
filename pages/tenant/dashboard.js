@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { supabase, signOut } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 import BrandLogo from '../../components/BrandLogo'
+import NotificationBell from '../../components/common/NotificationBell'
 import { DashboardSkeleton } from '../../components/ui/Skeleton'
 
 // ---------------- MODULAR IMPORTS ----------------
@@ -86,6 +87,11 @@ function TenantDashboardContent() {
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [showScreenshotModal, setShowScreenshotModal] = useState(false)
   const [screenshotUrl, setScreenshotUrl] = useState('')
+
+  useEffect(() => {
+    const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
+    if (['overview', 'roommates', 'notices', 'complaints', 'payments'].includes(tab)) setActiveTab(tab)
+  }, [router.query.tab])
 
   // ----- Helper Functions -----
   const copyPaymentDetail = async (value, label) => {
@@ -239,6 +245,7 @@ function TenantDashboardContent() {
               </div>
               <span className="text-sm hidden md:inline font-medium text-orange-300/80">{tenant?.name}</span>
             </button>
+            <NotificationBell />
             <button onClick={handleLogout} className="text-red-400 hover:text-red-300 transition font-medium">Logout</button>
           </div>
         </div>

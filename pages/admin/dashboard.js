@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { useRouter } from 'next/router';
 import { signOut } from '../../lib/supabase';
 import { formatCurrency } from '../../lib/utils';
 import { AdminProvider, useAdmin } from '../../context/AdminContext';
 import BrandLogo from '../../components/BrandLogo';
+import NotificationBell from '../../components/common/NotificationBell';
 import { useAdminProperties } from '../../hooks/useAdminProperties';
 import { useAdminTenants } from '../../hooks/useAdminTenants';
 import { useAdminOwners } from '../../hooks/useAdminOwners';
@@ -71,6 +73,7 @@ const DetailModal = ({ isOpen, onClose, title, data }) => {
 
 // ----------------- MAIN DASHBOARD CONTENT -----------------
 function AdminDashboardContent() {
+  const router = useRouter();
   const { globalStats, statsLoading, realtimeConnected, refreshStats } = useAdmin();
   const [activeTab, setActiveTab] = useState('overview');
   
@@ -92,6 +95,12 @@ function AdminDashboardContent() {
 
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
+    const allowed = ['overview', 'properties', 'tenants', 'owners', 'users', 'payments', 'prebookings', 'applications', 'approvedapps', 'complaints', 'vacate', 'roomchange', 'notices', 'membership']
+    if (allowed.includes(tab)) setActiveTab(tab)
+  }, [router.query.tab])
   const [actionKey, setActionKey] = useState(null);
 
   const runAdminAction = async (key, action) => {
@@ -163,6 +172,7 @@ function AdminDashboardContent() {
               <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
               {realtimeConnected ? 'Live' : 'Connecting'}
             </span>
+            <NotificationBell />
             <button onClick={() => refreshStats()} className="text-orange-400 hover:text-orange-300 text-sm font-medium transition">🔄 Refresh</button>
             <button onClick={handleLogout} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-3 sm:px-6 py-2 rounded-full text-sm font-semibold transition shadow-md">Logout</button>
           </div>

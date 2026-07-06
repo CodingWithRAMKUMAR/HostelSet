@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic';
 import { supabase, signOut, signPrivateDocumentFields, findTenantDocumentRecord } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 import BrandLogo from '../../components/BrandLogo';
+import NotificationBell from '../../components/common/NotificationBell';
 
 // Modular Imports
 import { useOwner, OwnerProvider } from '../../context/OwnerContext';
@@ -118,6 +119,12 @@ function OwnerDashboardContent() {
   const { showRoomModal, setShowRoomModal, roomForm, setRoomForm, sharingTypes, addRoom, deleteRoom } = useOwnerRooms(property, rooms, setRooms, setStats);
   const { formData, setFormData, addTenant } = useOwnerTenants(property, rooms, tenants, setTenants, setStats, loadData);
   const propertyReady = Boolean(property?.id);
+
+  useEffect(() => {
+    const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
+    const allowed = ['overview', 'rooms', 'tenants', 'archived-tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'applications', 'existing-imports', 'complaints', 'vacate', 'room-change', 'notices']
+    if (allowed.includes(tab)) setActiveTab(tab)
+  }, [router.query.tab])
   const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, propertyReady);
   const { vacateRequests, approveVacateRequest, rejectVacateRequest, rejectingId: vacateRejectingId } = useOwnerVacate(property, propertyReady);
   const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment, refreshPayments } = useOwnerPayments(property, tenants, archivedTenants, setStats, loadData, propertyReady);
@@ -583,6 +590,7 @@ function OwnerDashboardContent() {
       <div className="min-h-screen bg-white">
         <nav className="bg-[#1a1a1a] border-b border-orange-500/30 px-6 py-4 flex justify-between items-center text-white">
           <BrandLogo />
+          <NotificationBell />
           <button onClick={async () => { await signOut(); window.location.replace('/login') }} className="text-red-400 hover:text-red-300 transition">Logout</button>
         </nav>
         <div className="text-center py-20">
@@ -659,6 +667,7 @@ function OwnerDashboardContent() {
             </button>
             <button onClick={() => setShowOwnerProfileModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5" aria-label="Edit owner profile">👤</button>
             <button onClick={() => setShowSettingsModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5">⚙️</button>
+            <NotificationBell />
             {properties.length > 1 ? (
               <select aria-label="Current property" value={property.id} onChange={(event) => selectProperty(event.target.value)} className="max-w-48 rounded-lg border border-orange-500/30 bg-[#2a2a2a] px-3 py-1.5 text-sm text-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-500">
                 {properties.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
