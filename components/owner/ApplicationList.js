@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { formatDate } from '../../lib/utils';
+import { displayBloodGroup } from '../../lib/bloodGroups';
 
 export default function ApplicationList({
   applications,
@@ -45,6 +46,7 @@ export default function ApplicationList({
                   Email: {app.email}
                 </p>
               )}
+              <p className="text-sm text-gray-500 mt-1">Blood group: {displayBloodGroup(app.blood_group)}</p>
               <p className="text-xs text-gray-400 mt-1">
                 Applied: {formatDate(app.created_at)}
               </p>

@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../../../lib/supabase'
 import { cleanPhoneNumber } from '../../../lib/utils'
 import { allowPostOnly, enforceRateLimit, getClientIp, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { logger } from '../../../lib/logger'
+import { normalizeBloodGroup } from '../../../lib/bloodGroups'
 
 const TOKEN = /^[a-f0-9]{64}$/i
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -82,6 +83,7 @@ export default async function handler(req, res) {
     const currentRent = Number(readField(body, 'current_rent_amount', 'currentRent'))
     const moveInDate = String(readField(body, 'move_in_date', 'moveInDate') || '')
     const occupation = String(body.occupation || '')
+    const bloodGroup = normalizeBloodGroup(readField(body, 'blood_group', 'bloodGroup'))
     const notes = String(body.notes || '').trim().slice(0, 2000) || null
     const idProof = String(readField(body, 'id_proof_path', 'idProof') || '')
     const profilePhoto = String(readField(body, 'profile_photo_path', 'profilePhoto') || '')
@@ -122,7 +124,7 @@ export default async function handler(req, res) {
     const { error: insertError } = await supabaseAdmin.from('existing_tenant_imports').insert({
       link_id: link.id, property_id: link.property_id, room_id: room.id, user_id: null,
       full_name: fullName, phone, email, room_number: room.room_number, current_rent: currentRent,
-      move_in_date: moveInDate, emergency_contact: emergencyContact, occupation,
+      move_in_date: moveInDate, emergency_contact: emergencyContact, occupation, blood_group: bloodGroup,
       id_proof: idProof, profile_photo: profilePhoto, notes, status: 'pending_owner_review',
     })
     if (insertError) {

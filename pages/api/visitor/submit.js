@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../../../lib/supabase'
 import { cleanPhoneNumber } from '../../../lib/utils'
 import { allowPostOnly, enforceRateLimit, getClientIp, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { logger } from '../../../lib/logger'
+import { normalizeBloodGroup } from '../../../lib/bloodGroups'
 
 export const config = { api: { bodyParser: { sizeLimit: '1mb' } } }
 
@@ -74,6 +75,7 @@ async function processVisitorSubmission(req, res) {
     const email = String(form?.email || '').trim().toLowerCase().slice(0, 254)
     const phone = cleanPhoneNumber(form?.phone)
     const message = String(form?.message || '').trim().slice(0, 2000) || null
+    const bloodGroup = normalizeBloodGroup(form?.bloodGroup)
     const normalizedTransactionId = String(transactionId || '').trim()
     if (!['application', 'prebooking'].includes(kind) || !UUID.test(String(propertyId || '')) || !UUID.test(String(roomId || '')) || !name || !/^\S+@\S+\.\S+$/.test(email) || !/^\d{10}$/.test(phone) || !normalizedTransactionId || !files || typeof files !== 'object') {
       return res.status(400).json({ error: 'Please provide valid application details, including a UPI transaction reference.' })
@@ -127,7 +129,7 @@ async function processVisitorSubmission(req, res) {
       const userId = byPhone?.[0]?.id || byEmail?.[0]?.id || null
       const deposit = 3000
       const { error } = await supabaseAdmin.from('applications').insert({
-        user_id: userId, property_id: propertyId, room_id: roomId, name, phone, email, message,
+        user_id: userId, property_id: propertyId, room_id: roomId, name, phone, email, blood_group: bloodGroup, message,
         status: 'pending', id_proof: idPath, photo: photoPath, payment_screenshot: paymentPath,
         payment_transaction_id: String(transactionId || '').trim().slice(0, 120) || null,
         payment_amount: deposit,

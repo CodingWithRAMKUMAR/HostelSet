@@ -24,6 +24,8 @@ import { useAdminModals } from '../../hooks/useAdminModals';
 import { useAdminAnalytics } from '../../hooks/useAdminAnalytics';
 import { Skeleton, TableSkeletonRows } from '../../components/ui/Skeleton';
 import { useModalAccessibility } from '../../hooks/useModalAccessibility';
+import AdminGlobalSearch from '../../components/admin/AdminGlobalSearch';
+import { displayBloodGroup } from '../../lib/bloodGroups';
 const MembershipManager = dynamic(() => import('../../components/admin/MembershipManager'));
 const EnterpriseAdminConsole = dynamic(() => import('../../components/admin/EnterpriseAdminConsole'), { ssr: false });
 const AdminAnalytics = dynamic(() => import('../../components/analytics/AdminAnalytics'));
@@ -99,6 +101,7 @@ function AdminDashboardContent() {
 
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchDetail, setSearchDetail] = useState(null);
 
   useEffect(() => {
     const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
@@ -186,6 +189,7 @@ function AdminDashboardContent() {
       </nav>
 
       <div className="container mx-auto px-3 sm:px-4 py-5 sm:py-8">
+        <AdminGlobalSearch onOpen={(group, item) => setSearchDetail({ group, item })} />
         
         {/* ----- STATS CARDS ----- */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
@@ -257,18 +261,20 @@ function AdminDashboardContent() {
             </div>
             <AdminTable
               loading={tenantsLoading}
-              headers={['Tenant', 'Email', 'Phone', 'Room', 'Property', 'Status', 'Tenant UUID', 'Actions']}
+              headers={['Tenant', 'Email', 'Phone', 'Blood Group', 'Room', 'Property', 'Status', 'Tenant UUID', 'Actions']}
               data={tenants}
               renderRow={(t) => (
                 <tr key={t.id} className="hover:bg-orange-50/50 transition">
                   <td className="px-6 py-4 font-semibold text-gray-800">{t.name}</td>
                   <td className="px-6 py-4 text-gray-500">{t.email || 'N/A'}</td>
                   <td className="px-6 py-4 text-gray-500">{t.phone}</td>
+                  <td className="px-6 py-4 text-gray-500">{displayBloodGroup(t.blood_group)}</td>
                   <td className="px-6 py-4 text-gray-500">{t.rooms?.room_number || 'N/A'}</td>
                   <td className="px-6 py-4 text-gray-500">{t.property?.name || 'N/A'}</td>
                   <td className="px-6 py-4"><span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 capitalize">{(t.status || 'unknown').replaceAll('_', ' ')}</span></td>
                   <td className="px-6 py-4 font-mono text-xs text-slate-500">{t.id}</td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4 flex gap-2">
+                    <button onClick={() => setSearchDetail({ group: 'Tenant', item: t })} className="text-blue-600 hover:text-blue-800 font-semibold text-xs uppercase tracking-wider">View</button>
                     <button onClick={() => deleteTenant(t.id, t.user_id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Delete</button>
                   </td>
                 </tr>
@@ -612,6 +618,12 @@ function AdminDashboardContent() {
         onClose={closeModals} 
         title="Owner Details" 
         data={selectedOwner} 
+      />
+      <DetailModal
+        isOpen={!!searchDetail}
+        onClose={() => setSearchDetail(null)}
+        title={`${searchDetail?.group || 'Search'} Details`}
+        data={searchDetail?.item}
       />
     </div>
   );

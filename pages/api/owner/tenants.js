@@ -5,6 +5,7 @@ import { cleanPhoneNumber } from '../../../lib/utils'
 import { allowPostOnly, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { logger } from '../../../lib/logger'
 import { getResetPasswordUrl } from '../../../lib/server/appUrl'
+import { normalizeBloodGroup } from '../../../lib/bloodGroups'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -39,6 +40,7 @@ export default async function handler(req, res) {
   const name = cleanText(req.body?.name, 120)
   const email = cleanText(req.body?.email, 254).toLowerCase()
   const phone = cleanPhoneNumber(req.body?.phone)
+  const bloodGroup = normalizeBloodGroup(req.body?.bloodGroup)
   const monthlyRent = Number(req.body?.monthlyRent)
   const advanceMonths = Number(req.body?.advanceMonths)
   const joiningFee = Number(req.body?.joiningFee)
@@ -71,6 +73,7 @@ export default async function handler(req, res) {
       p_name: name,
       p_phone: phone,
       p_email: email,
+      p_blood_group: bloodGroup,
       p_monthly_rent: monthlyRent,
       p_advance_months: advanceMonths,
       p_joining_fee: joiningFee,

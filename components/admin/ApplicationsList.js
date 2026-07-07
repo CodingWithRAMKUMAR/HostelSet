@@ -1,4 +1,5 @@
 import { formatDate } from '../../lib/utils'
+import { displayBloodGroup } from '../../lib/bloodGroups'
 
 export default function ApplicationsList({ applications, onApprove, onReject }) {
   if (!applications.length) return <p className="text-center text-gray-500">No pending applications</p>
@@ -9,6 +10,7 @@ export default function ApplicationsList({ applications, onApprove, onReject }) 
           <div>
             <p className="font-semibold">{app.name}</p>
             <p className="text-sm text-gray-400">📞 {app.phone}</p>
+            <p className="text-sm text-gray-400">Blood group: {displayBloodGroup(app.blood_group)}</p>
             <p className="text-xs text-gray-500">Applied: {formatDate(app.created_at)}</p>
             {app.message && <p className="text-sm text-gray-500">💬 {app.message}</p>}
           </div>

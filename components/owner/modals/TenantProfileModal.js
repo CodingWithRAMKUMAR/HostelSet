@@ -1,4 +1,5 @@
 import { formatCurrency, formatDate } from '../../../lib/utils'
+import { displayBloodGroup } from '../../../lib/bloodGroups'
 
 const isPdf = url => {
   try { return decodeURIComponent(new URL(url).pathname).toLowerCase().endsWith('.pdf') }
@@ -62,6 +63,7 @@ export default function TenantProfileModal({ tenant, application, extraDocuments
                 <Detail label="Name" value={tenant?.name} />
                 <Detail label="Phone" value={tenant?.phone} />
                 <Detail label="Email" value={tenant?.email} />
+                <Detail label="Blood group" value={displayBloodGroup(tenant?.blood_group)} />
                 <Detail label="Status" value={tenant?.status} />
                 <Detail label="Rent status" value={tenant?.rent_status} />
                 <Detail label="Move-in date" value={formatDate(tenant?.move_in_date)} />
@@ -83,6 +85,7 @@ export default function TenantProfileModal({ tenant, application, extraDocuments
                   <Detail label="Applicant name" value={application.name} />
                   <Detail label="Applicant phone" value={application.phone} />
                   <Detail label="Applicant email" value={application.email} />
+                  <Detail label="Blood group" value={displayBloodGroup(application.blood_group)} />
                   <Detail label="Status" value={application.status} />
                   <Detail label="Submitted" value={formatDate(application.created_at)} />
                   <Detail label="Processed" value={application.processed_at ? formatDate(application.processed_at) : null} />

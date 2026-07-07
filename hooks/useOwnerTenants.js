@@ -4,7 +4,7 @@ import { cleanPhoneNumber } from '../lib/utils';
 import toast from 'react-hot-toast';
 
 export function useOwnerTenants(property, rooms, tenants, setTenants, setStats, loadData) {
-  const [formData, setFormData] = useState({ name:'', phone:'', email:'', rent_amount:'', room_id:'', advance_amount:'0', joining_fee:'0' });
+  const [formData, setFormData] = useState({ name:'', phone:'', email:'', blood_group:'', rent_amount:'', room_id:'', advance_amount:'0', joining_fee:'0' });
 
   const addTenant = async (isSubmitting, setIsSubmitting) => {
     if (isSubmitting) return;
@@ -34,6 +34,7 @@ export function useOwnerTenants(property, rooms, tenants, setTenants, setStats, 
           name: formData.name,
           phone: cleanPhone,
           email: tenantEmail,
+          bloodGroup: formData.blood_group,
           monthlyRent,
           advanceMonths,
           joiningFee,
@@ -42,7 +43,7 @@ export function useOwnerTenants(property, rooms, tenants, setTenants, setStats, 
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Tenant registration failed');
       toast.success(result.emailSent ? `Tenant "${formData.name}" added and invited!` : `Tenant "${formData.name}" added. Password email can be resent.`);
-      setFormData({ name:'', phone:'', email:'', rent_amount:'', room_id:'', advance_amount:'0', joining_fee:'0' });
+      setFormData({ name:'', phone:'', email:'', blood_group:'', rent_amount:'', room_id:'', advance_amount:'0', joining_fee:'0' });
       await loadData(true);
     } catch (error) { toast.error('Failed to add tenant: ' + error.message); }
     finally { setIsSubmitting(false); }

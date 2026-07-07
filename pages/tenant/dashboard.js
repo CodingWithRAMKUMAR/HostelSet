@@ -19,6 +19,7 @@ import { useRoomChange } from '../../hooks/useRoomChange'
 // ------------------------------------------------
 
 import { formatCurrency, formatDate, getSharingDetails } from '../../lib/utils'
+import { normalizeBloodGroup } from '../../lib/bloodGroups'
 
 // Content Components (static)
 import OverviewSection from '../../components/tenant/OverviewSection'
@@ -82,7 +83,7 @@ function TenantDashboardContent() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
   const [editProfile, setEditProfile] = useState(false)
-  const [profileForm, setProfileForm] = useState({ name:'', phone:'', email:'' })
+  const [profileForm, setProfileForm] = useState({ name:'', phone:'', email:'', blood_group:'' })
   const [ratingHover, setRatingHover] = useState(0)
   const [paymentScreenshot, setPaymentScreenshot] = useState(null)
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
@@ -117,7 +118,7 @@ function TenantDashboardContent() {
 
   // ----- Profile -----
   const openProfile = () => {
-    setProfileForm({ name: tenant?.name || '', phone: tenant?.phone || '', email: tenant?.email || '' })
+    setProfileForm({ name: tenant?.name || '', phone: tenant?.phone || '', email: tenant?.email || '', blood_group: tenant?.blood_group || '' })
     setEditProfile(false)
     setShowProfileModal(true)
   }
@@ -127,7 +128,7 @@ function TenantDashboardContent() {
     if (!profileForm.name) { toast.error('Name is required'); return }
     setIsSubmitting(true)
     try {
-      const { error } = await supabase.rpc('update_tenant_profile', { p_name:profileForm.name, p_phone:profileForm.phone })
+      const { error } = await supabase.rpc('update_tenant_profile', { p_name:profileForm.name, p_phone:profileForm.phone, p_blood_group:normalizeBloodGroup(profileForm.blood_group) })
       if (error) throw error
       toast.success('Profile updated successfully!')
       setEditProfile(false)

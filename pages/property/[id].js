@@ -14,6 +14,7 @@ import Image from 'next/image'
 import PublicFooter from '../../components/PublicFooter'
 import { fetchWithTimeout } from '../../lib/fetchWithTimeout'
 import { propertyPublicPath, UUID_PATTERN } from '../../lib/propertySlug'
+import { BLOOD_GROUPS } from '../../lib/bloodGroups'
 
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.hostelset.com').replace(/\/$/, '')
 
@@ -60,7 +61,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const [loadError, setLoadError] = useState('')
   const [selectedRoom, setSelectedRoom] = useState(null)
   const [showApplyModal, setShowApplyModal] = useState(false)
-  const [applyForm, setApplyForm] = useState({ name: '', phone: '', email: '', message: '' })
+  const [applyForm, setApplyForm] = useState({ name: '', phone: '', email: '', bloodGroup: '', message: '' })
   const [idProof, setIdProof] = useState(null)
   const [photo, setPhoto] = useState(null)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
@@ -1294,6 +1295,13 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                   {emailError && <p className="text-red-500 text-xs mt-1">{emailError}</p>}
                   {checkingEmail && <p className="text-gray-400 text-xs mt-1">Checking...</p>}
                 </div>
+                <label className="block text-sm font-medium text-slate-700">
+                  Blood group (optional)
+                  <select value={applyForm.bloodGroup} onChange={(e) => setApplyForm({...applyForm, bloodGroup: e.target.value})} className="mt-1 w-full px-4 py-3 border border-gray-200 rounded-xl bg-white">
+                    <option value="">Unknown / Prefer not to say</option>
+                    {BLOOD_GROUPS.map(group => <option key={group} value={group}>{group}</option>)}
+                  </select>
+                </label>
                 <textarea placeholder="Any message for the owner?" rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl resize-none" value={applyForm.message} onChange={(e) => setApplyForm({...applyForm, message: e.target.value})} />
                 <div>
                   <label className="block text-sm font-semibold mb-1">ID Proof (Aadhaar/PAN) *</label>
