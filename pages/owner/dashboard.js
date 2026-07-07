@@ -26,6 +26,7 @@ import { useOwnerAnalytics } from '../../hooks/useOwnerAnalytics';
 
 // Content Components
 import StatsCards from '../../components/owner/StatsCards';
+import DashboardSectionNav from '../../components/dashboard/DashboardSectionNav';
 
 const RoomList = dynamic(() => import('../../components/owner/RoomList'));
 const TenantTable = dynamic(() => import('../../components/owner/TenantTable'));
@@ -107,6 +108,11 @@ function OwnerDashboardContent() {
     requestMembership
   } = core;
   const [activeTab, setActiveTab] = useState('overview');
+  const sectionRef = useRef(null);
+  const openSection = (tab) => {
+    setActiveTab(tab);
+    window.requestAnimationFrame(() => sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
 
   useEffect(() => {
     if (!property?.id) return undefined;
@@ -656,18 +662,24 @@ function OwnerDashboardContent() {
     ['vacate', 'Vacate requests', filteredVacateRequests.length],
     ['room-change', 'Room changes', filteredRoomChangeRequests.length],
   ].filter(([, , count]) => count > 0)
+  const ownerTabs = [
+    ['overview', 'Overview'], ['analytics', 'Analytics'], ['rooms', `Rooms (${rooms.length})`], ['tenants', `Tenants (${tenants.length})`],
+    ['archived-tenants', `Archived (${archivedTenants.length})`], ['rent-payments', `Rent (${stats.pendingRentConfirmations})`], ['payment-history', 'History'],
+    ['pre-bookings', 'Pre-bookings'], ['applications', `Applications (${safeApplications.length})`], ['existing-imports', `Imports (${existingImports.pendingCount})`],
+    ['complaints', `Complaints (${stats.totalComplaints || 0})`], ['vacate', `Vacate (${stats.pendingVacate || 0})`], ['room-change', `Room change (${roomChangeRequests.length})`], ['notices', `Notices (${notices.length})`],
+  ].map(([id, label]) => ({ id, label }))
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] font-sans">
       
       {/* --- NAVBAR (Premium Onyx & Gold) --- */}
       <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-3 sm:px-6 py-3 sm:py-4 shadow-lg border-b-2 border-orange-500/80">
-        <div className="container mx-auto flex flex-wrap justify-between items-center gap-2 sm:gap-4">
+        <div className="container mx-auto flex flex-wrap justify-between items-center gap-3">
           <div className="flex items-center gap-3">
             <BrandLogo priority />
             <span className="text-xs bg-[#2a2a2a] text-orange-400/90 border border-orange-500/30 px-3 py-1 rounded-full">Owner</span>
           </div>
-          <div className="flex items-center justify-end gap-2 sm:gap-4 flex-wrap flex-1 min-w-0">
+          <div className="flex items-center justify-end gap-2 sm:gap-3 flex-wrap flex-1 min-w-0">
             <span className={`hidden sm:inline-flex items-center gap-2 text-xs font-semibold ${realtimeConnected ? 'text-emerald-400' : 'text-gray-500'}`}>
               <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
               {realtimeConnected ? 'Live' : 'Connecting'}
@@ -677,7 +689,7 @@ function OwnerDashboardContent() {
               {membershipActive ? '✅ Active' : pendingMembershipRequest ? '⏳ Approval Pending' : '⭐ Request Membership'}
             </button>
             <button onClick={() => setShowOwnerProfileModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5" aria-label="Edit owner profile">👤</button>
-            <button onClick={() => setShowSettingsModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5">⚙️</button>
+            <button onClick={() => setShowSettingsModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400" aria-label="Open property settings">⚙️</button>
             <ThemeToggle />
             <NotificationBell />
             {properties.length > 1 ? (
@@ -698,45 +710,29 @@ function OwnerDashboardContent() {
       <div className="container mx-auto px-3 sm:px-4 py-5 sm:py-8">
         
         {/* --- STATS CARDS --- */}
-        <StatsCards stats={{ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length, pendingApplications: safeApplications.length, pendingImports: existingImports.pendingCount, totalComplaints: safeComplaints.length, pendingVacate: safeVacateRequests.filter(request => request.status === 'pending').length, pendingRoomChanges: safeRoomChangeRequests.length, pendingRentConfirmations: safePendingRentPayments.length }} onSelect={setActiveTab} />
+        <StatsCards stats={{ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length, pendingApplications: safeApplications.length, pendingImports: existingImports.pendingCount, totalComplaints: safeComplaints.length, pendingVacate: safeVacateRequests.filter(request => request.status === 'pending').length, pendingRoomChanges: safeRoomChangeRequests.length, pendingRentConfirmations: safePendingRentPayments.length }} onSelect={openSection} />
 
         {searchLower && (
           <div className="mb-6 rounded-xl border border-orange-100 bg-white p-4 shadow-sm">
             <p className="mb-3 text-sm font-semibold text-slate-700">Search results for “{searchTerm.trim()}”</p>
-            {searchGroups.length ? <div className="flex flex-wrap gap-2">{searchGroups.map(([tab, label, count]) => <button key={tab} onClick={() => setActiveTab(tab)} className="rounded-full bg-orange-50 px-3 py-1.5 text-sm font-medium text-orange-700 hover:bg-orange-100">{label} ({count})</button>)}</div> : <p className="text-sm text-gray-500">No matching dashboard records.</p>}
+            {searchGroups.length ? <div className="flex flex-wrap gap-2">{searchGroups.map(([tab, label, count]) => <button key={tab} onClick={() => openSection(tab)} className="rounded-full bg-orange-50 px-3 py-1.5 text-sm font-medium text-orange-700 hover:bg-orange-100">{label} ({count})</button>)}</div> : <p className="text-sm text-gray-500">No matching dashboard records.</p>}
           </div>
         )}
 
         {/* --- ACTION BUTTONS (Glassmorphism) --- */}
-        <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3 sm:gap-4 mb-6 sm:mb-8">
+        <section className="mb-6 sm:mb-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" aria-labelledby="owner-quick-actions">
+          <div className="mb-3"><h2 id="owner-quick-actions" className="font-bold text-slate-800">Quick actions</h2><p className="text-sm text-slate-500">Manage this property without leaving your current workspace.</p></div>
+        <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3">
           <button onClick={() => membershipActive && setShowAddModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-md ${membershipActive ? 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>+ Add Tenant</button>
           <button onClick={() => membershipActive && setShowRoomModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>+ Add Room</button>
           <button onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>📢 Notice</button>
-        </div>
+        </div></section>
 
         {/* --- TABS --- */}
-        <div className="flex flex-nowrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto dashboard-tabs">
-          {['overview', 'analytics', 'rooms', 'tenants', 'archived-tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'applications', 'existing-imports', 'complaints', 'vacate', 'room-change', 'notices'].map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} disabled={!membershipActive} className={`shrink-0 px-4 sm:px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${activeTab === tab ? 'bg-[#1a1a1a] text-white shadow-sm border-b-2 border-orange-500' : membershipActive ? 'text-gray-600 hover:text-orange-600 hover:bg-orange-50' : 'text-gray-400 cursor-not-allowed'}`}>
-              {tab === 'rent-payments' && `💸 Rent (${stats.pendingRentConfirmations})`}
-              {tab === 'payment-history' && '💳 History'}
-              {tab === 'pre-bookings' && `📋 Pre-Bookings`}
-              {tab === 'analytics' && '📈 Analytics'}
-              {tab === 'applications' && `📝 Applications (${safeApplications.length})`}
-              {tab === 'existing-imports' && `📥 Existing Imports (${existingImports.pendingCount})`}
-              {tab === 'overview' && '📊 Overview'}
-              {tab === 'rooms' && `🏠 Rooms (${rooms.length})`}
-              {tab === 'tenants' && `👥 Tenants (${tenants.length})`}
-              {tab === 'archived-tenants' && `📚 Archived (${archivedTenants.length})`}
-              {tab === 'complaints' && `🔧 Complaints ${stats.totalComplaints > 0 ? `(${stats.totalComplaints})` : ''}`}
-              {tab === 'vacate' && `🚪 Vacate ${stats.pendingVacate > 0 ? `(${stats.pendingVacate})` : ''}`}
-              {tab === 'room-change' && `🔄 Change (${roomChangeRequests.length})`}
-              {tab === 'notices' && `📢 Notices (${notices.length})`}
-            </button>
-          ))}
-        </div>
+        <DashboardSectionNav label="Owner dashboard sections" items={ownerTabs} activeId={activeTab} onSelect={openSection} disabled={!membershipActive} />
 
         {/* --- TAB CONTENT --- */}
+        <div ref={sectionRef} className="scroll-mt-28">
         {activeTab === 'overview' && (
           <div className="space-y-6">
             <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
@@ -766,6 +762,7 @@ function OwnerDashboardContent() {
         {activeTab === 'vacate' && <VacateRequestList requests={filteredVacateRequests} onApprove={handleApproveVacate} onReject={(request) => { setSelectedVacateRequest(request); setVacateRejectionReason(''); }} isSubmitting={isSubmitting || Boolean(vacateRejectingId)} />}
         {activeTab === 'room-change' && <RoomChangeRequestList requests={filteredRoomChangeRequests} onApprove={handleApproveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />}
         {activeTab === 'notices' && <NoticeList notices={filteredNotices} onDelete={deleteNotice} onPost={() => setShowNoticeModal(true)} isSubmitting={isSubmitting} />}
+        </div>
       </div>
 
       {/* --- MODALS --- */}

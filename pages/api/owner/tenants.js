@@ -48,6 +48,7 @@ export default async function handler(req, res) {
   if (!UUID_PATTERN.test(propertyId) || !UUID_PATTERN.test(roomId) || !name || !EMAIL_PATTERN.test(email) || phone.length !== 10) {
     return res.status(400).json({ error: 'Provide valid tenant and room details' })
   }
+  if (!bloodGroup) return res.status(400).json({ error: 'Select a valid blood group' })
   if (!Number.isFinite(monthlyRent) || monthlyRent <= 0 || monthlyRent > 10000000
     || !Number.isSafeInteger(advanceMonths) || advanceMonths < 0 || advanceMonths > 24
     || !Number.isFinite(joiningFee) || joiningFee < 0 || joiningFee > 10000000) {

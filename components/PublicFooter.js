@@ -4,6 +4,7 @@ const links = [
   ['Privacy Policy', '/privacy-policy'], ['Terms', '/terms'],
   ['Refund Policy', '/refund-policy'], ['About', '/about'],
   ['Contact', '/contact'], ['Support', '/support'],
+  ['FAQ', '/faq'],
 ]
 
 export default function PublicFooter({ dark = false }) {

@@ -7,9 +7,9 @@ export default function OverviewSection({ tenant, room, property, owner, pending
   }
 
   return (
-    <div className="grid md:grid-cols-2 gap-6">
+    <div className="grid gap-5 lg:grid-cols-2">
       {/* Room Details */}
-      <div className="bg-white rounded-xl border p-6">
+      <section className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm">
         <h3 className="font-semibold mb-4">🏠 Your Room Details</h3>
         <div className="space-y-3">
           <div className="flex justify-between py-2 border-b">
@@ -69,10 +69,10 @@ export default function OverviewSection({ tenant, room, property, owner, pending
             </div>
           )}
         </div>
-      </div>
+      </section>
 
       {/* Property Information */}
-      <div className="bg-white rounded-xl border p-6">
+      <section className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm">
         <h3 className="font-semibold mb-4">🏢 Property Information</h3>
         <div className="space-y-3">
           <div className="flex justify-between py-2 border-b">
@@ -92,7 +92,7 @@ export default function OverviewSection({ tenant, room, property, owner, pending
             <span className="font-medium">{property?.contact_number || owner?.phone || 'Not provided'}</span>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

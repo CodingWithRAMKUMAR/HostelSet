@@ -428,8 +428,8 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   // ========== Regular Application Flow ==========
   // Step 1: Validate and open payment modal (no DB insert yet)
   const submitApplication = async () => {
-    if (!applyForm.name || !applyForm.phone || !applyForm.email) {
-      toast.error('Please fill all required fields (Name, Phone, Email)')
+    if (!applyForm.name || !applyForm.phone || !applyForm.email || !applyForm.bloodGroup) {
+      toast.error('Please fill all required fields, including blood group')
       return
     }
     const cleanPhone = cleanPhoneNumber(applyForm.phone)
@@ -858,7 +858,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   }
 
   const hasNoRooms = rooms.length === 0
-  const isApplyFormValid = applyForm.name && phoneValid && emailValid && idProof && photo
+  const isApplyFormValid = applyForm.name && phoneValid && emailValid && applyForm.bloodGroup && idProof && photo
   const isPrebookFormValid = prebookForm.name && prebookPhoneValid && prebookEmailValid && prebookIdProof && prebookPhoto && agreeTerms && prebookForm.move_in_date
   const city = property.city || 'India'
   const propertyType = getPropertyTypeLabel(property.property_type)
@@ -1296,9 +1296,9 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                   {checkingEmail && <p className="text-gray-400 text-xs mt-1">Checking...</p>}
                 </div>
                 <label className="block text-sm font-medium text-slate-700">
-                  Blood group (optional)
-                  <select value={applyForm.bloodGroup} onChange={(e) => setApplyForm({...applyForm, bloodGroup: e.target.value})} className="mt-1 w-full px-4 py-3 border border-gray-200 rounded-xl bg-white">
-                    <option value="">Unknown / Prefer not to say</option>
+                  Blood group *
+                  <select required value={applyForm.bloodGroup} onChange={(e) => setApplyForm({...applyForm, bloodGroup: e.target.value})} className="mt-1 w-full px-4 py-3 border border-gray-200 rounded-xl bg-white">
+                    <option value="">Select blood group</option>
                     {BLOOD_GROUPS.map(group => <option key={group} value={group}>{group}</option>)}
                   </select>
                 </label>

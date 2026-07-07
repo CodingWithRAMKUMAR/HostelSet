@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
@@ -23,6 +23,7 @@ import { normalizeBloodGroup } from '../../lib/bloodGroups'
 
 // Content Components (static)
 import OverviewSection from '../../components/tenant/OverviewSection'
+import DashboardSectionNav from '../../components/dashboard/DashboardSectionNav'
 
 const RoommatesSection = dynamic(() => import('../../components/tenant/RoommatesSection'))
 const NoticesSection = dynamic(() => import('../../components/tenant/NoticesSection'))
@@ -82,6 +83,11 @@ function TenantDashboardContent() {
   const [vacateForm, setVacateForm] = useState({ expected_date:'', reason:'', rating:0, review:'' })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
+  const sectionRef = useRef(null)
+  const openSection = tab => {
+    setActiveTab(tab)
+    window.requestAnimationFrame(() => sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
   const [editProfile, setEditProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({ name:'', phone:'', email:'', blood_group:'' })
   const [ratingHover, setRatingHover] = useState(0)
@@ -126,6 +132,7 @@ function TenantDashboardContent() {
   const updateProfile = async () => {
     if (isSubmitting) return
     if (!profileForm.name) { toast.error('Name is required'); return }
+    if (!normalizeBloodGroup(profileForm.blood_group)) { toast.error('Blood group is required'); return }
     setIsSubmitting(true)
     try {
       const { error } = await supabase.rpc('update_tenant_profile', { p_name:profileForm.name, p_phone:profileForm.phone, p_blood_group:normalizeBloodGroup(profileForm.blood_group) })
@@ -241,7 +248,7 @@ function TenantDashboardContent() {
               <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
               {realtimeConnected ? 'Live' : 'Connecting'}
             </span>
-            <button onPointerEnter={() => ProfileModal.preload?.()} onFocus={() => ProfileModal.preload?.()} onClick={openProfile} className="flex items-center gap-2 text-gray-400 hover:text-orange-400 transition">
+            <button onPointerEnter={() => ProfileModal.preload?.()} onFocus={() => ProfileModal.preload?.()} onClick={openProfile} aria-label="Open my profile" className="flex items-center gap-2 text-gray-400 hover:text-orange-400 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 rounded-lg">
               <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
                 {tenant?.name?.charAt(0) || 'U'}
               </div>
@@ -291,50 +298,50 @@ function TenantDashboardContent() {
         )}
 
         {/* --- STATS CARDS (PREMIUM GLASS) --- */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
-          <button type="button" onClick={() => setActiveTab('payments')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
+        <section aria-labelledby="tenant-summary-title" className="mb-6 sm:mb-8"><div className="mb-3"><h2 id="tenant-summary-title" className="text-lg font-bold text-slate-900">Account summary</h2><p className="text-sm text-slate-500">Rent, requests, and activity at a glance.</p></div><div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <button type="button" onClick={() => openSection('payments')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-orange-100/50 flex items-center justify-center text-base sm:text-xl text-orange-600">💰</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Monthly Rent</p>
               <p className="text-base sm:text-xl font-bold text-gray-800 truncate">{formatCurrency(tenant?.rent_amount)}</p>
             </div>
           </button>
-          <button type="button" onClick={() => setActiveTab('payments')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
+          <button type="button" onClick={() => openSection('payments')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-emerald-100/50 flex items-center justify-center text-base sm:text-xl text-emerald-600">✅</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Total Paid</p>
               <p className="text-base sm:text-xl font-bold text-emerald-600 truncate">{formatCurrency(tenant?.total_paid || 0)}</p>
             </div>
           </button>
-          <button type="button" onClick={() => setActiveTab('payments')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
+          <button type="button" onClick={() => openSection('payments')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-red-100/50 flex items-center justify-center text-base sm:text-xl text-red-600">⚠️</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Pending Amount</p>
               <p className="text-base sm:text-xl font-bold text-red-500 truncate">{formatCurrency(tenant?.pending_amount || 0)}</p>
             </div>
           </button>
-          <button type="button" onClick={() => setActiveTab('payments')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
+          <button type="button" onClick={() => openSection('payments')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-slate-100/50 flex items-center justify-center text-base sm:text-xl text-slate-600">₹</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Deposit</p>
               <p className="text-base sm:text-xl font-bold text-gray-800 truncate">{formatCurrency(tenant?.security_deposit_amount || 0)}</p>
             </div>
           </button>
-          <button type="button" onClick={() => setActiveTab('roommates')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
+          <button type="button" onClick={() => openSection('roommates')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-purple-100/50 flex items-center justify-center text-base sm:text-xl text-purple-600">👥</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Roommates</p>
               <p className="text-base sm:text-xl font-bold text-gray-800">{roommates?.length || 0}</p>
             </div>
           </button>
-          <button type="button" onClick={() => setActiveTab('notices')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
+          <button type="button" onClick={() => openSection('notices')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-cyan-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-cyan-700">Note</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Notices</p>
               <p className="text-base sm:text-xl font-bold text-gray-800">{notices?.length || 0}</p>
             </div>
           </button>
-          <button type="button" onClick={() => setActiveTab('complaints')} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300">
+          <button type="button" onClick={() => openSection('complaints')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-rose-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-rose-700">Fix</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Complaints</p>
@@ -348,17 +355,17 @@ function TenantDashboardContent() {
               <p className="text-base sm:text-xl font-bold text-gray-800">{pendingRoomChangeRequest ? 'Pending' : 'Request'}</p>
             </div>
           </button>
-          <button type="button" onClick={() => existingVacateRequest ? setActiveTab('overview') : setShowVacateModal(true)} disabled={isSubmitting || Boolean(vacateBlockedReason)} className="bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-gray-100/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300 disabled:cursor-not-allowed disabled:opacity-70">
+          <button type="button" onClick={() => existingVacateRequest ? openSection('overview') : setShowVacateModal(true)} disabled={isSubmitting || Boolean(vacateBlockedReason)} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 disabled:cursor-not-allowed disabled:opacity-70">
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-yellow-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-yellow-700">Out</div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Vacate</p>
               <p className="text-base sm:text-xl font-bold text-gray-800 capitalize">{existingVacateRequest ? existingVacateRequest.status : 'Request'}</p>
             </div>
           </button>
-        </div>
+        </div></section>
 
         {/* --- ACTION BUTTONS (GRADIENT & GLASS) --- */}
-        <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3 mb-6 sm:mb-8">
+        <section aria-labelledby="tenant-actions-title" className="mb-6 sm:mb-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="mb-3"><h2 id="tenant-actions-title" className="font-bold text-slate-900">Quick actions</h2><p className="text-sm text-slate-500">Pay rent or send a request to your property team.</p></div><div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3">
           <button onPointerEnter={() => PayRentModal.preload?.()} onFocus={() => PayRentModal.preload?.()} onClick={() => setShowPaymentModal(true)} disabled={isSubmitting} className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold shadow-md transition disabled:opacity-50">💳 Pay Rent (UPI)</button>
           <button onPointerEnter={() => ComplaintModal.preload?.()} onFocus={() => ComplaintModal.preload?.()} onClick={() => setShowComplaintModal(true)} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-orange-300/50 text-orange-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition disabled:opacity-50">📝 Raise Complaint</button>
           {!pendingRoomChangeRequest ? (
@@ -371,25 +378,20 @@ function TenantDashboardContent() {
           ) : (
             <button onPointerEnter={() => VacateModal.preload?.()} onFocus={() => VacateModal.preload?.()} onClick={() => setShowVacateModal(true)} disabled={isSubmitting || Boolean(vacateBlockedReason)} title={vacateBlockedReason || undefined} className="w-full sm:w-auto border-2 border-red-300/50 text-red-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed">🚪 Request Vacate</button>
           )}
-        </div>
+        </div></section>
         {vacateBlockedReason && (
           <p className="-mt-4 mb-6 text-sm font-medium text-red-600" role="status">{vacateBlockedReason}</p>
         )}
 
         {/* --- TABS (ONYX & GOLD) --- */}
-        <div className="flex flex-nowrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto dashboard-tabs">
-          {['overview', 'roommates', 'notices', 'complaints', 'payments'].map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`shrink-0 px-4 sm:px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${activeTab === tab ? 'bg-[#1a1a1a] text-white shadow-sm border-b-2 border-orange-500' : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50'}`}>
-              {tab === 'overview' && '📊 Overview'}
-              {tab === 'roommates' && `👥 Roommates (${roommates?.length || 0})`}
-              {tab === 'notices' && `📢 Notices (${notices?.length || 0})`}
-              {tab === 'complaints' && `🔧 My Complaints (${complaints?.length || 0})`}
-              {tab === 'payments' && `💰 Payment History (${paymentHistory?.length || 0})`}
-            </button>
-          ))}
-        </div>
+        <DashboardSectionNav label="Tenant dashboard sections" activeId={activeTab} onSelect={openSection} items={[
+          { id: 'overview', label: 'Overview' }, { id: 'roommates', label: `Roommates (${roommates?.length || 0})` },
+          { id: 'notices', label: `Notices (${notices?.length || 0})` }, { id: 'complaints', label: `Complaints (${complaints?.length || 0})` },
+          { id: 'payments', label: `Payments (${paymentHistory?.length || 0})` },
+        ]} />
 
         {/* --- TAB CONTENT --- */}
+        <div ref={sectionRef} className="scroll-mt-28">
         {activeTab === 'overview' && (
           <OverviewSection
             tenant={tenant}
@@ -418,6 +420,7 @@ function TenantDashboardContent() {
             onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }}
           />
         )}
+        </div>
       </div>
 
       {/* --- MODALS (LAZY LOADED) --- */}

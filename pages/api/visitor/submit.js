@@ -80,6 +80,7 @@ async function processVisitorSubmission(req, res) {
     if (!['application', 'prebooking'].includes(kind) || !UUID.test(String(propertyId || '')) || !UUID.test(String(roomId || '')) || !name || !/^\S+@\S+\.\S+$/.test(email) || !/^\d{10}$/.test(phone) || !normalizedTransactionId || !files || typeof files !== 'object') {
       return res.status(400).json({ error: 'Please provide valid application details, including a UPI transaction reference.' })
     }
+    if (kind === 'application' && !bloodGroup) return res.status(400).json({ error: 'Please select a valid blood group.' })
     if (!await enforceRateLimit(req, res, { scope: 'visitor-submit-identity', identifier: `${propertyId}:${email}:${phone}`, limit: 3, windowSeconds: 3600 })) return
 
     const { data: room, error: roomError } = await supabaseAdmin.from('rooms')

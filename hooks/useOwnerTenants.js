@@ -8,7 +8,7 @@ export function useOwnerTenants(property, rooms, tenants, setTenants, setStats, 
 
   const addTenant = async (isSubmitting, setIsSubmitting) => {
     if (isSubmitting) return;
-    if (!formData.name || !formData.phone || !formData.email || !formData.rent_amount || !formData.room_id) { toast.error('Please fill all fields'); return; }
+    if (!formData.name || !formData.phone || !formData.email || !formData.blood_group || !formData.rent_amount || !formData.room_id) { toast.error('Please fill all required fields, including blood group'); return; }
     const cleanPhone = cleanPhoneNumber(formData.phone);
     if (cleanPhone.length !== 10) { toast.error('Enter valid 10-digit phone number'); return; }
     const selectedRoom = rooms.find(r => r.id === formData.room_id);

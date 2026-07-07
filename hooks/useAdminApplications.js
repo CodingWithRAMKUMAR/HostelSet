@@ -16,7 +16,7 @@ export function useAdminApplications(enabled = true) {
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
     if (error) toast.error('Failed to load applications');
-    else setApplications(await Promise.all((data || []).map(item => signPrivateDocumentFields(item, ['id_proof', 'photo', 'payment_screenshot']))));
+    else setApplications(await Promise.all((data || []).map(item => signPrivateDocumentFields({ ...item, source_type: 'application' }, ['id_proof', 'photo', 'payment_screenshot']))));
     setLoading(false);
   };
 

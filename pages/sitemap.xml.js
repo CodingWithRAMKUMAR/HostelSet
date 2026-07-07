@@ -8,6 +8,7 @@ const PUBLIC_PATHS = [
   '/about',
   '/contact',
   '/support',
+  '/faq',
   '/privacy-policy',
   '/terms',
   '/refund-policy',

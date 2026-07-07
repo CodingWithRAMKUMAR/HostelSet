@@ -412,20 +412,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="border-t border-gray-800 bg-black py-16" aria-labelledby="hostelset-answers-title">
-          <div className="container mx-auto px-4 md:px-8">
-            <h2 id="hostelset-answers-title" className="text-center text-3xl font-bold text-white">HostelSet questions and answers</h2>
-            <div className="mx-auto mt-10 grid max-w-5xl gap-6 md:grid-cols-2">
-              <article className="rounded-2xl border border-gray-800 bg-gray-900 p-6"><h3 className="font-bold text-white">What is HostelSet?</h3><p className="mt-2 text-gray-400">HostelSet is a hostel and PG discovery and management platform for public property listings, applications, rooms, tenants, rent records, notices, complaints, and requests.</p></article>
-              <article className="rounded-2xl border border-gray-800 bg-gray-900 p-6"><h3 className="font-bold text-white">How does HostelSet work?</h3><p className="mt-2 text-gray-400">Owners publish and manage their properties. Applicants compare available rooms and apply online. Approved tenants use their dashboard for tenancy-related records and requests.</p></article>
-              <article className="rounded-2xl border border-gray-800 bg-gray-900 p-6"><h3 className="font-bold text-white">Who can use HostelSet?</h3><p className="mt-2 text-gray-400">Hostel and PG owners, administrators, accommodation applicants, and approved tenants can use the parts of HostelSet relevant to their role.</p></article>
-              <article className="rounded-2xl border border-gray-800 bg-gray-900 p-6"><h3 className="font-bold text-white">How do hostel owners manage tenants?</h3><p className="mt-2 text-gray-400">Owners use a property-scoped dashboard to manage rooms, tenants, applications, payment proofs, notices, complaints, room changes, and vacate requests.</p></article>
-              <article className="rounded-2xl border border-gray-800 bg-gray-900 p-6"><h3 className="font-bold text-white">How do tenants apply?</h3><p className="mt-2 text-gray-400">Applicants open a public property page, select an available room, provide the requested details and documents, and submit payment proof for owner review.</p></article>
-              <article className="rounded-2xl border border-gray-800 bg-gray-900 p-6"><h3 className="font-bold text-white">How are payments verified?</h3><p className="mt-2 text-gray-400">UPI payments go directly to the owner’s displayed payment details. The applicant or tenant submits the transaction reference and screenshot, which the owner manually verifies.</p></article>
-              <article className="rounded-2xl border border-gray-800 bg-gray-900 p-6 md:col-span-2"><h3 className="font-bold text-white">Why use HostelSet instead of manual management?</h3><p className="mt-2 text-gray-400">HostelSet keeps property, room, tenancy, payment-proof, notice, and request information in role-based workflows, reducing the need to coordinate the same records across separate spreadsheets and messages.</p></article>
-            </div>
-          </div>
-        </section>
+        <section className="border-t border-gray-800 bg-black py-14" aria-labelledby="homepage-faq-title"><div className="container mx-auto px-4"><div className="mx-auto flex max-w-4xl flex-col items-center justify-between gap-5 rounded-2xl border border-gray-800 bg-gray-900 p-6 text-center sm:flex-row sm:text-left"><div><h2 id="homepage-faq-title" className="text-2xl font-bold text-white">Have questions?</h2><p className="mt-2 text-gray-400">Find clear answers about applications, payments, tenant management, and more.</p></div><Link href="/faq" className="shrink-0 rounded-full bg-orange-600 px-6 py-3 font-semibold text-white hover:bg-orange-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">View FAQs</Link></div></div></section>
 
         {/* Footer */}
         <footer className="bg-gray-950 border-t border-gray-800 py-16">
@@ -460,6 +447,7 @@ export default function Home() {
                   <li><Link href="/about" className="hover:text-orange-400 transition">About Us</Link></li>
                   <li><Link href="/contact" className="hover:text-orange-400 transition">Contact</Link></li>
                   <li><Link href="/support" className="hover:text-orange-400 transition">Support</Link></li>
+                  <li><Link href="/faq" className="hover:text-orange-400 transition">FAQ</Link></li>
                 </ul>
               </div>
               <div>

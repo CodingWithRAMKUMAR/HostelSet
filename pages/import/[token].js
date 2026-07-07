@@ -49,6 +49,7 @@ export default function ExistingTenantImportPage() {
   const submit = async event => {
     event.preventDefault()
     if (submitting) return
+    if (!form.bloodGroup) { setError('Please select a blood group.'); return }
     setSubmitting(true); setError(''); setProgress('Validating details…')
     try {
       setProgress('Uploading documents…')
@@ -86,7 +87,7 @@ export default function ExistingTenantImportPage() {
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             {[['fullName','Full name','text'],['phone','Phone','tel'],['email','Email','email'],['currentRent','Current rent amount','number'],['moveInDate','Move-in date','date'],['emergencyContact','Emergency contact','tel']].map(([name,label,type]) => <label key={name} className="text-sm font-medium text-slate-700">{label}<input required name={name} type={type} min={type === 'number' ? 1 : undefined} value={form[name]} onChange={change} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /></label>)}
             <label className="text-sm font-medium text-slate-700">Room number<select required name="roomId" value={form.roomId} onChange={change} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5"><option value="">Select room</option>{details.rooms.map(room => <option key={room.id} value={room.id}>Room {room.room_number}</option>)}</select></label>
-            <label className="text-sm font-medium text-slate-700">Blood group (optional)<select name="bloodGroup" value={form.bloodGroup} onChange={change} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5"><option value="">Unknown / Prefer not to say</option>{BLOOD_GROUPS.map(group => <option key={group} value={group}>{group}</option>)}</select></label>
+            <label className="text-sm font-medium text-slate-700">Blood group *<select required name="bloodGroup" value={form.bloodGroup} onChange={change} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5"><option value="">Select blood group</option>{BLOOD_GROUPS.map(group => <option key={group} value={group}>{group}</option>)}</select></label>
             <label className="text-sm font-medium text-slate-700">Occupation<select required name="occupation" value={form.occupation} onChange={change} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5"><option value="">Select</option><option value="student">Student</option><option value="employee">Employee</option><option value="other">Other</option></select></label>
             <label className="text-sm font-medium text-slate-700">ID proof (image or PDF)<input required type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setIdProof(e.target.files?.[0] || null)} className="mt-1 block w-full rounded-lg border border-slate-300 p-2" /></label>
             <label className="text-sm font-medium text-slate-700">Profile photo<input required type="file" accept="image/jpeg,image/png,image/webp" onChange={e => setProfilePhoto(e.target.files?.[0] || null)} className="mt-1 block w-full rounded-lg border border-slate-300 p-2" /></label>

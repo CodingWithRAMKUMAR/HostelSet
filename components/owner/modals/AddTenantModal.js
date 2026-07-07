@@ -40,9 +40,9 @@ export default function AddTenantModal({
             onChange={(e) => setFormData({...formData, email: e.target.value})}
             required
           />
-          <label className="block text-sm font-medium text-slate-700">Blood group (optional)
-            <select className="mt-1 w-full px-4 py-3 border border-gray-200 rounded-xl bg-white" value={formData.blood_group} onChange={(e) => setFormData({...formData, blood_group: e.target.value})}>
-              <option value="">Unknown / Prefer not to say</option>
+          <label className="block text-sm font-medium text-slate-700">Blood group *
+            <select required className="mt-1 w-full px-4 py-3 border border-gray-200 rounded-xl bg-white" value={formData.blood_group} onChange={(e) => setFormData({...formData, blood_group: e.target.value})}>
+              <option value="">Select blood group</option>
               {BLOOD_GROUPS.map(group => <option key={group} value={group}>{group}</option>)}
             </select>
           </label>

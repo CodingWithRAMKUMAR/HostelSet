@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
 import { signOut } from '../../lib/supabase';
@@ -26,6 +26,7 @@ import { Skeleton, TableSkeletonRows } from '../../components/ui/Skeleton';
 import { useModalAccessibility } from '../../hooks/useModalAccessibility';
 import AdminGlobalSearch from '../../components/admin/AdminGlobalSearch';
 import { displayBloodGroup } from '../../lib/bloodGroups';
+import DashboardSectionNav from '../../components/dashboard/DashboardSectionNav';
 const MembershipManager = dynamic(() => import('../../components/admin/MembershipManager'));
 const EnterpriseAdminConsole = dynamic(() => import('../../components/admin/EnterpriseAdminConsole'), { ssr: false });
 const AdminAnalytics = dynamic(() => import('../../components/analytics/AdminAnalytics'));
@@ -81,6 +82,11 @@ function AdminDashboardContent() {
   const router = useRouter();
   const { globalStats, statsLoading, realtimeConnected, refreshStats } = useAdmin();
   const [activeTab, setActiveTab] = useState('overview');
+  const sectionRef = useRef(null);
+  const openSection = (tab) => {
+    setActiveTab(tab);
+    window.requestAnimationFrame(() => sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
   
   // Only the visible tab loads its dataset. This keeps login fast and reduces database traffic.
   const { properties, loading: propertiesLoading, deleteProperty } = useAdminProperties(activeTab === 'properties');
@@ -102,6 +108,7 @@ function AdminDashboardContent() {
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchDetail, setSearchDetail] = useState(null);
+  const [applicationProof, setApplicationProof] = useState(null);
 
   useEffect(() => {
     const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
@@ -189,15 +196,15 @@ function AdminDashboardContent() {
       </nav>
 
       <div className="container mx-auto px-3 sm:px-4 py-5 sm:py-8">
-        <AdminGlobalSearch onOpen={(group, item) => setSearchDetail({ group, item })} />
+        <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="mb-3"><h1 className="text-lg font-bold text-slate-900">Platform management</h1><p className="text-sm text-slate-500">Search records or open a management section below.</p></div><AdminGlobalSearch onOpen={(group, item) => setSearchDetail({ group, item })} /></section>
         
         {/* ----- STATS CARDS ----- */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mb-6">
           {statsData.map((stat, index) => {
             const targetTab = tabForStat(stat.label);
             const Card = targetTab ? 'button' : 'div';
             return (
-            <Card key={index} type={targetTab ? 'button' : undefined} onClick={targetTab ? () => setActiveTab(targetTab) : undefined} className={`bg-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm border border-gray-200/50 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-4 min-w-0 text-left ${targetTab ? 'cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300' : ''}`}>
+            <Card key={index} type={targetTab ? 'button' : undefined} onClick={targetTab ? () => openSection(targetTab) : undefined} className={`bg-white rounded-xl p-3 shadow-sm border border-gray-200 hover:shadow-md hover:border-orange-200 transition flex items-center gap-3 min-w-0 text-left ${targetTab ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400' : ''}`}>
               <div className={`w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center text-base sm:text-xl shadow-sm ${stat.color}`}>
                 {stat.icon}
               </div>
@@ -210,21 +217,8 @@ function AdminDashboardContent() {
         </div>
 
         {/* ----- TABS ----- */}
-        <div className="flex flex-nowrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto dashboard-tabs">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`shrink-0 px-4 sm:px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'bg-[#1a1a1a] text-white shadow-sm border-b-2 border-orange-500'
-                  : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        <DashboardSectionNav label="Admin dashboard sections" items={tabs} activeId={activeTab} onSelect={openSection} />
+        <div ref={sectionRef} className="scroll-mt-28">
         {/* ----- OVERVIEW ----- */}
         {activeTab === 'overview' && <EnterpriseAdminConsole />}
         {activeTab === 'analytics' && <AdminAnalytics {...adminAnalytics} />}
@@ -441,13 +435,14 @@ function AdminDashboardContent() {
         {activeTab === 'applications' && (
           <AdminTable
             loading={applicationsLoading}
-            headers={['Name', 'Phone', 'Room', 'Actions']}
+            headers={['Applicant', 'Room', 'Rent / Deposit', 'Payment Verification', 'Actions']}
             data={applications}
             renderRow={(a) => (
               <tr key={a.id} className="hover:bg-orange-50/50 transition">
-                <td className="px-6 py-4 font-semibold text-gray-800">{a.name}</td>
-                <td className="px-6 py-4 text-gray-500">{a.phone}</td>
+                <td className="px-6 py-4"><p className="font-semibold text-gray-800">{a.name}</p><p className="text-sm text-gray-500">{a.phone}</p></td>
                 <td className="px-6 py-4 text-gray-500">{a.rooms?.room_number || 'N/A'}</td>
+                <td className="px-6 py-4 text-gray-500"><p>Rent: {formatCurrency(a.rooms?.monthly_rent || 0)}</p><p>Deposit: {formatCurrency(a.payment_amount || 0)}</p></td>
+                <td className="px-6 py-4 text-sm text-gray-500"><p>UTR: <span className="font-medium text-slate-700">{a.payment_transaction_id || a.upi_transaction_id || 'Not provided'}</span></p><p>Submitted: {new Date(a.payment_date || a.created_at).toLocaleDateString()}</p><p className="capitalize">Status: {(a.payment_status || 'pending verification').replaceAll('_', ' ')}</p>{a.payment_screenshot ? <button type="button" onClick={() => setApplicationProof({ url: a.payment_screenshot, name: a.name })} className="mt-2 rounded-lg border border-blue-200 px-3 py-1.5 font-semibold text-blue-700 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">View payment proof</button> : <p className="mt-1 text-xs text-red-500">Proof unavailable</p>}</td>
                 <td className="px-6 py-4 flex gap-2">
                   <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${a.id}`, () => approveApplication(a, a.user_id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `application:${a.id}` ? 'Processing…' : 'Approve'}</button>
                   <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${a.id}`, () => rejectApplication(a.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `application:${a.id}` ? 'Processing…' : 'Reject'}</button>
@@ -604,6 +599,7 @@ function AdminDashboardContent() {
             onRefresh={() => refreshMemberships(false)}
           />
         )}
+        </div>
       </div>
 
       {/* ----- DETAIL MODALS ----- */}
@@ -625,6 +621,7 @@ function AdminDashboardContent() {
         title={`${searchDetail?.group || 'Search'} Details`}
         data={searchDetail?.item}
       />
+      {applicationProof && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="admin-proof-title" onClick={() => setApplicationProof(null)}><div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-4 shadow-2xl" onClick={event => event.stopPropagation()}><div className="mb-3 flex items-center justify-between"><h2 id="admin-proof-title" className="font-bold text-slate-900">Payment proof · {applicationProof.name}</h2><button type="button" onClick={() => setApplicationProof(null)} className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400" aria-label="Close payment proof">Close</button></div><img src={applicationProof.url} alt={`Payment proof submitted by ${applicationProof.name}`} className="mx-auto max-h-[75vh] max-w-full rounded-xl border object-contain" /></div></div>}
     </div>
   );
 }

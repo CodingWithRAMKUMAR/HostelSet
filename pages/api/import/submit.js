@@ -97,6 +97,7 @@ export default async function handler(req, res) {
     if (!Number.isFinite(currentRent) || currentRent <= 0 || currentRent > 1000000) return invalid(res, 'Please enter a valid current rent amount.', { field: 'current_rent_amount' })
     if (!isValidDateString(moveInDate) || moveInDate > todayIsoDate()) return invalid(res, 'Please select a valid move-in date.', { field: 'move_in_date' })
     if (!['student', 'employee', 'other'].includes(occupation)) return invalid(res, 'Please select an occupation.', { field: 'occupation' })
+    if (!bloodGroup) return invalid(res, 'Please select a valid blood group.', { field: 'blood_group' })
     if (!idProof) return invalid(res, 'Please upload ID proof.', { field: 'id_proof_path' })
     if (!profilePhoto) return invalid(res, 'Please upload profile photo.', { field: 'profile_photo_path' })
 
