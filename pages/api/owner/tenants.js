@@ -4,6 +4,7 @@ import { supabaseAdmin } from '../../../lib/supabase'
 import { cleanPhoneNumber } from '../../../lib/utils'
 import { allowPostOnly, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { logger } from '../../../lib/logger'
+import { getResetPasswordUrl } from '../../../lib/server/appUrl'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -77,8 +78,12 @@ export default async function handler(req, res) {
     if (error) throw error
 
     let emailSent = true
+    const redirectTo = getResetPasswordUrl()
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[HostelSet] reset link requested', { method: 'resetPasswordForEmail', redirectTo })
+    }
     const { error: mailError } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || 'https://hostelset.com'}/reset-password`,
+      redirectTo,
     })
     if (mailError) {
       emailSent = false

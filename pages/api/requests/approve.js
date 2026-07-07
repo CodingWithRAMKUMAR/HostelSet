@@ -35,8 +35,12 @@ async function sendApprovalNotification({ email, name }) {
 }
 
 async function inviteTenantForSetup({ email, name, phone }) {
+  const redirectTo = getResetPasswordUrl()
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[HostelSet] reset link requested', { method: 'inviteUserByEmail', redirectTo })
+  }
   const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-    redirectTo: getResetPasswordUrl(),
+    redirectTo,
     data: { full_name: name, phone, role: 'tenant' },
   })
   if (inviteError) throw inviteError
@@ -108,8 +112,12 @@ export default async function handler(req, res) {
           createdUserId = userId
           setupEmailSent = true
         } else {
+          const redirectTo = getResetPasswordUrl()
+          if (process.env.NODE_ENV !== 'production') {
+            console.info('[HostelSet] reset link requested', { method: 'resetPasswordForEmail', redirectTo })
+          }
           const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(application.email, {
-            redirectTo: getResetPasswordUrl(),
+            redirectTo,
           })
           if (resetError) logger.warn('Application approved, but password setup email failed', { message: resetError.message })
           else setupEmailSent = true

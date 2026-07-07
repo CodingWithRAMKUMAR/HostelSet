@@ -9,8 +9,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 export const config = { api: { bodyParser: { sizeLimit: '8kb' } } }
 
 async function inviteTenantForSetup(importRecord) {
+  const redirectTo = getResetPasswordUrl()
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[HostelSet] reset link requested', { method: 'inviteUserByEmail', redirectTo })
+  }
   const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(importRecord.email, {
-    redirectTo: getResetPasswordUrl(),
+    redirectTo,
     data: { full_name: importRecord.full_name, phone: importRecord.phone, role: 'tenant' },
   })
   if (inviteError) throw inviteError
@@ -97,8 +101,12 @@ export default async function handler(req, res) {
         createdUserId = userId
         inviteEmailSent = true
       } else {
+        const redirectTo = getResetPasswordUrl()
+        if (process.env.NODE_ENV !== 'production') {
+          console.info('[HostelSet] reset link requested', { method: 'resetPasswordForEmail', redirectTo })
+        }
         const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(importRecord.email, {
-          redirectTo: getResetPasswordUrl(),
+          redirectTo,
         })
         if (resetError) logger.warn('Existing import approved, but password setup email failed', { message: resetError.message })
         else inviteEmailSent = true

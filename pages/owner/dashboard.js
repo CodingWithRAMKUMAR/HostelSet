@@ -4,7 +4,7 @@ import { AnimatePresence } from 'framer-motion';
 import { DashboardSkeleton } from '../../components/ui/Skeleton';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { supabase, signOut, signPrivateDocumentFields, findTenantDocumentRecord } from '../../lib/supabase';
+import { getResetPasswordRedirectTo, supabase, signOut, signPrivateDocumentFields, findTenantDocumentRecord } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 import BrandLogo from '../../components/BrandLogo';
 import NotificationBell from '../../components/common/NotificationBell';
@@ -22,6 +22,7 @@ import { useOwnerRoomChange } from '../../hooks/useOwnerRoomChange';
 import { useOwnerApplications } from '../../hooks/useOwnerApplications';
 import { useOwnerPreBookings } from '../../hooks/useOwnerPreBookings';
 import { useExistingTenantImports } from '../../hooks/useExistingTenantImports';
+import { useOwnerAnalytics } from '../../hooks/useOwnerAnalytics';
 
 // Content Components
 import StatsCards from '../../components/owner/StatsCards';
@@ -39,6 +40,7 @@ const NoticeList = dynamic(() => import('../../components/owner/NoticeList'));
 const RoomChangeRequestList = dynamic(() => import('../../components/owner/RoomChangeRequestList'));
 const ExistingTenantImportList = dynamic(() => import('../../components/owner/ExistingTenantImportList'));
 const ExistingTenantImportSettings = dynamic(() => import('../../components/owner/ExistingTenantImportSettings'));
+const OwnerAnalytics = dynamic(() => import('../../components/analytics/OwnerAnalytics'));
 
 // Modal Components
 const ConfirmDeleteModal = dynamic(() => import('../../components/owner/modals/ConfirmDeleteModal'), { ssr: false });
@@ -123,7 +125,7 @@ function OwnerDashboardContent() {
 
   useEffect(() => {
     const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
-    const allowed = ['overview', 'rooms', 'tenants', 'archived-tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'applications', 'existing-imports', 'complaints', 'vacate', 'room-change', 'notices']
+    const allowed = ['overview', 'analytics', 'rooms', 'tenants', 'archived-tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'applications', 'existing-imports', 'complaints', 'vacate', 'room-change', 'notices']
     if (allowed.includes(tab)) setActiveTab(tab)
   }, [router.query.tab])
   const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, propertyReady);
@@ -134,6 +136,7 @@ function OwnerDashboardContent() {
   const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, propertyReady);
   const { preBookings, approvePreBooking, rejectPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, propertyReady);
   const existingImports = useExistingTenantImports(property, propertyReady, () => loadData(true));
+  const ownerAnalytics = useOwnerAnalytics(property, activeTab === 'analytics');
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -358,9 +361,13 @@ function OwnerDashboardContent() {
       // ---------------------------------------------------------
       // 4. Send Password Reset Email
       // ---------------------------------------------------------
+      const redirectTo = getResetPasswordRedirectTo();
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[HostelSet] reset link requested', { method: 'resetPasswordForEmail', redirectTo });
+      }
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
         appData.email,
-        { redirectTo: `${window.location.origin}/reset-password` }
+        { redirectTo }
       );
 
       if (resetError) {
@@ -709,11 +716,12 @@ function OwnerDashboardContent() {
 
         {/* --- TABS --- */}
         <div className="flex flex-nowrap gap-2 mb-6 border-b border-gray-200 pb-2 overflow-x-auto dashboard-tabs">
-          {['overview', 'rooms', 'tenants', 'archived-tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'applications', 'existing-imports', 'complaints', 'vacate', 'room-change', 'notices'].map((tab) => (
+          {['overview', 'analytics', 'rooms', 'tenants', 'archived-tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'applications', 'existing-imports', 'complaints', 'vacate', 'room-change', 'notices'].map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} disabled={!membershipActive} className={`shrink-0 px-4 sm:px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all whitespace-nowrap ${activeTab === tab ? 'bg-[#1a1a1a] text-white shadow-sm border-b-2 border-orange-500' : membershipActive ? 'text-gray-600 hover:text-orange-600 hover:bg-orange-50' : 'text-gray-400 cursor-not-allowed'}`}>
               {tab === 'rent-payments' && `💸 Rent (${stats.pendingRentConfirmations})`}
               {tab === 'payment-history' && '💳 History'}
               {tab === 'pre-bookings' && `📋 Pre-Bookings`}
+              {tab === 'analytics' && '📈 Analytics'}
               {tab === 'applications' && `📝 Applications (${safeApplications.length})`}
               {tab === 'existing-imports' && `📥 Existing Imports (${existingImports.pendingCount})`}
               {tab === 'overview' && '📊 Overview'}
@@ -745,6 +753,7 @@ function OwnerDashboardContent() {
             </div>
           </div>
         )}
+        {activeTab === 'analytics' && <OwnerAnalytics rooms={safeRooms} tenants={safeTenants} archivedTenants={safeArchivedTenants} payments={safeAllPayments} pendingPayments={safePendingRentPayments} applications={ownerAnalytics.applications} existingImports={ownerAnalytics.imports} complaints={safeComplaints} notices={safeNotices} vacateRequests={safeVacateRequests} roomChangeRequests={safeRoomChangeRequests} />}
         {activeTab === 'rooms' && <RoomList rooms={filteredRooms} tenants={safeTenants} vacateRequests={safeVacateRequests} roomMonthlyIncome={roomMonthlyIncome} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />}
         {activeTab === 'tenants' && <TenantTable tenants={filteredTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setPaymentAmount(Number(tenant.pending_amount || tenant.rent_amount || 0)); setCollectionRequestId(crypto.randomUUID()); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
         {activeTab === 'archived-tenants' && <ArchivedTenantList tenants={filteredArchivedTenants} onViewHistory={fetchArchivedTenantHistory} loadingId={loadingArchivedTenantId} />}

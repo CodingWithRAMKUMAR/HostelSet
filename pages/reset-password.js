@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
-import { resetPassword, supabase } from '../lib/supabase'
+import { resetPassword, supabase, syncServerSession } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
 export default function ResetPassword() {
@@ -13,32 +13,54 @@ export default function ResetPassword() {
   const [sessionReady, setSessionReady] = useState(false)
   const [error, setError] = useState(null)
   const [linkType, setLinkType] = useState('reset')
+  const [resendSent, setResendSent] = useState(false)
 
   useEffect(() => {
     if (!router.isReady) return
     let resolved = false
     let timeout
+    let cancelled = false
     const query = new URLSearchParams(window.location.search)
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
     const callbackError = query.get('error_description') || hash.get('error_description')
     const code = query.get('code')
-    const tokenHash = query.get('token_hash')
+    const tokenHash = query.get('token_hash') || hash.get('token_hash')
     const callbackType = query.get('type') || hash.get('type')
-    const hasHashSession = Boolean(hash.get('access_token') && hash.get('refresh_token'))
-    const expectsAuthCallback = Boolean(code || tokenHash || hasHashSession || ['invite', 'recovery'].includes(callbackType))
+    const accessToken = hash.get('access_token') || query.get('access_token')
+    const refreshToken = hash.get('refresh_token') || query.get('refresh_token')
+    const hasTokenSession = Boolean(accessToken && refreshToken)
+    const hasIncompleteTokenSession = Boolean(accessToken && !refreshToken)
+    const expectsAuthCallback = Boolean(code || tokenHash || hasTokenSession || ['invite', 'recovery'].includes(callbackType))
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[HostelSet] reset-password callback params', {
+        hashKeys: Array.from(hash.keys()),
+        queryKeys: Array.from(query.keys()),
+        type: callbackType || null,
+        hasRefreshToken: Boolean(refreshToken),
+      })
+    }
 
     if (callbackType === 'invite') setLinkType('invite')
     else if (callbackType === 'recovery') setLinkType('reset')
 
-    const acceptSession = () => {
+    const cleanResetUrl = () => {
+      window.history.replaceState({}, document.title, '/reset-password')
+    }
+
+    const acceptSession = async (session) => {
+      if (cancelled) return
       resolved = true
       setError(null)
+      setResendSent(false)
       setSessionReady(true)
+      if (session) await syncServerSession(session).catch(() => {})
+      cleanResetUrl()
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY') acceptSession()
-      else if (event === 'SIGNED_IN' && session && expectsAuthCallback) acceptSession()
+      if (event === 'PASSWORD_RECOVERY') acceptSession(session)
+      else if (event === 'SIGNED_IN' && session && expectsAuthCallback) acceptSession(session)
     })
 
     const resolveCallback = async () => {
@@ -46,8 +68,8 @@ export default function ResetPassword() {
         setError(callbackError.replace(/\+/g, ' ') || 'This password link is invalid or expired.')
         return
       }
-      if (!expectsAuthCallback) {
-        setError('This password link is invalid or expired. Request a new link below.')
+      if (hasIncompleteTokenSession) {
+        setError('This reset link is incomplete. Please request a new password reset link.')
         return
       }
 
@@ -55,14 +77,21 @@ export default function ResetPassword() {
       if (code) {
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
         callbackFailure = exchangeError
+      } else if (hasTokenSession) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        })
+        callbackFailure = sessionError
       } else if (tokenHash && ['invite', 'recovery'].includes(callbackType)) {
         const { error: verifyError } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: callbackType })
         callbackFailure = verifyError
       }
 
       const { data: { session } } = await supabase.auth.getSession()
-      if (session) acceptSession()
+      if (session) await acceptSession(session)
       else if (callbackFailure) setError(callbackFailure.message || 'This password link is invalid or expired. Request a new link below.')
+      else if (!expectsAuthCallback) setError('This password link is invalid or expired. Request a new link below.')
       else {
         timeout = setTimeout(() => {
           if (!resolved) setError('This password link is invalid or expired. Request a new link below.')
@@ -72,6 +101,7 @@ export default function ResetPassword() {
     resolveCallback()
 
     return () => {
+      cancelled = true
       if (timeout) clearTimeout(timeout)
       subscription.unsubscribe()
     }
@@ -105,12 +135,29 @@ export default function ResetPassword() {
     setResendLoading(true)
     const result = await resetPassword(email)
     if (result.success) {
-      toast.success('Password setup email sent. Please check your inbox and spam folder.')
+      window.history.replaceState({}, document.title, '/reset-password')
+      setError(null)
+      setSessionReady(false)
+      setResendSent(true)
+      toast.success('Fresh password link sent. Open the newest email from your inbox or spam folder.')
       setResendEmail('')
     } else {
       toast.error(result.error || 'Failed to send password email')
     }
     setResendLoading(false)
+  }
+
+  if (resendSent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 to-white">
+        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
+          <div className="text-5xl mb-4 font-bold text-emerald-500">✓</div>
+          <h1 className="text-xl font-bold text-slate-800 mb-2">Fresh link sent</h1>
+          <p className="text-gray-600 mb-5">Open the newest password email. Older links may keep showing expired.</p>
+          <button onClick={() => router.push('/login')} className="text-sm text-slate-600 hover:text-slate-800">Back to Login</button>
+        </div>
+      </div>
+    )
   }
 
   if (error) {

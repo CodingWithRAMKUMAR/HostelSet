@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase, signPrivateDocumentFields } from '../lib/supabase';
+import { getResetPasswordRedirectTo, supabase, signPrivateDocumentFields } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
@@ -72,8 +72,12 @@ export function useOwnerApplications(property, enabled = true) {
 
   const resendPasswordEmail = async (email) => {
     try {
+      const redirectTo = getResetPasswordRedirectTo();
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[HostelSet] reset link requested', { method: 'resetPasswordForEmail', redirectTo });
+      }
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo,
       });
       if (error) throw error;
       toast.success(`Password reset email resent to ${email}`);

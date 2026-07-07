@@ -14,7 +14,12 @@
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` exists only in server/Function environments.
 - [ ] All repository migrations are applied in order and migration history is clean.
 - [ ] RLS, storage policies, scheduled jobs, and required extensions are enabled.
-- [ ] Auth Site URL is `https://www.hostelset.com` and permitted redirect URLs include the production reset-password route.
+- [ ] Auth Site URL is `https://www.hostelset.com`.
+- [ ] Auth Redirect URLs include:
+  - `https://www.hostelset.com/reset-password`
+  - `http://localhost:3000/reset-password`
+  - `http://localhost:3001/reset-password`
+  - Any Vercel preview `/reset-password` URL used for testing.
 - [ ] Rent-reminder Edge Function is deployed with JWT/settings matching the documented scheduler design.
 - [ ] Realtime is enabled only for required tables.
 

@@ -21,10 +21,12 @@ import { useAdminRoomChange } from '../../hooks/useAdminRoomChange';
 import { useAdminNotices } from '../../hooks/useAdminNotices';
 import { useAdminMembershipManager } from '../../hooks/useAdminMembershipManager';
 import { useAdminModals } from '../../hooks/useAdminModals';
+import { useAdminAnalytics } from '../../hooks/useAdminAnalytics';
 import { Skeleton, TableSkeletonRows } from '../../components/ui/Skeleton';
 import { useModalAccessibility } from '../../hooks/useModalAccessibility';
 const MembershipManager = dynamic(() => import('../../components/admin/MembershipManager'));
 const EnterpriseAdminConsole = dynamic(() => import('../../components/admin/EnterpriseAdminConsole'), { ssr: false });
+const AdminAnalytics = dynamic(() => import('../../components/analytics/AdminAnalytics'));
 
 // ----------------- UTILITY TABLE COMPONENT -----------------
 const AdminTable = ({ headers, data, renderRow, emptyMessage, loading = false }) => (
@@ -93,13 +95,14 @@ function AdminDashboardContent() {
   const { notices, loading: noticesLoading, postNotice, deleteNotice } = useAdminNotices(activeTab === 'notices');
   const { owners: membershipOwners, requests: membershipRequests, loading: membershipLoading, processingId: membershipProcessingId, getDaysLeft, sendRenewalEmail, grantMembership, revokeMembership, reviewRequest, refresh: refreshMemberships } = useAdminMembershipManager(activeTab === 'membership');
   const { selectedProperty, selectedOwner, viewPropertyDetails, viewOwnerDetails, closeModals } = useAdminModals();
+  const adminAnalytics = useAdminAnalytics(activeTab === 'analytics');
 
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
-    const allowed = ['overview', 'properties', 'tenants', 'owners', 'users', 'payments', 'prebookings', 'applications', 'approvedapps', 'complaints', 'vacate', 'roomchange', 'notices', 'membership']
+    const allowed = ['overview', 'analytics', 'properties', 'tenants', 'owners', 'users', 'payments', 'prebookings', 'applications', 'approvedapps', 'complaints', 'vacate', 'roomchange', 'notices', 'membership']
     if (allowed.includes(tab)) setActiveTab(tab)
   }, [router.query.tab])
   const [actionKey, setActionKey] = useState(null);
@@ -131,6 +134,7 @@ function AdminDashboardContent() {
 
   // TABS
   const tabs = [
+    { id: 'analytics', label: 'Analytics' },
     { id: 'overview', label: '📊 Overview' },
     { id: 'properties', label: '🏢 Properties' },
     { id: 'tenants', label: '👥 Tenants' },
@@ -219,6 +223,7 @@ function AdminDashboardContent() {
         </div>
         {/* ----- OVERVIEW ----- */}
         {activeTab === 'overview' && <EnterpriseAdminConsole />}
+        {activeTab === 'analytics' && <AdminAnalytics {...adminAnalytics} />}
 
 
         {/* ----- PROPERTIES ----- */}
