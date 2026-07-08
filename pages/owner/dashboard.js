@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import BrandLogo from '../../components/BrandLogo';
 import NotificationBell from '../../components/common/NotificationBell';
 import ThemeToggle from '../../components/common/ThemeToggle';
+import { formatCurrency } from '../../lib/utils';
 
 // Modular Imports
 import { useOwner, OwnerProvider } from '../../context/OwnerContext';
@@ -27,6 +28,9 @@ import { useOwnerAnalytics } from '../../hooks/useOwnerAnalytics';
 // Content Components
 import StatsCards from '../../components/owner/StatsCards';
 import DashboardSectionNav from '../../components/dashboard/DashboardSectionNav';
+import MobileTopbar from '../../components/dashboard/MobileTopbar';
+import MobileBottomNav from '../../components/dashboard/MobileBottomNav';
+import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu';
 
 const RoomList = dynamic(() => import('../../components/owner/RoomList'));
 const TenantTable = dynamic(() => import('../../components/owner/TenantTable'));
@@ -108,6 +112,7 @@ function OwnerDashboardContent() {
     requestMembership
   } = core;
   const [activeTab, setActiveTab] = useState('overview');
+  const [mobileMenu, setMobileMenu] = useState(null);
   const sectionRef = useRef(null);
   const openSection = (tab) => {
     setActiveTab(tab);
@@ -668,12 +673,18 @@ function OwnerDashboardContent() {
     ['pre-bookings', 'Pre-bookings'], ['applications', `Applications (${safeApplications.length})`], ['existing-imports', `Imports (${existingImports.pendingCount})`],
     ['complaints', `Complaints (${stats.totalComplaints || 0})`], ['vacate', `Vacate (${stats.pendingVacate || 0})`], ['room-change', `Room change (${roomChangeRequests.length})`], ['notices', `Notices (${notices.length})`],
   ].map(([id, label]) => ({ id, label }))
+  const ownerViewTitle = ownerTabs.find(item => item.id === activeTab)?.label.replace(/ \(.*\)$/, '') || 'Dashboard'
+  const ownerBottomItems = [
+    { id: 'overview', label: 'Dashboard', icon: '⌂' }, { id: 'rooms', label: 'Rooms', icon: '▦' }, { id: 'tenants', label: 'Tenants', icon: '●' },
+    { id: 'rent-payments', label: 'Payments', icon: '₹' }, { id: 'more', label: 'More', icon: '•••' },
+  ]
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] font-sans">
+    <div className="min-h-screen max-w-full overflow-x-hidden bg-[#f8f9fa] pb-24 font-sans lg:pb-0">
+      <MobileTopbar title={ownerViewTitle} subtitle={property?.name} isHome={activeTab === 'overview'} onBack={() => openSection('overview')} onProfile={() => setMobileMenu('more')} avatar={ownerProfile?.full_name?.charAt(0) || 'O'} controls={<><ThemeToggle compact /><NotificationBell /></>} />
       
       {/* --- NAVBAR (Premium Onyx & Gold) --- */}
-      <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-3 sm:px-6 py-3 sm:py-4 shadow-lg border-b-2 border-orange-500/80">
+      <nav className="hidden bg-[#1a1a1a] text-white sticky top-0 z-50 px-3 sm:px-6 py-3 sm:py-4 shadow-lg border-b-2 border-orange-500/80 lg:block">
         <div className="container mx-auto flex flex-wrap justify-between items-center gap-3">
           <div className="flex items-center gap-3">
             <BrandLogo priority />
@@ -708,28 +719,40 @@ function OwnerDashboardContent() {
       </nav>
 
       <div className="container mx-auto px-3 sm:px-4 py-5 sm:py-8">
+        <section className={`${activeTab === 'overview' ? '' : 'hidden'} mb-4 rounded-2xl border border-orange-500/20 bg-slate-950 p-4 text-white shadow-lg lg:hidden`} aria-label="Current property summary">
+          <div className="flex min-w-0 items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-widest text-orange-400">Current property</p><h1 className="mt-1 truncate text-xl font-bold">{property.name}</h1><p className="mt-1 text-sm text-slate-400">{stats.occupied || 0} occupied · {stats.vacant || 0} available</p></div><span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${membershipActive ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{membershipActive ? 'Active' : 'Inactive'}</span></div>
+          <div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-xl bg-white/10 p-3"><p className="text-xs text-slate-400">Collected</p><p className="mt-1 truncate font-bold">{formatCurrency(stats.totalCollected || 0)}</p></div><div className="rounded-xl bg-white/10 p-3"><p className="text-xs text-slate-400">Pending rent</p><p className="mt-1 truncate font-bold text-orange-300">{formatCurrency(stats.pendingAmount || 0)}</p></div></div>
+          {properties.length > 1 && <select aria-label="Switch current property" value={property.id} onChange={event => selectProperty(event.target.value)} className="mt-3 w-full max-w-full truncate rounded-xl border border-white/20 bg-slate-900 px-3 py-2 text-sm text-white">{properties.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
+        </section>
         
         {/* --- STATS CARDS --- */}
-        <StatsCards stats={{ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length, pendingApplications: safeApplications.length, pendingImports: existingImports.pendingCount, totalComplaints: safeComplaints.length, pendingVacate: safeVacateRequests.filter(request => request.status === 'pending').length, pendingRoomChanges: safeRoomChangeRequests.length, pendingRentConfirmations: safePendingRentPayments.length }} onSelect={openSection} />
+        <div className={activeTab === 'overview' ? '' : 'hidden lg:block'}><StatsCards stats={{ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length, pendingApplications: safeApplications.length, pendingImports: existingImports.pendingCount, totalComplaints: safeComplaints.length, pendingVacate: safeVacateRequests.filter(request => request.status === 'pending').length, pendingRoomChanges: safeRoomChangeRequests.length, pendingRentConfirmations: safePendingRentPayments.length }} onSelect={openSection} /></div>
+
+        <section className={`${activeTab === 'overview' ? '' : 'hidden'} mb-4 md:hidden`} aria-labelledby="owner-action-required"><h2 id="owner-action-required" className="mb-2 text-base font-bold text-slate-900">Action required</h2><div className="grid grid-cols-2 gap-2">{[
+          ['rent-payments', 'Pending payments', safePendingRentPayments.length], ['applications', 'Applications', safeApplications.length],
+          ['complaints', 'Complaints', safeComplaints.length], ['vacate', 'Vacate requests', safeVacateRequests.filter(item => item.status === 'pending').length],
+          ['room-change', 'Room changes', safeRoomChangeRequests.length], ['existing-imports', 'Existing imports', existingImports.pendingCount],
+        ].map(([tab, label, count]) => <button key={tab} type="button" onClick={() => openSection(tab)} className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"><span className="min-w-0 text-xs font-semibold text-slate-600">{label}</span><span className="shrink-0 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-bold text-orange-700">{count}</span></button>)}</div></section>
 
         {searchLower && (
-          <div className="mb-6 rounded-xl border border-orange-100 bg-white p-4 shadow-sm">
+          <div className={`${activeTab === 'overview' ? '' : 'hidden lg:block'} mb-6 rounded-xl border border-orange-100 bg-white p-4 shadow-sm`}>
             <p className="mb-3 text-sm font-semibold text-slate-700">Search results for “{searchTerm.trim()}”</p>
             {searchGroups.length ? <div className="flex flex-wrap gap-2">{searchGroups.map(([tab, label, count]) => <button key={tab} onClick={() => openSection(tab)} className="rounded-full bg-orange-50 px-3 py-1.5 text-sm font-medium text-orange-700 hover:bg-orange-100">{label} ({count})</button>)}</div> : <p className="text-sm text-gray-500">No matching dashboard records.</p>}
           </div>
         )}
 
         {/* --- ACTION BUTTONS (Glassmorphism) --- */}
-        <section className="mb-6 sm:mb-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" aria-labelledby="owner-quick-actions">
+        <section className={`${activeTab === 'overview' ? '' : 'hidden lg:block'} mb-6 sm:mb-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm`} aria-labelledby="owner-quick-actions">
           <div className="mb-3"><h2 id="owner-quick-actions" className="font-bold text-slate-800">Quick actions</h2><p className="text-sm text-slate-500">Manage this property without leaving your current workspace.</p></div>
         <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3">
           <button onClick={() => membershipActive && setShowAddModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-md ${membershipActive ? 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>+ Add Tenant</button>
           <button onClick={() => membershipActive && setShowRoomModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>+ Add Room</button>
           <button onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>📢 Notice</button>
+          <button onClick={() => router.push('/owner/register-property')} className="w-full rounded-full border-2 border-slate-300 px-6 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 sm:hidden">+ Add Property</button>
         </div></section>
 
         {/* --- TABS --- */}
-        <DashboardSectionNav label="Owner dashboard sections" items={ownerTabs} activeId={activeTab} onSelect={openSection} disabled={!membershipActive} />
+        <div className="hidden lg:block"><DashboardSectionNav label="Owner dashboard sections" items={ownerTabs} activeId={activeTab} onSelect={openSection} disabled={!membershipActive} /></div>
 
         {/* --- TAB CONTENT --- */}
         <div ref={sectionRef} className="scroll-mt-28">
@@ -764,6 +787,18 @@ function OwnerDashboardContent() {
         {activeTab === 'notices' && <NoticeList notices={filteredNotices} onDelete={deleteNotice} onPost={() => setShowNoticeModal(true)} isSubmitting={isSubmitting} />}
         </div>
       </div>
+
+      <MobileBottomNav items={ownerBottomItems} activeId={mobileMenu === 'more' ? 'more' : activeTab} onSelect={id => { if (id === 'more') setMobileMenu('more'); else { setMobileMenu(null); openSection(id) } }} />
+      <DashboardMoreMenu open={mobileMenu === 'more'} title="Owner tools" onClose={() => setMobileMenu(null)} items={[
+        { id: 'applications', label: `Applications (${safeApplications.length})`, onClick: () => openSection('applications') },
+        { id: 'imports', label: `Existing imports (${existingImports.pendingCount})`, onClick: () => openSection('existing-imports') },
+        { id: 'history', label: 'Payment history', onClick: () => openSection('payment-history') }, { id: 'prebook', label: 'Pre-bookings', onClick: () => openSection('pre-bookings') },
+        { id: 'complaints', label: 'Complaints', onClick: () => openSection('complaints') }, { id: 'vacate', label: 'Vacate requests', onClick: () => openSection('vacate') },
+        { id: 'change', label: 'Room changes', onClick: () => openSection('room-change') }, { id: 'notices', label: 'Notices', onClick: () => openSection('notices') },
+        { id: 'analytics', label: 'Analytics', onClick: () => openSection('analytics') }, { id: 'archived', label: 'Archived tenants', onClick: () => openSection('archived-tenants') },
+        { id: 'profile', label: 'Owner profile', onClick: () => setShowOwnerProfileModal(true) }, { id: 'settings', label: 'Property settings', onClick: () => setShowSettingsModal(true) },
+        { id: 'add-property', label: 'Add property', onClick: () => router.push('/owner/register-property') }, { id: 'logout', label: 'Logout', danger: true, onClick: async () => { await signOut(); window.location.replace('/login') } },
+      ]} />
 
       {/* --- MODALS --- */}
       <AnimatePresence>

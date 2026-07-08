@@ -2,6 +2,7 @@ import Image from 'next/image'
 
 const sizes = {
   header: 'h-12 sm:h-14 w-auto max-w-[86px]',
+  mobile: 'h-9 w-9',
   login: 'h-36 sm:h-44 w-auto max-w-full',
   footer: 'h-20 w-auto max-w-[124px]',
 }

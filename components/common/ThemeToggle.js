@@ -6,7 +6,7 @@ const labels = {
   system: 'System',
 }
 
-export default function ThemeToggle({ className = '' }) {
+export default function ThemeToggle({ className = '', compact = false }) {
   const { theme, setTheme, modes } = useTheme()
 
   return (
@@ -18,13 +18,13 @@ export default function ThemeToggle({ className = '' }) {
           onClick={() => setTheme(mode)}
           aria-label={`Use ${labels[mode]} theme`}
           aria-pressed={theme === mode}
-          className={`rounded-full px-3 py-1.5 transition focus:outline-none focus:ring-2 focus:ring-orange-300 ${
+          className={`rounded-full ${compact ? 'px-2 py-1' : 'px-3 py-1.5'} transition focus:outline-none focus:ring-2 focus:ring-orange-300 ${
             theme === mode
               ? 'bg-orange-500 text-white shadow'
               : 'text-current hover:bg-white/15'
           }`}
         >
-          {labels[mode]}
+          {compact ? labels[mode][0] : labels[mode]}
         </button>
       ))}
     </div>
