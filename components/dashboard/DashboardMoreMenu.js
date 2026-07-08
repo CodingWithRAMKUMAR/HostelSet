@@ -1,4 +1,86 @@
-export default function DashboardMoreMenu({ open, title = 'More', items, onClose }) {
+import { useEffect } from 'react'
+import BrandLogo from '../BrandLogo'
+
+const DEFAULT_GROUP = 'Menu'
+
+function groupItems(items = []) {
+  return items.reduce((groups, item) => {
+    const name = item.group || DEFAULT_GROUP
+    const existing = groups.find(group => group.name === name)
+    if (existing) existing.items.push(item)
+    else groups.push({ name, items: [item] })
+    return groups
+  }, [])
+}
+
+export default function DashboardMoreMenu({ open, title = 'More', subtitle, items = [], onClose }) {
+  useEffect(() => {
+    if (!open || typeof document === 'undefined') return undefined
+
+    const previousOverflow = document.body.style.overflow
+    const onKeyDown = event => {
+      if (event.key === 'Escape') onClose?.()
+    }
+
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open, onClose])
+
   if (!open) return null
-  return <div className="fixed inset-0 z-[80] bg-black/60 p-3 lg:hidden" role="presentation" onClick={onClose}><div role="dialog" aria-modal="true" aria-labelledby="dashboard-more-title" className="absolute inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] max-h-[70vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl" onClick={event => event.stopPropagation()}><div className="mb-2 flex items-center justify-between px-2"><h2 id="dashboard-more-title" className="font-bold text-slate-900">{title}</h2><button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-sm text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">Close</button></div><div className="grid grid-cols-2 gap-2">{items.map(item => <button key={item.id} type="button" onClick={() => { item.onClick(); onClose() }} className={`min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 ${item.danger ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>{item.label}</button>)}</div></div></div>
+
+  const groups = groupItems(items)
+
+  const selectItem = item => {
+    onClose?.()
+    window.requestAnimationFrame(() => {
+      item.onClick?.()
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    })
+  }
+
+  return (
+    <div className="dashboard-more-overlay lg:hidden" role="presentation">
+      <button type="button" className="dashboard-more-backdrop" onClick={onClose} aria-label="Close menu" />
+      <aside role="dialog" aria-modal="true" aria-labelledby="dashboard-more-title" className="dashboard-more-drawer">
+        <header className="dashboard-more-header">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="dashboard-more-logo"><BrandLogo size="mobile" priority /></div>
+            <div className="min-w-0">
+              <h2 id="dashboard-more-title" className="truncate text-base font-black text-slate-950">{title}</h2>
+              <p className="truncate text-xs font-medium text-slate-500">{subtitle || 'HostelSet dashboard'}</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="dashboard-more-close" aria-label="Close menu">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+
+        <div className="dashboard-more-groups">
+          {groups.map(group => (
+            <section key={group.name} className="dashboard-more-group" aria-label={group.name}>
+              <p className="dashboard-more-group-title">{group.name}</p>
+              <div className="dashboard-more-list">
+                {group.items.map(item => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => selectItem(item)}
+                    className={`dashboard-more-item ${item.danger ? 'danger' : ''}`}
+                  >
+                    <span className="dashboard-more-item-dot" aria-hidden="true" />
+                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </aside>
+    </div>
+  )
 }

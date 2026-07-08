@@ -9,7 +9,7 @@ export default function OverviewSection({ tenant, room, property, owner, pending
   return (
     <div className="grid gap-5 lg:grid-cols-2">
       {/* Room Details */}
-      <section className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm">
+      <section className="max-w-full min-w-0 bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm">
         <h3 className="font-semibold mb-4">🏠 Your Room Details</h3>
         <div className="space-y-3">
           <div className="flex justify-between py-2 border-b">
@@ -20,19 +20,19 @@ export default function OverviewSection({ tenant, room, property, owner, pending
             <span>Sharing Type:</span>
             <span>{getSharingDetails(room.sharing_type || '')?.label || 'N/A'}</span>
           </div>
-          <div className="flex justify-between py-2 border-b">
+          <div className="flex min-w-0 flex-wrap justify-between gap-2 py-2 border-b">
             <span>Monthly Rent:</span>
             <span className="text-green-600 font-semibold">{formatCurrency(room.monthly_rent || 0)}</span>
           </div>
-          <div className="flex justify-between py-2 border-b">
+          <div className="flex min-w-0 flex-wrap justify-between gap-2 py-2 border-b">
             <span>Security Deposit:</span>
             <span className="font-semibold">{formatCurrency(tenant.security_deposit_amount || 0)} ({tenant.security_deposit_status?.replaceAll('_', ' ') || 'not required'})</span>
           </div>
-          <div className="flex justify-between py-2 border-b">
+          <div className="flex min-w-0 flex-wrap justify-between gap-2 py-2 border-b">
             <span>Move-in Date:</span>
             <span>{formatDate(tenant.move_in_date)}</span>
           </div>
-          <div className="flex justify-between py-2 border-b">
+          <div className="flex min-w-0 flex-wrap justify-between gap-2 py-2 border-b">
             <span>Status:</span>
             <span className={`px-2 py-1 rounded-full text-xs ${tenant.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
               {tenant.status === 'active' ? 'Active' : 'Notice Period'}
@@ -72,7 +72,7 @@ export default function OverviewSection({ tenant, room, property, owner, pending
       </section>
 
       {/* Property Information */}
-      <section className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm">
+      <section className="max-w-full min-w-0 bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm">
         <h3 className="font-semibold mb-4">🏢 Property Information</h3>
         <div className="space-y-3">
           <div className="flex justify-between py-2 border-b">

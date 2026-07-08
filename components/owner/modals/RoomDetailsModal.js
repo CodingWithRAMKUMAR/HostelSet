@@ -128,59 +128,59 @@ export default function RoomDetailsModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4"
       onClick={onClose}
     >
       <motion.div
         initial={{ scale: 0.95, y: 20 }}
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.95, y: 20 }}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden"
+        className="flex max-h-[85dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-[#1a1a1a] p-6 border-b-2 border-orange-500/80 flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-white tracking-tight">
+        <div className="flex shrink-0 items-center justify-between border-b-2 border-orange-500/80 bg-[#1a1a1a] p-4">
+          <h2 className="truncate text-lg sm:text-xl font-bold text-white tracking-tight">
             Room {room.room_number} Details
           </h2>
           <button 
             onClick={onClose} 
-            className="text-gray-400 hover:text-white text-2xl transition"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-2xl text-gray-400 transition hover:bg-white/10 hover:text-white"
           >
             &times;
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto max-h-[70vh]">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
             {/* Left Column: Room Information */}
             <div>
-              <h3 className="font-semibold text-lg text-gray-800 mb-4 border-b border-gray-200 pb-2">Room Information</h3>
+              <h3 className="font-semibold text-base text-gray-800 mb-3 border-b border-gray-200 pb-2">Room Information</h3>
               <div className="space-y-3 text-sm">
                 <div>
                   <label className="mb-1 block text-gray-500">Room Number</label>
-                  <input required value={roomSettings.room_number} onChange={event => setRoomSettings({...roomSettings, room_number:event.target.value})} className="w-full rounded-lg border px-3 py-2" />
+                  <input required value={roomSettings.room_number} onChange={event => setRoomSettings({...roomSettings, room_number:event.target.value})} className="w-full rounded-lg border px-3 py-2 text-sm" />
                 </div>
                 <div>
                   <label className="mb-1 block text-gray-500">Monthly Rent</label>
-                  <input type="number" min="0" step="0.01" value={roomSettings.monthly_rent} onChange={event => setRoomSettings({...roomSettings, monthly_rent:event.target.value})} className="w-full rounded-lg border px-3 py-2" />
+                  <input type="number" min="0" step="0.01" value={roomSettings.monthly_rent} onChange={event => setRoomSettings({...roomSettings, monthly_rent:event.target.value})} className="w-full rounded-lg border px-3 py-2 text-sm" />
                 </div>
                 <div>
                   <label className="mb-1 block text-gray-500">Capacity</label>
-                  <input type="number" min={Math.max(1, room.current_occupants)} step="1" value={roomSettings.capacity} onChange={event => setRoomSettings({...roomSettings, capacity:event.target.value})} className="w-full rounded-lg border px-3 py-2" />
+                  <input type="number" min={Math.max(1, room.current_occupants)} step="1" value={roomSettings.capacity} onChange={event => setRoomSettings({...roomSettings, capacity:event.target.value})} className="w-full rounded-lg border px-3 py-2 text-sm" />
                   <p className="mt-1 text-xs text-gray-400">Current occupants: {room.current_occupants}</p>
                 </div>
                 <div>
                   <label className="mb-1 block text-gray-500">Sharing Type</label>
-                  <select value={roomSettings.sharing_type} onChange={event => setRoomSettings({...roomSettings, sharing_type:event.target.value})} className="w-full rounded-lg border px-3 py-2">
+                  <select value={roomSettings.sharing_type} onChange={event => setRoomSettings({...roomSettings, sharing_type:event.target.value})} className="w-full rounded-lg border px-3 py-2 text-sm">
                     <option value="single">Single Sharing</option><option value="double">Double Sharing</option><option value="triple">Triple Sharing</option><option value="four">Four Sharing</option><option value="five">Five Sharing</option>
                   </select>
                 </div>
                 <div>
                   <label className="mb-1 block text-gray-500">Room category</label>
-                  <select value={roomSettings.room_audience} onChange={e => setRoomSettings({...roomSettings, room_audience:e.target.value})} className="w-full rounded-lg border px-3 py-2">
+                  <select value={roomSettings.room_audience} onChange={e => setRoomSettings({...roomSettings, room_audience:e.target.value})} className="w-full rounded-lg border px-3 py-2 text-sm">
                     <option value="boys">Boys Room</option><option value="girls">Girls Room</option><option value="coliving">Co-living Room</option>
                   </select>
                 </div>
@@ -195,13 +195,13 @@ export default function RoomDetailsModal({
 
             {/* Right Column: Current Residents */}
             <div>
-              <h3 className="font-semibold text-lg text-gray-800 mb-4 border-b border-gray-200 pb-2">Current Residents</h3>
+              <h3 className="font-semibold text-base text-gray-800 mb-3 border-b border-gray-200 pb-2">Current Residents</h3>
               {tenantsInRoom.length === 0 ? (
                 <p className="text-gray-400 text-sm">No tenants currently in this room.</p>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {tenantsInRoom.map((tenant) => (
-                    <div key={tenant.id} className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                    <div key={tenant.id} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
                       <div className="flex justify-between items-start">
                         <div>
                           <p className="font-semibold text-gray-800">{tenant.name}</p>
@@ -244,7 +244,7 @@ export default function RoomDetailsModal({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-100 flex justify-end">
+        <div className="sticky bottom-0 shrink-0 border-t border-gray-100 bg-white p-3 flex justify-end">
           <button 
             onClick={onClose} 
             className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-2 rounded-lg font-medium transition"

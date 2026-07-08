@@ -1,68 +1,21 @@
+import { useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { useNotificationContext } from '../../context/NotificationContext'
 import { formatDate } from '../../lib/utils'
-
 export default function NotificationDrawer({ open, onClose }) {
-  const router = useRouter()
-  const {
-    notifications,
-    loading,
-    hasMore,
-    loadMore,
-    markRead,
-    markAllRead,
-    browserPermission,
-    requestBrowserPermission,
-  } = useNotificationContext()
-
-  if (!open) return null
-
-  const openNotification = async (notification) => {
-    if (!notification.is_read) await markRead(notification.id)
-    if (notification.action_url) router.push(notification.action_url)
-    onClose()
-  }
-
-  return (
-    <div className="fixed inset-0 z-[90]" role="dialog" aria-modal="true" aria-label="Notifications">
-      <button className="absolute inset-0 bg-black/30" onClick={onClose} aria-label="Close notifications" />
-      <aside className="absolute right-0 top-0 h-full w-full max-w-sm overflow-y-auto bg-white shadow-2xl">
-        <div className="sticky top-0 z-10 border-b bg-white p-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-bold text-slate-900">Notifications</h2>
-            <button onClick={onClose} className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100" aria-label="Close">x</button>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button onClick={markAllRead} className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">Mark all read</button>
-            {browserPermission !== 'granted' && browserPermission !== 'unsupported' && (
-              <button onClick={requestBrowserPermission} className="rounded-full border border-orange-200 px-3 py-1.5 text-xs font-semibold text-orange-700">Enable Notifications</button>
-            )}
-          </div>
-        </div>
-        <div className="divide-y">
-          {loading && <p className="p-4 text-sm text-slate-500">Loading notifications...</p>}
-          {!loading && notifications.length === 0 && <p className="p-4 text-sm text-slate-500">No notifications yet.</p>}
-          {notifications.map(notification => (
-            <button
-              key={notification.id}
-              onClick={() => openNotification(notification)}
-              className={`block w-full p-4 text-left hover:bg-orange-50 focus:bg-orange-50 focus:outline-none ${notification.is_read ? 'bg-white' : 'bg-orange-50/60'}`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <p className="font-semibold text-slate-900">{notification.title}</p>
-                {!notification.is_read && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-orange-500" />}
-              </div>
-              <p className="mt-1 text-sm text-slate-600">{notification.message}</p>
-              <p className="mt-2 text-xs text-slate-400">{formatDate(notification.created_at)}</p>
-            </button>
-          ))}
-        </div>
-        {hasMore && (
-          <div className="p-4">
-            <button onClick={loadMore} className="w-full rounded-lg border border-slate-200 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Load more</button>
-          </div>
-        )}
-      </aside>
-    </div>
-  )
+  const router=useRouter(); const { notifications,loading,hasMore,loadMore,markRead,markAllRead,browserPermission,requestBrowserPermission }=useNotificationContext()
+  useEffect(() => {
+    if (!open) return undefined
+    const previousOverflow = document.body.style.overflow
+    const key=e=>e.key==='Escape'&&onClose()
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown',key)
+    return()=>{
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown',key)
+    }
+  },[open,onClose])
+  if(!open)return null
+  const openNotification=async n=>{ if(!n.is_read)await markRead(n.id); if(n.action_url)router.push(n.action_url); onClose() }
+  return <div className="fixed inset-0 z-[9999] overflow-hidden" role="dialog" aria-modal="true" aria-label="Notifications"><button className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} aria-label="Close notifications"/><aside className="fixed right-0 top-0 flex h-dvh w-[min(420px,92vw)] min-w-0 flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"><header className="shrink-0 border-b border-slate-200 p-4 dark:border-slate-700"><div className="flex items-center justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-[.18em] text-orange-500">Inbox</p><h2 className="mt-1 truncate text-lg font-bold text-slate-900 dark:text-white">Notifications</h2></div><button onClick={onClose} className="dashboard-icon-button !border-slate-200 !bg-slate-100 !text-slate-600 dark:!border-slate-700 dark:!bg-slate-800 dark:!text-slate-200" aria-label="Close"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><div className="mt-3 flex flex-wrap gap-2"><button onClick={markAllRead} className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white dark:bg-orange-500">Mark all read</button>{browserPermission!=='granted'&&browserPermission!=='unsupported'&&<button onClick={requestBrowserPermission} className="rounded-xl border border-orange-200 px-3 py-2 text-xs font-semibold text-orange-700 dark:border-orange-500/40 dark:text-orange-300">Enable alerts</button>}</div></header><div className="min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden p-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">{loading&&<p className="p-4 text-sm text-slate-500 dark:text-slate-400">Loading notifications…</p>}{!loading&&notifications.length===0&&<div className="p-8 text-center"><div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-xl dark:bg-slate-800">✓</div><p className="mt-4 font-semibold text-slate-800 dark:text-white">You’re all caught up</p><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">New updates will appear here.</p></div>}{notifications.map(n=><button key={n.id} onClick={()=>openNotification(n)} className={`flex w-full min-w-0 gap-2 rounded-2xl border p-3 text-left shadow-sm transition ${n.is_read?'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800':'border-orange-200 bg-orange-50 dark:border-orange-500/40 dark:bg-orange-500/10'}`}><span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full bg-orange-500 ${n.is_read?'opacity-0':'opacity-100'}`}/><span className="min-w-0"><span className="block break-words text-sm font-semibold leading-tight text-slate-900 dark:text-white">{n.title}</span><span className="mt-1 block break-words text-xs leading-5 text-slate-600 dark:text-slate-300">{n.message}</span><span className="mt-2 block text-[11px] text-slate-400">{formatDate(n.created_at)}</span></span></button>)}</div>{hasMore&&<footer className="shrink-0 border-t border-slate-200 p-3 dark:border-slate-700"><button onClick={loadMore} className="w-full rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Load more</button></footer>}</aside></div>
 }

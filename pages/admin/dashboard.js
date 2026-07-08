@@ -27,6 +27,12 @@ import { useModalAccessibility } from '../../hooks/useModalAccessibility';
 import AdminGlobalSearch from '../../components/admin/AdminGlobalSearch';
 import { displayBloodGroup } from '../../lib/bloodGroups';
 import DashboardSectionNav from '../../components/dashboard/DashboardSectionNav';
+import DashboardSidebar from '../../components/dashboard/DashboardSidebar';
+import MobileTopbar from '../../components/dashboard/MobileTopbar';
+import MobileBottomNav from '../../components/dashboard/MobileBottomNav';
+import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu';
+import AccountMenu from '../../components/dashboard/AccountMenu';
+import { resetDashboardScroll } from '../../lib/dashboardScroll';
 const MembershipManager = dynamic(() => import('../../components/admin/MembershipManager'));
 const EnterpriseAdminConsole = dynamic(() => import('../../components/admin/EnterpriseAdminConsole'), { ssr: false });
 const AdminAnalytics = dynamic(() => import('../../components/analytics/AdminAnalytics'));
@@ -82,10 +88,12 @@ function AdminDashboardContent() {
   const router = useRouter();
   const { globalStats, statsLoading, realtimeConnected, refreshStats } = useAdmin();
   const [activeTab, setActiveTab] = useState('overview');
+  const [mobileMenu, setMobileMenu] = useState(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const sectionRef = useRef(null);
   const openSection = (tab) => {
     setActiveTab(tab);
-    window.requestAnimationFrame(() => sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll();
   };
   
   // Only the visible tab loads its dataset. This keeps login fast and reduces database traffic.
@@ -112,7 +120,7 @@ function AdminDashboardContent() {
 
   useEffect(() => {
     const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
-    const allowed = ['overview', 'analytics', 'properties', 'tenants', 'owners', 'users', 'payments', 'prebookings', 'applications', 'approvedapps', 'complaints', 'vacate', 'roomchange', 'notices', 'membership']
+    const allowed = ['overview', 'analytics', 'global-search', 'properties', 'tenants', 'owners', 'users', 'payments', 'prebookings', 'applications', 'approvedapps', 'complaints', 'vacate', 'roomchange', 'notices', 'membership']
     if (allowed.includes(tab)) setActiveTab(tab)
   }, [router.query.tab])
   const [actionKey, setActionKey] = useState(null);
@@ -145,6 +153,7 @@ function AdminDashboardContent() {
   // TABS
   const tabs = [
     { id: 'analytics', label: 'Analytics' },
+    { id: 'global-search', label: 'Global Search' },
     { id: 'overview', label: '📊 Overview' },
     { id: 'properties', label: '🏢 Properties' },
     { id: 'tenants', label: '👥 Tenants' },
@@ -171,12 +180,37 @@ function AdminDashboardContent() {
     'Pending Complaints': 'complaints',
     'Pending Vacates': 'vacate',
   })[label];
+  const adminSidebarItems = tabs.map(item => ({ ...item, icon: ({overview:'dashboard',analytics:'analytics',properties:'rooms',tenants:'users',owners:'users',users:'users',payments:'payments',complaints:'complaints',notices:'notices'})[item.id] || 'settings' }))
+  const adminBottomItems = [{id:'overview',label:'Dashboard',icon:'dashboard'},{id:'search',label:'Search',icon:'search'},{id:'properties',label:'Properties',icon:'rooms'},{id:'tenants',label:'Tenants',icon:'users'},{id:'more',label:'More',icon:'more'}]
+  const adminTitle = tabs.find(item=>item.id===activeTab)?.label.replace(/^\S+\s*/,'') || 'Dashboard'
+  const adminMoreItems = [
+    { id: 'overview', group: 'Platform', label: 'Dashboard', onClick: () => openSection('overview') },
+    { id: 'properties', group: 'Platform', label: 'Properties', onClick: () => openSection('properties') },
+    { id: 'owners', group: 'Platform', label: 'Owners', onClick: () => openSection('owners') },
+    { id: 'tenants', group: 'Platform', label: 'Tenants', onClick: () => openSection('tenants') },
+    { id: 'payments', group: 'Operations', label: 'Payments', onClick: () => openSection('payments') },
+    { id: 'applications', group: 'Operations', label: 'Applications', onClick: () => openSection('applications') },
+    { id: 'prebookings', group: 'Operations', label: 'Pre-bookings', onClick: () => openSection('prebookings') },
+    { id: 'approvedapps', group: 'Operations', label: 'Approved apps', onClick: () => openSection('approvedapps') },
+    { id: 'complaints', group: 'Operations', label: 'Complaints', onClick: () => openSection('complaints') },
+    { id: 'vacate', group: 'Operations', label: 'Vacates', onClick: () => openSection('vacate') },
+    { id: 'roomchange', group: 'Operations', label: 'Room changes', onClick: () => openSection('roomchange') },
+    { id: 'analytics', group: 'Insights', label: 'Analytics', onClick: () => openSection('analytics') },
+    { id: 'global-search', group: 'Insights', label: 'Global search', onClick: () => openSection('global-search') },
+    { id: 'users', group: 'Insights', label: 'Users', onClick: () => openSection('users') },
+    { id: 'notices', group: 'Account', label: 'Notices', onClick: () => openSection('notices') },
+    { id: 'notifications', group: 'Account', label: 'Notifications', onClick: () => window.dispatchEvent(new Event('hostelset:open-notifications')) },
+    { id: 'membership', group: 'Account', label: 'Membership', onClick: () => openSection('membership') },
+    { id: 'logout', group: 'Account', label: 'Logout', danger: true, onClick: handleLogout },
+  ]
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] font-sans selection:bg-orange-500 selection:text-white">
+    <div className="dashboard-shell min-h-screen max-w-full overflow-x-hidden bg-[#f8f9fa] pb-24 font-sans selection:bg-orange-500 selection:text-white lg:pb-0">
+      <MobileTopbar title={adminTitle} subtitle="Platform administration" isHome={activeTab==='overview'} onBack={()=>openSection('overview')} onProfile={()=>setProfileMenuOpen(value=>!value)} avatar="A" controls={<><ThemeToggle compact/><NotificationBell listenForGlobalOpen /></>} accountMenu={<AccountMenu open={profileMenuOpen} onClose={()=>setProfileMenuOpen(false)} name="Administrator" subtitle="HostelSet platform" avatar="A" actions={[{label:'Refresh dashboard',onClick:refreshStats},{label:'Logout',onClick:handleLogout,danger:true}]}/>}/>
+      <DashboardSidebar role="Admin" items={adminSidebarItems} activeId={activeTab} onSelect={openSection} footer={<div><p className="text-sm font-bold text-white">Platform console</p><p className={`mt-1 text-xs ${realtimeConnected?'text-emerald-400':'text-slate-400'}`}>{realtimeConnected?'Live data':'Connecting'}</p></div>}/>
       
       {/* ----- NAVBAR ----- */}
-      <nav className="bg-[#1a1a1a] text-white sticky top-0 z-50 px-3 sm:px-6 py-3 sm:py-4 shadow-md border-b-2 border-orange-500/80">
+      <nav className="dashboard-desktop-header">
         <div className="container mx-auto flex flex-wrap justify-between items-center gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <BrandLogo priority />
@@ -187,7 +221,7 @@ function AdminDashboardContent() {
               <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
               {realtimeConnected ? 'Live' : 'Connecting'}
             </span>
-            <ThemeToggle />
+            <ThemeToggle compact />
             <NotificationBell />
             <button onClick={() => refreshStats()} className="text-orange-400 hover:text-orange-300 text-sm font-medium transition">🔄 Refresh</button>
             <button onClick={handleLogout} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-3 sm:px-6 py-2 rounded-full text-sm font-semibold transition shadow-md">Logout</button>
@@ -195,11 +229,11 @@ function AdminDashboardContent() {
         </div>
       </nav>
 
-      <div className="container mx-auto px-3 sm:px-4 py-5 sm:py-8">
-        <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="mb-3"><h1 className="text-lg font-bold text-slate-900">Platform management</h1><p className="text-sm text-slate-500">Search records or open a management section below.</p></div><AdminGlobalSearch onOpen={(group, item) => setSearchDetail({ group, item })} /></section>
+      <main className="dashboard-main container mx-auto min-w-0 px-3 py-5 sm:px-4 sm:py-8">
+        {activeTab === 'overview' && <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="mb-3"><h1 className="text-lg font-bold text-slate-900">Platform management</h1><p className="text-sm text-slate-500">Search records or open a management section below.</p></div><AdminGlobalSearch onOpen={(group, item) => setSearchDetail({ group, item })} /></section>}
         
         {/* ----- STATS CARDS ----- */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mb-6">
+        {activeTab === 'overview' && <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mb-6">
           {statsData.map((stat, index) => {
             const targetTab = tabForStat(stat.label);
             const Card = targetTab ? 'button' : 'div';
@@ -214,13 +248,14 @@ function AdminDashboardContent() {
               </div>
             </Card>
           )})}
-        </div>
+        </div>}
 
         {/* ----- TABS ----- */}
-        <DashboardSectionNav label="Admin dashboard sections" items={tabs} activeId={activeTab} onSelect={openSection} />
+        <div className="hidden"><DashboardSectionNav label="Admin dashboard sections" items={tabs} activeId={activeTab} onSelect={openSection} /></div>
         <div ref={sectionRef} className="scroll-mt-28">
         {/* ----- OVERVIEW ----- */}
         {activeTab === 'overview' && <EnterpriseAdminConsole />}
+        {activeTab === 'global-search' && <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><h2 className="mb-2 text-lg font-bold text-slate-900">Global search</h2><p className="mb-4 text-sm text-slate-500">Search platform records and open matching details.</p><AdminGlobalSearch onOpen={(group, item) => setSearchDetail({ group, item })} /></div>}
         {activeTab === 'analytics' && <AdminAnalytics {...adminAnalytics} />}
 
 
@@ -600,7 +635,6 @@ function AdminDashboardContent() {
           />
         )}
         </div>
-      </div>
 
       {/* ----- DETAIL MODALS ----- */}
       <DetailModal 
@@ -622,6 +656,9 @@ function AdminDashboardContent() {
         data={searchDetail?.item}
       />
       {applicationProof && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="admin-proof-title" onClick={() => setApplicationProof(null)}><div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-4 shadow-2xl" onClick={event => event.stopPropagation()}><div className="mb-3 flex items-center justify-between"><h2 id="admin-proof-title" className="font-bold text-slate-900">Payment proof · {applicationProof.name}</h2><button type="button" onClick={() => setApplicationProof(null)} className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400" aria-label="Close payment proof">Close</button></div><img src={applicationProof.url} alt={`Payment proof submitted by ${applicationProof.name}`} className="mx-auto max-h-[75vh] max-w-full rounded-xl border object-contain" /></div></div>}
+    </main>
+    <MobileBottomNav items={adminBottomItems} activeId={mobileMenu==='more'?'more':activeTab} onSelect={id=>{if(id==='more')setMobileMenu('more');else if(id==='search'){setMobileMenu(null);openSection('global-search');resetDashboardScroll()}else openSection(id)}}/>
+    <DashboardMoreMenu open={mobileMenu==='more'} title="Admin tools" subtitle="Platform administration" onClose={()=>setMobileMenu(null)} items={adminMoreItems}/>
     </div>
   );
 }

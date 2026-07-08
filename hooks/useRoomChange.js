@@ -47,7 +47,7 @@ export function useRoomChange(tenant, refreshData) {
 
       const available = allRooms.filter(room => room.current_occupants < room.capacity);
       setAvailableRooms(available);
-      if (available.length === 0) toast.info('No rooms available for change.');
+      if (available.length === 0) toast('No rooms available for change.', { icon: 'ℹ️' });
     } catch (error) {
       console.error('Fetch available rooms error:', error);
       toast.error('Failed to load available rooms');
