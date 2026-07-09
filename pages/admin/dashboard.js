@@ -33,6 +33,7 @@ import MobileBottomNav from '../../components/dashboard/MobileBottomNav';
 import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu';
 import AccountMenu from '../../components/dashboard/AccountMenu';
 import { resetDashboardScroll } from '../../lib/dashboardScroll';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import AdminMobileDashboard from '../../components/admin/mobile/AdminMobileDashboard';
 import AdminMobileSearch from '../../components/admin/mobile/AdminMobileSearch';
 import AdminMobileProperties from '../../components/admin/mobile/AdminMobileProperties';
@@ -150,6 +151,8 @@ function AdminDashboardContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchDetail, setSearchDetail] = useState(null);
   const [applicationProof, setApplicationProof] = useState(null);
+  const hasOpenOverlay = profileMenuOpen || mobileMenu === 'more' || Boolean(searchDetail) || Boolean(applicationProof) || Boolean(selectedProperty) || Boolean(selectedOwner);
+  useBodyScrollLock(hasOpenOverlay);
 
   useEffect(() => {
     const tab = typeof router.query.tab === 'string' ? router.query.tab : ''

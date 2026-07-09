@@ -34,11 +34,13 @@ import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu';
 import DashboardSidebar from '../../components/dashboard/DashboardSidebar';
 import AccountMenu from '../../components/dashboard/AccountMenu';
 import { resetDashboardScroll } from '../../lib/dashboardScroll';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import OwnerMobileDashboard from '../../components/owner/mobile/OwnerMobileDashboard';
 import OwnerMobileRooms from '../../components/owner/mobile/OwnerMobileRooms';
 import OwnerMobileTenants from '../../components/owner/mobile/OwnerMobileTenants';
 import OwnerMobilePayments from '../../components/owner/mobile/OwnerMobilePayments';
 import OwnerMobileMore from '../../components/owner/mobile/OwnerMobileMore';
+import OwnerMobileRoomDetailsSheet from '../../components/owner/mobile/OwnerMobileRoomDetailsSheet';
 
 const OWNER_VIEW_KEYS = {
   OVERVIEW: 'overview',
@@ -238,6 +240,8 @@ function OwnerDashboardContent() {
   const [loadingArchivedTenantId, setLoadingArchivedTenantId] = useState(null);
   const profileCache = useRef(new Map());
   const paymentCache = useRef(new Map());
+  const hasOpenOverlay = showPaymentModal || showConfirmDeleteModal || showSettingsModal || showAddModal || showRoomModal || showNoticeModal || showMembershipModal || showOwnerProfileModal || showArchivedHistoryModal || showComplaintResponseModal || showRoomChangeReasonModal || Boolean(selectedVacateRequest) || showPaymentConfirmModal || showRoomDetailsModal || showTenantPaymentsModal || showTenantProfileModal || showScreenshotModal || profileMenuOpen || mobileMenu === 'more';
+  useBodyScrollLock(hasOpenOverlay);
 
   // ----------------------------------------------------------------
   // FETCH FUNCTIONS FOR HISTORY & PROFILE
@@ -837,9 +841,9 @@ function OwnerDashboardContent() {
     if (activeTab === 'rent-payments') return <OwnerMobilePayments {...common} payments={filteredPendingPayments} onBack={() => openSection('overview')} onConfirm={(id) => handleReviewRentPayment(id, true)} onReject={(id) => handleReviewRentPayment(id, false)} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={isSubmitting} />
     if (activeTab === 'overview') return <OwnerMobileDashboard {...common} stats={stats} counts={{ tenants: safeTenants.length, applications: safeApplications.length, complaints: safeComplaints.length, payments: safePendingRentPayments.length, vacate: safeVacateRequests.filter(item => item.status === 'pending').length, roomChanges: safeRoomChangeRequests.length }} onNavigate={openSection} />
     return (
-      <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-50 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))]">
+      <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
         <MobileTopbar title={ownerViewTitle} subtitle={property?.name} isHome={false} onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} avatar={ownerProfile?.full_name?.charAt(0) || 'O'} controls={<NotificationBell listenForGlobalOpen />} />
-        <main className="mx-auto max-w-md space-y-3 px-3 py-3">
+        <main className="mx-auto max-w-md space-y-2 px-3 py-2">
           {activeTab === 'notices' && <button type="button" onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive || isSubmitting} className="w-full rounded-2xl bg-orange-500 px-3 py-2 text-sm font-black text-white shadow-sm disabled:opacity-50">+ Add Notice</button>}
           {renderOwnerView()}
         </main>
@@ -851,6 +855,13 @@ function OwnerDashboardContent() {
     <div className="dashboard-shell min-h-screen max-w-full overflow-x-hidden bg-[#f8f9fa] pb-[calc(6rem_+_env(safe-area-inset-bottom))] font-sans lg:pb-0">
       <div className="lg:hidden">
         {renderOwnerMobileView()}
+        <OwnerMobileRoomDetailsSheet
+          room={showRoomDetailsModal ? selectedRoom : null}
+          tenants={selectedRoom ? getTenantsInRoom(selectedRoom.id) : []}
+          onClose={() => setShowRoomDetailsModal(false)}
+          onAddTenant={() => { setShowRoomDetailsModal(false); membershipActive && setShowAddModal(true); }}
+          onUpdated={async (updated) => { setRooms(current => current.map(room => room.id === updated.id ? updated : room)); setSelectedRoom(updated); await loadData(true); }}
+        />
         <AccountMenu open={profileMenuOpen} onClose={() => setProfileMenuOpen(false)} name={ownerProfile?.full_name || 'Owner'} subtitle={property?.name} avatar={ownerProfile?.full_name?.charAt(0) || 'O'} actions={[{label:'Edit profile',onClick:()=>setShowOwnerProfileModal(true)},{label:'Property settings',onClick:()=>setShowSettingsModal(true)},{label:'Add property',onClick:()=>router.push('/owner/register-property')},{label:'Logout',onClick:logout,danger:true}]}/>
         <MobileBottomNav items={ownerBottomItems} activeId={mobileMenu === 'more' ? 'more' : activeTab} onSelect={id => { if (id === 'more') setMobileMenu('more'); else { setMobileMenu(null); openSection(id) } }} />
         <OwnerMobileMore open={mobileMenu === 'more'} subtitle={property?.name} onClose={() => setMobileMenu(null)} items={ownerMobileMoreItems} />
@@ -977,7 +988,7 @@ function OwnerDashboardContent() {
         {showRoomChangeReasonModal && selectedRoomChangeRequest && <RoomChangeReasonModal key="room-change-reason-modal" reason={rejectionReason} setReason={setRejectionReason} onReject={handleRejectRoomChange} onCancel={() => { setShowRoomChangeReasonModal(false); setSelectedRoomChangeRequest(null); setRejectionReason(''); }} isSubmitting={isSubmitting} />}
         {selectedVacateRequest && <VacateRejectionModal key="vacate-rejection-modal" request={selectedVacateRequest} reason={vacateRejectionReason} setReason={setVacateRejectionReason} onReject={async () => { const rejected = await rejectVacateRequest(selectedVacateRequest.id, vacateRejectionReason); if (rejected) { setSelectedVacateRequest(null); setVacateRejectionReason(''); } }} onCancel={() => { if (!vacateRejectingId) { setSelectedVacateRequest(null); setVacateRejectionReason(''); } }} isSubmitting={Boolean(vacateRejectingId)} />}
         {showPaymentConfirmModal && confirmingTenant && <PaymentConfirmModal key="payment-confirm-modal" tenant={confirmingTenant} onConfirm={handleConfirmPendingPayment} onCancel={() => { if (!isSubmitting) { setShowPaymentConfirmModal(false); setConfirmingTenant(null); } }} isSubmitting={isSubmitting} onViewScreenshot={openSignedPaymentScreenshot} />}
-        {showRoomDetailsModal && selectedRoom && <RoomDetailsModal key="room-details-modal" room={selectedRoom} tenantsInRoom={getTenantsInRoom(selectedRoom.id)} onClose={() => setShowRoomDetailsModal(false)} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} onUpdated={async (updated) => { setRooms(current => current.map(room => room.id === updated.id ? updated : room)); setSelectedRoom(updated); await loadData(true); }} />}
+        {showRoomDetailsModal && selectedRoom && <div key="room-details-modal" className="hidden lg:block"><RoomDetailsModal room={selectedRoom} tenantsInRoom={getTenantsInRoom(selectedRoom.id)} onClose={() => setShowRoomDetailsModal(false)} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} onUpdated={async (updated) => { setRooms(current => current.map(room => room.id === updated.id ? updated : room)); setSelectedRoom(updated); await loadData(true); }} /></div>}
         
         {/* History Modal */}
         {showTenantPaymentsModal && selectedTenantForPayments && (

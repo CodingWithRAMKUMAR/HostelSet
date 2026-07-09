@@ -3,13 +3,13 @@
 export default function MobileTopbar({ title, subtitle, isHome, onBack, controls, onProfile, avatar = 'U', accountMenu }) {
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/95 pt-[env(safe-area-inset-top)] text-white backdrop-blur lg:hidden">
-      <div className="flex min-h-[52px] w-full min-w-0 items-center gap-1.5 px-2.5 py-1.5">
+      <div className="flex min-h-[44px] w-full min-w-0 items-center gap-1.5 px-2.5 py-1">
         {isHome ? (
-          <div className="w-10 shrink-0 overflow-hidden">
+          <div className="w-8 shrink-0 overflow-hidden">
             <BrandLogo size="mobile" priority />
           </div>
         ) : (
-          <button type="button" onClick={onBack} aria-label="Back to dashboard" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
+          <button type="button" onClick={onBack} aria-label="Back to dashboard" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/10 text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
             &larr;
           </button>
         )}
@@ -19,7 +19,7 @@ export default function MobileTopbar({ title, subtitle, isHome, onBack, controls
         </div>
         <div className="relative flex shrink-0 items-center gap-0.5">
           {controls}
-          <button type="button" onClick={onProfile} aria-label="Open account menu" className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-sm font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">
+          <button type="button" onClick={onProfile} aria-label="Open account menu" className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-xs font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">
             {avatar}
           </button>
           {accountMenu}

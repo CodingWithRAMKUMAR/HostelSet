@@ -1,7 +1,28 @@
 import { useEffect } from 'react'
 import BrandLogo from '../BrandLogo'
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
+import DashboardIcon from './DashboardIcon'
 
 const DEFAULT_GROUP = 'Menu'
+const iconFor = item => item.icon || ({
+  overview: 'dashboard',
+  dashboard: 'dashboard',
+  rooms: 'rooms',
+  tenants: 'users',
+  users: 'users',
+  payments: 'payments',
+  rent: 'payments',
+  applications: 'requests',
+  complaints: 'complaints',
+  notices: 'notices',
+  analytics: 'analytics',
+  settings: 'settings',
+  logout: 'settings',
+  profile: 'users',
+  'add-property': 'rooms',
+  imports: 'requests',
+  vacate: 'requests',
+})[item.id] || 'dashboard'
 
 function groupItems(items = []) {
   return items.reduce((groups, item) => {
@@ -14,19 +35,18 @@ function groupItems(items = []) {
 }
 
 export default function DashboardMoreMenu({ open, title = 'More', subtitle, items = [], onClose }) {
+  useBodyScrollLock(open)
+
   useEffect(() => {
     if (!open || typeof document === 'undefined') return undefined
 
-    const previousOverflow = document.body.style.overflow
     const onKeyDown = event => {
       if (event.key === 'Escape') onClose?.()
     }
 
-    document.body.style.overflow = 'hidden'
     document.addEventListener('keydown', onKeyDown)
 
     return () => {
-      document.body.style.overflow = previousOverflow
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [open, onClose])
@@ -51,8 +71,8 @@ export default function DashboardMoreMenu({ open, title = 'More', subtitle, item
           <div className="flex min-w-0 items-center gap-3">
             <div className="dashboard-more-logo"><BrandLogo size="mobile" priority /></div>
             <div className="min-w-0">
-              <h2 id="dashboard-more-title" className="truncate text-base font-black text-slate-950">{title}</h2>
-              <p className="truncate text-xs font-medium text-slate-500">{subtitle || 'HostelSet dashboard'}</p>
+              <h2 id="dashboard-more-title" className="truncate text-base font-black text-white">{title}</h2>
+              <p className="truncate text-xs font-medium text-slate-400">{subtitle || 'HostelSet dashboard'}</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="dashboard-more-close" aria-label="Close menu">
@@ -72,7 +92,7 @@ export default function DashboardMoreMenu({ open, title = 'More', subtitle, item
                     onClick={() => selectItem(item)}
                     className={`dashboard-more-item ${item.danger ? 'danger' : ''}`}
                   >
-                    <span className="dashboard-more-item-dot" aria-hidden="true" />
+                    <DashboardIcon name={iconFor(item)} className="h-4 w-4 shrink-0" />
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                   </button>
                 ))}

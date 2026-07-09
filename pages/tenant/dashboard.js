@@ -30,6 +30,7 @@ import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu'
 import DashboardSidebar from '../../components/dashboard/DashboardSidebar'
 import AccountMenu from '../../components/dashboard/AccountMenu'
 import { resetDashboardScroll } from '../../lib/dashboardScroll'
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 import TenantMobileDashboard from '../../components/tenant/mobile/TenantMobileDashboard'
 import TenantMobilePayments from '../../components/tenant/mobile/TenantMobilePayments'
 import TenantMobileNotices from '../../components/tenant/mobile/TenantMobileNotices'
@@ -114,6 +115,8 @@ function TenantDashboardContent() {
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [showScreenshotModal, setShowScreenshotModal] = useState(false)
   const [screenshotUrl, setScreenshotUrl] = useState('')
+  const hasOpenOverlay = showComplaintModal || showPaymentModal || showVacateModal || showProfileModal || showRoomChangeModal || showScreenshotModal || profileMenuOpen || Boolean(mobileMenu)
+  useBodyScrollLock(hasOpenOverlay)
 
   useEffect(() => {
     const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
