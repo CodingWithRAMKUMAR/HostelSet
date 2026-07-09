@@ -13,7 +13,30 @@ const PaymentsSection = ({ payments = [], onViewScreenshot = () => {} }) => {
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
-      <div className="overflow-x-auto">
+      <div className="space-y-2 p-2 md:hidden">
+        {payments.map((payment) => (
+          <div key={payment.id} className="rounded-xl border border-slate-100 bg-white p-2.5 shadow-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-bold leading-tight text-slate-900">{formatCurrency(payment.amount)}</p>
+                <p className="mt-0.5 text-[11px] text-slate-500">{formatDate(payment.payment_date)}</p>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                payment.status === 'success' ? 'bg-green-100 text-green-700' :
+                payment.status === 'payment_pending' ? 'bg-yellow-100 text-yellow-700' :
+                'bg-gray-100 text-gray-600'
+              }`}>
+                {payment.status === 'success' ? 'Success' : payment.status === 'payment_pending' ? 'Pending' : payment.status}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p className="truncate text-xs capitalize text-slate-500">{String(payment.payment_method || '').replaceAll('_', ' ')} · {payment.upi_transaction_id || '—'}</p>
+              {payment.payment_screenshot && <button onClick={() => onViewScreenshot(payment)} className="shrink-0 text-xs font-semibold text-blue-600">View</button>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full">
           <thead className="bg-gray-50 border-b">
             <tr>
@@ -46,7 +69,7 @@ const PaymentsSection = ({ payments = [], onViewScreenshot = () => {} }) => {
                 <td className="px-4 py-3">
                   {payment.payment_screenshot ? (
                     <button
-                      onClick={() => onViewScreenshot(payment.payment_screenshot)}
+                      onClick={() => onViewScreenshot(payment)}
                       className="text-blue-600 hover:text-blue-800 text-sm underline"
                     >
                       View

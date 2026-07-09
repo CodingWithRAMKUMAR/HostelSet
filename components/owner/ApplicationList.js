@@ -67,7 +67,7 @@ export default function ApplicationList({
                 <div className="mt-3">
                   <button
                     type="button"
-                    onClick={() => onViewScreenshot?.(paymentProofUrl)}
+                    onClick={() => onViewScreenshot?.(app)}
                     className="group block w-36 overflow-hidden rounded-lg border border-gray-200 text-left"
                   >
                     <img

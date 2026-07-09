@@ -62,12 +62,12 @@ export default function DashboardMoreMenu({ open, title = 'More', subtitle, item
 
         <div className="dashboard-more-groups">
           {groups.map(group => (
-            <section key={group.name} className="dashboard-more-group" aria-label={group.name}>
+            <section key={`group-${group.name}`} className="dashboard-more-group" aria-label={group.name}>
               <p className="dashboard-more-group-title">{group.name}</p>
               <div className="dashboard-more-list">
                 {group.items.map(item => (
                   <button
-                    key={item.id}
+                    key={`${group.name}-${item.id}`}
                     type="button"
                     onClick={() => selectItem(item)}
                     className={`dashboard-more-item ${item.danger ? 'danger' : ''}`}

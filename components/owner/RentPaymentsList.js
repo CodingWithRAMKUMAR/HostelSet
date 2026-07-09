@@ -18,7 +18,7 @@ export default function RentPaymentsList({ payments = [], onConfirm = () => {}, 
             {p.upi_transaction_id && <p className="text-xs text-gray-500">UTR: {p.upi_transaction_id}</p>}
             {p.payment_screenshot && (
               <div className="mt-2">
-                <button onClick={() => onViewScreenshot(p.payment_screenshot)} className="text-blue-600 underline text-sm">View Screenshot</button>
+                <button onClick={() => onViewScreenshot(p)} className="text-blue-600 underline text-sm">View Screenshot</button>
               </div>
             )}
           </div>

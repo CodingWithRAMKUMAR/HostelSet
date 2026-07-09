@@ -34,6 +34,39 @@ import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu';
 import DashboardSidebar from '../../components/dashboard/DashboardSidebar';
 import AccountMenu from '../../components/dashboard/AccountMenu';
 import { resetDashboardScroll } from '../../lib/dashboardScroll';
+import OwnerMobileDashboard from '../../components/owner/mobile/OwnerMobileDashboard';
+import OwnerMobileRooms from '../../components/owner/mobile/OwnerMobileRooms';
+import OwnerMobileTenants from '../../components/owner/mobile/OwnerMobileTenants';
+import OwnerMobilePayments from '../../components/owner/mobile/OwnerMobilePayments';
+import OwnerMobileMore from '../../components/owner/mobile/OwnerMobileMore';
+
+const OWNER_VIEW_KEYS = {
+  OVERVIEW: 'overview',
+  ANALYTICS: 'analytics',
+  ROOMS: 'rooms',
+  TENANTS: 'tenants',
+  ARCHIVED_TENANTS: 'archived-tenants',
+  RENT_PAYMENTS: 'rent-payments',
+  PAYMENT_HISTORY: 'payment-history',
+  PRE_BOOKINGS: 'pre-bookings',
+  APPLICATIONS: 'applications',
+  EXISTING_IMPORTS: 'existing-imports',
+  COMPLAINTS: 'complaints',
+  VACATE: 'vacate',
+  ROOM_CHANGE: 'room-change',
+  NOTICES: 'notices',
+}
+
+const OWNER_VIEW_ALIASES = {
+  imports: OWNER_VIEW_KEYS.EXISTING_IMPORTS,
+  rent: OWNER_VIEW_KEYS.RENT_PAYMENTS,
+  payments: OWNER_VIEW_KEYS.RENT_PAYMENTS,
+  history: OWNER_VIEW_KEYS.PAYMENT_HISTORY,
+  roomChange: OWNER_VIEW_KEYS.ROOM_CHANGE,
+  roomchange: OWNER_VIEW_KEYS.ROOM_CHANGE,
+}
+
+const OWNER_VIEW_SET = new Set(Object.values(OWNER_VIEW_KEYS))
 
 const RoomList = dynamic(() => import('../../components/owner/RoomList'));
 const TenantTable = dynamic(() => import('../../components/owner/TenantTable'));
@@ -119,7 +152,13 @@ function OwnerDashboardContent() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const sectionRef = useRef(null);
   const openSection = (tab) => {
-    setActiveTab(tab);
+    const nextTab = OWNER_VIEW_ALIASES[tab] || tab;
+    if (!OWNER_VIEW_SET.has(nextTab)) {
+      if (process.env.NODE_ENV !== 'production') console.warn(`[OwnerDashboard] Unknown owner view key: ${tab}`);
+      setActiveTab(OWNER_VIEW_KEYS.OVERVIEW);
+    } else {
+      setActiveTab(nextTab);
+    }
     setMobileMenu(null);
     setProfileMenuOpen(false);
     resetDashboardScroll();
@@ -142,8 +181,8 @@ function OwnerDashboardContent() {
 
   useEffect(() => {
     const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
-    const allowed = ['overview', 'analytics', 'rooms', 'tenants', 'archived-tenants', 'rent-payments', 'payment-history', 'pre-bookings', 'applications', 'existing-imports', 'complaints', 'vacate', 'room-change', 'notices']
-    if (allowed.includes(tab)) setActiveTab(tab)
+    const nextTab = OWNER_VIEW_ALIASES[tab] || tab
+    if (OWNER_VIEW_SET.has(nextTab)) setActiveTab(nextTab)
   }, [router.query.tab])
   const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, propertyReady);
   const { vacateRequests, approveVacateRequest, rejectVacateRequest, rejectingId: vacateRejectingId } = useOwnerVacate(property, propertyReady);
@@ -390,10 +429,10 @@ function OwnerDashboardContent() {
       if (resetError) {
         toast.warning("Tenant created, but password reset email could not be sent.");
       } else {
-        toast.success("📧 Password reset email sent to the tenant!");
+        toast.success("ðŸ“§ Password reset email sent to the tenant!");
       }
 
-      toast.success(`✅ ${appData.name} approved! Tenant created.`);
+      toast.success(`âœ… ${appData.name} approved! Tenant created.`);
       await loadData(true); // Refresh the dashboard
 
     } catch (error) {
@@ -594,6 +633,25 @@ function OwnerDashboardContent() {
     } finally { setIsSubmitting(false); }
   };
 
+  const openSignedPaymentScreenshot = async (proof) => {
+    try {
+      const record = typeof proof === 'string' ? { payment_screenshot: proof } : proof
+      const sourceRecord = record?.payment_screenshot_url && !record?.payment_screenshot
+        ? { ...record, source_type: 'application' }
+        : record
+      const signed = await signPrivateDocumentFields(sourceRecord, ['payment_screenshot'])
+      const url = signed?.payment_screenshot || record?.payment_screenshot_url || null
+      if (!url) {
+        toast.error('Payment proof is unavailable.')
+        return
+      }
+      setScreenshotUrl(url)
+      setShowScreenshotModal(true)
+    } catch {
+      toast.error('Unable to open payment proof. Please try again.')
+    }
+  };
+
   const handlePostNotice = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
@@ -622,10 +680,10 @@ function OwnerDashboardContent() {
           </div>
         </nav>
         <div className="text-center py-20">
-          <div className="text-6xl mb-6">🏠</div>
+          <div className="text-6xl mb-6">ðŸ </div>
           <h1 className="text-2xl font-bold mb-4 text-[#1a1a1a]">Welcome to HOSTELSET!</h1>
           <Link href="/owner/register-property" className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-3 rounded-full font-semibold transition shadow-lg">
-            Register Your First Property →
+            Register Your First Property â†’
           </Link>
         </div>
       </div>
@@ -681,8 +739,8 @@ function OwnerDashboardContent() {
   ].map(([id, label]) => ({ id, label }))
   const ownerViewTitle = ownerTabs.find(item => item.id === activeTab)?.label.replace(/ \(.*\)$/, '') || 'Dashboard'
   const ownerBottomItems = [
-    { id: 'overview', label: 'Dashboard', icon: '⌂' }, { id: 'rooms', label: 'Rooms', icon: '▦' }, { id: 'tenants', label: 'Tenants', icon: '●' },
-    { id: 'rent-payments', label: 'Payments', icon: '₹' }, { id: 'more', label: 'More', icon: '•••' },
+    { id: 'overview', label: 'Dashboard', icon: 'dashboard' }, { id: 'rooms', label: 'Rooms', icon: 'rooms' }, { id: 'tenants', label: 'Tenants', icon: 'users' },
+    { id: 'rent-payments', label: 'Payments', icon: 'payments' }, { id: 'more', label: 'More', icon: 'more' },
   ]
   const ownerBottomIcons = { overview: 'dashboard', rooms: 'rooms', tenants: 'users', 'rent-payments': 'payments', more: 'more' }
   ownerBottomItems.forEach(item => { item.icon = ownerBottomIcons[item.id] })
@@ -691,7 +749,7 @@ function OwnerDashboardContent() {
   const renderOwnerOverview = () => (
     <div className="space-y-4 sm:space-y-6">
       <section className="rounded-2xl border border-orange-500/20 bg-slate-950 p-4 text-white shadow-lg lg:hidden" aria-label="Current property summary">
-        <div className="flex min-w-0 items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-widest text-orange-400">Current property</p><h1 className="mt-1 truncate text-xl font-bold">{property.name}</h1><p className="mt-1 text-sm text-slate-400">{stats.occupied || 0} occupied · {stats.vacant || 0} available</p></div><span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${membershipActive ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{membershipActive ? 'Active' : 'Inactive'}</span></div>
+        <div className="flex min-w-0 items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-widest text-orange-400">Current property</p><h1 className="mt-1 truncate text-xl font-bold">{property.name}</h1><p className="mt-1 text-sm text-slate-400">{stats.occupied || 0} occupied Â· {stats.vacant || 0} available</p></div><span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${membershipActive ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{membershipActive ? 'Active' : 'Inactive'}</span></div>
         <div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-xl bg-white/10 p-3"><p className="text-xs text-slate-400">Collected</p><p className="mt-1 truncate font-bold">{formatCurrency(stats.totalCollected || 0)}</p></div><div className="rounded-xl bg-white/10 p-3"><p className="text-xs text-slate-400">Pending rent</p><p className="mt-1 truncate font-bold text-orange-300">{formatCurrency(stats.pendingAmount || 0)}</p></div></div>
         {properties.length > 1 && <select aria-label="Switch current property" value={property.id} onChange={event => selectProperty(event.target.value)} className="mt-3 w-full max-w-full truncate rounded-xl border border-white/20 bg-slate-900 px-3 py-2 text-sm text-white">{properties.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
       </section>
@@ -703,7 +761,7 @@ function OwnerDashboardContent() {
       ].map(([tab, label, count]) => <button key={tab} type="button" onClick={() => openSection(tab)} className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"><span className="min-w-0 text-xs font-semibold text-slate-600">{label}</span><span className="shrink-0 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-bold text-orange-700">{count}</span></button>)}</div></section>
       {searchLower && (
         <div className="rounded-xl border border-orange-100 bg-white p-4 shadow-sm">
-          <p className="mb-3 text-sm font-semibold text-slate-700">Search results for “{searchTerm.trim()}”</p>
+          <p className="mb-3 text-sm font-semibold text-slate-700">Search results for â€œ{searchTerm.trim()}â€</p>
           {searchGroups.length ? <div className="flex flex-wrap gap-2">{searchGroups.map(([tab, label, count]) => <button key={tab} onClick={() => openSection(tab)} className="rounded-full bg-orange-50 px-3 py-1.5 text-sm font-medium text-orange-700 hover:bg-orange-100">{label} ({count})</button>)}</div> : <p className="text-sm text-gray-500">No matching dashboard records.</p>}
         </div>
       )}
@@ -712,7 +770,7 @@ function OwnerDashboardContent() {
         <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3">
           <button onClick={() => membershipActive && setShowAddModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-md ${membershipActive ? 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>+ Add Tenant</button>
           <button onClick={() => membershipActive && setShowRoomModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>+ Add Room</button>
-          <button onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>📢 Notice</button>
+          <button onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>ðŸ“¢ Notice</button>
           <button onClick={() => router.push('/owner/register-property')} className="w-full rounded-full border-2 border-slate-300 px-6 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 sm:hidden">+ Add Property</button>
         </div>
       </section>
@@ -739,22 +797,64 @@ function OwnerDashboardContent() {
       case 'rooms': return <RoomList rooms={filteredRooms} tenants={safeTenants} vacateRequests={safeVacateRequests} roomMonthlyIncome={roomMonthlyIncome} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />
       case 'tenants': return <TenantTable tenants={filteredTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setPaymentAmount(Number(tenant.pending_amount || tenant.rent_amount || 0)); setCollectionRequestId(crypto.randomUUID()); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />
       case 'archived-tenants': return <ArchivedTenantList tenants={filteredArchivedTenants} onViewHistory={fetchArchivedTenantHistory} loadingId={loadingArchivedTenantId} />
-      case 'rent-payments': return <RentPaymentsList payments={filteredPendingPayments} onConfirm={(id) => handleReviewRentPayment(id, true)} onReject={(id) => handleReviewRentPayment(id, false)} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />
-      case 'payment-history': return <PaymentHistoryTable payments={filteredAllPayments} getRoomNumberById={getRoomNumberById} />
-      case 'pre-bookings': return <PreBookingList bookings={filteredPreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={Boolean(prebookingProcessingId)} />
-      case 'applications': return <ApplicationList applications={filteredApplications} onApprove={(id, data) => approveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={Boolean(applicationProcessingId)} />
+      case 'rent-payments': return <RentPaymentsList payments={filteredPendingPayments} onConfirm={(id) => handleReviewRentPayment(id, true)} onReject={(id) => handleReviewRentPayment(id, false)} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={isSubmitting} />
+      case 'payment-history': return <PaymentHistoryTable payments={filteredAllPayments} getRoomNumberById={getRoomNumberById} onViewScreenshot={openSignedPaymentScreenshot} />
+      case 'pre-bookings': return <PreBookingList bookings={filteredPreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={Boolean(prebookingProcessingId)} />
+      case 'applications': return <ApplicationList applications={filteredApplications} onApprove={(id, data) => approveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={Boolean(applicationProcessingId)} />
       case 'existing-imports': return <div className="space-y-5"><ExistingTenantImportSettings link={existingImports.link} property={property} busy={existingImports.linkBusy} onGenerate={existingImports.rotateLink} onToggle={existingImports.setLinkEnabled} /><ExistingTenantImportList imports={filteredExistingImports} loading={existingImports.loading} total={existingImports.total} page={existingImports.page} pageSize={existingImports.pageSize} processingId={existingImports.processingId} onApprove={existingImports.approve} onReject={existingImports.reject} onPage={existingImports.loadPage} /></div>
       case 'complaints': return <ComplaintList complaints={filteredComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setComplaintResponse(''); setShowComplaintResponseModal(true) }} onResolve={handleResolveComplaint} isSubmitting={isSubmitting} />
       case 'vacate': return <VacateRequestList requests={filteredVacateRequests} onApprove={handleApproveVacate} onReject={(request) => { setSelectedVacateRequest(request); setVacateRejectionReason(''); }} isSubmitting={isSubmitting || Boolean(vacateRejectingId)} />
       case 'room-change': return <RoomChangeRequestList requests={filteredRoomChangeRequests} onApprove={handleApproveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />
       case 'notices': return <NoticeList notices={filteredNotices} onDelete={deleteNotice} onPost={() => setShowNoticeModal(true)} isSubmitting={isSubmitting} />
-      default: return renderOwnerOverview()
+      default:
+        if (process.env.NODE_ENV !== 'production') console.warn(`[OwnerDashboard] No renderer for owner view key: ${activeTab}`)
+        return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">This owner section is not available. Please choose another section from the menu.</div>
     }
+  }
+  const ownerMobileMoreItems = [
+    { id: 'dashboard', group: 'Management', label: 'Dashboard', onClick: () => openSection('overview') },
+    { id: 'rooms', group: 'Management', label: 'Rooms', onClick: () => openSection('rooms') },
+    { id: 'tenants', group: 'Management', label: 'Tenants', onClick: () => openSection('tenants') },
+    { id: 'rent-payments', group: 'Management', label: 'Payments', onClick: () => openSection('rent-payments') },
+    { id: 'applications', group: 'Requests', label: `Applications (${safeApplications.length})`, onClick: () => openSection('applications') },
+    { id: 'imports', group: 'Requests', label: `Existing imports (${existingImports.pendingCount})`, onClick: () => openSection('existing-imports') },
+    { id: 'complaints', group: 'Requests', label: 'Complaints', onClick: () => openSection('complaints') },
+    { id: 'vacate', group: 'Requests', label: 'Vacate requests', onClick: () => openSection('vacate') },
+    { id: 'change', group: 'Requests', label: 'Room changes', onClick: () => openSection('room-change') },
+    { id: 'notices', group: 'Communication', label: 'Notices', onClick: () => openSection('notices') },
+    { id: 'notifications', group: 'Communication', label: 'Notifications', onClick: () => window.dispatchEvent(new Event('hostelset:open-notifications')) },
+    { id: 'history', group: 'Communication', label: 'Payment history', onClick: () => openSection('payment-history') },
+    { id: 'analytics', group: 'Insights', label: 'Analytics', onClick: () => openSection('analytics') },
+    { id: 'profile', group: 'Account', label: 'Owner profile', onClick: () => setShowOwnerProfileModal(true) },
+    { id: 'settings', group: 'Account', label: 'Property settings', onClick: () => setShowSettingsModal(true) },
+    { id: 'add-property', group: 'Account', label: 'Add property', onClick: () => router.push('/owner/register-property') },
+    { id: 'logout', group: 'Account', label: 'Logout', danger: true, onClick: async () => { await signOut(); window.location.replace('/login') } },
+  ]
+  const renderOwnerMobileView = () => {
+    const common = { property, avatar: ownerProfile?.full_name?.charAt(0) || 'O', onProfile: () => setProfileMenuOpen(value => !value) }
+    if (activeTab === 'rooms') return <OwnerMobileRooms {...common} rooms={filteredRooms} tenants={safeTenants} onBack={() => openSection('overview')} onAddRoom={() => membershipActive && setShowRoomModal(true)} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />
+    if (activeTab === 'tenants') return <OwnerMobileTenants {...common} tenants={filteredTenants} onBack={() => openSection('overview')} onAddTenant={() => membershipActive && setShowAddModal(true)} onCollect={(tenant) => { setSelectedTenant(tenant); setPaymentAmount(Number(tenant.pending_amount || tenant.rent_amount || 0)); setCollectionRequestId(crypto.randomUUID()); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onTenantProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} />
+    if (activeTab === 'rent-payments') return <OwnerMobilePayments {...common} payments={filteredPendingPayments} onBack={() => openSection('overview')} onConfirm={(id) => handleReviewRentPayment(id, true)} onReject={(id) => handleReviewRentPayment(id, false)} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={isSubmitting} />
+    if (activeTab === 'overview') return <OwnerMobileDashboard {...common} stats={stats} counts={{ tenants: safeTenants.length, applications: safeApplications.length, complaints: safeComplaints.length, payments: safePendingRentPayments.length, vacate: safeVacateRequests.filter(item => item.status === 'pending').length, roomChanges: safeRoomChangeRequests.length }} onNavigate={openSection} />
+    return (
+      <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-50 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))]">
+        <MobileTopbar title={ownerViewTitle} subtitle={property?.name} isHome={false} onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} avatar={ownerProfile?.full_name?.charAt(0) || 'O'} controls={<NotificationBell listenForGlobalOpen />} />
+        <main className="mx-auto max-w-md space-y-3 px-3 py-3">
+          {activeTab === 'notices' && <button type="button" onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive || isSubmitting} className="w-full rounded-2xl bg-orange-500 px-3 py-2 text-sm font-black text-white shadow-sm disabled:opacity-50">+ Add Notice</button>}
+          {renderOwnerView()}
+        </main>
+      </div>
+    )
   }
 
   return (
-    <div className="dashboard-shell min-h-screen max-w-full overflow-x-hidden bg-[#f8f9fa] pb-24 font-sans lg:pb-0">
-      <MobileTopbar title={ownerViewTitle} subtitle={property?.name} isHome={activeTab === 'overview'} onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} avatar={ownerProfile?.full_name?.charAt(0) || 'O'} controls={<><ThemeToggle compact /><NotificationBell listenForGlobalOpen /></>} accountMenu={<AccountMenu open={profileMenuOpen} onClose={() => setProfileMenuOpen(false)} name={ownerProfile?.full_name || 'Owner'} subtitle={property?.name} avatar={ownerProfile?.full_name?.charAt(0) || 'O'} actions={[{label:'Edit profile',onClick:()=>setShowOwnerProfileModal(true)},{label:'Property settings',onClick:()=>setShowSettingsModal(true)},{label:'Logout',onClick:logout,danger:true}]}/>} />
+    <div className="dashboard-shell min-h-screen max-w-full overflow-x-hidden bg-[#f8f9fa] pb-[calc(6rem_+_env(safe-area-inset-bottom))] font-sans lg:pb-0">
+      <div className="lg:hidden">
+        {renderOwnerMobileView()}
+        <AccountMenu open={profileMenuOpen} onClose={() => setProfileMenuOpen(false)} name={ownerProfile?.full_name || 'Owner'} subtitle={property?.name} avatar={ownerProfile?.full_name?.charAt(0) || 'O'} actions={[{label:'Edit profile',onClick:()=>setShowOwnerProfileModal(true)},{label:'Property settings',onClick:()=>setShowSettingsModal(true)},{label:'Add property',onClick:()=>router.push('/owner/register-property')},{label:'Logout',onClick:logout,danger:true}]}/>
+        <MobileBottomNav items={ownerBottomItems} activeId={mobileMenu === 'more' ? 'more' : activeTab} onSelect={id => { if (id === 'more') setMobileMenu('more'); else { setMobileMenu(null); openSection(id) } }} />
+        <OwnerMobileMore open={mobileMenu === 'more'} subtitle={property?.name} onClose={() => setMobileMenu(null)} items={ownerMobileMoreItems} />
+      </div>
       <DashboardSidebar role="Owner" items={ownerSidebarItems} activeId={activeTab} onSelect={openSection} footer={<div><p className="truncate text-sm font-bold text-white">{property.name}</p><p className="mt-1 text-xs text-slate-400">{membershipActive?'Membership active':'Membership inactive'}</p></div>}/>
       
       {/* --- NAVBAR (Premium Onyx & Gold) --- */}
@@ -769,12 +869,12 @@ function OwnerDashboardContent() {
               <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
               {realtimeConnected ? 'Live' : 'Connecting'}
             </span>
-            <input type="search" aria-label="Search dashboard" placeholder="🔍 Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-[#2a2a2a] border border-gray-700/50 rounded-lg px-3 sm:px-4 py-2 text-sm w-full sm:w-48 md:w-64 order-last lg:order-none text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 transition" />
+            <input type="search" aria-label="Search dashboard" placeholder="ðŸ” Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-[#2a2a2a] border border-gray-700/50 rounded-lg px-3 sm:px-4 py-2 text-sm w-full sm:w-48 md:w-64 order-last lg:order-none text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 transition" />
             <button onClick={() => setShowMembershipModal(true)} disabled={Boolean(pendingMembershipRequest)} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition shadow-sm ${membershipActive ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-500/30' : pendingMembershipRequest ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-wait' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>
-              {membershipActive ? '✅ Active' : pendingMembershipRequest ? '⏳ Approval Pending' : '⭐ Request Membership'}
+              {membershipActive ? 'âœ… Active' : pendingMembershipRequest ? 'â³ Approval Pending' : 'â­ Request Membership'}
             </button>
-            <button onClick={() => setShowOwnerProfileModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5" aria-label="Edit owner profile">👤</button>
-            <button onClick={() => setShowSettingsModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400" aria-label="Open property settings">⚙️</button>
+            <button onClick={() => setShowOwnerProfileModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5" aria-label="Edit owner profile">ðŸ‘¤</button>
+            <button onClick={() => setShowSettingsModal(true)} className="text-gray-400 hover:text-orange-400 transition px-3 py-1.5 rounded-lg hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400" aria-label="Open property settings">âš™ï¸</button>
             <ThemeToggle compact />
             <NotificationBell />
             {properties.length > 1 ? (
@@ -792,10 +892,10 @@ function OwnerDashboardContent() {
         </div>
       </nav>
 
-      <main className="dashboard-main container mx-auto min-w-0 px-3 py-5 sm:px-4 sm:py-8">
-        {activeTab === 'overview' && <section className="mb-4 rounded-2xl border border-orange-500/20 bg-slate-950 p-4 text-white shadow-lg lg:hidden" aria-label="Current property summary">
-          <div className="flex min-w-0 items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-widest text-orange-400">Current property</p><h1 className="mt-1 truncate text-xl font-bold">{property.name}</h1><p className="mt-1 text-sm text-slate-400">{stats.occupied || 0} occupied · {stats.vacant || 0} available</p></div><span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${membershipActive ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{membershipActive ? 'Active' : 'Inactive'}</span></div>
-          <div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-xl bg-white/10 p-3"><p className="text-xs text-slate-400">Collected</p><p className="mt-1 truncate font-bold">{formatCurrency(stats.totalCollected || 0)}</p></div><div className="rounded-xl bg-white/10 p-3"><p className="text-xs text-slate-400">Pending rent</p><p className="mt-1 truncate font-bold text-orange-300">{formatCurrency(stats.pendingAmount || 0)}</p></div></div>
+      <main className="dashboard-main container mx-auto hidden min-w-0 px-3 py-5 sm:px-4 sm:py-8 lg:block">
+        {activeTab === 'overview' && <section className="mb-3 rounded-2xl border border-orange-500/20 bg-slate-950 p-3 text-white shadow-lg lg:hidden" aria-label="Current property summary">
+          <div className="flex min-w-0 items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-widest text-orange-400">Current property</p><h1 className="mt-1 truncate text-xl font-bold">{property.name}</h1><p className="mt-1 text-sm text-slate-400">{stats.occupied || 0} occupied Â· {stats.vacant || 0} available</p></div><span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${membershipActive ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{membershipActive ? 'Active' : 'Inactive'}</span></div>
+          <div className="mt-2 grid grid-cols-2 gap-2"><div className="rounded-xl bg-white/10 p-2"><p className="text-[10px] text-slate-400">Collected</p><p className="truncate text-sm font-bold">{formatCurrency(stats.totalCollected || 0)}</p></div><div className="rounded-xl bg-white/10 p-2"><p className="text-[10px] text-slate-400">Pending rent</p><p className="truncate text-sm font-bold text-orange-300">{formatCurrency(stats.pendingAmount || 0)}</p></div></div>
           {properties.length > 1 && <select aria-label="Switch current property" value={property.id} onChange={event => selectProperty(event.target.value)} className="mt-3 w-full max-w-full truncate rounded-xl border border-white/20 bg-slate-900 px-3 py-2 text-sm text-white">{properties.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
         </section>}
         
@@ -810,18 +910,18 @@ function OwnerDashboardContent() {
 
         {activeTab === 'overview' && searchLower && (
           <div className="mb-6 rounded-xl border border-orange-100 bg-white p-4 shadow-sm">
-            <p className="mb-3 text-sm font-semibold text-slate-700">Search results for “{searchTerm.trim()}”</p>
+            <p className="mb-3 text-sm font-semibold text-slate-700">Search results for â€œ{searchTerm.trim()}â€</p>
             {searchGroups.length ? <div className="flex flex-wrap gap-2">{searchGroups.map(([tab, label, count]) => <button key={tab} onClick={() => openSection(tab)} className="rounded-full bg-orange-50 px-3 py-1.5 text-sm font-medium text-orange-700 hover:bg-orange-100">{label} ({count})</button>)}</div> : <p className="text-sm text-gray-500">No matching dashboard records.</p>}
           </div>
         )}
 
         {/* --- ACTION BUTTONS (Glassmorphism) --- */}
-        {activeTab === 'overview' && <section className="mb-6 sm:mb-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" aria-labelledby="owner-quick-actions">
+        {activeTab === 'overview' && <section className="mb-6 hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:block" aria-labelledby="owner-quick-actions">
           <div className="mb-3"><h2 id="owner-quick-actions" className="font-bold text-slate-800">Quick actions</h2><p className="text-sm text-slate-500">Manage this property without leaving your current workspace.</p></div>
         <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3">
           <button onClick={() => membershipActive && setShowAddModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-md ${membershipActive ? 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>+ Add Tenant</button>
           <button onClick={() => membershipActive && setShowRoomModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>+ Add Room</button>
-          <button onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>📢 Notice</button>
+          <button onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive} className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-sm font-semibold transition shadow-sm border-2 ${membershipActive ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>ðŸ“¢ Notice</button>
           <button onClick={() => router.push('/owner/register-property')} className="w-full rounded-full border-2 border-slate-300 px-6 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 sm:hidden">+ Add Property</button>
         </div></section>}
 
@@ -832,7 +932,7 @@ function OwnerDashboardContent() {
         <div ref={sectionRef} className="scroll-mt-28">
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+            <div className="hidden bg-white rounded-xl border border-gray-100 p-5 shadow-sm lg:block">
               <h2 className="font-semibold text-slate-800 mb-4">Membership</h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                 <div><p className="text-gray-500">Status</p><p className="font-semibold capitalize text-slate-800">{membershipStatus === 'active' ? 'Active' : membershipStatus === 'expired' ? 'Expired' : 'Inactive'}</p></div>
@@ -850,10 +950,10 @@ function OwnerDashboardContent() {
         {activeTab === 'rooms' && <RoomList rooms={filteredRooms} tenants={safeTenants} vacateRequests={safeVacateRequests} roomMonthlyIncome={roomMonthlyIncome} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />}
         {activeTab === 'tenants' && <TenantTable tenants={filteredTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setPaymentAmount(Number(tenant.pending_amount || tenant.rent_amount || 0)); setCollectionRequestId(crypto.randomUUID()); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
         {activeTab === 'archived-tenants' && <ArchivedTenantList tenants={filteredArchivedTenants} onViewHistory={fetchArchivedTenantHistory} loadingId={loadingArchivedTenantId} />}
-        {activeTab === 'rent-payments' && <RentPaymentsList payments={filteredPendingPayments} onConfirm={(id) => handleReviewRentPayment(id, true)} onReject={(id) => handleReviewRentPayment(id, false)} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={isSubmitting} />}
-        {activeTab === 'payment-history' && <PaymentHistoryTable payments={filteredAllPayments} getRoomNumberById={getRoomNumberById} />}
-        {activeTab === 'pre-bookings' && <PreBookingList bookings={filteredPreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={Boolean(prebookingProcessingId)} />}
-        {activeTab === 'applications' && <ApplicationList applications={filteredApplications} onApprove={(id, data) => approveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }} isSubmitting={Boolean(applicationProcessingId)} />}
+        {activeTab === 'rent-payments' && <RentPaymentsList payments={filteredPendingPayments} onConfirm={(id) => handleReviewRentPayment(id, true)} onReject={(id) => handleReviewRentPayment(id, false)} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={isSubmitting} />}
+        {activeTab === 'payment-history' && <PaymentHistoryTable payments={filteredAllPayments} getRoomNumberById={getRoomNumberById} onViewScreenshot={openSignedPaymentScreenshot} />}
+        {activeTab === 'pre-bookings' && <PreBookingList bookings={filteredPreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={Boolean(prebookingProcessingId)} />}
+        {activeTab === 'applications' && <ApplicationList applications={filteredApplications} onApprove={(id, data) => approveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={Boolean(applicationProcessingId)} />}
         {activeTab === 'existing-imports' && <div className="space-y-5"><ExistingTenantImportSettings link={existingImports.link} property={property} busy={existingImports.linkBusy} onGenerate={existingImports.rotateLink} onToggle={existingImports.setLinkEnabled} /><ExistingTenantImportList imports={filteredExistingImports} loading={existingImports.loading} total={existingImports.total} page={existingImports.page} pageSize={existingImports.pageSize} processingId={existingImports.processingId} onApprove={existingImports.approve} onReject={existingImports.reject} onPage={existingImports.loadPage} /></div>}
         {activeTab === 'complaints' && <ComplaintList complaints={filteredComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setComplaintResponse(''); setShowComplaintResponseModal(true) }} onResolve={handleResolveComplaint} isSubmitting={isSubmitting} />}
         {activeTab === 'vacate' && <VacateRequestList requests={filteredVacateRequests} onApprove={handleApproveVacate} onReject={(request) => { setSelectedVacateRequest(request); setVacateRejectionReason(''); }} isSubmitting={isSubmitting || Boolean(vacateRejectingId)} />}
@@ -862,60 +962,39 @@ function OwnerDashboardContent() {
         </div>
       </main>
 
-      <MobileBottomNav items={ownerBottomItems} activeId={mobileMenu === 'more' ? 'more' : activeTab} onSelect={id => { if (id === 'more') setMobileMenu('more'); else { setMobileMenu(null); openSection(id) } }} />
-      <DashboardMoreMenu open={mobileMenu === 'more'} title="Owner tools" subtitle={property?.name} onClose={() => setMobileMenu(null)} items={[
-        { id: 'dashboard', group: 'Management', label: 'Dashboard', onClick: () => openSection('overview') },
-        { id: 'rooms', group: 'Management', label: 'Rooms', onClick: () => openSection('rooms') },
-        { id: 'tenants', group: 'Management', label: 'Tenants', onClick: () => openSection('tenants') },
-        { id: 'rent-payments', group: 'Management', label: 'Payments', onClick: () => openSection('rent-payments') },
-        { id: 'applications', group: 'Requests', label: `Applications (${safeApplications.length})`, onClick: () => openSection('applications') },
-        { id: 'imports', group: 'Requests', label: `Existing imports (${existingImports.pendingCount})`, onClick: () => openSection('existing-imports') },
-        { id: 'complaints', group: 'Requests', label: 'Complaints', onClick: () => openSection('complaints') },
-        { id: 'vacate', group: 'Requests', label: 'Vacate requests', onClick: () => openSection('vacate') },
-        { id: 'change', group: 'Requests', label: 'Room changes', onClick: () => openSection('room-change') },
-        { id: 'notices', group: 'Communication', label: 'Notices', onClick: () => openSection('notices') },
-        { id: 'notifications', group: 'Communication', label: 'Notifications', onClick: () => window.dispatchEvent(new Event('hostelset:open-notifications')) },
-        { id: 'history', group: 'Communication', label: 'Payment history', onClick: () => openSection('payment-history') },
-        { id: 'prebook', group: 'Communication', label: 'Pre-bookings', onClick: () => openSection('pre-bookings') },
-        { id: 'analytics', group: 'Insights', label: 'Analytics', onClick: () => openSection('analytics') },
-        { id: 'archived', group: 'Insights', label: 'Archived tenants', onClick: () => openSection('archived-tenants') },
-        { id: 'profile', group: 'Account', label: 'Owner profile', onClick: () => setShowOwnerProfileModal(true) },
-        { id: 'settings', group: 'Account', label: 'Property settings', onClick: () => setShowSettingsModal(true) },
-        { id: 'add-property', group: 'Account', label: 'Add property', onClick: () => router.push('/owner/register-property') },
-        { id: 'logout', group: 'Account', label: 'Logout', danger: true, onClick: async () => { await signOut(); window.location.replace('/login') } },
-      ]} />
-
       {/* --- MODALS --- */}
       <AnimatePresence>
-        {showPaymentModal && selectedTenant && <CollectRentModal tenant={selectedTenant} paymentAmount={paymentAmount} setPaymentAmount={setPaymentAmount} onCollect={handleCollectRent} onCancel={() => { if (!isSubmitting) { setShowPaymentModal(false); setSelectedTenant(null); setPaymentAmount(''); setCollectionRequestId(null); } }} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
-        {showConfirmDeleteModal && tenantToDelete && <ConfirmDeleteModal tenant={tenantToDelete} onArchive={handleArchiveTenant} onCancel={() => { if (!isSubmitting) { setShowConfirmDeleteModal(false); setTenantToDelete(null); } }} isSubmitting={isSubmitting} />}
-        {showSettingsModal && <SettingsModal settings={settings} setSettings={setSettings} property={property} onSave={handleSaveSettings} onCancel={() => setShowSettingsModal(false)} isSubmitting={isSubmitting} />}
-        {showAddModal && <AddTenantModal formData={formData} setFormData={setFormData} rooms={rooms} onAdd={() => addTenant(isSubmitting, setIsSubmitting)} onCancel={() => setShowAddModal(false)} isSubmitting={isSubmitting} />}
-        {showRoomModal && <AddRoomModal roomForm={roomForm} setRoomForm={setRoomForm} sharingTypes={sharingTypes} onAdd={() => addRoom(isSubmitting, setIsSubmitting)} onCancel={() => setShowRoomModal(false)} isSubmitting={isSubmitting} />}
-        {showNoticeModal && <PostNoticeModal noticeForm={noticeForm} setNoticeForm={setNoticeForm} onPost={handlePostNotice} onCancel={() => { if (!isSubmitting) setShowNoticeModal(false); }} isSubmitting={isSubmitting} />}
-        {showMembershipModal && <MembershipModal onSelectPlan={async (...args) => { const sent = await requestMembership(...args); if (sent) setShowMembershipModal(false); }} onCancel={() => setShowMembershipModal(false)} loading={membershipLoading} pendingRequest={pendingMembershipRequest} />}
-        {showOwnerProfileModal && ownerProfile && <OwnerProfileModal profile={ownerProfile} onSave={handleSaveOwnerProfile} onCancel={() => setShowOwnerProfileModal(false)} isSubmitting={isSubmitting} />}
-        {showArchivedHistoryModal && <ArchivedTenantHistoryModal history={archivedHistory} loading={Boolean(loadingArchivedTenantId)} onClose={() => { setShowArchivedHistoryModal(false); setArchivedHistory(null); }} />}
-        {showComplaintResponseModal && selectedComplaint && <ComplaintResponseModal complaint={selectedComplaint} response={complaintResponse} setResponse={setComplaintResponse} onSend={handleRespondToComplaint} onCancel={() => { setShowComplaintResponseModal(false); setSelectedComplaint(null); setComplaintResponse(''); }} isSubmitting={isSubmitting} />}
-        {showRoomChangeReasonModal && selectedRoomChangeRequest && <RoomChangeReasonModal reason={rejectionReason} setReason={setRejectionReason} onReject={handleRejectRoomChange} onCancel={() => { setShowRoomChangeReasonModal(false); setSelectedRoomChangeRequest(null); setRejectionReason(''); }} isSubmitting={isSubmitting} />}
-        {selectedVacateRequest && <VacateRejectionModal request={selectedVacateRequest} reason={vacateRejectionReason} setReason={setVacateRejectionReason} onReject={async () => { const rejected = await rejectVacateRequest(selectedVacateRequest.id, vacateRejectionReason); if (rejected) { setSelectedVacateRequest(null); setVacateRejectionReason(''); } }} onCancel={() => { if (!vacateRejectingId) { setSelectedVacateRequest(null); setVacateRejectionReason(''); } }} isSubmitting={Boolean(vacateRejectingId)} />}
-        {showPaymentConfirmModal && confirmingTenant && <PaymentConfirmModal tenant={confirmingTenant} onConfirm={handleConfirmPendingPayment} onCancel={() => { if (!isSubmitting) { setShowPaymentConfirmModal(false); setConfirmingTenant(null); } }} isSubmitting={isSubmitting} onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true); }} />}
-        {showRoomDetailsModal && selectedRoom && <RoomDetailsModal room={selectedRoom} tenantsInRoom={getTenantsInRoom(selectedRoom.id)} onClose={() => setShowRoomDetailsModal(false)} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} onUpdated={async (updated) => { setRooms(current => current.map(room => room.id === updated.id ? updated : room)); setSelectedRoom(updated); await loadData(true); }} />}
+        {showPaymentModal && selectedTenant && <CollectRentModal key="collect-rent-modal" tenant={selectedTenant} paymentAmount={paymentAmount} setPaymentAmount={setPaymentAmount} onCollect={handleCollectRent} onCancel={() => { if (!isSubmitting) { setShowPaymentModal(false); setSelectedTenant(null); setPaymentAmount(''); setCollectionRequestId(null); } }} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />}
+        {showConfirmDeleteModal && tenantToDelete && <ConfirmDeleteModal key="confirm-delete-modal" tenant={tenantToDelete} onArchive={handleArchiveTenant} onCancel={() => { if (!isSubmitting) { setShowConfirmDeleteModal(false); setTenantToDelete(null); } }} isSubmitting={isSubmitting} />}
+        {showSettingsModal && <SettingsModal key="settings-modal" settings={settings} setSettings={setSettings} property={property} onSave={handleSaveSettings} onCancel={() => setShowSettingsModal(false)} isSubmitting={isSubmitting} />}
+        {showAddModal && <AddTenantModal key="add-tenant-modal" formData={formData} setFormData={setFormData} rooms={rooms} onAdd={() => addTenant(isSubmitting, setIsSubmitting)} onCancel={() => setShowAddModal(false)} isSubmitting={isSubmitting} />}
+        {showRoomModal && <AddRoomModal key="add-room-modal" roomForm={roomForm} setRoomForm={setRoomForm} sharingTypes={sharingTypes} onAdd={() => addRoom(isSubmitting, setIsSubmitting)} onCancel={() => setShowRoomModal(false)} isSubmitting={isSubmitting} />}
+        {showNoticeModal && <PostNoticeModal key="post-notice-modal" noticeForm={noticeForm} setNoticeForm={setNoticeForm} onPost={handlePostNotice} onCancel={() => { if (!isSubmitting) setShowNoticeModal(false); }} isSubmitting={isSubmitting} />}
+        {showMembershipModal && <MembershipModal key="membership-modal" onSelectPlan={async (...args) => { const sent = await requestMembership(...args); if (sent) setShowMembershipModal(false); }} onCancel={() => setShowMembershipModal(false)} loading={membershipLoading} pendingRequest={pendingMembershipRequest} />}
+        {showOwnerProfileModal && ownerProfile && <OwnerProfileModal key="owner-profile-modal" profile={ownerProfile} onSave={handleSaveOwnerProfile} onCancel={() => setShowOwnerProfileModal(false)} isSubmitting={isSubmitting} />}
+        {showArchivedHistoryModal && <ArchivedTenantHistoryModal key="archived-history-modal" history={archivedHistory} loading={Boolean(loadingArchivedTenantId)} onClose={() => { setShowArchivedHistoryModal(false); setArchivedHistory(null); }} />}
+        {showComplaintResponseModal && selectedComplaint && <ComplaintResponseModal key="complaint-response-modal" complaint={selectedComplaint} response={complaintResponse} setResponse={setComplaintResponse} onSend={handleRespondToComplaint} onCancel={() => { setShowComplaintResponseModal(false); setSelectedComplaint(null); setComplaintResponse(''); }} isSubmitting={isSubmitting} />}
+        {showRoomChangeReasonModal && selectedRoomChangeRequest && <RoomChangeReasonModal key="room-change-reason-modal" reason={rejectionReason} setReason={setRejectionReason} onReject={handleRejectRoomChange} onCancel={() => { setShowRoomChangeReasonModal(false); setSelectedRoomChangeRequest(null); setRejectionReason(''); }} isSubmitting={isSubmitting} />}
+        {selectedVacateRequest && <VacateRejectionModal key="vacate-rejection-modal" request={selectedVacateRequest} reason={vacateRejectionReason} setReason={setVacateRejectionReason} onReject={async () => { const rejected = await rejectVacateRequest(selectedVacateRequest.id, vacateRejectionReason); if (rejected) { setSelectedVacateRequest(null); setVacateRejectionReason(''); } }} onCancel={() => { if (!vacateRejectingId) { setSelectedVacateRequest(null); setVacateRejectionReason(''); } }} isSubmitting={Boolean(vacateRejectingId)} />}
+        {showPaymentConfirmModal && confirmingTenant && <PaymentConfirmModal key="payment-confirm-modal" tenant={confirmingTenant} onConfirm={handleConfirmPendingPayment} onCancel={() => { if (!isSubmitting) { setShowPaymentConfirmModal(false); setConfirmingTenant(null); } }} isSubmitting={isSubmitting} onViewScreenshot={openSignedPaymentScreenshot} />}
+        {showRoomDetailsModal && selectedRoom && <RoomDetailsModal key="room-details-modal" room={selectedRoom} tenantsInRoom={getTenantsInRoom(selectedRoom.id)} onClose={() => setShowRoomDetailsModal(false)} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} onUpdated={async (updated) => { setRooms(current => current.map(room => room.id === updated.id ? updated : room)); setSelectedRoom(updated); await loadData(true); }} />}
         
         {/* History Modal */}
         {showTenantPaymentsModal && selectedTenantForPayments && (
           <TenantPaymentsModal
+            key="tenant-payments-modal"
             tenant={selectedTenantForPayments}
             payments={tenantPayments}
             loading={loadingPayments}
             onClose={() => setShowTenantPaymentsModal(false)}
-            onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }}
+            onViewScreenshot={openSignedPaymentScreenshot}
           />
         )}
 
         {/* Profile Modal */}
         {showTenantProfileModal && selectedProfileTenant && (
           <TenantProfileModal
+            key="tenant-profile-modal"
             tenant={selectedProfileTenant}
             application={tenantApplication}
             extraDocuments={tenantExtraDocuments}
@@ -925,7 +1004,7 @@ function OwnerDashboardContent() {
           />
         )}
         {showScreenshotModal && (
-          <ScreenshotModal url={screenshotUrl} onClose={() => { setShowScreenshotModal(false); setScreenshotUrl(''); }} />
+          <ScreenshotModal key="screenshot-modal" url={screenshotUrl} onClose={() => { setShowScreenshotModal(false); setScreenshotUrl(''); }} />
         )}
       </AnimatePresence>
     </div>

@@ -23,7 +23,7 @@ export default function PreBookingList({ bookings = [], onApprove = () => {}, on
               <p className="text-sm font-semibold text-green-600">Pre‑booking fee paid: {formatCurrency(amountPaid)}</p>
               {booking.payment_screenshot && (
                 <div className="mt-2">
-                  <button onClick={() => onViewScreenshot(booking.payment_screenshot)} className="text-blue-600 underline text-sm">View Payment Screenshot</button>
+                  <button onClick={() => onViewScreenshot(booking)} className="text-blue-600 underline text-sm">View Payment Screenshot</button>
                 </div>
               )}
               {booking.payment_transaction_id && <p className="text-xs text-gray-400">UTR: {booking.payment_transaction_id}</p>}

@@ -21,33 +21,40 @@ export default function StatsCards({ stats, onSelect }) {
 
   const groups = ['Property Overview', 'Rent & Payments', 'Operations', 'Requests'];
 
+  const renderCard = (item) => {
+    const clickable = Boolean(item.tab && onSelect);
+    const Card = clickable ? 'button' : 'div';
+    return (
+      <Card
+        key={item.label}
+        type={clickable ? 'button' : undefined}
+        onClick={clickable ? () => onSelect(item.tab) : undefined}
+        className={`flex min-w-0 items-center gap-1.5 rounded-xl border border-gray-100 bg-white p-2 text-left transition hover:border-orange-200 hover:shadow-md sm:gap-3 sm:p-4 ${clickable ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400' : ''}`}
+      >
+        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold shadow-sm sm:h-12 sm:w-12 sm:text-sm ${item.color}`}>
+          {item.icon}
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-gray-500 sm:text-[11px]">{item.label}</p>
+          <p className="truncate text-sm font-bold leading-tight text-gray-800 sm:text-xl">{item.value}</p>
+        </div>
+      </Card>
+    );
+  };
+
   return (
-    <div className="grid gap-5 lg:grid-cols-2 mb-6 sm:mb-8">
+    <>
+    <div className="mb-3 grid grid-cols-2 gap-2 sm:hidden">
+      {items.slice(0, 8).map(renderCard)}
+    </div>
+    <div className="mb-6 hidden gap-5 sm:mb-8 sm:grid lg:grid-cols-2">
       {groups.map(group => <section key={group} className="rounded-2xl border border-slate-200/80 bg-white/60 p-3 sm:p-4 shadow-sm" aria-labelledby={`owner-stat-${group.replace(/\W+/g, '-').toLowerCase()}`}>
         <h2 id={`owner-stat-${group.replace(/\W+/g, '-').toLowerCase()}`} className="mb-3 text-sm font-bold text-slate-800">{group}</h2>
         <div className="grid grid-cols-2 gap-3">
-      {items.filter(item => item.group === group).map((item) => {
-        const clickable = Boolean(item.tab && onSelect);
-        const Card = clickable ? 'button' : 'div';
-        return (
-          <Card
-            key={item.label}
-            type={clickable ? 'button' : undefined}
-            onClick={clickable ? () => onSelect(item.tab) : undefined}
-            className={`bg-white rounded-xl p-3 sm:p-4 border border-gray-100 hover:shadow-md hover:border-orange-200 transition duration-200 flex items-center gap-2 sm:gap-3 min-w-0 text-left ${clickable ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400' : ''}`}
-          >
-            <div className={`w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold shadow-sm ${item.color}`}>
-              {item.icon}
-            </div>
-            <div className="min-w-0">
-              <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold">{item.label}</p>
-              <p className="text-base sm:text-xl font-bold text-gray-800 tracking-tight truncate">{item.value}</p>
-            </div>
-          </Card>
-        );
-      })}
+      {items.filter(item => item.group === group).map(renderCard)}
         </div>
       </section>)}
     </div>
+    </>
   );
 }

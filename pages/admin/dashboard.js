@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
-import { signOut } from '../../lib/supabase';
+import { signOut, signPrivateDocumentFields } from '../../lib/supabase';
 import { formatCurrency } from '../../lib/utils';
 import { AdminProvider, useAdmin } from '../../context/AdminContext';
 import BrandLogo from '../../components/BrandLogo';
@@ -33,14 +33,40 @@ import MobileBottomNav from '../../components/dashboard/MobileBottomNav';
 import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu';
 import AccountMenu from '../../components/dashboard/AccountMenu';
 import { resetDashboardScroll } from '../../lib/dashboardScroll';
+import AdminMobileDashboard from '../../components/admin/mobile/AdminMobileDashboard';
+import AdminMobileSearch from '../../components/admin/mobile/AdminMobileSearch';
+import AdminMobileProperties from '../../components/admin/mobile/AdminMobileProperties';
+import AdminMobileOwners from '../../components/admin/mobile/AdminMobileOwners';
+import AdminMobileUsers from '../../components/admin/mobile/AdminMobileUsers';
+import AdminMobilePayments from '../../components/admin/mobile/AdminMobilePayments';
+import AdminMobileMore from '../../components/admin/mobile/AdminMobileMore';
+import { AdminEmptyState, AdminLoadingState, AdminMobilePage, AdminStatusChip } from '../../components/admin/mobile/AdminMobileShell';
 const MembershipManager = dynamic(() => import('../../components/admin/MembershipManager'));
 const EnterpriseAdminConsole = dynamic(() => import('../../components/admin/EnterpriseAdminConsole'), { ssr: false });
 const AdminAnalytics = dynamic(() => import('../../components/analytics/AdminAnalytics'));
 
+const ADMIN_VIEW_KEYS = new Set(['overview', 'analytics', 'global-search', 'properties', 'tenants', 'owners', 'users', 'payments', 'prebookings', 'applications', 'approvedapps', 'complaints', 'vacate', 'roomchange', 'notices', 'membership'])
+const ADMIN_VIEW_ALIASES = {
+  search: 'global-search',
+  'room-change': 'roomchange',
+  roomChange: 'roomchange',
+  applicationsApproved: 'approvedapps',
+  imports: 'overview',
+}
+
 // ----------------- UTILITY TABLE COMPONENT -----------------
-const AdminTable = ({ headers, data, renderRow, emptyMessage, loading = false }) => (
+const AdminTable = ({ headers, data, renderRow, renderCard, emptyMessage, loading = false }) => (
   <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-    <div className="overflow-x-auto">
+    {renderCard && (
+      <div className="space-y-2 p-2 md:hidden">
+        {loading && data.length === 0 ? (
+          <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Loadingâ€¦</div>
+        ) : data.length === 0 ? (
+          <div className="rounded-xl bg-slate-50 p-3 text-center text-sm text-slate-500">{emptyMessage}</div>
+        ) : data.map(item => renderCard(item))}
+      </div>
+    )}
+    <div className={`${renderCard ? 'hidden md:block' : ''} overflow-x-auto`}>
       <table className="w-full text-sm text-left">
         <thead className="bg-[#1a1a1a] text-white/90 border-b border-orange-500/30">
           <tr>{headers.map((h, i) => <th key={i} className="px-6 py-4 whitespace-nowrap font-medium tracking-wide">{h}</th>)}</tr>
@@ -92,7 +118,14 @@ function AdminDashboardContent() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const sectionRef = useRef(null);
   const openSection = (tab) => {
-    setActiveTab(tab);
+    const nextTab = ADMIN_VIEW_ALIASES[tab] || tab;
+    if (!ADMIN_VIEW_KEYS.has(nextTab)) {
+      if (process.env.NODE_ENV !== 'production') console.warn('[HostelSet] Unknown admin dashboard view key:', tab);
+      setActiveTab('overview');
+      setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll();
+      return;
+    }
+    setActiveTab(nextTab);
     setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll();
   };
   
@@ -120,8 +153,9 @@ function AdminDashboardContent() {
 
   useEffect(() => {
     const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
-    const allowed = ['overview', 'analytics', 'global-search', 'properties', 'tenants', 'owners', 'users', 'payments', 'prebookings', 'applications', 'approvedapps', 'complaints', 'vacate', 'roomchange', 'notices', 'membership']
-    if (allowed.includes(tab)) setActiveTab(tab)
+    const nextTab = ADMIN_VIEW_ALIASES[tab] || tab
+    if (ADMIN_VIEW_KEYS.has(nextTab)) setActiveTab(nextTab)
+    else if (tab && process.env.NODE_ENV !== 'production') console.warn('[HostelSet] Unknown admin dashboard query tab:', tab)
   }, [router.query.tab])
   const [actionKey, setActionKey] = useState(null);
 
@@ -132,6 +166,20 @@ function AdminDashboardContent() {
     finally { setActionKey(null); }
   };
 
+  const openSignedApplicationProof = async (application) => {
+    try {
+      const signed = await signPrivateDocumentFields({ ...application, source_type: 'application' }, ['payment_screenshot'])
+      const url = signed?.payment_screenshot || null
+      if (!url) {
+        setApplicationProof(null)
+        return
+      }
+      setApplicationProof({ url, name: application.name })
+    } catch {
+      setApplicationProof(null)
+    }
+  };
+
   const handleLogout = async () => {
     await signOut();
     window.location.replace('/login');
@@ -139,35 +187,35 @@ function AdminDashboardContent() {
 
   // STATS CARDS
   const statsData = [
-    { label: 'Properties', value: statsLoading ? '—' : globalStats.totalProperties, icon: '🏢', color: 'bg-orange-100 text-orange-600' },
-    { label: 'Active Tenants', value: statsLoading ? '—' : globalStats.totalTenants, icon: '👥', color: 'bg-blue-100 text-blue-600' },
-    { label: 'Owners', value: statsLoading ? '—' : globalStats.totalOwners, icon: '👤', color: 'bg-violet-100 text-violet-600' },
-    { label: 'Active Owners', value: statsLoading ? '—' : globalStats.activeOwners, icon: '✅', color: 'bg-green-100 text-green-600' },
-    { label: 'Memberships', value: statsLoading ? '—' : globalStats.activeMemberships, icon: '📋', color: 'bg-amber-100 text-amber-600' },
-    { label: 'Rent Revenue', value: statsLoading ? '—' : formatCurrency(globalStats.totalRevenue), icon: '💰', color: 'bg-emerald-100 text-emerald-600' },
-    { label: 'Deposits', value: statsLoading ? '—' : formatCurrency(globalStats.totalDeposits), icon: '₹', color: 'bg-slate-100 text-slate-600' },
-    { label: 'Pending Complaints', value: statsLoading ? '—' : globalStats.pendingComplaints, icon: '🔧', color: 'bg-red-100 text-red-600' },
-    { label: 'Pending Vacates', value: statsLoading ? '—' : globalStats.pendingVacates, icon: '🚪', color: 'bg-amber-100 text-amber-600' },
+    { label: 'Properties', value: statsLoading ? '-' : globalStats.totalProperties, icon: 'P', color: 'bg-orange-100 text-orange-600' },
+    { label: 'Active Tenants', value: statsLoading ? '-' : globalStats.totalTenants, icon: 'T', color: 'bg-blue-100 text-blue-600' },
+    { label: 'Owners', value: statsLoading ? '-' : globalStats.totalOwners, icon: 'O', color: 'bg-violet-100 text-violet-600' },
+    { label: 'Active Owners', value: statsLoading ? '-' : globalStats.activeOwners, icon: 'A', color: 'bg-green-100 text-green-600' },
+    { label: 'Memberships', value: statsLoading ? '-' : globalStats.activeMemberships, icon: 'M', color: 'bg-amber-100 text-amber-600' },
+    { label: 'Rent Revenue', value: statsLoading ? '-' : formatCurrency(globalStats.totalRevenue), icon: 'R', color: 'bg-emerald-100 text-emerald-600' },
+    { label: 'Deposits', value: statsLoading ? '-' : formatCurrency(globalStats.totalDeposits), icon: 'D', color: 'bg-slate-100 text-slate-600' },
+    { label: 'Pending Complaints', value: statsLoading ? '-' : globalStats.pendingComplaints, icon: 'C', color: 'bg-red-100 text-red-600' },
+    { label: 'Pending Vacates', value: statsLoading ? '-' : globalStats.pendingVacates, icon: 'V', color: 'bg-amber-100 text-amber-600' },
   ];
 
   // TABS
   const tabs = [
     { id: 'analytics', label: 'Analytics' },
     { id: 'global-search', label: 'Global Search' },
-    { id: 'overview', label: '📊 Overview' },
-    { id: 'properties', label: '🏢 Properties' },
-    { id: 'tenants', label: '👥 Tenants' },
-    { id: 'owners', label: '👤 Owners' },
-    { id: 'users', label: '👤 Users' },
-    { id: 'payments', label: '💰 Payments' },
-    { id: 'prebookings', label: '📋 Pre-Bookings' },
-    { id: 'applications', label: '📝 Applications' },
-    { id: 'approvedapps', label: '✅ Approved Apps' },
-    { id: 'complaints', label: '🔧 Complaints' },
-    { id: 'vacate', label: '🚪 Vacate' },
-    { id: 'roomchange', label: '🔄 Room Change' },
-    { id: 'notices', label: '📢 Notices' },
-    { id: 'membership', label: '📋 Membership' },
+    { id: 'overview', label: 'Overview' },
+    { id: 'properties', label: 'Properties' },
+    { id: 'tenants', label: 'Tenants' },
+    { id: 'owners', label: 'Owners' },
+    { id: 'users', label: 'Users' },
+    { id: 'payments', label: 'Payments' },
+    { id: 'prebookings', label: 'Pre-bookings' },
+    { id: 'applications', label: 'Applications' },
+    { id: 'approvedapps', label: 'Approved apps' },
+    { id: 'complaints', label: 'Complaints' },
+    { id: 'vacate', label: 'Vacate' },
+    { id: 'roomchange', label: 'Room change' },
+    { id: 'notices', label: 'Notices' },
+    { id: 'membership', label: 'Membership' },
   ];
 
   const tabForStat = (label) => ({
@@ -182,7 +230,7 @@ function AdminDashboardContent() {
   })[label];
   const adminSidebarItems = tabs.map(item => ({ ...item, icon: ({overview:'dashboard',analytics:'analytics',properties:'rooms',tenants:'users',owners:'users',users:'users',payments:'payments',complaints:'complaints',notices:'notices'})[item.id] || 'settings' }))
   const adminBottomItems = [{id:'overview',label:'Dashboard',icon:'dashboard'},{id:'search',label:'Search',icon:'search'},{id:'properties',label:'Properties',icon:'rooms'},{id:'tenants',label:'Tenants',icon:'users'},{id:'more',label:'More',icon:'more'}]
-  const adminTitle = tabs.find(item=>item.id===activeTab)?.label.replace(/^\S+\s*/,'') || 'Dashboard'
+  const adminTitle = tabs.find(item=>item.id===activeTab)?.label || 'Dashboard'
   const adminMoreItems = [
     { id: 'overview', group: 'Platform', label: 'Dashboard', onClick: () => openSection('overview') },
     { id: 'properties', group: 'Platform', label: 'Properties', onClick: () => openSection('properties') },
@@ -190,6 +238,7 @@ function AdminDashboardContent() {
     { id: 'tenants', group: 'Platform', label: 'Tenants', onClick: () => openSection('tenants') },
     { id: 'payments', group: 'Operations', label: 'Payments', onClick: () => openSection('payments') },
     { id: 'applications', group: 'Operations', label: 'Applications', onClick: () => openSection('applications') },
+    { id: 'imports', group: 'Operations', label: 'Imports', onClick: () => openSection('imports') },
     { id: 'prebookings', group: 'Operations', label: 'Pre-bookings', onClick: () => openSection('prebookings') },
     { id: 'approvedapps', group: 'Operations', label: 'Approved apps', onClick: () => openSection('approvedapps') },
     { id: 'complaints', group: 'Operations', label: 'Complaints', onClick: () => openSection('complaints') },
@@ -204,9 +253,140 @@ function AdminDashboardContent() {
     { id: 'logout', group: 'Account', label: 'Logout', danger: true, onClick: handleLogout },
   ]
 
+  const renderMobileOperationList = ({ title, subtitle, loading, items, emptyMessage, renderItem }) => (
+    <AdminMobilePage title={title} subtitle={subtitle} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)}>
+      {loading && items.length === 0 ? <AdminLoadingState /> : null}
+      {!loading && items.length === 0 ? <AdminEmptyState>{emptyMessage}</AdminEmptyState> : null}
+      {items.map(renderItem)}
+    </AdminMobilePage>
+  )
+
+  const renderAdminMobileView = () => {
+    if (activeTab === 'overview') {
+      return <AdminMobileDashboard stats={statsData} globalStats={globalStats} realtimeConnected={realtimeConnected} avatar="A" onProfile={() => setProfileMenuOpen(value => !value)} onNavigate={openSection} onRefresh={refreshStats} />
+    }
+    if (activeTab === 'global-search') {
+      return <AdminMobileSearch avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onOpen={(group, item) => setSearchDetail({ group, item })} />
+    }
+    if (activeTab === 'properties') {
+      return <AdminMobileProperties properties={properties} loading={propertiesLoading} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onView={viewPropertyDetails} onDelete={deleteProperty} />
+    }
+    if (activeTab === 'owners') {
+      return <AdminMobileOwners owners={owners} loading={ownersLoading} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onView={viewOwnerDetails} onToggle={toggleOwnerStatus} />
+    }
+    if (activeTab === 'users') {
+      return <AdminMobileUsers title="Users" mode="users" users={users} loading={usersLoading} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} searchTerm={searchTerm} setSearchTerm={setSearchTerm} roleFilter={roleFilter} setRoleFilter={setRoleFilter} onToggleStatus={toggleUserStatus} onChangeRole={changeUserRole} />
+    }
+    if (activeTab === 'tenants') {
+      return <AdminMobileUsers title="Tenants" mode="tenants" tenants={tenants} loading={tenantsLoading} error={tenantsError} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onViewTenant={(tenant) => setSearchDetail({ group: 'Tenant', item: tenant })} onDeleteTenant={deleteTenant} />
+    }
+    if (activeTab === 'payments') {
+      return <AdminMobilePayments payments={payments} loading={paymentsLoading} actionKey={actionKey} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onConfirm={(payment) => runAdminAction(`payment:${payment.id}`, () => confirmPayment(payment.id))} onReject={(payment) => runAdminAction(`payment:${payment.id}`, () => rejectPayment(payment.id))} />
+    }
+    if (activeTab === 'prebookings') {
+      return renderMobileOperationList({
+        title: 'Pre-bookings',
+        subtitle: `${preBookings.length} pending requests`,
+        loading: preBookingsLoading,
+        items: preBookings,
+        emptyMessage: 'No pre-bookings found.',
+        renderItem: booking => (
+          <article key={booking.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{booking.name}</p><p className="truncate text-[11px] text-slate-500">Room {booking.rooms?.room_number || 'N/A'} Â· {booking.rooms?.properties?.name || 'N/A'}</p></div>
+              <p className="shrink-0 text-xs font-black text-slate-700">{formatCurrency(booking.pre_booking_fee_amount || 0)}</p>
+            </div>
+            <div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${booking.id}`, () => approvePreBooking(booking.id, booking.user_id, booking.room_id, booking.property_id, booking.name, booking.phone, booking.email, booking.rooms?.monthly_rent))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Approve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${booking.id}`, () => rejectPreBooking(booking.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div>
+          </article>
+        ),
+      })
+    }
+    if (activeTab === 'applications') {
+      return renderMobileOperationList({
+        title: 'Applications',
+        subtitle: `${applications.length} pending applications`,
+        loading: applicationsLoading,
+        items: applications,
+        emptyMessage: 'No pending applications.',
+        renderItem: application => (
+          <article key={application.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{application.name}</p><p className="truncate text-[11px] text-slate-500">Room {application.rooms?.room_number || 'N/A'} Â· {application.phone}</p></div>
+              <AdminStatusChip tone="amber">{(application.payment_status || 'pending').replaceAll('_', ' ')}</AdminStatusChip>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2"><p className="text-xs font-bold text-slate-700">{formatCurrency(application.payment_amount || 0)}</p><div className="flex shrink-0 gap-2">{application.payment_screenshot ? <button type="button" onClick={() => openSignedApplicationProof(application)} className="rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">Proof</button> : null}<button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${application.id}`, () => approveApplication(application, application.user_id))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Approve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${application.id}`, () => rejectApplication(application.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div></div>
+          </article>
+        ),
+      })
+    }
+    if (activeTab === 'approvedapps') {
+      return renderMobileOperationList({
+        title: 'Approved apps',
+        subtitle: `${approvedApps.length} processed`,
+        loading: approvedAppsLoading,
+        items: approvedApps,
+        emptyMessage: 'No processed applications yet.',
+        renderItem: application => <article key={application.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{application.name}</p><p className="truncate text-[11px] text-slate-500">Room {application.rooms?.room_number || 'N/A'} Â· {application.processed_at ? new Date(application.processed_at).toLocaleDateString() : 'N/A'}</p></div><AdminStatusChip tone={application.status === 'approved' ? 'emerald' : 'red'}>{application.status}</AdminStatusChip></div></article>,
+      })
+    }
+    if (activeTab === 'complaints') {
+      return renderMobileOperationList({
+        title: 'Complaints',
+        subtitle: `${complaints.length} platform complaints`,
+        loading: complaintsLoading,
+        items: complaints,
+        emptyMessage: 'No complaints in the system.',
+        renderItem: complaint => <article key={complaint.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{complaint.title}</p><p className="truncate text-[11px] text-slate-500">{complaint.tenants?.name || 'N/A'}</p></div><AdminStatusChip tone={complaint.status === 'open' ? 'red' : complaint.status === 'in_progress' ? 'amber' : 'emerald'}>{complaint.status}</AdminStatusChip></div><div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${complaint.id}`, () => resolveComplaint(complaint.id))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Resolve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${complaint.id}`, () => deleteComplaint(complaint.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Delete</button></div></article>,
+      })
+    }
+    if (activeTab === 'vacate') {
+      return renderMobileOperationList({
+        title: 'Vacates',
+        subtitle: `${vacateRequests.length} requests`,
+        loading: vacateLoading,
+        items: vacateRequests,
+        emptyMessage: 'No vacate requests found.',
+        renderItem: request => <article key={request.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{request.tenants?.name || 'N/A'}</p><p className="truncate text-[11px] text-slate-500">Room {request.tenants?.rooms?.room_number || 'N/A'} Â· {request.expected_check_out ? new Date(request.expected_check_out).toLocaleDateString() : 'N/A'}</p></div><AdminStatusChip tone={request.status === 'pending' ? 'amber' : 'emerald'}>{request.status}</AdminStatusChip></div>{request.status === 'pending' ? <div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${request.id}`, () => approveVacate(request.id, request.tenant_id, request.expected_check_out))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Approve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${request.id}`, () => rejectVacate(request.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div> : null}</article>,
+      })
+    }
+    if (activeTab === 'roomchange') {
+      return renderMobileOperationList({
+        title: 'Room changes',
+        subtitle: `${roomChanges.length} requests`,
+        loading: roomChangesLoading,
+        items: roomChanges,
+        emptyMessage: 'No room change requests found.',
+        renderItem: request => <article key={request.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{request.tenants?.name || 'N/A'}</p><p className="truncate text-[11px] text-slate-500">{request.old_room?.room_number || 'N/A'} â†’ {request.new_room?.room_number || 'N/A'}</p></div><div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${request.id}`, () => approveRoomChange(request.id, request.tenant_id, request.new_room_id, request.old_room_id))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Approve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${request.id}`, () => rejectRoomChange(request.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div></article>,
+      })
+    }
+    if (activeTab === 'notices') {
+      return renderMobileOperationList({
+        title: 'Notices',
+        subtitle: `${notices.length} global notices`,
+        loading: noticesLoading,
+        items: notices,
+        emptyMessage: 'No global notices posted.',
+        renderItem: notice => <article key={notice.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{notice.title}</p><p className="truncate text-[11px] text-slate-500">{notice.type} Â· {notice.created_at ? new Date(notice.created_at).toLocaleDateString() : 'N/A'}</p></div>{notice.is_urgent ? <AdminStatusChip tone="red">Urgent</AdminStatusChip> : null}</div><div className="mt-2 flex justify-end"><button onClick={() => deleteNotice(notice.id)} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600">Delete</button></div></article>,
+      })
+    }
+    if (activeTab === 'analytics') {
+      return <AdminMobilePage title="Analytics" subtitle="Platform insights" avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)}><AdminAnalytics {...adminAnalytics} /></AdminMobilePage>
+    }
+    if (activeTab === 'membership') {
+      return <AdminMobilePage title="Membership" subtitle="Owner memberships" avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)}><MembershipManager owners={membershipOwners} requests={membershipRequests} loading={membershipLoading} processingId={membershipProcessingId} getDaysLeft={getDaysLeft} sendRenewalEmail={sendRenewalEmail} grantMembership={grantMembership} revokeMembership={revokeMembership} reviewRequest={reviewRequest} onRefresh={() => refreshMemberships(false)} /></AdminMobilePage>
+    }
+    if (process.env.NODE_ENV !== 'production') console.warn('[HostelSet] Unhandled admin mobile view key:', activeTab)
+    return <AdminMobileDashboard stats={statsData} globalStats={globalStats} realtimeConnected={realtimeConnected} avatar="A" onProfile={() => setProfileMenuOpen(value => !value)} onNavigate={openSection} onRefresh={refreshStats} />
+  }
+
   return (
-    <div className="dashboard-shell min-h-screen max-w-full overflow-x-hidden bg-[#f8f9fa] pb-24 font-sans selection:bg-orange-500 selection:text-white lg:pb-0">
-      <MobileTopbar title={adminTitle} subtitle="Platform administration" isHome={activeTab==='overview'} onBack={()=>openSection('overview')} onProfile={()=>setProfileMenuOpen(value=>!value)} avatar="A" controls={<><ThemeToggle compact/><NotificationBell listenForGlobalOpen /></>} accountMenu={<AccountMenu open={profileMenuOpen} onClose={()=>setProfileMenuOpen(false)} name="Administrator" subtitle="HostelSet platform" avatar="A" actions={[{label:'Refresh dashboard',onClick:refreshStats},{label:'Logout',onClick:handleLogout,danger:true}]}/>}/>
+    <div className="dashboard-shell min-h-screen max-w-full overflow-x-hidden bg-[#f8f9fa] pb-[calc(6rem_+_env(safe-area-inset-bottom))] font-sans selection:bg-orange-500 selection:text-white lg:pb-0">
+      <div className="lg:hidden">
+        {renderAdminMobileView()}
+        <div className="fixed right-3 top-14 z-[70]">
+          <AccountMenu open={profileMenuOpen} onClose={()=>setProfileMenuOpen(false)} name="Administrator" subtitle="HostelSet platform" avatar="A" actions={[{label:'Refresh dashboard',onClick:refreshStats},{label:'Logout',onClick:handleLogout,danger:true}]}/>
+        </div>
+      </div>
       <DashboardSidebar role="Admin" items={adminSidebarItems} activeId={activeTab} onSelect={openSection} footer={<div><p className="text-sm font-bold text-white">Platform console</p><p className={`mt-1 text-xs ${realtimeConnected?'text-emerald-400':'text-slate-400'}`}>{realtimeConnected?'Live data':'Connecting'}</p></div>}/>
       
       {/* ----- NAVBAR ----- */}
@@ -223,13 +403,13 @@ function AdminDashboardContent() {
             </span>
             <ThemeToggle compact />
             <NotificationBell />
-            <button onClick={() => refreshStats()} className="text-orange-400 hover:text-orange-300 text-sm font-medium transition">🔄 Refresh</button>
+            <button onClick={() => refreshStats()} className="text-orange-400 hover:text-orange-300 text-sm font-medium transition">ðŸ”„ Refresh</button>
             <button onClick={handleLogout} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-3 sm:px-6 py-2 rounded-full text-sm font-semibold transition shadow-md">Logout</button>
           </div>
         </div>
       </nav>
 
-      <main className="dashboard-main container mx-auto min-w-0 px-3 py-5 sm:px-4 sm:py-8">
+      <main className="dashboard-main container mx-auto hidden min-w-0 px-3 py-5 sm:px-4 sm:py-8 lg:block">
         {activeTab === 'overview' && <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="mb-3"><h1 className="text-lg font-bold text-slate-900">Platform management</h1><p className="text-sm text-slate-500">Search records or open a management section below.</p></div><AdminGlobalSearch onOpen={(group, item) => setSearchDetail({ group, item })} /></section>}
         
         {/* ----- STATS CARDS ----- */}
@@ -345,11 +525,11 @@ function AdminDashboardContent() {
         {activeTab === 'users' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="mb-6 flex flex-col md:flex-row justify-between items-center gap-4 border-b border-gray-100 pb-4">
-              <h3 className="text-lg font-bold text-[#1a1a1a]">👤 User Management</h3>
+              <h3 className="text-lg font-bold text-[#1a1a1a]">ðŸ‘¤ User Management</h3>
               <div className="flex gap-4 w-full md:w-auto">
                 <input 
                   type="text" 
-                  placeholder="🔍 Search name, email, phone..." 
+                  placeholder="ðŸ” Search name, email, phone..." 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="border border-gray-300 rounded-lg px-4 py-2 text-sm w-full md:w-64 focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -420,6 +600,21 @@ function AdminDashboardContent() {
             loading={paymentsLoading}
             headers={['Tenant', 'Amount', 'Date', 'Status', 'Actions']}
             data={payments}
+            renderCard={(p) => (
+              <div key={p.id} className="rounded-xl border border-slate-100 bg-white p-2.5 shadow-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold leading-tight text-slate-900">{p.tenants?.name || 'Unknown'}</p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">{new Date(p.payment_date).toLocaleDateString()}</p>
+                  </div>
+                  <p className="shrink-0 text-sm font-bold text-emerald-600">{formatCurrency(p.amount)}</p>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${p.status === 'success' ? 'bg-emerald-100 text-emerald-700' : p.status === 'payment_pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{p.status === 'payment_pending' ? 'Pending' : p.status}</span>
+                  {p.status === 'payment_pending' && <div className="flex shrink-0 gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => confirmPayment(p.id))} className="text-xs font-semibold text-emerald-600 disabled:opacity-50">Confirm</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => rejectPayment(p.id))} className="text-xs font-semibold text-red-500 disabled:opacity-50">Reject</button></div>}
+                </div>
+              </div>
+            )}
             renderRow={(p) => (
               <tr key={p.id} className="hover:bg-orange-50/50 transition">
                 <td className="px-6 py-4 font-semibold text-gray-800">{p.tenants?.name || 'Unknown'}</td>
@@ -433,8 +628,8 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 flex gap-2">
                   {p.status === 'payment_pending' && (
                     <>
-                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => confirmPayment(p.id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `payment:${p.id}` ? 'Processing…' : 'Confirm'}</button>
-                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => rejectPayment(p.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `payment:${p.id}` ? 'Processing…' : 'Reject'}</button>
+                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => confirmPayment(p.id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `payment:${p.id}` ? 'Processingâ€¦' : 'Confirm'}</button>
+                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => rejectPayment(p.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `payment:${p.id}` ? 'Processingâ€¦' : 'Reject'}</button>
                     </>
                   )}
                 </td>
@@ -457,8 +652,8 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 text-gray-500">{b.rooms?.properties?.name || 'N/A'}</td>
                 <td className="px-6 py-4 text-gray-500">{formatCurrency(b.pre_booking_fee_amount || 0)}</td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${b.id}`, () => approvePreBooking(b.id, b.user_id, b.room_id, b.property_id, b.name, b.phone, b.email, b.rooms?.monthly_rent))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processing…' : 'Approve'}</button>
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${b.id}`, () => rejectPreBooking(b.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processing…' : 'Reject'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${b.id}`, () => approvePreBooking(b.id, b.user_id, b.room_id, b.property_id, b.name, b.phone, b.email, b.rooms?.monthly_rent))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processingâ€¦' : 'Approve'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${b.id}`, () => rejectPreBooking(b.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processingâ€¦' : 'Reject'}</button>
                 </td>
               </tr>
             )}
@@ -477,10 +672,10 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4"><p className="font-semibold text-gray-800">{a.name}</p><p className="text-sm text-gray-500">{a.phone}</p></td>
                 <td className="px-6 py-4 text-gray-500">{a.rooms?.room_number || 'N/A'}</td>
                 <td className="px-6 py-4 text-gray-500"><p>Rent: {formatCurrency(a.rooms?.monthly_rent || 0)}</p><p>Deposit: {formatCurrency(a.payment_amount || 0)}</p></td>
-                <td className="px-6 py-4 text-sm text-gray-500"><p>UTR: <span className="font-medium text-slate-700">{a.payment_transaction_id || a.upi_transaction_id || 'Not provided'}</span></p><p>Submitted: {new Date(a.payment_date || a.created_at).toLocaleDateString()}</p><p className="capitalize">Status: {(a.payment_status || 'pending verification').replaceAll('_', ' ')}</p>{a.payment_screenshot ? <button type="button" onClick={() => setApplicationProof({ url: a.payment_screenshot, name: a.name })} className="mt-2 rounded-lg border border-blue-200 px-3 py-1.5 font-semibold text-blue-700 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">View payment proof</button> : <p className="mt-1 text-xs text-red-500">Proof unavailable</p>}</td>
+                <td className="px-6 py-4 text-sm text-gray-500"><p>UTR: <span className="font-medium text-slate-700">{a.payment_transaction_id || a.upi_transaction_id || 'Not provided'}</span></p><p>Submitted: {new Date(a.payment_date || a.created_at).toLocaleDateString()}</p><p className="capitalize">Status: {(a.payment_status || 'pending verification').replaceAll('_', ' ')}</p>{a.payment_screenshot ? <button type="button" onClick={() => openSignedApplicationProof(a)} className="mt-2 rounded-lg border border-blue-200 px-3 py-1.5 font-semibold text-blue-700 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">View payment proof</button> : <p className="mt-1 text-xs text-red-500">Proof unavailable</p>}</td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${a.id}`, () => approveApplication(a, a.user_id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `application:${a.id}` ? 'Processing…' : 'Approve'}</button>
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${a.id}`, () => rejectApplication(a.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `application:${a.id}` ? 'Processing…' : 'Reject'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${a.id}`, () => approveApplication(a, a.user_id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `application:${a.id}` ? 'Processingâ€¦' : 'Approve'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${a.id}`, () => rejectApplication(a.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `application:${a.id}` ? 'Processingâ€¦' : 'Reject'}</button>
                 </td>
               </tr>
             )}
@@ -526,8 +721,8 @@ function AdminDashboardContent() {
                   </span>
                 </td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${c.id}`, () => resolveComplaint(c.id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `complaint:${c.id}` ? 'Processing…' : 'Resolve'}</button>
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${c.id}`, () => deleteComplaint(c.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `complaint:${c.id}` ? 'Processing…' : 'Delete'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${c.id}`, () => resolveComplaint(c.id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `complaint:${c.id}` ? 'Processingâ€¦' : 'Resolve'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${c.id}`, () => deleteComplaint(c.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `complaint:${c.id}` ? 'Processingâ€¦' : 'Delete'}</button>
                 </td>
               </tr>
             )}
@@ -554,8 +749,8 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 flex gap-2">
                   {v.status === 'pending' && (
                     <>
-                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${v.id}`, () => approveVacate(v.id, v.tenant_id, v.expected_check_out))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `vacate:${v.id}` ? 'Processing…' : 'Approve'}</button>
-                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${v.id}`, () => rejectVacate(v.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `vacate:${v.id}` ? 'Processing…' : 'Reject'}</button>
+                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${v.id}`, () => approveVacate(v.id, v.tenant_id, v.expected_check_out))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `vacate:${v.id}` ? 'Processingâ€¦' : 'Approve'}</button>
+                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${v.id}`, () => rejectVacate(v.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `vacate:${v.id}` ? 'Processingâ€¦' : 'Reject'}</button>
                     </>
                   )}
                 </td>
@@ -577,8 +772,8 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 text-gray-500">{r.old_room?.room_number || 'N/A'}</td>
                 <td className="px-6 py-4 text-gray-500">{r.new_room?.room_number || 'N/A'}</td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${r.id}`, () => approveRoomChange(r.id, r.tenant_id, r.new_room_id, r.old_room_id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `roomchange:${r.id}` ? 'Processing…' : 'Approve'}</button>
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${r.id}`, () => rejectRoomChange(r.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `roomchange:${r.id}` ? 'Processing…' : 'Reject'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${r.id}`, () => approveRoomChange(r.id, r.tenant_id, r.new_room_id, r.old_room_id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `roomchange:${r.id}` ? 'Processingâ€¦' : 'Approve'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${r.id}`, () => rejectRoomChange(r.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `roomchange:${r.id}` ? 'Processingâ€¦' : 'Reject'}</button>
                 </td>
               </tr>
             )}
@@ -590,7 +785,7 @@ function AdminDashboardContent() {
         {activeTab === 'notices' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="mb-6 border-b border-gray-100 pb-4">
-              <h3 className="text-xl font-bold text-[#1a1a1a] mb-4">📢 Post Global Notice</h3>
+              <h3 className="text-xl font-bold text-[#1a1a1a] mb-4">ðŸ“¢ Post Global Notice</h3>
               <div className="grid md:grid-cols-2 gap-4">
                 <input type="text" placeholder="Notice Title" value={noticeForm.title} onChange={(e) => setNoticeForm({ ...noticeForm, title: e.target.value })} className="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" />
                 <div className="flex gap-4 items-center">
@@ -606,7 +801,7 @@ function AdminDashboardContent() {
                 </div>
               </div>
               <textarea placeholder="Notice Content" rows="3" value={noticeForm.content} onChange={(e) => setNoticeForm({ ...noticeForm, content: e.target.value })} className="w-full mt-4 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" />
-              <button onClick={async () => { if (isSubmitting) return; setIsSubmitting(true); try { const posted = await postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent); if (posted) setNoticeForm({ title:'', content:'', type:'general', is_urgent:false }); } finally { setIsSubmitting(false); } }} disabled={isSubmitting} className="mt-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2 rounded-full font-semibold transition shadow-md disabled:opacity-50">{isSubmitting ? 'Posting…' : 'Post Notice'}</button>
+              <button onClick={async () => { if (isSubmitting) return; setIsSubmitting(true); try { const posted = await postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent); if (posted) setNoticeForm({ title:'', content:'', type:'general', is_urgent:false }); } finally { setIsSubmitting(false); } }} disabled={isSubmitting} className="mt-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2 rounded-full font-semibold transition shadow-md disabled:opacity-50">{isSubmitting ? 'Postingâ€¦' : 'Post Notice'}</button>
             </div>
             <AdminTable loading={noticesLoading} headers={['Title', 'Type', 'Date', 'Actions']} data={notices} renderRow={(n) => (
               <tr key={n.id} className="hover:bg-orange-50/50 transition">
@@ -655,10 +850,31 @@ function AdminDashboardContent() {
         title={`${searchDetail?.group || 'Search'} Details`}
         data={searchDetail?.item}
       />
-      {applicationProof && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="admin-proof-title" onClick={() => setApplicationProof(null)}><div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-4 shadow-2xl" onClick={event => event.stopPropagation()}><div className="mb-3 flex items-center justify-between"><h2 id="admin-proof-title" className="font-bold text-slate-900">Payment proof · {applicationProof.name}</h2><button type="button" onClick={() => setApplicationProof(null)} className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400" aria-label="Close payment proof">Close</button></div><img src={applicationProof.url} alt={`Payment proof submitted by ${applicationProof.name}`} className="mx-auto max-h-[75vh] max-w-full rounded-xl border object-contain" /></div></div>}
+      {applicationProof && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="admin-proof-title" onClick={() => setApplicationProof(null)}><div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-4 shadow-2xl" onClick={event => event.stopPropagation()}><div className="mb-3 flex items-center justify-between"><h2 id="admin-proof-title" className="font-bold text-slate-900">Payment proof Â· {applicationProof.name}</h2><button type="button" onClick={() => setApplicationProof(null)} className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400" aria-label="Close payment proof">Close</button></div><img src={applicationProof.url} alt={`Payment proof submitted by ${applicationProof.name}`} className="mx-auto max-h-[75vh] max-w-full rounded-xl border object-contain" /></div></div>}
     </main>
-    <MobileBottomNav items={adminBottomItems} activeId={mobileMenu==='more'?'more':activeTab} onSelect={id=>{if(id==='more')setMobileMenu('more');else if(id==='search'){setMobileMenu(null);openSection('global-search');resetDashboardScroll()}else openSection(id)}}/>
-    <DashboardMoreMenu open={mobileMenu==='more'} title="Admin tools" subtitle="Platform administration" onClose={()=>setMobileMenu(null)} items={adminMoreItems}/>
+    <div className="lg:hidden">
+      <DetailModal 
+        isOpen={!!selectedProperty} 
+        onClose={closeModals} 
+        title="Property Details" 
+        data={selectedProperty} 
+      />
+      <DetailModal 
+        isOpen={!!selectedOwner} 
+        onClose={closeModals} 
+        title="Owner Details" 
+        data={selectedOwner} 
+      />
+      <DetailModal
+        isOpen={!!searchDetail}
+        onClose={() => setSearchDetail(null)}
+        title={`${searchDetail?.group || 'Search'} Details`}
+        data={searchDetail?.item}
+      />
+      {applicationProof && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="admin-proof-title-mobile" onClick={() => setApplicationProof(null)}><div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-4 shadow-2xl" onClick={event => event.stopPropagation()}><div className="mb-3 flex items-center justify-between"><h2 id="admin-proof-title-mobile" className="font-bold text-slate-900">Payment proof Â· {applicationProof.name}</h2><button type="button" onClick={() => setApplicationProof(null)} className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400" aria-label="Close payment proof">Close</button></div><img src={applicationProof.url} alt={`Payment proof submitted by ${applicationProof.name}`} className="mx-auto max-h-[75vh] max-w-full rounded-xl border object-contain" /></div></div>}
+      <MobileBottomNav items={adminBottomItems} activeId={mobileMenu==='more'?'more':activeTab === 'global-search' ? 'search' : activeTab} onSelect={id=>{if(id==='more')setMobileMenu('more');else if(id==='search'){setMobileMenu(null);openSection('global-search');resetDashboardScroll()}else openSection(id)}}/>
+      <AdminMobileMore open={mobileMenu==='more'} onClose={()=>setMobileMenu(null)} items={adminMoreItems}/>
+    </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-export default function DashboardSectionNav({ label, items, activeId, onSelect, disabled = false }) {
+﻿export default function DashboardSectionNav({ label, items, activeId, onSelect, disabled = false }) {
   return (
     <nav aria-label={label} className="mb-6 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
