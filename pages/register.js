@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
@@ -7,7 +7,6 @@ import { cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
 import LocationPicker from '../components/maps/LocationPicker'
 import { fetchWithTimeout } from '../lib/fetchWithTimeout'
-import ThemeToggle from '../components/common/ThemeToggle'
 
 const DUPLICATE_ACCOUNT_MESSAGE = 'An owner account already exists with these details. Please login to add another property.'
 
@@ -26,6 +25,7 @@ export default function Register() {
   const [loading, setLoading] = useState(false)
   const [uploadingImages, setUploadingImages] = useState(false)
   const [registrationError, setRegistrationError] = useState(null)
+  const [fieldErrors, setFieldErrors] = useState({})
   const [step, setStep] = useState(1)
   const [propertyImages, setPropertyImages] = useState([])
   const [location, setLocation] = useState(null)
@@ -51,8 +51,62 @@ export default function Register() {
     'Bed', 'Study Table', 'Attached Bathroom'
   ]
 
+  const fieldRefs = useRef({})
+  const registerFieldRef = name => node => {
+    if (node) fieldRefs.current[name] = node
+  }
+
+  const setFirstErrorFocus = errors => {
+    const firstField = Object.keys(errors)[0]
+    if (firstField && fieldRefs.current[firstField]) {
+      window.setTimeout(() => fieldRefs.current[firstField]?.focus(), 0)
+    }
+  }
+
+  const passwordError = value => {
+    if (!value || value.length < 8) return 'Password must be at least 8 characters'
+    if (!/[A-Za-z]/.test(value)) return 'Password must include at least one letter'
+    if (!/\d/.test(value)) return 'Password must include at least one number'
+    return ''
+  }
+
+  const validateStep = (targetStep = step) => {
+    const errors = {}
+    if (targetStep === 1) {
+      if (!formData.name.trim()) errors.name = 'Property name is required'
+      if (!formData.address.trim()) errors.address = 'Full address is required'
+      if (!formData.city.trim()) errors.city = 'City is required'
+      if (formData.pincode && !/^\d{6}$/.test(formData.pincode.trim())) errors.pincode = 'Enter a valid 6-digit pincode'
+      if (!formData.propertyType) errors.propertyType = 'Select a property type'
+      if (!Number.isFinite(Number(formData.totalRooms)) || Number(formData.totalRooms) <= 0) errors.totalRooms = 'Enter a valid room count'
+      if (!location?.latitude || !location?.longitude) errors.location = 'Select the exact property location on the map'
+    }
+    if (targetStep === 2) {
+      const cleanPhone = cleanPhoneNumber(formData.phone)
+      const pwError = passwordError(formData.password)
+      if (!formData.ownerName.trim()) errors.ownerName = 'Owner name is required'
+      if (cleanPhone.length !== 10) errors.phone = 'Enter a valid 10-digit phone number'
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) errors.email = 'Enter a valid email address'
+      if (pwError) errors.password = pwError
+      if (formData.password !== formData.confirmPassword) errors.confirmPassword = 'Passwords do not match'
+    }
+    if (targetStep === 3 && formData.amenities.length === 0) errors.amenities = 'Select at least one amenity'
+    setFieldErrors(errors)
+    if (Object.keys(errors).length) {
+      setFirstErrorFocus(errors)
+      toast.error('Please fix the highlighted fields')
+      return false
+    }
+    return true
+  }
+
+  const continueToNextStep = () => {
+    if (validateStep(step)) setStep(step + 1)
+  }
+
   const handleChange = (e) => {
     setRegistrationError(null)
+    setFieldErrors(current => ({ ...current, [e.target.name]: '' }))
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
 
@@ -96,9 +150,11 @@ export default function Register() {
   const handleSubmit = async () => {
     if (loading) return
     setRegistrationError(null)
+    if (![1, 2, 3, 4].every(validateStep)) return
     // Validate password
-    if (!formData.password || formData.password.length < 6) {
-      toast.error('Password must be at least 6 characters')
+    const pwError = passwordError(formData.password)
+    if (pwError) {
+      toast.error(pwError)
       return
     }
     if (formData.password !== formData.confirmPassword) {
@@ -169,10 +225,9 @@ export default function Register() {
           <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-8 py-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h1 className="text-2xl font-bold text-white">🏠 Register Your Property</h1>
-                <p className="text-slate-300 text-sm mt-1">Join India's fastest-growing PG network</p>
+                <h1 className="text-2xl font-bold text-white">Register Your Property</h1>
+                <p className="text-slate-300 text-sm mt-1">Create your owner account and submit your property details.</p>
               </div>
-              <ThemeToggle />
             </div>
           </div>
 
@@ -188,34 +243,50 @@ export default function Register() {
 
             {step === 1 && (
               <div className="space-y-4">
-                <input name="name" value={formData.name} placeholder="Property Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                <input ref={registerFieldRef('name')} name="name" value={formData.name} placeholder="Property Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} aria-invalid={Boolean(fieldErrors.name)} required />
+                {fieldErrors.name && <p className="text-xs font-medium text-red-600">{fieldErrors.name}</p>}
                 <textarea name="description" value={formData.description} placeholder="Property Description" rows="3" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} />
-                <input name="address" value={formData.address} placeholder="Full Address *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                <input ref={registerFieldRef('address')} name="address" value={formData.address} placeholder="Full Address *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} aria-invalid={Boolean(fieldErrors.address)} required />
+                {fieldErrors.address && <p className="text-xs font-medium text-red-600">{fieldErrors.address}</p>}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <input name="city" value={formData.city} placeholder="City *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
-                  <input name="pincode" value={formData.pincode} placeholder="Pincode" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} />
+                  <div>
+                    <input ref={registerFieldRef('city')} name="city" value={formData.city} placeholder="City *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} aria-invalid={Boolean(fieldErrors.city)} required />
+                    {fieldErrors.city && <p className="text-xs font-medium text-red-600">{fieldErrors.city}</p>}
+                  </div>
+                  <div>
+                    <input ref={registerFieldRef('pincode')} name="pincode" value={formData.pincode} placeholder="Pincode" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} aria-invalid={Boolean(fieldErrors.pincode)} />
+                    {fieldErrors.pincode && <p className="text-xs font-medium text-red-600">{fieldErrors.pincode}</p>}
+                  </div>
                 </div>
-                <select name="propertyType" value={formData.propertyType} className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange}>
+                <select ref={registerFieldRef('propertyType')} name="propertyType" value={formData.propertyType} className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} aria-invalid={Boolean(fieldErrors.propertyType)}>
                   <option value="boys">Boys PG</option>
                   <option value="girls">Girls PG</option>
                   <option value="co-ed">Co-ed PG</option>
-                  <option value="professionals">Working Professionals</option>
                 </select>
-                <input name="totalRooms" value={formData.totalRooms} type="number" placeholder="Total Rooms *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                {fieldErrors.propertyType && <p className="text-xs font-medium text-red-600">{fieldErrors.propertyType}</p>}
+                <input ref={registerFieldRef('totalRooms')} name="totalRooms" value={formData.totalRooms} type="number" min="1" placeholder="Total Rooms *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} aria-invalid={Boolean(fieldErrors.totalRooms)} required />
+                {fieldErrors.totalRooms && <p className="text-xs font-medium text-red-600">{fieldErrors.totalRooms}</p>}
                 <LocationPicker value={location} onChange={next => { setLocation(next); setFormData(current => ({ ...current, address: next.formatted_address || current.address, city: next.city || current.city, pincode: next.pincode || current.pincode })) }} />
+                {fieldErrors.location && <p className="text-xs font-medium text-red-600">{fieldErrors.location}</p>}
               </div>
             )}
 
             {step === 2 && (
               <div className="space-y-4">
-                <input name="ownerName" value={formData.ownerName} placeholder="Owner Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                <input ref={registerFieldRef('ownerName')} name="ownerName" value={formData.ownerName} placeholder="Owner Name *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} aria-invalid={Boolean(fieldErrors.ownerName)} required />
+                {fieldErrors.ownerName && <p className="text-xs font-medium text-red-600">{fieldErrors.ownerName}</p>}
                 <div className="flex gap-2">
                   <span className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200">+91</span>
-                  <input name="phone" value={formData.phone} placeholder="Phone Number *" className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                  <input ref={registerFieldRef('phone')} name="phone" value={formData.phone} placeholder="Phone Number *" className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} aria-invalid={Boolean(fieldErrors.phone)} required />
                 </div>
-                <input name="email" value={formData.email} type="email" placeholder="Email *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
-                <input name="password" value={formData.password} type="password" placeholder="Password * (min 6 characters)" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
-                <input name="confirmPassword" value={formData.confirmPassword} type="password" placeholder="Confirm Password *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} required />
+                {fieldErrors.phone && <p className="text-xs font-medium text-red-600">{fieldErrors.phone}</p>}
+                <input ref={registerFieldRef('email')} name="email" value={formData.email} type="email" placeholder="Email *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} aria-invalid={Boolean(fieldErrors.email)} required />
+                {fieldErrors.email && <p className="text-xs font-medium text-red-600">{fieldErrors.email}</p>}
+                <input ref={registerFieldRef('password')} name="password" value={formData.password} type="password" placeholder="Password *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} aria-invalid={Boolean(fieldErrors.password)} required />
+                <p className="text-xs text-gray-500">Use at least 8 characters with one letter and one number.</p>
+                {fieldErrors.password && <p className="text-xs font-medium text-red-600">{fieldErrors.password}</p>}
+                <input ref={registerFieldRef('confirmPassword')} name="confirmPassword" value={formData.confirmPassword} type="password" placeholder="Confirm Password *" className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800" onChange={handleChange} aria-invalid={Boolean(fieldErrors.confirmPassword)} required />
+                {fieldErrors.confirmPassword && <p className="text-xs font-medium text-red-600">{fieldErrors.confirmPassword}</p>}
               </div>
             )}
 
@@ -229,6 +300,7 @@ export default function Register() {
                     </button>
                   ))}
                 </div>
+                {fieldErrors.amenities && <p className="mt-3 text-xs font-medium text-red-600">{fieldErrors.amenities}</p>}
               </div>
             )}
 
@@ -278,8 +350,8 @@ export default function Register() {
               <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4">
                 <p className="text-sm font-semibold text-red-700">{registrationError.message}</p>
                 {registrationError.duplicate && (
-                  <Link href="/login?next=/owner/register-property" className="mt-3 inline-flex rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">
-                    Login to add property
+                  <Link href="/login/owner?next=/owner/register-property" className="mt-3 inline-flex rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">
+                    Owner Login to add property
                   </Link>
                 )}
               </div>
@@ -290,16 +362,16 @@ export default function Register() {
                 <button onClick={() => setStep(step - 1)} className="flex-1 border-2 border-slate-300 text-slate-700 py-3 rounded-xl font-semibold hover:bg-slate-50 transition">← Back</button>
               )}
               {step < 5 ? (
-                <button onClick={() => setStep(step + 1)} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition">Continue →</button>
+                <button onClick={continueToNextStep} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition">Continue →</button>
               ) : (
                 <button onClick={handleSubmit} disabled={loading} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 disabled:opacity-50 transition">
-                  {loading ? 'Registering...' : 'Complete Registration →'}
+                  {loading ? 'Registering property...' : 'Complete Property Registration →'}
                 </button>
               )}
             </div>
 
             <div className="mt-6 text-center">
-              <Link href="/login" className="text-slate-600 hover:text-slate-800 text-sm">Already have an account? Login</Link>
+              <Link href="/login/owner" className="text-slate-600 hover:text-slate-800 text-sm">Already have an owner account? Owner Login</Link>
             </div>
           </div>
         </motion.div>

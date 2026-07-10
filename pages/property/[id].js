@@ -8,7 +8,6 @@ import toast from 'react-hot-toast'
 import NearbyHostelMap from '../../components/maps/NearbyHostelMap'
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
 import BrandLogo from '../../components/BrandLogo'
-import ThemeToggle from '../../components/common/ThemeToggle'
 import Head from 'next/head'
 import Image from 'next/image'
 import PublicFooter from '../../components/PublicFooter'
@@ -504,169 +503,6 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       setPaymentSubmitting(false)
       setPaymentProgress('')
     }
-    return
-    setPaymentSubmitting(true)
-    try {
-      const screenshotUrl = await uploadFile(paymentScreenshot, 'pay')
-      const cleanPhone = cleanPhoneNumber(applyForm.phone)
-
-      // 1. Create/update user
-      let userId
-      const existingUser = await findExistingUser(cleanPhone, applyForm.email)
-
-      if (existingUser) {
-        userId = existingUser.id
-        await supabase.from('users').update({
-          full_name: applyForm.name,
-          email: applyForm.email,
-        }).eq('id', userId)
-      } else {
-        const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).charAt(0).toUpperCase()
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: applyForm.email,
-          password: tempPassword,
-          options: { data: { full_name: applyForm.name, role: 'tenant', phone: cleanPhone } }
-        })
-        if (authError) throw authError
-
-        // Check if user was already created by auth trigger (but we try to insert)
-        const { data: newUserRows } = await supabase
-          .from('users')
-          .select('id')
-          .eq('phone', cleanPhone)
-          .limit(1)
-
-        if (newUserRows && newUserRows.length > 0) {
-          userId = newUserRows[0].id
-          await supabase.from('users').update({
-            full_name: applyForm.name,
-            email: applyForm.email,
-            role: 'tenant',
-            is_active: true,
-          }).eq('id', userId)
-        } else {
-          userId = authData.user.id
-          const { error: insertError } = await supabase.from('users').insert({
-            id: userId,
-            email: applyForm.email,
-            full_name: applyForm.name,
-            phone: cleanPhone,
-            role: 'tenant',
-            is_active: true,
-          })
-          if (insertError) {
-            if (insertError.message.includes('duplicate key value') || insertError.code === '23505') {
-              // Fallback: fetch by phone again
-              const { data: conflictingUser } = await supabase
-                .from('users')
-                .select('id')
-                .eq('phone', cleanPhone)
-                .limit(1)
-              if (conflictingUser && conflictingUser.length > 0) {
-                userId = conflictingUser[0].id
-                await supabase.from('users').update({
-                  full_name: applyForm.name,
-                  email: applyForm.email,
-                  role: 'tenant',
-                  is_active: true,
-                }).eq('id', userId)
-              } else {
-                throw insertError
-              }
-            } else {
-              throw insertError
-            }
-          }
-        }
-      }
-
-      // 2. Upload ID proof and photo (these were stored in state)
-      const idUrl = await uploadFile(idProof, 'id')
-      const photoUrl = await uploadFile(photo, 'photo')
-
-      // 3. Insert application record (status = 'pending' initially)
-      const { error: appError } = await supabase.from('applications').insert({
-        user_id: userId,
-        property_id: id,
-        room_id: selectedRoom,
-        name: applyForm.name,
-        phone: cleanPhone,
-        email: applyForm.email,
-        message: applyForm.message,
-        status: 'pending',
-        id_proof: idUrl,
-        photo: photoUrl,
-        created_at: new Date(),
-      })
-      if (appError) {
-        // If there's a duplicate, it might be from a previous attempt – we can ignore or cancel old one.
-        // For safety, we'll just throw.
-        throw new Error('Failed to create application: ' + appError.message)
-      }
-
-      // 4. Insert tenant record (status = 'payment_pending')
-      const totalAmount = calculateTotalAmount() // now 3000
-      const room = rooms.find(r => r.id === selectedRoom)
-
-      const { error: tenantError } = await supabase.from('tenants').insert({
-        user_id: userId,
-        property_id: id,
-        room_id: selectedRoom,
-        name: applyForm.name,
-        phone: cleanPhone,
-        email: applyForm.email,
-        rent_amount: room.monthly_rent,
-        pending_amount: 0,
-        total_paid: 0,
-        rent_status: 'payment_pending',
-        move_in_date: new Date().toISOString().split('T')[0],
-        status: 'payment_pending',
-        payment_screenshot: screenshotUrl,
-        upi_transaction_id: transactionId,
-      })
-      if (tenantError) {
-        throw new Error('Failed to create tenant: ' + tenantError.message)
-      }
-
-      // 5. Fetch the new tenant ID for payment history
-      const { data: newTenant, error: fetchTenantError } = await supabase
-        .from('tenants')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('property_id', id)
-        .single()
-      if (!fetchTenantError && newTenant && totalAmount > 0) {
-        await supabase.from('payment_history').insert({
-          tenant_id: newTenant.id,
-          amount: totalAmount,
-          payment_date: new Date().toISOString().split('T')[0],
-          payment_method: 'advance', // or 'security_deposit'
-          status: 'payment_pending',
-          upi_transaction_id: transactionId || null,
-          payment_screenshot: screenshotUrl,
-        })
-      }
-
-      toast.success(
-        `🎉 Application submitted! Once the owner approves, you will receive an email to set your password.`,
-        { duration: 8000 }
-      )
-
-      setShowPaymentModal(false)
-      // Reset form state
-      setApplyForm({ name: '', phone: '', email: '', message: '' })
-      setIdProof(null)
-      setPhoto(null)
-      setPaymentScreenshot(null)
-      setTransactionId('')
-      clearTimeout(redirectTimerRef.current)
-      redirectTimerRef.current = setTimeout(() => router.push('/login'), 8000)
-    } catch (error) {
-      console.error('Payment submission error:', error)
-      toast.error('Something went wrong: ' + error.message)
-    } finally {
-      setPaymentSubmitting(false)
-    }
   }
 
   // ========== PRE‑BOOKING FLOW (unchanged) ==========
@@ -873,8 +709,10 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const locality = property.address || city
   const fullAddress = property.formatted_address || [property.address, property.city, property.pincode].filter(Boolean).join(', ')
   const foodAmenity = amenities.find(amenity => /food|meal|mess/i.test(amenity))
+  const roomTypeText = roomTypes.length ? roomTypes.join(', ') : `${propertyType} rooms`
+  const amenityPreview = amenities.slice(0, 4).join(', ')
   const seoTitle = `${property.name} in ${city} | Rooms, Rent & Hostel Details - HostelSet`
-  const seoDescription = `View ${property.name} in ${city} on HostelSet. Check room details, rent, amenities, location, and apply online.`
+  const seoDescription = `${property.name} in ${locality}: view ${roomTypeText}, ${rentText}, availability${amenityPreview ? `, facilities like ${amenityPreview}` : ''}, and apply online through HostelSet.`
   const canonicalUrl = `${SITE_URL}${propertyPublicPath(property)}`
   const absoluteImage = (() => {
     const candidate = property.photos?.[0] || '/brand/logo-primary.png'
@@ -910,7 +748,25 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       { '@type': 'ListItem', position: 3, name: property.name, item: canonicalUrl },
     ],
   }
-  const jsonLd = JSON.stringify([lodgingSchema, breadcrumbSchema]).replace(/</g, '\\u003c')
+  const organizationSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'HostelSet',
+    url: SITE_URL,
+    logo: `${SITE_URL}/brand/logo-primary.png`,
+  }
+  const websiteSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'HostelSet',
+    url: SITE_URL,
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: `${SITE_URL}/properties?q={search_term_string}`,
+      'query-input': 'required name=search_term_string',
+    },
+  }
+  const jsonLd = JSON.stringify([organizationSchema, websiteSchema, lodgingSchema, breadcrumbSchema]).replace(/</g, '\\u003c')
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50">
@@ -940,10 +796,9 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
               <BrandLogo />
             </Link>
             <div className="flex items-center gap-4">
-              <ThemeToggle className="hidden sm:inline-flex text-slate-700 dark:text-white border-slate-200 dark:border-white/20 bg-white dark:bg-white/10" />
-              <Link href="/login" className="text-gray-600 hover:text-slate-800 transition">Login / Signup</Link>
-              <Link href="/owner/register-property" className="bg-slate-800 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-slate-700 transition shadow-md">
-                List Property
+              <Link href="/login/tenant" className="text-gray-600 hover:text-slate-800 transition">Tenant Login</Link>
+              <Link href="/register" className="bg-slate-800 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-slate-700 transition shadow-md">
+                Register Your Property
               </Link>
             </div>
           </div>
@@ -1013,7 +868,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
           </button>
         </div>
 
-        {/* Rooms Tab – unchanged except for the "Apply Now" button which now just opens apply modal */}
+        {/* Rooms Tab */}
         {activeTab === 'rooms' && (
           <>
             {hasNoRooms ? (
@@ -1097,7 +952,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                           </button>
                         ) : isAvailable ? (
                           <button onClick={() => { setSelectedRoom(room.id); setShowApplyModal(true) }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition transform hover:-translate-y-0.5 duration-200">
-                            Apply Now →
+                            Apply for this Hostel →
                           </button>
                         ) : isPrebookable ? (
                           <button onClick={() => openPrebookModal(room.id, roomVacate.vacateDate)} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition transform hover:-translate-y-0.5 duration-200">
@@ -1205,7 +1060,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
             </div>
             <div>
               <h3 className="text-lg font-semibold text-slate-800">How can I apply?</h3>
-              <p className="mt-2 text-slate-600">Choose an available room, select Apply Now, provide the requested applicant details and documents, then submit the application payment reference and proof for owner review.</p>
+              <p className="mt-2 text-slate-600">Choose an available room, select Apply for this Hostel, provide the requested applicant details and documents, then submit the application payment reference and proof for owner review. After approval, you will receive account access and login instructions.</p>
             </div>
             <div>
               <h3 className="text-lg font-semibold text-slate-800">How does payment work?</h3>
@@ -1261,7 +1116,10 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowApplyModal(false)}>
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-slate-800">Apply for Room</h2>
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-800">Apply for this Hostel</h2>
+                  <p className="mt-1 text-xs text-slate-500">After approval, you’ll receive account access and login instructions.</p>
+                </div>
                 <button onClick={() => setShowApplyModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
               </div>
               <div className="space-y-4">

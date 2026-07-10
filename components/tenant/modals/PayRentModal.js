@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { formatCurrency } from '../../../lib/utils'
 import { useModalAccessibility } from '../../../hooks/useModalAccessibility'
+import { useUnsavedChangesGuard } from '../../../hooks/useUnsavedChangesGuard'
 
 export default function PayRentModal({
   tenant = {},
@@ -20,49 +21,59 @@ export default function PayRentModal({
 }) {
   const amount = Number(tenant?.pending_amount ?? tenant?.rent_amount ?? 0)
   const busy = paymentLoading || isSubmitting
-  const dialogRef = useModalAccessibility(onCancel, busy)
+  const isDirty = Boolean(paymentTransactionId?.trim() || paymentScreenshot)
+  const confirmDiscard = useUnsavedChangesGuard(isDirty && !busy)
+  const requestCancel = () => { if (!busy && confirmDiscard()) onCancel() }
+  const dialogRef = useModalAccessibility(requestCancel, busy)
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { if (!busy) onCancel() }}>
-      <motion.div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="pay-rent-modal-title" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto outline-none" onClick={(e) => e.stopPropagation()}>
-        <h2 id="pay-rent-modal-title" className="text-2xl font-bold mb-4">💳 Pay Rent via UPI</h2>
-        <div className="bg-gray-50 rounded-xl p-4 mb-4">
-          <p className="font-semibold">{tenant?.name}</p>
-          <p className="text-sm text-gray-500">Room {room?.room_number}</p>
-          <p>Monthly Rent: {formatCurrency(tenant?.rent_amount)}</p>
-          <p className="text-red-500">Pending: {formatCurrency(amount)}</p>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-2 pt-[calc(env(safe-area-inset-top)_+_0.5rem)] sm:items-center sm:p-4" onClick={requestCancel}>
+      <motion.div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="pay-rent-modal-title" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="flex max-h-[86dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl outline-none" onClick={(e) => e.stopPropagation()}>
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 p-3">
+          <h2 id="pay-rent-modal-title" className="text-base font-black leading-tight text-slate-900">Pay rent via UPI</h2>
+          <button type="button" onClick={requestCancel} disabled={busy} className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close payment modal">&times;</button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+        <div className="rounded-xl bg-gray-50 p-3">
+          <p className="text-sm font-semibold">{tenant?.name}</p>
+          <p className="text-xs text-gray-500">Room {room?.room_number}</p>
+          <p className="text-sm">Monthly Rent: {formatCurrency(tenant?.rent_amount)}</p>
+          <p className="text-sm font-semibold text-red-500">Pending: {formatCurrency(amount)}</p>
         </div>
         {(ownerUpiId || ownerUpiPhone) ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {ownerUpiId && (
-              <div className="bg-blue-50 p-3 rounded-lg">
-                <p className="text-sm font-semibold mb-2">Pay to UPI ID</p>
-                <p className="font-mono text-sm break-all mb-2">{ownerUpiId}</p>
+              <div className="rounded-lg bg-blue-50 p-3">
+                <p className="mb-1 text-xs font-semibold">Pay to UPI ID</p>
+                <p className="mb-2 break-all font-mono text-sm">{ownerUpiId}</p>
                 <div className="flex flex-wrap gap-2">
-                  <button onClick={() => copyUpiId(ownerUpiId)} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy UPI ID</button>
+                  <button type="button" onClick={() => copyUpiId(ownerUpiId)} className="h-8 rounded-full bg-gray-600 px-3 text-xs font-semibold text-white transition hover:bg-gray-700">Copy UPI ID</button>
                 </div>
               </div>
             )}
             {ownerUpiPhone && (
-              <div className="bg-green-50 p-3 rounded-lg">
-                <p className="text-sm font-semibold mb-2">Pay to UPI Phone Number</p>
-                <p className="font-mono text-sm break-all mb-2">{ownerUpiPhone}</p>
+              <div className="rounded-lg bg-green-50 p-3">
+                <p className="mb-1 text-xs font-semibold">Pay to UPI Phone Number</p>
+                <p className="mb-2 break-all font-mono text-sm">{ownerUpiPhone}</p>
                 <div className="flex flex-wrap gap-2">
-                  <button onClick={() => copyUpiPhone(ownerUpiPhone)} className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-gray-700 transition">Copy Phone</button>
+                  <button type="button" onClick={() => copyUpiPhone(ownerUpiPhone)} className="h-8 rounded-full bg-gray-600 px-3 text-xs font-semibold text-white transition hover:bg-gray-700">Copy Phone</button>
                 </div>
               </div>
             )}
-            <div className="border-t pt-4 mt-2">
-              <div><label className="block text-sm font-semibold mb-1">UPI Transaction ID *</label><input type="text" required className="w-full px-4 py-3 border rounded-xl" value={paymentTransactionId} onChange={e => setPaymentTransactionId(e.target.value)} /></div>
-              <div className="mt-3"><label className="block text-sm font-semibold mb-1">Payment Screenshot *</label><input type="file" accept="image/*" onChange={e => { if (e.target.files[0]) setPaymentScreenshot(e.target.files[0]) }} className="w-full" /></div>
-              <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800 mt-3">After payment, upload the screenshot and submit. Owner will verify.</div>
-              <button onClick={submitPaymentWithProof} disabled={paymentLoading || isSubmitting || !paymentScreenshot || !paymentTransactionId.trim()} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold mt-4 disabled:opacity-50">{paymentLoading ? 'Submitting...' : 'Submit Payment Proof'}</button>
-              <button onClick={onCancel} disabled={busy} className="w-full text-center text-gray-500 text-sm mt-3 disabled:opacity-50">Cancel</button>
+            <div className="border-t pt-3">
+              <div><label htmlFor="tenant-payment-transaction-id" className="mb-1 block text-xs font-semibold">UPI Transaction ID *</label><input id="tenant-payment-transaction-id" name="payment_transaction_id" type="text" required className="h-9 w-full rounded-xl border px-3 text-sm" value={paymentTransactionId} onChange={e => setPaymentTransactionId(e.target.value)} /></div>
+              <div className="mt-2"><label htmlFor="tenant-payment-screenshot" className="mb-1 block text-xs font-semibold">Payment Screenshot *</label><input id="tenant-payment-screenshot" name="payment_screenshot" type="file" accept="image/*" onChange={e => { if (e.target.files[0]) setPaymentScreenshot(e.target.files[0]) }} className="w-full text-sm" /></div>
+              <div className="mt-2 rounded-lg bg-yellow-50 p-2 text-xs text-yellow-800">After payment, upload the screenshot and submit. Owner will verify.</div>
             </div>
           </div>
         ) : (
           <p className="text-red-500">Owner has not set up UPI payment details. Please contact owner.</p>
         )}
+        </div>
+        <div className="flex shrink-0 gap-2 border-t border-slate-200 bg-white p-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))]">
+          <button type="button" onClick={submitPaymentWithProof} disabled={paymentLoading || isSubmitting || !paymentScreenshot || !paymentTransactionId.trim()} className="h-9 flex-1 rounded-xl bg-slate-800 text-sm font-semibold text-white disabled:opacity-50">{paymentLoading ? 'Submitting...' : 'Submit proof'}</button>
+          <button type="button" onClick={requestCancel} disabled={busy} className="h-9 flex-1 rounded-xl border border-slate-300 text-sm font-semibold text-slate-700 disabled:opacity-50">Cancel</button>
+        </div>
       </motion.div>
     </div>
   )

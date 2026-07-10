@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
-import { supabase } from '../lib/supabase';
-import { calculateRentDueStatus } from '../lib/utils';
+import { clearHostelSetSessionCache, getRestoredSession, supabase } from '../lib/supabase';
+import { calculateMembershipStatus, calculateRentDueStatus } from '../lib/utils';
 import toast from 'react-hot-toast';
 
 const OwnerContext = createContext();
@@ -30,16 +30,11 @@ export function OwnerProvider({ children }) {
   const autoRefreshRef = useRef(null);
 
   const updateMembershipFromProperty = (propertyData) => {
-    if (!propertyData) { setMembershipActive(false); setMembershipStatus('none'); setMembershipExpiry(null); setDaysLeft(null); return; }
-    const active = propertyData.membership_active && new Date(propertyData.membership_expiry) > new Date();
-    setMembershipActive(active);
-    setMembershipStatus(active?'active':(propertyData.membership_active?'expired':'none'));
-    if (propertyData.membership_expiry) {
-      const expiryDate = new Date(propertyData.membership_expiry);
-      const today = new Date();
-      const remainingDays = Math.ceil((expiryDate - today) / (1000*60*60*24));
-      setDaysLeft(remainingDays); setMembershipExpiry(expiryDate);
-    } else { setMembershipExpiry(null); setDaysLeft(null); }
+    const membership = calculateMembershipStatus(propertyData);
+    setMembershipActive(membership.active);
+    setMembershipStatus(membership.status);
+    setMembershipExpiry(membership.expiryDate);
+    setDaysLeft(membership.daysLeft);
   };
 
   const loadData = useCallback(async (isBackground = false, preferredPropertyId = null) => {
@@ -131,11 +126,11 @@ export function OwnerProvider({ children }) {
 
   // Auth and Init
   const checkAuthAndRedirect = async () => {
-    const { data:{session}, error } = await supabase.auth.getSession();
+    const { data:{session}, error } = await getRestoredSession();
     const user = session?.user;
-    if (error || !user) { localStorage.clear(); router.push('/login'); return null; }
+    if (error || !user) { router.replace('/login/owner'); return null; }
     const { data:userRecord, error:roleError } = await supabase.from('users').select('role').eq('id', user.id).single();
-    if (roleError || !userRecord) { localStorage.clear(); router.push('/login'); return null; }
+    if (roleError || !userRecord) { router.replace('/login/owner'); return null; }
     return { user, role: userRecord.role };
   };
 
@@ -154,7 +149,7 @@ export function OwnerProvider({ children }) {
   const loadOwnerProfile = async (ownerId = null) => {
     let userId = ownerId;
     if (!userId) {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await getRestoredSession({ retryDelay: 100 });
       userId = session?.user?.id;
     }
     if (!userId) return null;
@@ -174,7 +169,7 @@ export function OwnerProvider({ children }) {
     if (!name) throw new Error('Full name is required');
     if (cleanPhone.length !== 10) throw new Error('Enter a valid 10-digit phone number');
 
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await getRestoredSession({ retryDelay: 100 });
     if (!session?.user) throw new Error('Please log in again');
     const { error } = await supabase
       .from('users')
@@ -239,7 +234,7 @@ export function OwnerProvider({ children }) {
     }
     setMembershipLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await getRestoredSession({ retryDelay: 100 });
       if (!session) throw new Error('Please log in again');
       const { data, error } = await supabase.from('membership_requests').insert({
         owner_id: session.user.id,
@@ -263,7 +258,7 @@ export function OwnerProvider({ children }) {
   useEffect(() => {
     const init = async () => {
       const auth = await checkAuthAndRedirect();
-      if (!auth) return; if (auth.role !== 'owner') { router.push('/login'); return; }
+      if (!auth) return; if (auth.role !== 'owner') { router.replace(`/login/${auth.role || 'owner'}`); return; }
       localStorage.setItem('userId', auth.user.id); localStorage.setItem('userEmail', auth.user.email || ''); localStorage.setItem('userName', auth.user.user_metadata?.full_name || '');
       const loadedProperty = await loadData(false);
       await Promise.all([
@@ -271,12 +266,12 @@ export function OwnerProvider({ children }) {
         loadOwnerProfile(auth.user.id),
         loadMembershipRequest(auth.user.id, loadedProperty?.id),
       ]);
-      const membershipExpired = loadedProperty?.membership_active && loadedProperty.membership_expiry && new Date(loadedProperty.membership_expiry) <= new Date();
+      const membershipExpired = calculateMembershipStatus(loadedProperty).status === 'expired';
       if (membershipExpired) { router.push('/owner/subscribe?reason=expired'); return; }
       startAutoRefresh();
     };
     init();
-    const { data:{subscription} } = supabase.auth.onAuthStateChange((event, session) => { if (event === 'SIGNED_OUT') { localStorage.clear(); router.push('/login'); } });
+    const { data:{subscription} } = supabase.auth.onAuthStateChange((event, session) => { if (event === 'SIGNED_OUT') { clearHostelSetSessionCache(); router.replace('/login/owner'); } });
     return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); if (subscription) subscription.unsubscribe(); };
   }, []);
 

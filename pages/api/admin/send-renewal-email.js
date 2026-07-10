@@ -1,12 +1,14 @@
-import { supabaseAdmin } from '../../../lib/supabase';
+import { supabaseAdmin } from '../../../lib/server/supabaseAdmin';
 import { fetchWithTimeout } from '../../../lib/fetchWithTimeout';
 import { logger } from '../../../lib/logger';
+import { setPrivateApiResponse } from '../../../lib/server/publicApiSecurity';
 
 const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
 }[character]));
 
 export default async function handler(req, res) {
+  setPrivateApiResponse(res);
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!supabaseAdmin) return res.status(500).json({ error: 'Server is not configured' });
 
@@ -19,8 +21,8 @@ export default async function handler(req, res) {
 
     const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
     if (authError || !user) return res.status(401).json({ error: 'Invalid session' });
-    const { data: admin } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
-    if (admin?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+    const { data: admin } = await supabaseAdmin.from('users').select('role, is_active').eq('id', user.id).single();
+    if (admin?.role !== 'admin' || !admin?.is_active) return res.status(403).json({ error: 'Forbidden' });
 
     const { data: owner, error: ownerError } = await supabaseAdmin
       .from('users')
@@ -58,6 +60,9 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, message: 'Renewal email sent successfully' });
   } catch (error) {
     logger.error('Renewal email failed', error, { route: '/api/admin/send-renewal-email' });
-    return res.status(500).json({ success: false, error: error.message });
+    const message = process.env.NODE_ENV === 'production'
+      ? 'Unable to send renewal email'
+      : error.message;
+    return res.status(500).json({ success: false, error: message });
   }
 }

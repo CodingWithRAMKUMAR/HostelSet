@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../../../lib/supabase'
+import { supabaseAdmin } from '../../../lib/server/supabaseAdmin'
 import { enforceRateLimit, getClientIp, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { logger } from '../../../lib/logger'
 

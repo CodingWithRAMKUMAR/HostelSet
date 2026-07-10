@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { supabaseAdmin } from '../../../lib/supabase'
+import { supabaseAdmin } from '../../../lib/server/supabaseAdmin'
 import { cleanPhoneNumber } from '../../../lib/utils'
 import { allowPostOnly, enforceRateLimit, getClientIp, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { logger } from '../../../lib/logger'

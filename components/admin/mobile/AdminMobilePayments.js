@@ -7,7 +7,7 @@ function paymentTone(status) {
   return 'red'
 }
 
-export default function AdminMobilePayments({ payments = [], loading, actionKey, avatar = 'A', onBack, onProfile, onConfirm, onReject }) {
+export default function AdminMobilePayments({ payments = [], loading, actionKey, avatar = 'A', onBack, onProfile, onConfirm, onReject, onViewProof }) {
   return (
     <AdminMobilePage title="Payments" subtitle={`${payments.length} platform payments`} avatar={avatar} onBack={onBack} onProfile={onProfile}>
       {loading && payments.length === 0 ? <AdminLoadingState /> : null}
@@ -25,16 +25,23 @@ export default function AdminMobilePayments({ payments = [], loading, actionKey,
             </div>
             <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
               <AdminStatusChip tone={paymentTone(payment.status)}>{pending ? 'Pending' : payment.status || 'Unknown'}</AdminStatusChip>
-              {pending ? (
-                <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
+                {payment.payment_screenshot ? (
+                  <button type="button" onClick={() => onViewProof?.(payment)} className="rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">
+                    Proof
+                  </button>
+                ) : null}
+                {pending ? (
+                  <>
                   <button type="button" disabled={Boolean(actionKey)} onClick={() => onConfirm?.(payment)} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">
                     {actionKey === `payment:${payment.id}` ? '...' : 'Confirm'}
                   </button>
                   <button type="button" disabled={Boolean(actionKey)} onClick={() => onReject?.(payment)} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">
                     {actionKey === `payment:${payment.id}` ? '...' : 'Reject'}
                   </button>
-                </div>
-              ) : null}
+                  </>
+                ) : null}
+              </div>
             </div>
           </article>
         )

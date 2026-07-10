@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import { supabase } from '../lib/supabase';
+import { clearHostelSetSessionCache, getRestoredSession, supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
@@ -24,13 +24,13 @@ export function AdminProvider({ children }) {
   });
 
   const checkAuthAndRedirect = async () => {
-    const { data: { session }, error } = await supabase.auth.getSession();
+    const { data: { session }, error } = await getRestoredSession();
     const user = session?.user;
-    if (error || !user) { localStorage.clear(); router.push('/login'); return null; }
+    if (error || !user) { router.replace('/login/admin'); return null; }
     const { data: userRecord, error: roleError } = await supabase.from('users').select('role').eq('id', user.id).single();
     if (roleError || !userRecord || userRecord.role !== 'admin') {
       toast.error('Access Denied: Admins only.');
-      router.push('/login'); return null;
+      router.replace(`/login/${userRecord?.role || 'admin'}`); return null;
     }
     return { user, role: userRecord.role };
   };
@@ -106,7 +106,7 @@ export function AdminProvider({ children }) {
     };
     init();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') { localStorage.clear(); router.push('/login'); }
+      if (event === 'SIGNED_OUT') { clearHostelSetSessionCache(); router.replace('/login/admin'); }
     });
     return () => { subscription.unsubscribe(); };
   }, []);

@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
-import { supabaseAdmin } from '../../../lib/supabase'
+import { supabaseAdmin } from '../../../lib/server/supabaseAdmin'
 import { logger } from '../../../lib/logger'
 import { getLoginUrl, getResetPasswordUrl } from '../../../lib/server/appUrl'
 
@@ -61,6 +61,35 @@ async function replaceStaleTenantProfile({ userId, email, name, phone }) {
   return inviteTenantForSetup({ email, name, phone })
 }
 
+async function requireApprovalActor(userId) {
+  const { data: actor, error } = await supabaseAdmin
+    .from('users')
+    .select('id,role,is_active')
+    .eq('id', userId)
+    .single()
+  if (error || !actor?.is_active || !['owner', 'admin'].includes(actor?.role)) {
+    const forbidden = new Error('Owner or admin access required')
+    forbidden.statusCode = 403
+    throw forbidden
+  }
+  return actor
+}
+
+async function assertCanApproveProperty(actor, propertyId) {
+  if (actor.role === 'admin') return
+  const { data: property, error } = await supabaseAdmin
+    .from('properties')
+    .select('id')
+    .eq('id', propertyId)
+    .eq('owner_id', actor.id)
+    .maybeSingle()
+  if (error || !property) {
+    const forbidden = new Error('You are not authorized to process this request')
+    forbidden.statusCode = 403
+    throw forbidden
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
   if (!supabaseAdmin) return res.status(503).json({ error: 'Approval service is unavailable' })
@@ -79,15 +108,17 @@ export default async function handler(req, res) {
 
   let createdUserId = null
   try {
+    const actor = await requireApprovalActor(auth.user.id)
     let result
     let setupEmailSent = false
     if (type === 'application') {
       const { data: application, error: applicationError } = await supabaseAdmin
         .from('applications')
-        .select('id,email,phone,name,user_id,status')
+        .select('id,email,phone,name,user_id,status,property_id')
         .eq('id', id)
         .single()
       if (applicationError) throw applicationError
+      await assertCanApproveProperty(actor, application.property_id)
       if (application.status !== 'pending') throw new Error('Application has already been processed')
 
       let userId = application.user_id
@@ -140,8 +171,9 @@ export default async function handler(req, res) {
       result = response.data
     } else {
       const { data: booking, error: bookingError } = await supabaseAdmin.from('pre_bookings')
-        .select('email, phone, name, user_id').eq('id', id).single()
+        .select('email, phone, name, user_id, property_id').eq('id', id).single()
       if (bookingError) throw bookingError
+      await assertCanApproveProperty(actor, booking.property_id)
       let userId = booking.user_id
       if (!userId) {
         const [{ data: byPhone }, { data: byEmail }] = await Promise.all([
@@ -184,6 +216,10 @@ export default async function handler(req, res) {
   } catch (error) {
     if (createdUserId) await supabaseAdmin.auth.admin.deleteUser(createdUserId).catch(() => {})
     logger.error('Approval failed', error, { route: '/api/requests/approve', type })
-    return res.status(400).json({ error: error.message || 'Approval failed' })
+    const statusCode = error.statusCode || 400
+    const message = process.env.NODE_ENV === 'production' && statusCode >= 500
+      ? 'Approval failed'
+      : (error.message || 'Approval failed')
+    return res.status(statusCode).json({ error: message })
   }
 }

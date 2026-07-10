@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase, signPrivateDocumentFields } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
@@ -15,7 +15,7 @@ export function useAdminPreBookings(enabled = true) {
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
     if (error) toast.error('Failed to load pre-bookings');
-    else setPreBookings(await Promise.all((data || []).map(item => signPrivateDocumentFields(item, ['id_proof', 'photo', 'payment_screenshot']))));
+    else setPreBookings(data || []);
     setLoading(false);
   };
 

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { supabaseAdmin } from '../../../lib/supabase'
+import { supabaseAdmin } from '../../../lib/server/supabaseAdmin'
 import { setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { normalizeBloodGroup } from '../../../lib/bloodGroups'
 

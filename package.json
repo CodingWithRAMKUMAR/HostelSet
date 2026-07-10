@@ -8,6 +8,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "clean:next": "node scripts/clean-next-cache.mjs",
+    "staging:check": "node scripts/staging-check.mjs",
+    "staging:seed": "node scripts/staging-seed.mjs",
     "start": "next start"
   },
   "dependencies": {

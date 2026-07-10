@@ -48,8 +48,8 @@ export default function AddTenantModal({ formData, setFormData, rooms = [], onAd
           <div className="rounded-xl bg-blue-50 p-2 text-xs text-blue-700">After adding, tenant receives a password set email and can log in with their email.</div>
         </div>
         <div className="flex shrink-0 gap-2 border-t border-slate-200 bg-white p-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))]">
-          <button onClick={onAdd} disabled={isSubmitting || availableRooms.length === 0} className="h-9 flex-1 rounded-xl bg-slate-800 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{isSubmitting ? 'Adding...' : 'Add Tenant'}</button>
-          <button onClick={onCancel} className="h-9 flex-1 rounded-xl border border-gray-300 text-sm font-semibold text-gray-700">Cancel</button>
+          <button type="button" onClick={onAdd} disabled={isSubmitting || availableRooms.length === 0} className="h-9 flex-1 rounded-xl bg-slate-800 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{isSubmitting ? 'Adding...' : 'Add Tenant'}</button>
+          <button type="button" onClick={onCancel} className="h-9 flex-1 rounded-xl border border-gray-300 text-sm font-semibold text-gray-700">Cancel</button>
         </div>
       </div>
     </div>

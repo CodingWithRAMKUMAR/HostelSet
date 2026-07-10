@@ -28,6 +28,7 @@ import AdminGlobalSearch from '../../components/admin/AdminGlobalSearch';
 import { displayBloodGroup } from '../../lib/bloodGroups';
 import DashboardSectionNav from '../../components/dashboard/DashboardSectionNav';
 import DashboardSidebar from '../../components/dashboard/DashboardSidebar';
+import DashboardIcon from '../../components/dashboard/DashboardIcon';
 import MobileTopbar from '../../components/dashboard/MobileTopbar';
 import MobileBottomNav from '../../components/dashboard/MobileBottomNav';
 import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu';
@@ -61,7 +62,7 @@ const AdminTable = ({ headers, data, renderRow, renderCard, emptyMessage, loadin
     {renderCard && (
       <div className="space-y-2 p-2 md:hidden">
         {loading && data.length === 0 ? (
-          <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Loadingâ€¦</div>
+          <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Loading...</div>
         ) : data.length === 0 ? (
           <div className="rounded-xl bg-slate-50 p-3 text-center text-sm text-slate-500">{emptyMessage}</div>
         ) : data.map(item => renderCard(item))}
@@ -87,9 +88,92 @@ const AdminTable = ({ headers, data, renderRow, renderCard, emptyMessage, loadin
 );
 
 // ----------------- DETAIL MODAL COMPONENT -----------------
+const detailValue = value => {
+  if (value == null || value === '') return '—'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (Array.isArray(value)) return value.length ? value.join(', ') : '—'
+  if (typeof value === 'object') return '—'
+  return String(value).replace(/<[^>]*>/g, '')
+}
+
+const dateValue = value => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+const DetailField = ({ label, value }) => (
+  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+    <p className="mt-1 break-words text-sm font-semibold text-slate-900">{detailValue(value)}</p>
+  </div>
+)
+
+const BadgeList = ({ label, values }) => (
+  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:col-span-2">
+    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+    <div className="mt-2 flex flex-wrap gap-2">
+      {Array.isArray(values) && values.length ? values.map(item => (
+        <span key={String(item)} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">{detailValue(item)}</span>
+      )) : <span className="text-sm font-semibold text-slate-900">—</span>}
+    </div>
+  </div>
+)
+
+const knownDetailFields = (title, data) => {
+  const lower = String(title || '').toLowerCase()
+  if (lower.includes('property')) {
+    return {
+      fields: [
+        ['Name', data.name],
+        ['Owner', data.owner_name || data.owner?.full_name || data.owner_id],
+        ['Address', data.formatted_address || data.address],
+        ['City', data.city],
+        ['Contact', data.phone || data.contact || data.owner_phone],
+        ['Rooms', data.total_rooms || data.rooms_count],
+        ['Capacity', data.capacity || data.total_capacity],
+        ['Occupancy', data.occupied || data.current_occupants],
+        ['Rent', data.monthly_rent ? formatCurrency(data.monthly_rent) : data.rent_range],
+        ['Deposit', data.security_deposit ? formatCurrency(data.security_deposit) : data.deposit],
+        ['Status', data.is_active === false ? 'Inactive' : data.status || 'Active'],
+        ['Created', dateValue(data.created_at)],
+      ],
+      badges: [['Amenities', data.amenities]],
+    }
+  }
+  if (lower.includes('tenant') || data.role === 'tenant') {
+    return {
+      fields: [
+        ['Name', data.name || data.full_name],
+        ['Email', data.email],
+        ['Phone', data.phone],
+        ['Blood group', displayBloodGroup(data.blood_group)],
+        ['Property', data.property_name || data.property?.name || data.property_id],
+        ['Room', data.room_number || data.rooms?.room_number || data.room_id],
+        ['Rent', data.rent_amount ? formatCurrency(data.rent_amount) : null],
+        ['Deposit', data.security_deposit ? formatCurrency(data.security_deposit) : null],
+        ['Join date', dateValue(data.move_in_date || data.join_date || data.created_at)],
+        ['Status', data.status || (data.is_active === false ? 'Inactive' : 'Active')],
+        ['Emergency contact', data.emergency_contact || data.emergency_phone],
+        ['Payment summary', data.pending_amount ? `Pending ${formatCurrency(data.pending_amount)}` : data.rent_status],
+      ],
+      badges: [],
+    }
+  }
+  return {
+    fields: Object.entries(data)
+      .filter(([, value]) => value == null || ['string', 'number', 'boolean'].includes(typeof value))
+      .slice(0, 16)
+      .map(([key, value]) => [key.replace(/_/g, ' '), key.includes('date') || key.endsWith('_at') ? dateValue(value) : value]),
+    badges: [],
+  }
+}
+
 const DetailModal = ({ isOpen, onClose, title, data }) => {
   const dialogRef = useModalAccessibility(onClose, false, isOpen);
   if (!isOpen || !data) return null;
+  const details = knownDetailFields(title, data);
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="admin-detail-title" className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl border border-orange-500/20 outline-none" onClick={event => event.stopPropagation()}>
@@ -98,9 +182,10 @@ const DetailModal = ({ isOpen, onClose, title, data }) => {
           <button onClick={onClose} aria-label="Close details" className="text-gray-400 hover:text-white text-xl font-bold">&times;</button>
         </div>
         <div className="p-6 overflow-y-auto max-h-[60vh]">
-          <pre className="text-sm bg-gray-50 p-4 rounded-lg border border-gray-200 overflow-x-auto">
-            {JSON.stringify(data, null, 2)}
-          </pre>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {details.fields.map(([label, value]) => <DetailField key={label} label={label} value={value} />)}
+            {details.badges.map(([label, values]) => <BadgeList key={label} label={label} values={values} />)}
+          </div>
         </div>
         <div className="p-4 border-t border-gray-100 flex justify-end">
           <button onClick={onClose} className="bg-gray-200 hover:bg-gray-300 px-6 py-2 rounded-lg font-medium transition">Close</button>
@@ -183,6 +268,20 @@ function AdminDashboardContent() {
     }
   };
 
+  const openSignedPaymentProof = async (payment) => {
+    try {
+      const signed = await signPrivateDocumentFields(payment, ['payment_screenshot'])
+      const url = signed?.payment_screenshot || null
+      if (!url) {
+        setApplicationProof(null)
+        return
+      }
+      setApplicationProof({ url, name: payment.tenants?.name || 'Payment' })
+    } catch {
+      setApplicationProof(null)
+    }
+  };
+
   const handleLogout = async () => {
     await signOut();
     window.location.replace('/login');
@@ -190,15 +289,15 @@ function AdminDashboardContent() {
 
   // STATS CARDS
   const statsData = [
-    { label: 'Properties', value: statsLoading ? '-' : globalStats.totalProperties, icon: 'P', color: 'bg-orange-100 text-orange-600' },
-    { label: 'Active Tenants', value: statsLoading ? '-' : globalStats.totalTenants, icon: 'T', color: 'bg-blue-100 text-blue-600' },
-    { label: 'Owners', value: statsLoading ? '-' : globalStats.totalOwners, icon: 'O', color: 'bg-violet-100 text-violet-600' },
-    { label: 'Active Owners', value: statsLoading ? '-' : globalStats.activeOwners, icon: 'A', color: 'bg-green-100 text-green-600' },
-    { label: 'Memberships', value: statsLoading ? '-' : globalStats.activeMemberships, icon: 'M', color: 'bg-amber-100 text-amber-600' },
-    { label: 'Rent Revenue', value: statsLoading ? '-' : formatCurrency(globalStats.totalRevenue), icon: 'R', color: 'bg-emerald-100 text-emerald-600' },
-    { label: 'Deposits', value: statsLoading ? '-' : formatCurrency(globalStats.totalDeposits), icon: 'D', color: 'bg-slate-100 text-slate-600' },
-    { label: 'Pending Complaints', value: statsLoading ? '-' : globalStats.pendingComplaints, icon: 'C', color: 'bg-red-100 text-red-600' },
-    { label: 'Pending Vacates', value: statsLoading ? '-' : globalStats.pendingVacates, icon: 'V', color: 'bg-amber-100 text-amber-600' },
+    { label: 'Properties', value: statsLoading ? '-' : globalStats.totalProperties, icon: 'home', color: 'bg-orange-100 text-orange-600' },
+    { label: 'Active Tenants', value: statsLoading ? '-' : globalStats.totalTenants, icon: 'users', color: 'bg-blue-100 text-blue-600' },
+    { label: 'Owners', value: statsLoading ? '-' : globalStats.totalOwners, icon: 'users', color: 'bg-violet-100 text-violet-600' },
+    { label: 'Active Owners', value: statsLoading ? '-' : globalStats.activeOwners, icon: 'users', color: 'bg-green-100 text-green-600' },
+    { label: 'Memberships', value: statsLoading ? '-' : globalStats.activeMemberships, icon: 'calendar', color: 'bg-amber-100 text-amber-600' },
+    { label: 'Rent Revenue', value: statsLoading ? '-' : formatCurrency(globalStats.totalRevenue), icon: 'payments', color: 'bg-emerald-100 text-emerald-600' },
+    { label: 'Deposits', value: statsLoading ? '-' : formatCurrency(globalStats.totalDeposits), icon: 'payments', color: 'bg-slate-100 text-slate-600' },
+    { label: 'Pending Complaints', value: statsLoading ? '-' : globalStats.pendingComplaints, icon: 'complaints', color: 'bg-red-100 text-red-600' },
+    { label: 'Pending Vacates', value: statsLoading ? '-' : globalStats.pendingVacates, icon: 'home', color: 'bg-amber-100 text-amber-600' },
   ];
 
   // TABS
@@ -284,7 +383,7 @@ function AdminDashboardContent() {
       return <AdminMobileUsers title="Tenants" mode="tenants" tenants={tenants} loading={tenantsLoading} error={tenantsError} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onViewTenant={(tenant) => setSearchDetail({ group: 'Tenant', item: tenant })} onDeleteTenant={deleteTenant} />
     }
     if (activeTab === 'payments') {
-      return <AdminMobilePayments payments={payments} loading={paymentsLoading} actionKey={actionKey} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onConfirm={(payment) => runAdminAction(`payment:${payment.id}`, () => confirmPayment(payment.id))} onReject={(payment) => runAdminAction(`payment:${payment.id}`, () => rejectPayment(payment.id))} />
+      return <AdminMobilePayments payments={payments} loading={paymentsLoading} actionKey={actionKey} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onConfirm={(payment) => runAdminAction(`payment:${payment.id}`, () => confirmPayment(payment.id))} onReject={(payment) => runAdminAction(`payment:${payment.id}`, () => rejectPayment(payment.id))} onViewProof={openSignedPaymentProof} />
     }
     if (activeTab === 'prebookings') {
       return renderMobileOperationList({
@@ -296,7 +395,7 @@ function AdminDashboardContent() {
         renderItem: booking => (
           <article key={booking.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm">
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{booking.name}</p><p className="truncate text-[11px] text-slate-500">Room {booking.rooms?.room_number || 'N/A'} Â· {booking.rooms?.properties?.name || 'N/A'}</p></div>
+              <div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{booking.name}</p><p className="truncate text-[11px] text-slate-500">Room {booking.rooms?.room_number || 'N/A'} / {booking.rooms?.properties?.name || 'N/A'}</p></div>
               <p className="shrink-0 text-xs font-black text-slate-700">{formatCurrency(booking.pre_booking_fee_amount || 0)}</p>
             </div>
             <div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${booking.id}`, () => approvePreBooking(booking.id, booking.user_id, booking.room_id, booking.property_id, booking.name, booking.phone, booking.email, booking.rooms?.monthly_rent))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Approve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${booking.id}`, () => rejectPreBooking(booking.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div>
@@ -314,7 +413,7 @@ function AdminDashboardContent() {
         renderItem: application => (
           <article key={application.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm">
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{application.name}</p><p className="truncate text-[11px] text-slate-500">Room {application.rooms?.room_number || 'N/A'} Â· {application.phone}</p></div>
+              <div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{application.name}</p><p className="truncate text-[11px] text-slate-500">Room {application.rooms?.room_number || 'N/A'} / {application.phone}</p></div>
               <AdminStatusChip tone="amber">{(application.payment_status || 'pending').replaceAll('_', ' ')}</AdminStatusChip>
             </div>
             <div className="mt-2 flex items-center justify-between gap-2"><p className="text-xs font-bold text-slate-700">{formatCurrency(application.payment_amount || 0)}</p><div className="flex shrink-0 gap-2">{application.payment_screenshot ? <button type="button" onClick={() => openSignedApplicationProof(application)} className="rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">Proof</button> : null}<button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${application.id}`, () => approveApplication(application, application.user_id))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Approve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${application.id}`, () => rejectApplication(application.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div></div>
@@ -329,7 +428,7 @@ function AdminDashboardContent() {
         loading: approvedAppsLoading,
         items: approvedApps,
         emptyMessage: 'No processed applications yet.',
-        renderItem: application => <article key={application.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{application.name}</p><p className="truncate text-[11px] text-slate-500">Room {application.rooms?.room_number || 'N/A'} Â· {application.processed_at ? new Date(application.processed_at).toLocaleDateString() : 'N/A'}</p></div><AdminStatusChip tone={application.status === 'approved' ? 'emerald' : 'red'}>{application.status}</AdminStatusChip></div></article>,
+        renderItem: application => <article key={application.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{application.name}</p><p className="truncate text-[11px] text-slate-500">Room {application.rooms?.room_number || 'N/A'} / {application.processed_at ? new Date(application.processed_at).toLocaleDateString() : 'N/A'}</p></div><AdminStatusChip tone={application.status === 'approved' ? 'emerald' : 'red'}>{application.status}</AdminStatusChip></div></article>,
       })
     }
     if (activeTab === 'complaints') {
@@ -349,7 +448,7 @@ function AdminDashboardContent() {
         loading: vacateLoading,
         items: vacateRequests,
         emptyMessage: 'No vacate requests found.',
-        renderItem: request => <article key={request.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{request.tenants?.name || 'N/A'}</p><p className="truncate text-[11px] text-slate-500">Room {request.tenants?.rooms?.room_number || 'N/A'} Â· {request.expected_check_out ? new Date(request.expected_check_out).toLocaleDateString() : 'N/A'}</p></div><AdminStatusChip tone={request.status === 'pending' ? 'amber' : 'emerald'}>{request.status}</AdminStatusChip></div>{request.status === 'pending' ? <div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${request.id}`, () => approveVacate(request.id, request.tenant_id, request.expected_check_out))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Approve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${request.id}`, () => rejectVacate(request.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div> : null}</article>,
+        renderItem: request => <article key={request.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{request.tenants?.name || 'N/A'}</p><p className="truncate text-[11px] text-slate-500">Room {request.tenants?.rooms?.room_number || 'N/A'} / {request.expected_check_out ? new Date(request.expected_check_out).toLocaleDateString() : 'N/A'}</p></div><AdminStatusChip tone={request.status === 'pending' ? 'amber' : 'emerald'}>{request.status}</AdminStatusChip></div>{request.status === 'pending' ? <div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${request.id}`, () => approveVacate(request.id, request.tenant_id, request.expected_check_out))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Approve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${request.id}`, () => rejectVacate(request.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div> : null}</article>,
       })
     }
     if (activeTab === 'roomchange') {
@@ -359,7 +458,7 @@ function AdminDashboardContent() {
         loading: roomChangesLoading,
         items: roomChanges,
         emptyMessage: 'No room change requests found.',
-        renderItem: request => <article key={request.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{request.tenants?.name || 'N/A'}</p><p className="truncate text-[11px] text-slate-500">{request.old_room?.room_number || 'N/A'} â†’ {request.new_room?.room_number || 'N/A'}</p></div><div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${request.id}`, () => approveRoomChange(request.id, request.tenant_id, request.new_room_id, request.old_room_id))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Approve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${request.id}`, () => rejectRoomChange(request.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div></article>,
+        renderItem: request => <article key={request.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{request.tenants?.name || 'N/A'}</p><p className="truncate text-[11px] text-slate-500">{request.old_room?.room_number || 'N/A'} to {request.new_room?.room_number || 'N/A'}</p></div><div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${request.id}`, () => approveRoomChange(request.id, request.tenant_id, request.new_room_id, request.old_room_id))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Approve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${request.id}`, () => rejectRoomChange(request.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div></article>,
       })
     }
     if (activeTab === 'notices') {
@@ -369,7 +468,7 @@ function AdminDashboardContent() {
         loading: noticesLoading,
         items: notices,
         emptyMessage: 'No global notices posted.',
-        renderItem: notice => <article key={notice.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{notice.title}</p><p className="truncate text-[11px] text-slate-500">{notice.type} Â· {notice.created_at ? new Date(notice.created_at).toLocaleDateString() : 'N/A'}</p></div>{notice.is_urgent ? <AdminStatusChip tone="red">Urgent</AdminStatusChip> : null}</div><div className="mt-2 flex justify-end"><button onClick={() => deleteNotice(notice.id)} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600">Delete</button></div></article>,
+        renderItem: notice => <article key={notice.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{notice.title}</p><p className="truncate text-[11px] text-slate-500">{notice.type} / {notice.created_at ? new Date(notice.created_at).toLocaleDateString() : 'N/A'}</p></div>{notice.is_urgent ? <AdminStatusChip tone="red">Urgent</AdminStatusChip> : null}</div><div className="mt-2 flex justify-end"><button onClick={() => deleteNotice(notice.id)} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600">Delete</button></div></article>,
       })
     }
     if (activeTab === 'analytics') {
@@ -383,11 +482,11 @@ function AdminDashboardContent() {
   }
 
   return (
-    <div className="dashboard-shell min-h-screen max-w-full overflow-x-hidden bg-[#f8f9fa] pb-[calc(6rem_+_env(safe-area-inset-bottom))] font-sans selection:bg-orange-500 selection:text-white lg:pb-0">
+    <div className="dashboard-shell min-h-screen max-w-full overflow-x-hidden bg-[#f8f9fa] font-sans selection:bg-orange-500 selection:text-white">
       <div className="lg:hidden">
         {renderAdminMobileView()}
         <div className="fixed right-3 top-14 z-[70]">
-          <AccountMenu open={profileMenuOpen} onClose={()=>setProfileMenuOpen(false)} name="Administrator" subtitle="HostelSet platform" avatar="A" actions={[{label:'Refresh dashboard',onClick:refreshStats},{label:'Logout',onClick:handleLogout,danger:true}]}/>
+          <AccountMenu open={profileMenuOpen} onClose={()=>setProfileMenuOpen(false)} name="Administrator" subtitle="HostelSet platform" avatar="" fallbackIcon="settings" actions={[{label:'Refresh dashboard',onClick:refreshStats},{label:'Logout',onClick:handleLogout,danger:true}]}/>
         </div>
       </div>
       <DashboardSidebar role="Admin" items={adminSidebarItems} activeId={activeTab} onSelect={openSection} footer={<div><p className="text-sm font-bold text-white">Platform console</p><p className={`mt-1 text-xs ${realtimeConnected?'text-emerald-400':'text-slate-400'}`}>{realtimeConnected?'Live data':'Connecting'}</p></div>}/>
@@ -406,7 +505,7 @@ function AdminDashboardContent() {
             </span>
             <ThemeToggle compact />
             <NotificationBell />
-            <button onClick={() => refreshStats()} className="text-orange-400 hover:text-orange-300 text-sm font-medium transition">ðŸ”„ Refresh</button>
+            <button type="button" onClick={() => refreshStats()} className="inline-flex items-center gap-1.5 text-sm font-medium text-orange-400 transition hover:text-orange-300"><DashboardIcon name="dashboard" className="h-4 w-4" />Refresh</button>
             <button onClick={handleLogout} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-3 sm:px-6 py-2 rounded-full text-sm font-semibold transition shadow-md">Logout</button>
           </div>
         </div>
@@ -423,7 +522,7 @@ function AdminDashboardContent() {
             return (
             <Card key={index} type={targetTab ? 'button' : undefined} onClick={targetTab ? () => openSection(targetTab) : undefined} className={`bg-white rounded-xl p-3 shadow-sm border border-gray-200 hover:shadow-md hover:border-orange-200 transition flex items-center gap-3 min-w-0 text-left ${targetTab ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400' : ''}`}>
               <div className={`w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center text-base sm:text-xl shadow-sm ${stat.color}`}>
-                {stat.icon}
+                <DashboardIcon name={stat.icon} className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
               <div>
                 <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">{stat.label}</p>
@@ -528,11 +627,11 @@ function AdminDashboardContent() {
         {activeTab === 'users' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="mb-6 flex flex-col md:flex-row justify-between items-center gap-4 border-b border-gray-100 pb-4">
-              <h3 className="text-lg font-bold text-[#1a1a1a]">ðŸ‘¤ User Management</h3>
+              <h3 className="text-lg font-bold text-[#1a1a1a]">User Management</h3>
               <div className="flex gap-4 w-full md:w-auto">
                 <input 
                   type="text" 
-                  placeholder="ðŸ” Search name, email, phone..." 
+                  placeholder="Search name, email, phone..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="border border-gray-300 rounded-lg px-4 py-2 text-sm w-full md:w-64 focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -614,7 +713,7 @@ function AdminDashboardContent() {
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${p.status === 'success' ? 'bg-emerald-100 text-emerald-700' : p.status === 'payment_pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{p.status === 'payment_pending' ? 'Pending' : p.status}</span>
-                  {p.status === 'payment_pending' && <div className="flex shrink-0 gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => confirmPayment(p.id))} className="text-xs font-semibold text-emerald-600 disabled:opacity-50">Confirm</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => rejectPayment(p.id))} className="text-xs font-semibold text-red-500 disabled:opacity-50">Reject</button></div>}
+                  <div className="flex shrink-0 gap-2">{p.payment_screenshot ? <button type="button" onClick={() => openSignedPaymentProof(p)} className="text-xs font-semibold text-blue-600">Proof</button> : null}{p.status === 'payment_pending' && <><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => confirmPayment(p.id))} className="text-xs font-semibold text-emerald-600 disabled:opacity-50">Confirm</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => rejectPayment(p.id))} className="text-xs font-semibold text-red-500 disabled:opacity-50">Reject</button></>}</div>
                 </div>
               </div>
             )}
@@ -629,10 +728,11 @@ function AdminDashboardContent() {
                   </span>
                 </td>
                 <td className="px-6 py-4 flex gap-2">
+                  {p.payment_screenshot && <button type="button" onClick={() => openSignedPaymentProof(p)} className="text-blue-600 hover:text-blue-800 font-semibold text-xs uppercase tracking-wider">Proof</button>}
                   {p.status === 'payment_pending' && (
                     <>
-                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => confirmPayment(p.id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `payment:${p.id}` ? 'Processingâ€¦' : 'Confirm'}</button>
-                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => rejectPayment(p.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `payment:${p.id}` ? 'Processingâ€¦' : 'Reject'}</button>
+                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => confirmPayment(p.id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `payment:${p.id}` ? 'Processing...' : 'Confirm'}</button>
+                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`payment:${p.id}`, () => rejectPayment(p.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `payment:${p.id}` ? 'Processing...' : 'Reject'}</button>
                     </>
                   )}
                 </td>
@@ -655,8 +755,8 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 text-gray-500">{b.rooms?.properties?.name || 'N/A'}</td>
                 <td className="px-6 py-4 text-gray-500">{formatCurrency(b.pre_booking_fee_amount || 0)}</td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${b.id}`, () => approvePreBooking(b.id, b.user_id, b.room_id, b.property_id, b.name, b.phone, b.email, b.rooms?.monthly_rent))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processingâ€¦' : 'Approve'}</button>
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${b.id}`, () => rejectPreBooking(b.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processingâ€¦' : 'Reject'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${b.id}`, () => approvePreBooking(b.id, b.user_id, b.room_id, b.property_id, b.name, b.phone, b.email, b.rooms?.monthly_rent))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processing...' : 'Approve'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${b.id}`, () => rejectPreBooking(b.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processing...' : 'Reject'}</button>
                 </td>
               </tr>
             )}
@@ -677,8 +777,8 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 text-gray-500"><p>Rent: {formatCurrency(a.rooms?.monthly_rent || 0)}</p><p>Deposit: {formatCurrency(a.payment_amount || 0)}</p></td>
                 <td className="px-6 py-4 text-sm text-gray-500"><p>UTR: <span className="font-medium text-slate-700">{a.payment_transaction_id || a.upi_transaction_id || 'Not provided'}</span></p><p>Submitted: {new Date(a.payment_date || a.created_at).toLocaleDateString()}</p><p className="capitalize">Status: {(a.payment_status || 'pending verification').replaceAll('_', ' ')}</p>{a.payment_screenshot ? <button type="button" onClick={() => openSignedApplicationProof(a)} className="mt-2 rounded-lg border border-blue-200 px-3 py-1.5 font-semibold text-blue-700 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">View payment proof</button> : <p className="mt-1 text-xs text-red-500">Proof unavailable</p>}</td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${a.id}`, () => approveApplication(a, a.user_id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `application:${a.id}` ? 'Processingâ€¦' : 'Approve'}</button>
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${a.id}`, () => rejectApplication(a.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `application:${a.id}` ? 'Processingâ€¦' : 'Reject'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${a.id}`, () => approveApplication(a, a.user_id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `application:${a.id}` ? 'Processing...' : 'Approve'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`application:${a.id}`, () => rejectApplication(a.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `application:${a.id}` ? 'Processing...' : 'Reject'}</button>
                 </td>
               </tr>
             )}
@@ -724,8 +824,8 @@ function AdminDashboardContent() {
                   </span>
                 </td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${c.id}`, () => resolveComplaint(c.id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `complaint:${c.id}` ? 'Processingâ€¦' : 'Resolve'}</button>
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${c.id}`, () => deleteComplaint(c.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `complaint:${c.id}` ? 'Processingâ€¦' : 'Delete'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${c.id}`, () => resolveComplaint(c.id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `complaint:${c.id}` ? 'Processing...' : 'Resolve'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${c.id}`, () => deleteComplaint(c.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `complaint:${c.id}` ? 'Processing...' : 'Delete'}</button>
                 </td>
               </tr>
             )}
@@ -752,8 +852,8 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 flex gap-2">
                   {v.status === 'pending' && (
                     <>
-                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${v.id}`, () => approveVacate(v.id, v.tenant_id, v.expected_check_out))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `vacate:${v.id}` ? 'Processingâ€¦' : 'Approve'}</button>
-                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${v.id}`, () => rejectVacate(v.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `vacate:${v.id}` ? 'Processingâ€¦' : 'Reject'}</button>
+                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${v.id}`, () => approveVacate(v.id, v.tenant_id, v.expected_check_out))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `vacate:${v.id}` ? 'Processing...' : 'Approve'}</button>
+                      <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${v.id}`, () => rejectVacate(v.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `vacate:${v.id}` ? 'Processing...' : 'Reject'}</button>
                     </>
                   )}
                 </td>
@@ -775,8 +875,8 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 text-gray-500">{r.old_room?.room_number || 'N/A'}</td>
                 <td className="px-6 py-4 text-gray-500">{r.new_room?.room_number || 'N/A'}</td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${r.id}`, () => approveRoomChange(r.id, r.tenant_id, r.new_room_id, r.old_room_id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `roomchange:${r.id}` ? 'Processingâ€¦' : 'Approve'}</button>
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${r.id}`, () => rejectRoomChange(r.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `roomchange:${r.id}` ? 'Processingâ€¦' : 'Reject'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${r.id}`, () => approveRoomChange(r.id, r.tenant_id, r.new_room_id, r.old_room_id))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `roomchange:${r.id}` ? 'Processing...' : 'Approve'}</button>
+                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${r.id}`, () => rejectRoomChange(r.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `roomchange:${r.id}` ? 'Processing...' : 'Reject'}</button>
                 </td>
               </tr>
             )}
@@ -788,7 +888,7 @@ function AdminDashboardContent() {
         {activeTab === 'notices' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="mb-6 border-b border-gray-100 pb-4">
-              <h3 className="text-xl font-bold text-[#1a1a1a] mb-4">ðŸ“¢ Post Global Notice</h3>
+              <h3 className="text-xl font-bold text-[#1a1a1a] mb-4">Post Global Notice</h3>
               <div className="grid md:grid-cols-2 gap-4">
                 <input type="text" placeholder="Notice Title" value={noticeForm.title} onChange={(e) => setNoticeForm({ ...noticeForm, title: e.target.value })} className="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" />
                 <div className="flex gap-4 items-center">
@@ -804,7 +904,7 @@ function AdminDashboardContent() {
                 </div>
               </div>
               <textarea placeholder="Notice Content" rows="3" value={noticeForm.content} onChange={(e) => setNoticeForm({ ...noticeForm, content: e.target.value })} className="w-full mt-4 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" />
-              <button onClick={async () => { if (isSubmitting) return; setIsSubmitting(true); try { const posted = await postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent); if (posted) setNoticeForm({ title:'', content:'', type:'general', is_urgent:false }); } finally { setIsSubmitting(false); } }} disabled={isSubmitting} className="mt-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2 rounded-full font-semibold transition shadow-md disabled:opacity-50">{isSubmitting ? 'Postingâ€¦' : 'Post Notice'}</button>
+              <button onClick={async () => { if (isSubmitting) return; setIsSubmitting(true); try { const posted = await postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent); if (posted) setNoticeForm({ title:'', content:'', type:'general', is_urgent:false }); } finally { setIsSubmitting(false); } }} disabled={isSubmitting} className="mt-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2 rounded-full font-semibold transition shadow-md disabled:opacity-50">{isSubmitting ? 'Posting...' : 'Post Notice'}</button>
             </div>
             <AdminTable loading={noticesLoading} headers={['Title', 'Type', 'Date', 'Actions']} data={notices} renderRow={(n) => (
               <tr key={n.id} className="hover:bg-orange-50/50 transition">
@@ -853,7 +953,7 @@ function AdminDashboardContent() {
         title={`${searchDetail?.group || 'Search'} Details`}
         data={searchDetail?.item}
       />
-      {applicationProof && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="admin-proof-title" onClick={() => setApplicationProof(null)}><div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-4 shadow-2xl" onClick={event => event.stopPropagation()}><div className="mb-3 flex items-center justify-between"><h2 id="admin-proof-title" className="font-bold text-slate-900">Payment proof Â· {applicationProof.name}</h2><button type="button" onClick={() => setApplicationProof(null)} className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400" aria-label="Close payment proof">Close</button></div><img src={applicationProof.url} alt={`Payment proof submitted by ${applicationProof.name}`} className="mx-auto max-h-[75vh] max-w-full rounded-xl border object-contain" /></div></div>}
+      {applicationProof && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="admin-proof-title" onClick={() => setApplicationProof(null)}><div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-4 shadow-2xl" onClick={event => event.stopPropagation()}><div className="mb-3 flex items-center justify-between"><h2 id="admin-proof-title" className="font-bold text-slate-900">Payment proof - {applicationProof.name}</h2><button type="button" onClick={() => setApplicationProof(null)} className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400" aria-label="Close payment proof">Close</button></div><img src={applicationProof.url} alt={`Payment proof submitted by ${applicationProof.name}`} className="mx-auto max-h-[75vh] max-w-full rounded-xl border object-contain" /></div></div>}
     </main>
     <div className="lg:hidden">
       <DetailModal 
@@ -874,7 +974,7 @@ function AdminDashboardContent() {
         title={`${searchDetail?.group || 'Search'} Details`}
         data={searchDetail?.item}
       />
-      {applicationProof && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="admin-proof-title-mobile" onClick={() => setApplicationProof(null)}><div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-4 shadow-2xl" onClick={event => event.stopPropagation()}><div className="mb-3 flex items-center justify-between"><h2 id="admin-proof-title-mobile" className="font-bold text-slate-900">Payment proof Â· {applicationProof.name}</h2><button type="button" onClick={() => setApplicationProof(null)} className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400" aria-label="Close payment proof">Close</button></div><img src={applicationProof.url} alt={`Payment proof submitted by ${applicationProof.name}`} className="mx-auto max-h-[75vh] max-w-full rounded-xl border object-contain" /></div></div>}
+      {applicationProof && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="admin-proof-title-mobile" onClick={() => setApplicationProof(null)}><div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-4 shadow-2xl" onClick={event => event.stopPropagation()}><div className="mb-3 flex items-center justify-between"><h2 id="admin-proof-title-mobile" className="font-bold text-slate-900">Payment proof - {applicationProof.name}</h2><button type="button" onClick={() => setApplicationProof(null)} className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400" aria-label="Close payment proof">Close</button></div><img src={applicationProof.url} alt={`Payment proof submitted by ${applicationProof.name}`} className="mx-auto max-h-[75vh] max-w-full rounded-xl border object-contain" /></div></div>}
       <MobileBottomNav items={adminBottomItems} activeId={mobileMenu==='more'?'more':activeTab === 'global-search' ? 'search' : activeTab} onSelect={id=>{if(id==='more')setMobileMenu('more');else if(id==='search'){setMobileMenu(null);openSection('global-search');resetDashboardScroll()}else openSection(id)}}/>
       <AdminMobileMore open={mobileMenu==='more'} onClose={()=>setMobileMenu(null)} items={adminMoreItems}/>
     </div>

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { supabaseAdmin } from '../../../lib/supabase'
+import { supabaseAdmin } from '../../../lib/server/supabaseAdmin'
 import { allowPostOnly, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { logger } from '../../../lib/logger'
 
@@ -145,6 +145,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true })
   } catch (error) {
     logger.error('Admin tenant permanent delete failed', error, { route: '/api/admin/delete-tenant', tenantId })
-    return res.status(400).json({ error: error.message || 'Tenant delete failed' })
+    const message = process.env.NODE_ENV === 'production' ? 'Tenant delete failed' : (error.message || 'Tenant delete failed')
+    return res.status(400).json({ error: message })
   }
 }

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { supabaseAdmin } from '../../../lib/supabase'
+import { supabaseAdmin } from '../../../lib/server/supabaseAdmin'
 import { allowPostOnly, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { logger } from '../../../lib/logger'
 import { getResetPasswordUrl } from '../../../lib/server/appUrl'
@@ -133,6 +133,7 @@ export default async function handler(req, res) {
   } catch (error) {
     if (createdUserId) await supabaseAdmin.auth.admin.deleteUser(createdUserId).catch(() => {})
     logger.error('Existing tenant import approval failed', error, { route: '/api/owner/approve-existing-import' })
-    return res.status(400).json({ error: error.message || 'Import approval failed' })
+    const message = process.env.NODE_ENV === 'production' ? 'Import approval failed' : (error.message || 'Import approval failed')
+    return res.status(400).json({ error: message })
   }
 }

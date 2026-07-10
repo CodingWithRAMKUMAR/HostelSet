@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { signPrivateDocumentFields, supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 export function usePayments(tenant, refreshData, owner) {
@@ -18,7 +18,7 @@ export function usePayments(tenant, refreshData, owner) {
       .order('payment_date', { ascending: false });
     if (error) console.error('Payment history load failed:', error);
     else {
-      setPaymentHistory(await Promise.all((data || []).map(payment => signPrivateDocumentFields(payment, ['payment_screenshot']))));
+      setPaymentHistory(data || []);
       setPaymentsLoaded(true);
     }
   };

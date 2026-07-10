@@ -1,24 +1,17 @@
-﻿import NotificationBell from '../../common/NotificationBell'
+﻿import MobileTopbar from '../../dashboard/MobileTopbar'
 import { formatDate } from '../../../lib/utils'
 
-function Header({ onBack, title, subtitle, avatar, onProfile }) {
+function Header({ onBack, title, subtitle, avatar, avatarUrl, avatarAlt, onProfile }) {
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950 px-3 pt-[calc(env(safe-area-inset-top)_+_0.375rem)] pb-1.5 text-white">
-      <div className="flex min-h-[42px] items-center gap-2">
-        <button type="button" onClick={onBack} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/10 text-base" aria-label="Back">&larr;</button>
-        <div className="min-w-0 flex-1"><p className="truncate text-[13px] font-black leading-tight">{title}</p>{subtitle && <p className="truncate text-[10px] font-medium leading-tight text-slate-400">{subtitle}</p>}</div>
-        <NotificationBell listenForGlobalOpen />
-        <button type="button" onClick={onProfile} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-xs font-bold" aria-label="Open account menu">{avatar}</button>
-      </div>
-    </header>
+    <MobileTopbar title={title} subtitle={subtitle} isHome={false} onBack={onBack} onProfile={onProfile} avatar={avatar} avatarUrl={avatarUrl} avatarAlt={avatarAlt} />
   )
 }
 
-export default function TenantMobileRequests({ view = 'complaints', property, avatar = 'U', onBack, onProfile, complaints = [], roommates = [], room, onDeleteComplaint, onRaiseComplaint, isSubmitting, pendingRoomChangeRequest, onRoomChange, existingVacateRequest, vacateBlockedReason, onVacate, onCancelVacate }) {
+export default function TenantMobileRequests({ view = 'complaints', property, avatar = 'U', avatarUrl, avatarAlt, onBack, onProfile, complaints = [], roommates = [], room, onDeleteComplaint, onRaiseComplaint, isSubmitting, pendingRoomChangeRequest, onRoomChange, existingVacateRequest, vacateBlockedReason, onVacate, onCancelVacate }) {
   const title = view === 'room-change' ? 'Room change' : view === 'vacate' ? 'Vacate' : view === 'roommates' ? 'Roommates' : 'Complaints'
   return (
     <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
-      <Header title={title} subtitle={property?.name} avatar={avatar} onBack={onBack} onProfile={onProfile} />
+      <Header title={title} subtitle={property?.name} avatar={avatar} avatarUrl={avatarUrl} avatarAlt={avatarAlt} onBack={onBack} onProfile={onProfile} />
       <main className="mx-auto max-w-md space-y-2 px-3 py-2">
         {view === 'complaints' && (
           <>

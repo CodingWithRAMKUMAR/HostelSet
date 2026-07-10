@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
-import { supabaseAdmin } from '../../../lib/supabase'
+import { supabaseAdmin } from '../../../lib/server/supabaseAdmin'
 import { cleanPhoneNumber } from '../../../lib/utils'
 import { allowPostOnly, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { logger } from '../../../lib/logger'
@@ -102,6 +102,9 @@ export default async function handler(req, res) {
     }
     logger.error('Owner tenant registration failed', error, { route: '/api/owner/tenants' })
     const conflict = error?.code === '23505' || /already|registered|exists/i.test(error?.message || '')
-    return res.status(conflict ? 409 : 400).json({ error: conflict ? 'A tenant account already exists for this email or phone.' : (error.message || 'Tenant registration failed') })
+    const message = process.env.NODE_ENV === 'production'
+      ? 'Tenant registration failed'
+      : (error.message || 'Tenant registration failed')
+    return res.status(conflict ? 409 : 400).json({ error: conflict ? 'A tenant account already exists for this email or phone.' : message })
   }
 }

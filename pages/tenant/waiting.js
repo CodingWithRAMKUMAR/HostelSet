@@ -1,11 +1,12 @@
 import { useRouter } from 'next/router'
 import { motion } from 'framer-motion'
+import { signOut } from '../../lib/supabase'
 
 export default function WaitingPage() {
   const router = useRouter()
 
-  const handleLogout = () => {
-    localStorage.clear()
+  const handleLogout = async () => {
+    await signOut()
     router.push('/')
   }
 

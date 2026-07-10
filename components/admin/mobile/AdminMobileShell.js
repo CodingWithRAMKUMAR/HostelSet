@@ -1,27 +1,7 @@
-﻿import NotificationBell from '../../common/NotificationBell'
+﻿import MobileTopbar from '../../dashboard/MobileTopbar'
 
 export function AdminMobileHeader({ title, subtitle, avatar = 'A', onBack, onProfile }) {
-  return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950 px-3 pt-[calc(env(safe-area-inset-top)_+_0.25rem)] pb-1 text-white">
-      <div className="flex min-h-[42px] items-center gap-2">
-        {onBack ? (
-          <button type="button" onClick={onBack} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/10 text-base" aria-label="Back">
-            &larr;
-          </button>
-        ) : (
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-xs font-black">HS</div>
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-black leading-tight">{title}</p>
-          {subtitle && <p className="truncate text-[10px] font-medium leading-tight text-slate-400">{subtitle}</p>}
-        </div>
-        <NotificationBell listenForGlobalOpen />
-        <button type="button" onClick={onProfile} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-xs font-bold" aria-label="Open account menu">
-          {avatar}
-        </button>
-      </div>
-    </header>
-  )
+  return <MobileTopbar title={title} subtitle={subtitle} isHome={!onBack} onBack={onBack} onProfile={onProfile} avatar={avatar} fallbackIcon="settings" />
 }
 
 export function AdminMobilePage({ title, subtitle, avatar = 'A', onBack, onProfile, children }) {

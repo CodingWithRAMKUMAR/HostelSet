@@ -2,11 +2,10 @@ import { NextResponse } from 'next/server'
 
 const COOKIE_NAME = 'hostelset_access_token'
 const REFRESH_COOKIE_NAME = 'hostelset_refresh_token'
-const PUBLIC_OWNER_ROUTES = new Set(['/owner/register-property'])
 
-function loginRedirect(request, clearCookie = false) {
+function loginRedirect(request, clearCookie = false, roleRequired = '') {
   const url = request.nextUrl.clone()
-  url.pathname = '/login'
+  url.pathname = roleRequired ? `/login/${roleRequired}` : '/login'
   const nextPath = `${request.nextUrl.pathname}${request.nextUrl.search}`
   url.search = ''
   if (nextPath && nextPath !== '/login') url.searchParams.set('next', nextPath)
@@ -40,18 +39,17 @@ function requiredRole(pathname) {
 
 export async function middleware(request) {
   const { pathname } = request.nextUrl
-  if (PUBLIC_OWNER_ROUTES.has(pathname)) return NextResponse.next()
 
   const roleRequired = requiredRole(pathname)
   if (!roleRequired) return NextResponse.next()
 
   let token = request.cookies.get(COOKIE_NAME)?.value
   let refreshToken = request.cookies.get(REFRESH_COOKIE_NAME)?.value
-  if (!token && !refreshToken) return loginRedirect(request)
+  if (!token && !refreshToken) return loginRedirect(request, false, roleRequired)
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!supabaseUrl || !anonKey) return loginRedirect(request, true)
+  if (!supabaseUrl || !anonKey) return loginRedirect(request, true, roleRequired)
 
   try {
     token = token ? decodeURIComponent(token) : ''
@@ -78,9 +76,9 @@ export async function middleware(request) {
         })
       }
     }
-    if (!authResponse.ok) return loginRedirect(request, true)
+    if (!authResponse.ok) return loginRedirect(request, true, roleRequired)
     const user = await authResponse.json()
-    if (!user?.id) return loginRedirect(request, true)
+    if (!user?.id) return loginRedirect(request, true, roleRequired)
 
     const profileResponse = await fetch(
       `${supabaseUrl}/rest/v1/users?id=eq.${encodeURIComponent(user.id)}&select=role,is_active&limit=1`,
@@ -89,10 +87,10 @@ export async function middleware(request) {
         cache: 'no-store',
       },
     )
-    if (!profileResponse.ok) return loginRedirect(request, true)
+    if (!profileResponse.ok) return loginRedirect(request, true, roleRequired)
     const [profile] = await profileResponse.json()
     if (!profile?.is_active || !['admin', 'owner', 'tenant'].includes(profile?.role)) {
-      return loginRedirect(request, true)
+      return loginRedirect(request, true, roleRequired)
     }
 
     if (profile.role !== roleRequired) {
@@ -105,7 +103,7 @@ export async function middleware(request) {
     const response = NextResponse.next()
     return refreshedSession ? setSessionCookies(response, token, refreshToken, refreshedSession.expires_in) : response
   } catch {
-    return loginRedirect(request, true)
+    return loginRedirect(request, true, roleRequired)
   }
 }
 

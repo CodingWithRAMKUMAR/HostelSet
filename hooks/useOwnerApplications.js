@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getResetPasswordRedirectTo, supabase, signPrivateDocumentFields } from '../lib/supabase';
+import { getResetPasswordRedirectTo, supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
@@ -17,21 +17,20 @@ export function useOwnerApplications(property, enabled = true) {
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
     if (error) { console.error('Owner applications load failed:', error.message); return; }
-    const signed = await Promise.all((data || []).map(async item => {
-      const signedDocuments = await signPrivateDocumentFields({ ...item, source_type: 'application' }, ['id_proof', 'photo', 'payment_screenshot']);
+    const prepared = (data || []).map(item => {
       const { id_proof, photo, payment_screenshot, ...application } = item;
       return {
         ...application,
+        id_proof,
+        photo,
+        payment_screenshot,
         source_type: 'application',
         payment_transaction_id: item.payment_transaction_id || item.upi_transaction_id || '',
         payment_status: item.payment_status || 'pending_owner_verification',
         payment_date: item.payment_date || item.created_at,
-        id_proof_url: signedDocuments.id_proof || null,
-        photo_url: signedDocuments.photo || null,
-        payment_screenshot_url: signedDocuments.payment_screenshot || null,
       };
-    }));
-    setApplications(signed);
+    });
+    setApplications(prepared);
   };
 
   const approveApplication = async (appId, appData) => {

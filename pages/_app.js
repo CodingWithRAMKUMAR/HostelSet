@@ -27,12 +27,14 @@ export default function App({ Component, pageProps }) {
   useEffect(() => {
     let active = true
     let subscription
-    import('../lib/supabase').then(async ({ supabase, syncServerSession }) => {
+    import('../lib/supabase').then(async ({ supabase, syncServerSession, getRestoredSession }) => {
       if (!active) return
-      const { data: { session } } = await supabase.auth.getSession()
+      const { data: { session } } = await getRestoredSession({ retryDelay: 150 })
       if (session) syncServerSession(session).catch(() => {})
       const result = supabase.auth.onAuthStateChange((event, nextSession) => {
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') syncServerSession(nextSession).catch(() => {})
+        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          if (nextSession) syncServerSession(nextSession).catch(() => {})
+        }
         if (event === 'SIGNED_OUT') syncServerSession(null).catch(() => {})
       })
       subscription = result.data.subscription
@@ -49,10 +51,13 @@ export default function App({ Component, pageProps }) {
         if (!isProtectedRoute) { if (active) setAuthorized(true); return }
         // getSession reads the persisted session locally and avoids an extra
         // network round-trip on every dashboard navigation.
-        const { supabase } = await import('../lib/supabase')
-        const { data: { session } } = await supabase.auth.getSession()
+        const { syncServerSession, getRestoredSession } = await import('../lib/supabase')
+        const { data: { session } } = await getRestoredSession()
         if (!active) return
-        if (session) setAuthorized(true)
+        if (session) {
+          syncServerSession(session).catch(() => {})
+          setAuthorized(true)
+        }
         else if (router.pathname !== '/login') router.replace(`/login?next=${encodeURIComponent(router.asPath)}`)
       } catch (e) {
         // If accessing localStorage fails, treat as not authorized for protected routes
@@ -74,8 +79,8 @@ export default function App({ Component, pageProps }) {
       const protectedRoutes = ['/owner', '/tenant', '/admin']
       const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
       if (!isProtectedRoute) return
-      const { supabase } = await import('../lib/supabase')
-      const { data: { session } } = await supabase.auth.getSession()
+      const { getRestoredSession } = await import('../lib/supabase')
+      const { data: { session } } = await getRestoredSession()
       if (!session) router.replace(`/login?next=${encodeURIComponent(router.asPath)}`)
     }
     window.addEventListener('pageshow', handlePageShow)

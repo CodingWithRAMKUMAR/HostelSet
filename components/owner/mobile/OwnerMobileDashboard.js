@@ -1,20 +1,10 @@
-import NotificationBell from '../../common/NotificationBell'
+import MobileTopbar from '../../dashboard/MobileTopbar'
 import DashboardIcon from '../../dashboard/DashboardIcon'
 import { formatCurrency } from '../../../lib/utils'
 
 function Header({ title, subtitle, avatar, onProfile }) {
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950 px-3 pt-[calc(env(safe-area-inset-top)_+_0.25rem)] pb-1 text-white">
-      <div className="flex min-h-[42px] items-center gap-2">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-xs font-black">HS</div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-black leading-tight">{title}</p>
-          {subtitle && <p className="truncate text-[10px] font-medium leading-tight text-slate-400">{subtitle}</p>}
-        </div>
-        <NotificationBell listenForGlobalOpen />
-        <button type="button" onClick={onProfile} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-xs font-bold" aria-label="Open account menu">{avatar}</button>
-      </div>
-    </header>
+    <MobileTopbar title={title} subtitle={subtitle} isHome onProfile={onProfile} avatar={avatar} fallbackIcon="users" />
   )
 }
 
@@ -34,7 +24,7 @@ function Stat({ label, value, icon, onClick }) {
 export default function OwnerMobileDashboard({ property, stats, counts, avatar = 'O', onProfile, onNavigate }) {
   return (
     <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
-      <Header title="Dashboard" subtitle={property?.name} avatar={avatar} onProfile={onProfile} />
+      <Header title="HostelSet" subtitle={property?.name} avatar={avatar} onProfile={onProfile} />
       <main className="mx-auto max-w-md space-y-2 px-3 py-2">
         <section className="rounded-3xl border border-white/10 bg-slate-900 p-2.5 text-white shadow-sm">
           <div className="flex min-w-0 items-center justify-between gap-2">

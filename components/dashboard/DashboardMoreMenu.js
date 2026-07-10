@@ -59,7 +59,7 @@ export default function DashboardMoreMenu({ open, title = 'More', subtitle, item
     onClose?.()
     window.requestAnimationFrame(() => {
       item.onClick?.()
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+      window.scrollTo({ top: 0, behavior: 'auto' })
     })
   }
 

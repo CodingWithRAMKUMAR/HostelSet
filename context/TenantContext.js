@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { supabase, syncServerSession } from '../lib/supabase';
+import { clearHostelSetSessionCache, findTenantDocumentRecord, getRestoredSession, signPrivateDocumentFields, supabase, syncServerSession } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 const TenantContext = createContext();
@@ -13,10 +13,39 @@ export function TenantProvider({ children }) {
   const [property, setProperty] = useState(null);
   const [owner, setOwner] = useState(null);
   const [roommates, setRoommates] = useState([]);
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState(null);
   const [roommateVacateAlert, setRoommateVacateAlert] = useState(null);
   const [error, setError] = useState(null);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const userIdRef = useRef(null);
+  const profilePhotoCacheRef = useRef(new Map());
+
+  const loadTenantProfilePhoto = useCallback(async (tenantData) => {
+    if (!tenantData?.id || !tenantData?.property_id) {
+      setProfilePhotoUrl(null);
+      return null;
+    }
+
+    const cacheKey = `${tenantData.id}:${tenantData.property_id}:${tenantData.updated_at || tenantData.move_in_date || ''}`;
+    if (profilePhotoCacheRef.current.has(cacheKey)) {
+      const cachedUrl = profilePhotoCacheRef.current.get(cacheKey);
+      setProfilePhotoUrl(cachedUrl);
+      return cachedUrl;
+    }
+
+    try {
+      const { record, source_type } = await findTenantDocumentRecord(tenantData, tenantData.property_id);
+      const signed = record ? await signPrivateDocumentFields({ ...record, source_type }, ['photo']) : null;
+      const url = signed?.photo || null;
+      profilePhotoCacheRef.current.set(cacheKey, url);
+      setProfilePhotoUrl(url);
+      return url;
+    } catch (photoError) {
+      if (process.env.NODE_ENV !== 'production') console.warn('[HostelSet] Tenant profile photo could not be loaded.');
+      setProfilePhotoUrl(null);
+      return null;
+    }
+  }, []);
 
   const refreshData = useCallback(async (isBackground = false) => {
     if (!isBackground) setLoading(true);
@@ -25,11 +54,10 @@ export function TenantProvider({ children }) {
       let userId = userIdRef.current;
       let shouldCheckRole = false;
       if (!isBackground || !userId) {
-        const { data: { session }, error: authError } = await supabase.auth.getSession();
+        const { data: { session }, error: authError } = await getRestoredSession();
         const user = session?.user;
         if (authError || !user) {
-          localStorage.clear();
-          await router.push('/login');
+          await router.replace('/login/tenant');
           return false;
         }
 
@@ -51,7 +79,7 @@ export function TenantProvider({ children }) {
 
       if (roleResult.error || roleResult.data?.role !== 'tenant') {
         toast.error('Access denied. You are not registered as a tenant.');
-        await router.replace('/login');
+        await router.replace(`/login/${roleResult.data?.role || 'tenant'}`);
         return false;
       }
 
@@ -64,6 +92,7 @@ export function TenantProvider({ children }) {
         setProperty(null);
         setOwner(null);
         setRoommates([]);
+        setProfilePhotoUrl(null);
         setRoommateVacateAlert(null);
         setError('No tenant record found in the database.');
         return false;
@@ -75,6 +104,7 @@ export function TenantProvider({ children }) {
       setRoom(tenantData.rooms || null);
       setProperty(tenantData.property || null);
       setError(null);
+      loadTenantProfilePhoto(tenantData);
       if (!isBackground) setLoading(false);
 
       const [ownerResult, roommatesResult] = await Promise.all([
@@ -135,15 +165,15 @@ export function TenantProvider({ children }) {
     } finally {
       if (!isBackground) setLoading(false);
     }
-  }, [router]);
+  }, [loadTenantProfilePhoto, router]);
 
   useEffect(() => {
     refreshData(false);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
-        localStorage.clear();
-        router.push('/login');
+        clearHostelSetSessionCache();
+        router.replace('/login/tenant');
       } else if (event === 'TOKEN_REFRESHED' && session) {
         syncServerSession(session).catch((sessionError) => console.error('Unable to refresh server session:', sessionError));
       }
@@ -191,6 +221,7 @@ export function TenantProvider({ children }) {
       property,
       owner,
       roommates,
+      profilePhotoUrl,
       roommateVacateAlert,
       error,
       realtimeConnected,

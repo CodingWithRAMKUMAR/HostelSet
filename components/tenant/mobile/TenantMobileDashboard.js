@@ -1,16 +1,9 @@
-﻿import NotificationBell from '../../common/NotificationBell'
+﻿import MobileTopbar from '../../dashboard/MobileTopbar'
 import { formatCurrency, getSharingDetails } from '../../../lib/utils'
 
-function Header({ title, subtitle, avatar, onProfile }) {
+function Header({ title, subtitle, avatar, avatarUrl, avatarAlt, onProfile }) {
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950 px-3 pt-[calc(env(safe-area-inset-top)_+_0.375rem)] pb-1.5 text-white">
-      <div className="flex min-h-[42px] items-center gap-2">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-xs font-black">HS</div>
-        <div className="min-w-0 flex-1"><p className="truncate text-[13px] font-black leading-tight">{title}</p>{subtitle && <p className="truncate text-[10px] font-medium leading-tight text-slate-400">{subtitle}</p>}</div>
-        <NotificationBell listenForGlobalOpen />
-        <button type="button" onClick={onProfile} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-xs font-bold" aria-label="Open account menu">{avatar}</button>
-      </div>
-    </header>
+    <MobileTopbar title={title} subtitle={subtitle} isHome onProfile={onProfile} avatar={avatar} avatarUrl={avatarUrl} avatarAlt={avatarAlt} />
   )
 }
 
@@ -24,10 +17,10 @@ function Stat({ label, value, onClick }) {
   )
 }
 
-export default function TenantMobileDashboard({ tenant, room, property, notices = [], complaints = [], rentStatus = {}, existingVacateRequest, pendingRoomChangeRequest, avatar = 'U', onProfile, onNavigate, onPayRent }) {
+export default function TenantMobileDashboard({ tenant, room, property, roommates = [], notices = [], complaints = [], rentStatus = {}, existingVacateRequest, pendingRoomChangeRequest, avatar = 'U', avatarUrl, avatarAlt, onProfile, onNavigate, onPayRent }) {
   return (
     <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
-      <Header title="Dashboard" subtitle={property?.name} avatar={avatar} onProfile={onProfile} />
+      <Header title="HostelSet" subtitle={property?.name} avatar={avatar} avatarUrl={avatarUrl} avatarAlt={avatarAlt} onProfile={onProfile} />
       <main className="mx-auto max-w-md space-y-2 px-3 py-2">
         <section className="rounded-2xl border border-white/10 bg-slate-900 p-2.5 text-white shadow-sm">
           <div className="flex min-w-0 items-start justify-between gap-2">
@@ -45,6 +38,7 @@ export default function TenantMobileDashboard({ tenant, room, property, notices 
           <Stat label="Pending" value={formatCurrency(tenant?.pending_amount || 0)} onClick={() => onNavigate('payments')} />
           <Stat label="Paid" value={formatCurrency(tenant?.total_paid || 0)} onClick={() => onNavigate('payments')} />
           <Stat label="Deposit" value={formatCurrency(tenant?.security_deposit_amount || 0)} />
+          <Stat label="Roommates" value={roommates.length} onClick={() => onNavigate('roommates')} />
           <Stat label="Notices" value={notices.length} onClick={() => onNavigate('notices')} />
           <Stat label="Complaints" value={complaints.length} onClick={() => onNavigate('complaints')} />
         </section>

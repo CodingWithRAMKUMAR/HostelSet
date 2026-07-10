@@ -25,7 +25,7 @@ export default function ApplicationList({
         const monthlyRent = Number(app.rooms?.monthly_rent || 0);
         const securityDeposit = Number(app.payment_amount || app.rooms?.deposit_amount || 0);
         const paymentStatus = String(app.payment_status || 'pending_owner_verification').replaceAll('_', ' ');
-        const paymentProofUrl = app.payment_screenshot_url || null;
+        const hasPaymentProof = Boolean(app.payment_screenshot || app.payment_screenshot_url);
         return (
           <motion.div
             key={app.id}
@@ -63,19 +63,14 @@ export default function ApplicationList({
                 <span className="capitalize">Payment status: {paymentStatus}</span>
                 <span className="sm:col-span-2 text-gray-500">Deposit is tracked separately from rent.</span>
               </div>
-              {paymentProofUrl && (
+              {hasPaymentProof && (
                 <div className="mt-3">
                   <button
                     type="button"
                     onClick={() => onViewScreenshot?.(app)}
-                    className="group block w-36 overflow-hidden rounded-lg border border-gray-200 text-left"
+                    className="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                   >
-                    <img
-                      src={paymentProofUrl}
-                      alt="Application payment screenshot"
-                      className="h-24 w-full object-cover transition group-hover:opacity-80"
-                    />
-                    <span className="block px-2 py-1 text-xs font-semibold text-blue-700">View payment proof</span>
+                    View payment proof
                   </button>
                 </div>
               )}

@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../../lib/supabase'
+import { supabaseAdmin } from '../../lib/server/supabaseAdmin'
 import { cleanPhoneNumber } from '../../lib/utils'
 import { allowPostOnly, enforceRateLimit, getClientIp, requireJson, setPrivateApiResponse } from '../../lib/server/publicApiSecurity'
 import { logger } from '../../lib/logger'
@@ -6,6 +6,7 @@ import { logger } from '../../lib/logger'
 export const config = { api: { bodyParser: { sizeLimit: '256kb' } } }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d).{8,128}$/
 const PROPERTY_TYPES = new Set(['boys', 'girls', 'co-ed'])
 
 function text(value, max) {
@@ -43,7 +44,7 @@ export default async function handler(req, res) {
   const cleanCity = text(city, 120)
   const cleanPincode = text(pincode, 12)
   const cleanPropertyType = PROPERTY_TYPES.has(property_type) ? property_type : 'boys'
-  if (!EMAIL_PATTERN.test(cleanEmail) || !cleanName || !cleanPropertyName || !cleanAddress || !cleanCity || typeof password !== 'string' || password.length < 6 || password.length > 128) {
+  if (!EMAIL_PATTERN.test(cleanEmail) || !cleanName || !cleanPropertyName || !cleanAddress || !cleanCity || typeof password !== 'string' || !PASSWORD_PATTERN.test(password)) {
     return res.status(400).json({ error: 'Please provide valid registration details' })
   }
   if (!Array.isArray(amenities) || amenities.length > 30 || amenities.some(item => typeof item !== 'string' || item.length > 80)) return res.status(400).json({ error: 'Invalid amenities' })

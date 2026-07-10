@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase, signPrivateDocumentFields } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
@@ -16,7 +16,7 @@ export function useAdminApplications(enabled = true) {
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
     if (error) toast.error('Failed to load applications');
-    else setApplications(await Promise.all((data || []).map(item => signPrivateDocumentFields({ ...item, source_type: 'application' }, ['id_proof', 'photo', 'payment_screenshot']))));
+    else setApplications((data || []).map(item => ({ ...item, source_type: 'application' })));
     setLoading(false);
   };
 

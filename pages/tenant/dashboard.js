@@ -18,7 +18,7 @@ import { usePayments } from '../../hooks/usePayments'
 import { useRoomChange } from '../../hooks/useRoomChange'
 // ------------------------------------------------
 
-import { formatCurrency, formatDate, getSharingDetails } from '../../lib/utils'
+import { calculateRentDueStatus, formatCurrency, formatDate, getSharingDetails } from '../../lib/utils'
 import { normalizeBloodGroup } from '../../lib/bloodGroups'
 
 // Content Components (static)
@@ -28,6 +28,7 @@ import MobileTopbar from '../../components/dashboard/MobileTopbar'
 import MobileBottomNav from '../../components/dashboard/MobileBottomNav'
 import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu'
 import DashboardSidebar from '../../components/dashboard/DashboardSidebar'
+import DashboardIcon from '../../components/dashboard/DashboardIcon'
 import AccountMenu from '../../components/dashboard/AccountMenu'
 import { resetDashboardScroll } from '../../lib/dashboardScroll'
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
@@ -50,7 +51,15 @@ const ProfileModal = dynamic(() => import('../../components/tenant/modals/Profil
 const RoomChangeModal = dynamic(() => import('../../components/tenant/modals/RoomChangeModal'), { ssr: false })
 const ScreenshotModal = dynamic(() => import('../../components/tenant/modals/ScreenshotModal'), { ssr: false })
 
-const TENANT_VIEW_KEYS = new Set(['overview', 'roommates', 'notices', 'complaints', 'payments', 'room-change', 'vacate'])
+const TENANT_VIEW_KEYS = new Set(['overview', 'requests', 'roommates', 'notices', 'complaints', 'payments', 'room-change', 'vacate'])
+
+function TenantAvatar({ src, name, sizeClass = 'h-8 w-8' }) {
+  const [imageFailed, setImageFailed] = useState(false)
+  if (src && !imageFailed) {
+    return <img src={src} alt={name ? `${name} profile photo` : 'Tenant profile photo'} onError={() => setImageFailed(true)} className={`${sizeClass} rounded-full object-cover`} />
+  }
+  return <div className={`${sizeClass} flex items-center justify-center rounded-full bg-gradient-to-r from-orange-500 to-amber-500 text-sm font-bold text-white`}>{name?.charAt(0) || 'U'}</div>
+}
 
 // ---------------- THE ACTUAL DASHBOARD CONTENT ----------------
 function TenantDashboardContent() {
@@ -58,7 +67,7 @@ function TenantDashboardContent() {
   
   // ---------------- MODULAR HOOKS ----------------
   const core = useTenant() || {};
-  const { tenant, room, property, owner, roommates, loading, realtimeConnected, roommateVacateAlert, refreshData, setTenant } = core;
+  const { tenant, room, property, owner, roommates, profilePhotoUrl, loading, realtimeConnected, roommateVacateAlert, refreshData, setTenant } = core;
   
   const { notices = [] } = useNotices(tenant);
   const { existingVacateRequest, lastVacateDecision, vacateLoaded, cancelVacateRequest, refreshVacate } = useVacate(tenant, setTenant);
@@ -227,26 +236,7 @@ function TenantDashboardContent() {
 
   const getRentStatus = () => {
     if (!tenant) return { status: 'loading', message: '', daysUntilDue: null, dueDate: null }
-    const joinDate = new Date(tenant.move_in_date)
-    const today = new Date()
-    let monthsSinceJoin = (today.getFullYear() - joinDate.getFullYear()) * 12 + (today.getMonth() - joinDate.getMonth())
-    if (today.getDate() < joinDate.getDate()) monthsSinceJoin -= 1
-    const monthsPaid = Math.floor((tenant.total_paid || 0) / tenant.rent_amount)
-    const isCurrentMonthPaid = monthsPaid > monthsSinceJoin
-    if (isCurrentMonthPaid || (tenant.pending_amount === 0 && tenant.rent_status === 'paid')) {
-      const nextDueDate = new Date(today.getFullYear(), today.getMonth() + 1, joinDate.getDate())
-      if (nextDueDate.getDate() !== joinDate.getDate()) nextDueDate.setDate(0)
-      const daysUntilDue = Math.ceil((nextDueDate - today) / (1000*60*60*24))
-      return { status:'paid', message:`Paid âœ“ | Next due on ${formatDate(nextDueDate)}`, daysUntilDue, dueAmount:0, dueDate:nextDueDate }
-    }
-    const expectedDate = new Date(today.getFullYear(), today.getMonth(), joinDate.getDate())
-    if (expectedDate.getDate() !== joinDate.getDate()) expectedDate.setDate(0)
-    const daysUntilDue = Math.ceil((expectedDate - today) / (1000*60*60*24))
-    const pendingAmount = tenant.pending_amount || tenant.rent_amount
-    if (daysUntilDue < 0) { return { status:'overdue', message:`Overdue by ${Math.abs(daysUntilDue)} days`, daysUntilDue, dueAmount:pendingAmount, dueDate:expectedDate, urgent:true } }
-    else if (daysUntilDue === 0) { return { status:'due_today', message:'Due today!', daysUntilDue:0, dueAmount:pendingAmount, dueDate:expectedDate, urgent:true } }
-    else if (daysUntilDue <= 5) { return { status:'due_soon', message:`Due in ${daysUntilDue} day${daysUntilDue!==1?'s':''}`, daysUntilDue, dueAmount:pendingAmount, dueDate:expectedDate, urgent:true } }
-    else { return { status:'pending', message:`Due on ${formatDate(expectedDate)}`, daysUntilDue, dueAmount:pendingAmount, dueDate:expectedDate, urgent:false } }
+    return calculateRentDueStatus(tenant)
   }
 
   const rentStatus = getRentStatus() || { message: 'Loading...' }
@@ -272,13 +262,13 @@ function TenantDashboardContent() {
     return <DashboardSkeleton cards={6} />
   }
 
-  const tenantViewTitle = ({ overview: 'Dashboard', roommates: 'Roommates', notices: 'Notices', complaints: 'Complaints', payments: 'Payments', 'room-change': 'Room change', vacate: 'Vacate request' })[activeTab] || 'Dashboard'
+  const tenantViewTitle = ({ overview: 'Dashboard', requests: 'Requests', roommates: 'Roommates', notices: 'Notices', complaints: 'Complaints', payments: 'Payments', 'room-change': 'Room change', vacate: 'Vacate request' })[activeTab] || 'Dashboard'
   const tenantBottomItems = [
     { id: 'overview', label: 'Home', icon: 'home' }, { id: 'payments', label: 'Payments', icon: 'payments' }, { id: 'notices', label: 'Notices', icon: 'notices' },
     { id: 'requests', label: 'Requests', icon: 'requests' }, { id: 'more', label: 'More', icon: 'more' },
   ]
   const tenantBottomIcons = { overview:'home', payments:'payments', notices:'notices', requests:'requests', more:'more' }; tenantBottomItems.forEach(item => { item.icon = tenantBottomIcons[item.id] })
-  const tenantSidebarItems = [{id:'overview',label:'Dashboard',icon:'dashboard'},{id:'payments',label:'Payments',icon:'payments'},{id:'notices',label:'Notices',icon:'notices'},{id:'complaints',label:'Complaints',icon:'complaints'},{id:'room-change',label:'Requests',icon:'requests'},{id:'roommates',label:'Roommates',icon:'users'}]
+  const tenantSidebarItems = [{id:'overview',label:'Dashboard',icon:'dashboard'},{id:'payments',label:'Payments',icon:'payments'},{id:'notices',label:'Notices',icon:'notices'},{id:'requests',label:'Requests',icon:'requests'},{id:'complaints',label:'Complaints',icon:'complaints'},{id:'roommates',label:'Roommates',icon:'users'}]
   const tenantMobileMoreItems = [
     { id: 'home', group: 'Main', label: 'Home', onClick: () => openSection('overview') },
     { id: 'payments', group: 'Main', label: 'Payments', onClick: () => openSection('payments') },
@@ -294,26 +284,77 @@ function TenantDashboardContent() {
   const tenantMobileRequestItems = [
     { id: 'complaints', group: 'Requests', label: 'My complaints', onClick: () => openSection('complaints') },
     { id: 'raise', group: 'Requests', label: 'Raise complaint', onClick: () => setShowComplaintModal(true) },
+    { id: 'roommates', group: 'Requests', label: 'Roommate details', onClick: () => openSection('roommates') },
     { id: 'room-change', group: 'Requests', label: pendingRoomChangeRequest ? 'Room change pending' : 'Request room change', onClick: () => openSection('room-change') },
     { id: 'vacate', group: 'Requests', label: existingVacateRequest ? 'View vacate status' : 'Request vacate', onClick: () => openSection('vacate') },
   ]
+  const renderRequestsOverview = () => {
+    const cards = [
+      {
+        id: 'complaints',
+        icon: 'complaints',
+        title: 'Complaints',
+        count: complaints?.length || 0,
+        description: complaints?.length ? 'View complaint history and status updates.' : 'Raise and track maintenance or service issues.',
+        action: complaints?.length ? 'View complaints' : 'Raise complaint',
+      },
+      {
+        id: 'room-change',
+        icon: 'requests',
+        title: 'Room change',
+        count: pendingRoomChangeRequest ? 1 : 0,
+        description: pendingRoomChangeRequest ? 'Your room-change request is awaiting owner approval.' : 'Request a move to another eligible room.',
+        action: pendingRoomChangeRequest ? 'View request' : 'Request room change',
+      },
+      {
+        id: 'vacate',
+        icon: 'home',
+        title: 'Vacate',
+        count: existingVacateRequest ? 1 : 0,
+        description: existingVacateRequest ? `Your vacate request is ${existingVacateRequest.status}.` : (vacateBlockedReason || 'Submit a planned checkout request when eligible.'),
+        action: existingVacateRequest ? 'View status' : 'Open vacate',
+      },
+    ]
+
+    return (
+      <section aria-labelledby="tenant-requests-title" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3">
+          <h2 id="tenant-requests-title" className="text-lg font-bold text-slate-900">Requests</h2>
+          <p className="text-sm text-slate-500">Open complaints, room-change, or vacate workflows from one place.</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          {cards.map(card => (
+            <button key={card.id} type="button" onClick={() => openSection(card.id)} className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-orange-200 hover:bg-orange-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-orange-600 shadow-sm"><DashboardIcon name={card.icon} className="h-4 w-4" /></span>
+                <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-slate-600">{card.count} active</span>
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">{card.title}</h3>
+              <p className="mt-1 min-h-[2.5rem] text-xs leading-5 text-slate-600">{card.description}</p>
+              <span className="mt-3 inline-flex text-xs font-bold text-orange-600">{card.action}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    )
+  }
   const renderTenantMobileView = () => {
-    const common = { property, avatar: tenant?.name?.charAt(0) || 'U', onProfile: openProfile, onBack: () => openSection('overview') }
+    const common = { property, avatar: tenant?.name?.charAt(0) || 'U', avatarUrl: profilePhotoUrl, avatarAlt: tenant?.name ? `${tenant.name} profile photo` : 'Tenant profile photo', onProfile: openProfile, onBack: () => openSection('overview') }
     if (activeTab === 'payments') return <TenantMobilePayments {...common} payments={paymentHistory} onPayRent={() => setShowPaymentModal(true)} onViewScreenshot={openSignedPaymentScreenshot} />
     if (activeTab === 'notices') return <TenantMobileNotices {...common} notices={notices} />
     if (['complaints', 'room-change', 'vacate', 'roommates'].includes(activeTab)) return <TenantMobileRequests {...common} view={activeTab} complaints={complaints} roommates={roommates} room={room} onDeleteComplaint={deleteComplaint} onRaiseComplaint={() => setShowComplaintModal(true)} isSubmitting={isSubmitting} pendingRoomChangeRequest={pendingRoomChangeRequest} onRoomChange={openRoomChangeModal} existingVacateRequest={existingVacateRequest} vacateBlockedReason={vacateBlockedReason} onVacate={() => setShowVacateModal(true)} onCancelVacate={cancelVacateRequest} />
-    return <TenantMobileDashboard tenant={tenant} room={room} property={property} notices={notices} complaints={complaints} rentStatus={rentStatus} existingVacateRequest={existingVacateRequest} pendingRoomChangeRequest={pendingRoomChangeRequest} avatar={tenant?.name?.charAt(0) || 'U'} onProfile={openProfile} onNavigate={openSection} onPayRent={() => setShowPaymentModal(true)} />
+    return <TenantMobileDashboard tenant={tenant} room={room} property={property} roommates={roommates} notices={notices} complaints={complaints} rentStatus={rentStatus} existingVacateRequest={existingVacateRequest} pendingRoomChangeRequest={pendingRoomChangeRequest} avatar={tenant?.name?.charAt(0) || 'U'} avatarUrl={profilePhotoUrl} avatarAlt={tenant?.name ? `${tenant.name} profile photo` : 'Tenant profile photo'} onProfile={openProfile} onNavigate={openSection} onPayRent={() => setShowPaymentModal(true)} />
   }
 
   return (
-    <div className="dashboard-shell min-h-screen max-w-full overflow-x-hidden bg-[#f8f9fa] pb-[calc(6rem_+_env(safe-area-inset-bottom))] font-sans lg:pb-0">
+    <div className="dashboard-shell min-h-screen max-w-full overflow-x-hidden bg-[#f8f9fa] font-sans">
       <div className="lg:hidden">
         {renderTenantMobileView()}
-        <MobileBottomNav items={tenantBottomItems} activeId={mobileMenu === 'more' ? 'more' : mobileMenu === 'requests' || ['complaints', 'room-change', 'vacate'].includes(activeTab) ? 'requests' : activeTab} onSelect={id => { if (id === 'requests' || id === 'more') setMobileMenu(id); else { setMobileMenu(null); openSection(id) } }} />
+        <MobileBottomNav items={tenantBottomItems} activeId={mobileMenu === 'more' ? 'more' : mobileMenu === 'requests' || ['complaints', 'room-change', 'vacate', 'roommates'].includes(activeTab) ? 'requests' : activeTab} onSelect={id => { if (id === 'requests' || id === 'more') setMobileMenu(id); else { setMobileMenu(null); openSection(id) } }} />
         <TenantMobileMore open={mobileMenu === 'requests'} title="Requests" subtitle={property?.name} onClose={() => setMobileMenu(null)} items={tenantMobileRequestItems} />
         <TenantMobileMore open={mobileMenu === 'more'} title="Tenant menu" subtitle={property?.name} onClose={() => setMobileMenu(null)} items={tenantMobileMoreItems} />
       </div>
-      <DashboardSidebar role="Tenant" items={tenantSidebarItems} activeId={activeTab} onSelect={openSection} footer={<div><p className="truncate text-sm font-bold text-white">{property?.name}</p><p className="mt-1 text-xs text-slate-400">Room {room?.room_number || 'â€”'}</p></div>}/>
+      <DashboardSidebar role="Tenant" items={tenantSidebarItems} activeId={activeTab} onSelect={openSection} footer={<div><p className="truncate text-sm font-bold text-white">{property?.name}</p><p className="mt-1 text-xs text-slate-400">Room {room?.room_number || '?'}</p></div>}/>
       
       {/* --- NAVBAR (Premium Onyx & Gold) --- */}
       <nav className="dashboard-desktop-header">
@@ -327,10 +368,8 @@ function TenantDashboardContent() {
               <span className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
               {realtimeConnected ? 'Live' : 'Connecting'}
             </span>
-            <button onPointerEnter={() => ProfileModal.preload?.()} onFocus={() => ProfileModal.preload?.()} onClick={openProfile} aria-label="Open my profile" className="flex items-center gap-2 text-gray-400 hover:text-orange-400 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 rounded-lg">
-              <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                {tenant?.name?.charAt(0) || 'U'}
-              </div>
+            <button type="button" onPointerEnter={() => ProfileModal.preload?.()} onFocus={() => ProfileModal.preload?.()} onClick={openProfile} aria-label="Open my profile" className="flex items-center gap-2 text-gray-400 hover:text-orange-400 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 rounded-lg">
+              <TenantAvatar src={profilePhotoUrl} name={tenant?.name} />
               <span className="text-sm hidden md:inline font-medium text-orange-300/80">{tenant?.name}</span>
             </button>
             <ThemeToggle compact />
@@ -348,7 +387,7 @@ function TenantDashboardContent() {
           <div className="flex justify-between items-start flex-wrap gap-4 relative z-10">
             <div>
               <h2 className="mb-1 text-base font-bold text-white sm:mb-2 sm:text-3xl">Welcome, <span className="text-orange-400">{tenant?.name}</span></h2>
-              <p className="text-xs text-white/70 sm:text-base">Room {room?.room_number} â€¢ {getSharingDetails(room?.sharing_type)?.label}</p>
+              <p className="text-xs text-white/70 sm:text-base">Room {room?.room_number} / {getSharingDetails(room?.sharing_type)?.label}</p>
               <p className="mt-0.5 truncate text-[11px] text-white/50 sm:mt-1 sm:text-sm">{property?.name}</p>
             </div>
             <div className={`rounded-full px-2.5 py-1 text-xs font-bold shadow-lg backdrop-blur-sm sm:px-5 sm:py-2.5 sm:text-sm ${isUrgent ? 'bg-red-500/90 text-white animate-pulse border border-red-400' : 'bg-white/10 text-white border border-white/20'}`}>
@@ -358,7 +397,7 @@ function TenantDashboardContent() {
           {rentStatus.dueDate && isUrgent && (
             <div className="mt-4 text-center relative z-10">
               <div className="inline-block bg-black/40 backdrop-blur-sm px-5 py-2.5 rounded-lg text-orange-400 font-bold border border-orange-500/30">
-                âš ï¸ Next due date: {formatDate(rentStatus.dueDate)}
+                Next due date: {formatDate(rentStatus.dueDate)}
               </div>
             </div>
           )}
@@ -368,7 +407,7 @@ function TenantDashboardContent() {
         {activeTab === 'overview' && roommateVacateAlert && (
           <div className="bg-orange-500/10 border-l-4 border-orange-500 text-orange-400 p-4 mb-6 rounded-lg shadow-sm backdrop-blur-sm">
             <div className="flex items-center gap-2">
-              <span className="text-xl">ðŸšª</span>
+              <DashboardIcon name="home" className="h-5 w-5 shrink-0" />
               <div className="font-medium">
                 <strong>Vacate Notice:</strong> {roommateVacateAlert.name} will vacate in <strong>{roommateVacateAlert.daysLeft}</strong> days (by {formatDate(roommateVacateAlert.date)}).
               </div>
@@ -379,63 +418,63 @@ function TenantDashboardContent() {
         {/* --- STATS CARDS (PREMIUM GLASS) --- */}
         {activeTab === 'overview' && <section aria-labelledby="tenant-summary-title" className="mb-3 sm:mb-8"><div className="mb-2 sm:mb-3"><h2 id="tenant-summary-title" className="text-sm font-bold text-slate-900 sm:text-lg">Account summary</h2><p className="hidden text-sm text-slate-500 sm:block">Rent, requests, and activity at a glance.</p></div><div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4">
           <button type="button" onClick={() => openSection('payments')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
-            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-orange-100/50 flex items-center justify-center text-base sm:text-xl text-orange-600">ðŸ’°</div>
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-orange-100/50 flex items-center justify-center text-base sm:text-xl text-orange-600"><DashboardIcon name="payments" className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Monthly Rent</p>
               <p className="text-base sm:text-xl font-bold text-gray-800 truncate">{formatCurrency(tenant?.rent_amount)}</p>
             </div>
           </button>
           <button type="button" onClick={() => openSection('payments')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
-            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-emerald-100/50 flex items-center justify-center text-base sm:text-xl text-emerald-600">âœ…</div>
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-emerald-100/50 flex items-center justify-center text-base sm:text-xl text-emerald-600"><DashboardIcon name="payments" className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Total Paid</p>
               <p className="text-base sm:text-xl font-bold text-emerald-600 truncate">{formatCurrency(tenant?.total_paid || 0)}</p>
             </div>
           </button>
           <button type="button" onClick={() => openSection('payments')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
-            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-red-100/50 flex items-center justify-center text-base sm:text-xl text-red-600">âš ï¸</div>
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-red-100/50 flex items-center justify-center text-base sm:text-xl text-red-600"><DashboardIcon name="complaints" className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Pending Amount</p>
               <p className="text-base sm:text-xl font-bold text-red-500 truncate">{formatCurrency(tenant?.pending_amount || 0)}</p>
             </div>
           </button>
           <button type="button" onClick={() => openSection('payments')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
-            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-slate-100/50 flex items-center justify-center text-base sm:text-xl text-slate-600">â‚¹</div>
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-slate-100/50 flex items-center justify-center text-base sm:text-xl text-slate-600"><DashboardIcon name="payments" className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Deposit</p>
               <p className="text-base sm:text-xl font-bold text-gray-800 truncate">{formatCurrency(tenant?.security_deposit_amount || 0)}</p>
             </div>
           </button>
           <button type="button" onClick={() => openSection('roommates')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
-            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-purple-100/50 flex items-center justify-center text-base sm:text-xl text-purple-600">ðŸ‘¥</div>
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-purple-100/50 flex items-center justify-center text-base sm:text-xl text-purple-600"><DashboardIcon name="users" className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Roommates</p>
               <p className="text-base sm:text-xl font-bold text-gray-800">{roommates?.length || 0}</p>
             </div>
           </button>
           <button type="button" onClick={() => openSection('notices')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
-            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-cyan-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-cyan-700">Note</div>
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-cyan-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-cyan-700"><DashboardIcon name="notices" className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Notices</p>
               <p className="text-base sm:text-xl font-bold text-gray-800">{notices?.length || 0}</p>
             </div>
           </button>
           <button type="button" onClick={() => openSection('complaints')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
-            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-rose-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-rose-700">Fix</div>
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-rose-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-rose-700"><DashboardIcon name="complaints" className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Complaints</p>
               <p className="text-base sm:text-xl font-bold text-gray-800">{complaints?.length || 0}</p>
             </div>
           </button>
           <button type="button" onClick={() => openSection('room-change')} disabled={isSubmitting} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 disabled:cursor-not-allowed disabled:opacity-70">
-            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-blue-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-blue-700">Move</div>
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-blue-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-blue-700"><DashboardIcon name="requests" className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Room Change</p>
               <p className="text-base sm:text-xl font-bold text-gray-800">{pendingRoomChangeRequest ? 'Pending' : 'Request'}</p>
             </div>
           </button>
           <button type="button" onClick={() => openSection('vacate')} disabled={isSubmitting} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 disabled:cursor-not-allowed disabled:opacity-70">
-            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-yellow-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-yellow-700">Out</div>
+            <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-yellow-100/50 flex items-center justify-center text-xs sm:text-sm font-bold text-yellow-700"><DashboardIcon name="home" className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Vacate</p>
               <p className="text-base sm:text-xl font-bold text-gray-800 capitalize">{existingVacateRequest ? existingVacateRequest.status : 'Request'}</p>
@@ -445,17 +484,17 @@ function TenantDashboardContent() {
 
         {/* --- ACTION BUTTONS (GRADIENT & GLASS) --- */}
         {activeTab === 'overview' && <section aria-labelledby="tenant-actions-title" className="mb-6 hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mb-8 lg:block"><div className="mb-3"><h2 id="tenant-actions-title" className="font-bold text-slate-900">Quick actions</h2><p className="text-sm text-slate-500">Pay rent or send a request to your property team.</p></div><div className="grid grid-cols-2 gap-2.5 sm:flex sm:flex-wrap sm:gap-3">
-          <button onPointerEnter={() => PayRentModal.preload?.()} onFocus={() => PayRentModal.preload?.()} onClick={() => setShowPaymentModal(true)} disabled={isSubmitting} className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold shadow-md transition disabled:opacity-50">ðŸ’³ Pay Rent (UPI)</button>
-          <button onPointerEnter={() => ComplaintModal.preload?.()} onFocus={() => ComplaintModal.preload?.()} onClick={() => setShowComplaintModal(true)} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-orange-300/50 text-orange-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition disabled:opacity-50">ðŸ“ Raise Complaint</button>
+          <button onPointerEnter={() => PayRentModal.preload?.()} onFocus={() => PayRentModal.preload?.()} onClick={() => setShowPaymentModal(true)} disabled={isSubmitting} className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold shadow-md transition disabled:opacity-50">Pay Rent (UPI)</button>
+          <button onPointerEnter={() => ComplaintModal.preload?.()} onFocus={() => ComplaintModal.preload?.()} onClick={() => setShowComplaintModal(true)} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-orange-300/50 text-orange-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition disabled:opacity-50">Raise Complaint</button>
           {!pendingRoomChangeRequest ? (
-            <button onPointerEnter={() => RoomChangeModal.preload?.()} onFocus={() => RoomChangeModal.preload?.()} onClick={openRoomChangeModal} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-blue-300/50 text-blue-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-50 transition disabled:opacity-50">ðŸ”„ Request Room Change</button>
+            <button onPointerEnter={() => RoomChangeModal.preload?.()} onFocus={() => RoomChangeModal.preload?.()} onClick={openRoomChangeModal} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-blue-300/50 text-blue-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-50 transition disabled:opacity-50">Request Room Change</button>
           ) : (
-            <button disabled className="w-full sm:w-auto border-2 border-gray-300/50 text-gray-500 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold cursor-not-allowed">â³ Room Change Pending</button>
+            <button disabled className="w-full sm:w-auto border-2 border-gray-300/50 text-gray-500 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold cursor-not-allowed">Room Change Pending</button>
           )}
           {existingVacateRequest ? (
-            <button onClick={cancelVacateRequest} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-yellow-500/50 text-yellow-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition disabled:opacity-50">{existingVacateRequest.status === 'approved' ? 'âœ“ Vacate Approved Â· Cancel' : 'â³ Vacate Request Pending Â· Cancel'}</button>
+            <button onClick={cancelVacateRequest} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-yellow-500/50 text-yellow-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-yellow-50 transition disabled:opacity-50">{existingVacateRequest.status === 'approved' ? 'Vacate Approved / Cancel' : 'Vacate Request Pending / Cancel'}</button>
           ) : (
-            <button onPointerEnter={() => VacateModal.preload?.()} onFocus={() => VacateModal.preload?.()} onClick={() => setShowVacateModal(true)} disabled={isSubmitting || Boolean(vacateBlockedReason)} title={vacateBlockedReason || undefined} className="w-full sm:w-auto border-2 border-red-300/50 text-red-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed">ðŸšª Request Vacate</button>
+            <button onPointerEnter={() => VacateModal.preload?.()} onFocus={() => VacateModal.preload?.()} onClick={() => setShowVacateModal(true)} disabled={isSubmitting || Boolean(vacateBlockedReason)} title={vacateBlockedReason || undefined} className="w-full sm:w-auto border-2 border-red-300/50 text-red-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed">Request Vacate</button>
           )}
         </div></section>}
         {activeTab === 'overview' && vacateBlockedReason && (
@@ -485,6 +524,7 @@ function TenantDashboardContent() {
         )}
         {activeTab === 'roommates' && <RoommatesSection roommates={roommates} room={room} />}
         {activeTab === 'notices' && <NoticesSection notices={notices} />}
+        {activeTab === 'requests' && renderRequestsOverview()}
         {activeTab === 'complaints' && (
           <ComplaintsSection
             complaints={complaints}
@@ -499,8 +539,8 @@ function TenantDashboardContent() {
             onViewScreenshot={openSignedPaymentScreenshot}
           />
         )}
-        {activeTab === 'room-change' && <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:hidden"><h2 className="text-lg font-bold text-slate-900">Room change</h2><p className="mt-2 text-sm text-slate-600">{pendingRoomChangeRequest ? 'Your room-change request is awaiting approval.' : 'Request a move to another available room.'}</p><button type="button" onClick={openRoomChangeModal} disabled={isSubmitting || Boolean(pendingRoomChangeRequest)} className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white disabled:opacity-50">{pendingRoomChangeRequest ? 'Request pending' : 'Choose a room'}</button></section>}
-        {activeTab === 'vacate' && <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:hidden"><h2 className="text-lg font-bold text-slate-900">Vacate request</h2><p className="mt-2 text-sm text-slate-600">{existingVacateRequest ? `Your request is ${existingVacateRequest.status}.` : (vacateBlockedReason || 'Submit a planned checkout request to your owner.')}</p>{existingVacateRequest ? <button type="button" onClick={cancelVacateRequest} disabled={isSubmitting} className="mt-5 w-full rounded-xl border border-amber-300 px-4 py-3 font-semibold text-amber-700 disabled:opacity-50">Cancel request</button> : <button type="button" onClick={() => setShowVacateModal(true)} disabled={isSubmitting || Boolean(vacateBlockedReason)} className="mt-5 w-full rounded-xl bg-red-600 px-4 py-3 font-semibold text-white disabled:opacity-50">Request vacate</button>}</section>}
+        {activeTab === 'room-change' && <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-slate-900">Room change</h2><p className="mt-2 text-sm text-slate-600">{pendingRoomChangeRequest ? 'Your room-change request is awaiting approval.' : 'Request a move to another available room.'}</p><button type="button" onClick={openRoomChangeModal} disabled={isSubmitting || Boolean(pendingRoomChangeRequest)} className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white disabled:opacity-50 sm:w-auto">{pendingRoomChangeRequest ? 'Request pending' : 'Choose a room'}</button></section>}
+        {activeTab === 'vacate' && <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-slate-900">Vacate request</h2><p className="mt-2 text-sm text-slate-600">{existingVacateRequest ? `Your request is ${existingVacateRequest.status}.` : (vacateBlockedReason || 'Submit a planned checkout request to your owner.')}</p>{existingVacateRequest ? <button type="button" onClick={cancelVacateRequest} disabled={isSubmitting} className="mt-5 w-full rounded-xl border border-amber-300 px-4 py-3 font-semibold text-amber-700 disabled:opacity-50 sm:w-auto">Cancel request</button> : <button type="button" onClick={() => setShowVacateModal(true)} disabled={isSubmitting || Boolean(vacateBlockedReason)} className="mt-5 w-full rounded-xl bg-red-600 px-4 py-3 font-semibold text-white disabled:opacity-50 sm:w-auto">Request vacate</button>}</section>}
         </div>
       </main>
 
@@ -560,6 +600,7 @@ function TenantDashboardContent() {
           <ProfileModal
             tenant={tenant}
             room={room}
+            profilePhotoUrl={profilePhotoUrl}
             profileForm={profileForm}
             setProfileForm={setProfileForm}
             editProfile={editProfile}

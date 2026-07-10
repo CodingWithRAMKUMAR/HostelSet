@@ -8,7 +8,6 @@ import NearbyHostelMap from '../components/maps/NearbyHostelMap'
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
 import PublicFooter from '../components/PublicFooter'
 import { propertyPublicPath } from '../lib/propertySlug'
-import ThemeToggle from '../components/common/ThemeToggle'
 
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.hostelset.com').replace(/\/$/, '')
 const PAGE_TITLE = 'Browse Hostels and PGs | HostelSet'
@@ -140,8 +139,14 @@ export default function PropertiesPage() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-6 py-6">
-        <div className="container mx-auto mb-6 flex justify-end">
-          <ThemeToggle className="text-slate-700 dark:text-white border-slate-200 dark:border-white/20 bg-white dark:bg-white/10" />
+        <div className="container mx-auto mb-6 flex flex-wrap items-center justify-between gap-3">
+          <Link href="/" className="text-sm font-bold text-slate-800">HostelSet</Link>
+          <nav className="flex flex-wrap items-center gap-3 text-sm font-semibold text-slate-600" aria-label="Browse navigation">
+            <Link href="/" className="hover:text-slate-900">Home</Link>
+            <Link href="/faq" className="hover:text-slate-900">FAQ</Link>
+            <Link href="/login/tenant" className="hover:text-slate-900">Tenant Login</Link>
+            <Link href="/register" className="rounded-full bg-slate-900 px-3 py-1.5 text-white hover:bg-slate-700">Register Your Property</Link>
+          </nav>
         </div>
         <div className="container mx-auto text-center">
           <motion.h1
@@ -157,7 +162,7 @@ export default function PropertiesPage() {
             transition={{ delay: 0.1 }}
             className="text-lg text-gray-500 mb-8"
           >
-            Browse properties, check rooms, and apply directly
+            Compare rooms, rent, and facilities. Apply to a hostel first; tenant account access comes after owner approval.
           </motion.p>
 
           {/* Search & Filter */}
