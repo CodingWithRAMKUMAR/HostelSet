@@ -523,11 +523,15 @@ function OwnerDashboardContent() {
     }
   };
 
-  const handleArchiveTenant = async () => {
+  const handleArchiveTenant = async (reason = '') => {
     if (isSubmitting || !tenantToDelete) return;
+    if (!String(reason || '').trim()) {
+      toast.error('Select a reason before archiving the tenant');
+      return;
+    }
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.rpc('archive_tenant', { p_tenant_id: tenantToDelete.id });
+      const { error } = await supabase.rpc('archive_tenant', { p_tenant_id: tenantToDelete.id, p_reason: String(reason).trim() });
       if (error) throw error;
       profileCache.current.delete(tenantToDelete.id);
       paymentCache.current.delete(tenantToDelete.id);
@@ -536,7 +540,34 @@ function OwnerDashboardContent() {
       setShowConfirmDeleteModal(false);
       setTenantToDelete(null);
     } catch (error) {
-      toast.error('Failed to remove tenant: ' + error.message);
+      const rawMessage = String(error?.message || '')
+      const safeMessage = /constraint|tenants_status_check|violates/i.test(rawMessage)
+        ? 'Tenant archive is not available until the latest database lifecycle migration is applied.'
+        : rawMessage || 'Please try again.'
+      toast.error('Failed to archive tenant: ' + safeMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleArchiveProperty = async () => {
+    if (isSubmitting || !property?.id) return;
+    const reason = window.prompt(
+      'Archive this property?\n\nIt will disappear from Browse Hostels and new public applications will be blocked. Rooms, tenants, payments, requests, and history remain preserved.\n\nReason:'
+    );
+    if (reason === null) return;
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase.rpc('archive_property', {
+        p_property_id: property.id,
+        p_reason: reason.trim() || 'Owner archived property',
+      });
+      if (error) throw error;
+      toast.success('Property archived. Historical records were preserved.');
+      await loadData(true);
+      openSection('overview');
+    } catch (error) {
+      toast.error('Failed to archive property: ' + (error.message || 'Please try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -874,6 +905,7 @@ function OwnerDashboardContent() {
     { id: 'profile', group: 'Account', label: 'Owner profile', onClick: () => setShowOwnerProfileModal(true) },
     { id: 'settings', group: 'Account', label: 'Property settings', onClick: () => setShowSettingsModal(true) },
     { id: 'add-property', group: 'Account', label: 'Add property', onClick: () => router.push('/owner/register-property') },
+    { id: 'archive-property', group: 'Account', label: 'Archive property', danger: true, onClick: handleArchiveProperty },
     { id: 'logout', group: 'Account', label: 'Logout', danger: true, onClick: async () => { await signOut(); window.location.replace('/login') } },
   ]
   const renderOwnerMobileView = () => {
@@ -910,7 +942,7 @@ function OwnerDashboardContent() {
           onAddTenant={() => { setShowRoomDetailsModal(false); membershipActive && setShowAddModal(true); }}
           onUpdated={async (updated) => { setRooms(current => current.map(room => room.id === updated.id ? updated : room)); setSelectedRoom(updated); await loadData(true); }}
         />
-        <AccountMenu open={profileMenuOpen} onClose={() => setProfileMenuOpen(false)} name={ownerProfile?.full_name || 'Owner'} subtitle={property?.name} avatar="" fallbackIcon="users" actions={[{label:'Edit profile',onClick:()=>setShowOwnerProfileModal(true)},{label:'Property settings',onClick:()=>setShowSettingsModal(true)},{label:'Add property',onClick:()=>router.push('/owner/register-property')},{label:'Logout',onClick:logout,danger:true}]}/>
+        <AccountMenu open={profileMenuOpen} onClose={() => setProfileMenuOpen(false)} name={ownerProfile?.full_name || 'Owner'} subtitle={property?.name} avatar="" fallbackIcon="users" actions={[{label:'Edit profile',onClick:()=>setShowOwnerProfileModal(true)},{label:'Property settings',onClick:()=>setShowSettingsModal(true)},{label:'Add property',onClick:()=>router.push('/owner/register-property')},{label:'Archive property',onClick:handleArchiveProperty,danger:true},{label:'Logout',onClick:logout,danger:true}]}/>
         <MobileBottomNav items={ownerBottomItems} activeId={mobileMenu === 'more' ? 'more' : activeTab} onSelect={id => { if (id === 'more') setMobileMenu('more'); else { setMobileMenu(null); openSection(id) } }} />
         <OwnerMobileMore open={mobileMenu === 'more'} subtitle={property?.name} onClose={() => setMobileMenu(null)} items={ownerMobileMoreItems} />
       </div>

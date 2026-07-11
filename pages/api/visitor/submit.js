@@ -83,6 +83,10 @@ async function processVisitorSubmission(req, res) {
     if (kind === 'application' && !bloodGroup) return res.status(400).json({ error: 'Please select a valid blood group.' })
     if (!await enforceRateLimit(req, res, { scope: 'visitor-submit-identity', identifier: `${propertyId}:${email}:${phone}`, limit: 3, windowSeconds: 3600 })) return
 
+    const { data: isVisible, error: visibilityError } = await supabaseAdmin.rpc('is_public_property_visible', { p_property_id: propertyId })
+    if (visibilityError) throw visibilityError
+    if (!isVisible) return res.status(404).json({ error: 'This property is currently unavailable for applications.' })
+
     const { data: room, error: roomError } = await supabaseAdmin.from('rooms')
       .select('id, property_id, capacity, current_occupants, monthly_rent, deposit_amount')
       .eq('id', roomId).eq('property_id', propertyId).single()

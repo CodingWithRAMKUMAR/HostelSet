@@ -30,14 +30,14 @@ async function processUploadRequest(req, res) {
   if (category !== 'identity' && contentType === 'application/pdf') return res.status(400).json({ error: 'An image is required' })
   if (!await enforceRateLimit(req, res, { scope: 'visitor-upload-property', identifier: `${ip}:${propertyId}`, limit: 9, windowSeconds: 900 })) return
 
-  const { data: property, error: propertyError } = await supabaseAdmin.from('properties').select('id').eq('id', propertyId).eq('is_active', true).maybeSingle()
+  const { data: isVisible, error: propertyError } = await supabaseAdmin.rpc('is_public_property_visible', { p_property_id: propertyId })
   if (propertyError) {
     const errorMessage = process.env.NODE_ENV === 'production'
       ? 'Upload service temporarily unavailable'
       : `Upload service temporarily unavailable: ${propertyError.message}`
     return res.status(503).json({ error: errorMessage })
   }
-  if (!property) return res.status(404).json({ error: 'Property not found' })
+  if (!isVisible) return res.status(404).json({ error: 'This property is currently unavailable for applications.' })
 
   const path = `${propertyId}/${category}/${crypto.randomUUID()}.${ALLOWED[contentType]}`
   const { data, error } = await supabaseAdmin.storage.from('tenant-documents').createSignedUploadUrl(path)

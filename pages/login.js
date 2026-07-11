@@ -39,6 +39,7 @@ export default function Login() {
   const [formError, setFormError] = useState('')
   const identifierRef = useRef(null)
   const passwordRef = useRef(null)
+  const loginTimingRef = useRef(null)
   const requestedRole = validRole(router.query.role)
   const roleCopy = ROLE_COPY[requestedRole] || { title: 'Login', helper: 'Login with email or mobile number.' }
 
@@ -65,6 +66,12 @@ export default function Login() {
     setFormError('')
     setLoading(true)
     setLoginStatus('Signing in...')
+    loginTimingRef.current = typeof performance !== 'undefined' ? { start: performance.now(), marks: [] } : null
+    const markLoginTiming = (label) => {
+      if (process.env.NODE_ENV === 'production' || !loginTimingRef.current || typeof performance === 'undefined') return
+      loginTimingRef.current.marks.push({ label, ms: Math.round(performance.now() - loginTimingRef.current.start) })
+    }
+    markLoginTiming('submit-feedback')
     let redirectStarted = false
 
     try {
@@ -83,6 +90,7 @@ export default function Login() {
           setLoading(false)
           return
         }
+        markLoginTiming('identifier-resolved')
         emailToUse = payload.email
       } else if (!isEmail(identifier)) {
         const message = 'Enter a valid email or 10-digit mobile number'
@@ -94,6 +102,7 @@ export default function Login() {
       }
 
       const result = await signInWithEmail(emailToUse, password)
+      markLoginTiming('auth-completed')
 
       if (result.success) {
         if (requestedRole && result.role !== requestedRole) {
@@ -114,7 +123,11 @@ export default function Login() {
         if (!result.session) throw new Error('Unable to establish your session')
         setLoginStatus('Opening your dashboard...')
         await syncServerSession(result.session)
+        markLoginTiming('session-cookie-synced')
         toast.success(`Welcome back, ${result.userData.full_name}!`)
+        if (process.env.NODE_ENV !== 'production' && loginTimingRef.current) {
+          console.info('[HostelSet] login timing', loginTimingRef.current.marks)
+        }
         window.location.replace(destination)
         redirectStarted = true
         window.setTimeout(() => {

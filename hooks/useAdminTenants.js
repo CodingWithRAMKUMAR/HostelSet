@@ -23,21 +23,28 @@ export function useAdminTenants(enabled = true) {
   };
 
   const deleteTenant = async (tenantId, userId) => {
-    if (!confirm('Permanently delete this tenant? This will remove their user account.')) return;
+    const reason = window.prompt(
+      'Vacate and archive this tenant?\n\nThe tenant leaves active views, their room slot is released once, and payment/rent/request history is preserved. Their Auth account is not deleted.\n\nReason:'
+    );
+    if (reason === null) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Your session expired. Please log in again.');
       const response = await fetch('/api/admin/delete-tenant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ tenantId }),
+        body: JSON.stringify({ tenantId, reason: reason.trim() || 'Admin vacated and archived tenant' }),
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || 'Failed to delete tenant');
-      toast.success('Tenant deleted permanently.');
+      if (!response.ok) throw new Error(result.error || 'Failed to archive tenant');
+      toast.success('Tenant vacated and archived.');
       await loadTenants(true);
     } catch (error) {
-      toast.error('Failed to delete tenant: ' + error.message);
+      const rawMessage = String(error?.message || '');
+      const safeMessage = /constraint|tenants_status_check|violates/i.test(rawMessage)
+        ? 'Tenant archive is not available until the latest database lifecycle migration is applied.'
+        : rawMessage || 'Please try again.';
+      toast.error('Failed to archive tenant: ' + safeMessage);
     }
   };
 

@@ -216,7 +216,7 @@ function AdminDashboardContent() {
   };
   
   // Only the visible tab loads its dataset. This keeps login fast and reduces database traffic.
-  const { properties, loading: propertiesLoading, deleteProperty } = useAdminProperties(activeTab === 'properties');
+  const { properties, loading: propertiesLoading, archiveProperty, restoreProperty } = useAdminProperties(activeTab === 'properties');
   const { tenants, loading: tenantsLoading, error: tenantsError, deleteTenant } = useAdminTenants(activeTab === 'tenants');
   const { owners, loading: ownersLoading, toggleOwnerStatus } = useAdminOwners(activeTab === 'owners');
   const { users, loading: usersLoading, searchTerm, setSearchTerm, roleFilter, setRoleFilter, toggleUserStatus, changeUserRole } = useAdminUsers(activeTab === 'users');
@@ -371,7 +371,7 @@ function AdminDashboardContent() {
       return <AdminMobileSearch avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onOpen={(group, item) => setSearchDetail({ group, item })} />
     }
     if (activeTab === 'properties') {
-      return <AdminMobileProperties properties={properties} loading={propertiesLoading} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onView={viewPropertyDetails} onDelete={deleteProperty} />
+      return <AdminMobileProperties properties={properties} loading={propertiesLoading} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onView={viewPropertyDetails} onArchive={archiveProperty} onRestore={restoreProperty} />
     }
     if (activeTab === 'owners') {
       return <AdminMobileOwners owners={owners} loading={ownersLoading} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onView={viewOwnerDetails} onToggle={toggleOwnerStatus} />
@@ -551,11 +551,15 @@ function AdminDashboardContent() {
               <tr key={p.id} className="hover:bg-orange-50/50 transition">
                 <td className="px-6 py-4 font-semibold text-gray-800">{p.name}</td>
                 <td className="px-6 py-4">{p.users?.full_name || 'N/A'}</td>
-                <td className="px-6 py-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${p.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{p.is_active ? 'Active' : 'Inactive'}</span></td>
+                <td className="px-6 py-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${p.archived_at || p.lifecycle_status === 'archived' ? 'bg-amber-100 text-amber-800' : p.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{p.archived_at || p.lifecycle_status === 'archived' ? 'Archived' : p.is_active ? 'Active' : 'Inactive'}</span></td>
                 <td className="px-6 py-4 font-mono text-xs text-orange-600 bg-orange-50 rounded px-2 py-1 inline-block">{p.id}</td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button onClick={() => viewPropertyDetails(p)} className="text-blue-600 hover:text-blue-800 font-semibold text-xs uppercase tracking-wider">View</button>
-                  <button onClick={() => deleteProperty(p.id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Delete</button>
+                  <button type="button" onClick={() => viewPropertyDetails(p)} className="text-blue-600 hover:text-blue-800 font-semibold text-xs uppercase tracking-wider">View</button>
+                  {p.archived_at || p.lifecycle_status === 'archived' ? (
+                    <button type="button" onClick={() => restoreProperty(p.id)} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider">Restore</button>
+                  ) : (
+                    <button type="button" onClick={() => archiveProperty(p.id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Archive</button>
+                  )}
                 </td>
               </tr>
             )}
@@ -585,8 +589,8 @@ function AdminDashboardContent() {
                   <td className="px-6 py-4"><span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 capitalize">{(t.status || 'unknown').replaceAll('_', ' ')}</span></td>
                   <td className="px-6 py-4 font-mono text-xs text-slate-500">{t.id}</td>
                   <td className="px-6 py-4 flex gap-2">
-                    <button onClick={() => setSearchDetail({ group: 'Tenant', item: t })} className="text-blue-600 hover:text-blue-800 font-semibold text-xs uppercase tracking-wider">View</button>
-                    <button onClick={() => deleteTenant(t.id, t.user_id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Delete</button>
+                    <button type="button" onClick={() => setSearchDetail({ group: 'Tenant', item: t })} className="text-blue-600 hover:text-blue-800 font-semibold text-xs uppercase tracking-wider">View</button>
+                    {t.status === 'inactive' ? null : <button type="button" onClick={() => deleteTenant(t.id, t.user_id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Vacate / Archive</button>}
                   </td>
                 </tr>
               )}

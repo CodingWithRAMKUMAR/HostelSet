@@ -72,11 +72,7 @@ export default function PropertiesPage() {
     if (!background) setLoading(true)
     setLoadError('')
     try {
-      // Fetch all active properties
-      const { data: propertiesData, error: propError } = await supabase
-        .from('properties')
-        .select('id, slug, name, city, photos, property_type, address, formatted_address, latitude, longitude, location_verified, rooms(monthly_rent, capacity, current_occupants)')
-        .eq('is_active', true)
+      const { data: propertiesData, error: propError } = await supabase.rpc('get_public_properties')
 
       if (propError) throw propError
 
@@ -86,18 +82,13 @@ export default function PropertiesPage() {
         return
       }
 
-      // Attach room stats to each property
       const propertiesWithStats = propertiesData.map(property => {
-        const rooms = property.rooms || []
-        const totalRooms = rooms.length
-        const occupiedRooms = rooms.filter(r => r.current_occupants >= r.capacity).length
-        const lowestRent = rooms.length > 0 ? Math.min(...rooms.map(r => r.monthly_rent)) : null
         return {
           ...property,
-          rooms: undefined,
-          totalRooms,
-          occupiedRooms,
-          lowestRent,
+          totalRooms: Number(property.total_rooms || 0),
+          occupiedRooms: Number(property.current_occupants || 0),
+          activeTenantCount: Number(property.active_tenant_count || 0),
+          lowestRent: property.lowest_rent == null ? null : Number(property.lowest_rent),
           firstPhoto: property.photos && property.photos.length > 0 ? property.photos[0] : null,
         }
       })
@@ -115,7 +106,7 @@ export default function PropertiesPage() {
     }
   }
 
-  useRealtimeRefresh('public-properties-live', ['properties', 'rooms'], loadProperties, true, 120)
+  useRealtimeRefresh('public-properties-live', ['properties', 'rooms', 'tenants'], loadProperties, true, 120)
 
   return (
     <>
@@ -154,7 +145,7 @@ export default function PropertiesPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-4xl md:text-5xl font-bold text-slate-800 mb-3"
           >
-            🏠 Find Your Perfect PG
+            Find Your Perfect PG
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: -10 }}
@@ -187,8 +178,8 @@ export default function PropertiesPage() {
           </div>
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
             <button onClick={useMyLocation} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Use my location</button>
-            <button onClick={() => setView('list')} className={`rounded-full px-4 py-2 text-sm font-semibold ${view === 'list' ? 'bg-slate-800 text-white' : 'border bg-white'}`}>List</button>
-            <button onClick={() => setView('map')} className={`rounded-full px-4 py-2 text-sm font-semibold ${view === 'map' ? 'bg-slate-800 text-white' : 'border bg-white'}`}>Map</button>
+            <button onClick={() => setView('list')} className={`rounded-full px-4 py-2 text-sm font-semibold ${view === 'list' ? 'bg-slate-800 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}>List</button>
+            <button onClick={() => setView('map')} className={`rounded-full px-4 py-2 text-sm font-semibold ${view === 'map' ? 'bg-slate-800 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}>Map</button>
           </div>
           {locationStatus && <p className="mt-3 text-sm text-slate-500" role="status">{locationStatus}</p>}
         </div>
@@ -204,8 +195,7 @@ export default function PropertiesPage() {
           <div className="text-center py-20"><p className="text-red-600 mb-4">{loadError}</p><button onClick={loadProperties} className="btn-primary">Try again</button></div>
         ) : filteredProperties.length === 0 ? (
           <div className="text-center py-20">
-            <div className="text-5xl mb-4">🏠</div>
-            <p className="text-gray-500">No properties found. Try a different search or city.</p>
+            <p className="text-gray-500">No currently occupied hostels are available to browse. Please check again soon.</p>
           </div>
         ) : view === 'map' ? (
           <NearbyHostelMap properties={filteredProperties} userLocation={userLocation} />
@@ -231,8 +221,8 @@ export default function PropertiesPage() {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="flex items-center justify-center h-full text-5xl text-gray-300">
-                      🏢
+                    <div className="flex h-full items-center justify-center text-sm font-bold text-gray-400">
+                      HostelSet
                     </div>
                   )}
                   {property.lowestRent && (
@@ -248,8 +238,8 @@ export default function PropertiesPage() {
                   <p className="text-sm text-gray-500 mb-3">{property.city || 'Location not specified'}</p>
                   {property.distance != null && <p className="mb-3 text-sm font-semibold text-blue-700">{property.distance < 1 ? `${Math.round(property.distance * 1000)} m away` : `${property.distance.toFixed(1)} km away`}</p>}
                   <div className="flex justify-between items-center text-sm text-gray-600 mb-4">
-                    <span>🏠 {property.totalRooms} rooms</span>
-                    <span>🛏️ {property.occupiedRooms}/{property.totalRooms} occupied</span>
+                    <span>{property.totalRooms} rooms</span>
+                    <span>{property.activeTenantCount} active tenant{property.activeTenantCount === 1 ? '' : 's'}</span>
                   </div>
                   <Link
                     href={propertyPublicPath(property)}

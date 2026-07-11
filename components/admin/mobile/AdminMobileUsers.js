@@ -60,7 +60,7 @@ function TenantRow({ tenant, onView, onDelete }) {
             <p className="truncate text-[10px] font-medium leading-tight text-slate-400">{tenant.phone || tenant.email || 'No contact'} · {displayBloodGroup(tenant.blood_group)}</p>
             <div className="flex shrink-0 items-center gap-2">
               <button type="button" onClick={() => onView?.(tenant)} className="rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">View</button>
-              <button type="button" onClick={() => onDelete?.(tenant.id, tenant.user_id)} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600">Delete</button>
+              {tenant.status === 'inactive' ? null : <button type="button" onClick={() => onDelete?.(tenant.id, tenant.user_id)} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600">Vacate</button>}
             </div>
           </div>
         </div>

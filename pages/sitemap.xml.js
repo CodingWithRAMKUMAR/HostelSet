@@ -27,11 +27,7 @@ const urlEntry = ({ path, lastmod }) => `  <url>
   </url>`
 
 export async function getServerSideProps({ res }) {
-  const { data: properties, error } = await supabase
-    .from('properties')
-    .select('id, slug, updated_at, created_at')
-    .eq('is_active', true)
-    .order('created_at', { ascending: false })
+  const { data: properties, error } = await supabase.rpc('get_public_properties')
 
   if (error) throw error
 

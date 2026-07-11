@@ -15,14 +15,25 @@ export function useAdminProperties(enabled = true) {
     setLoading(false);
   };
 
-  const deleteProperty = async (propertyId) => {
-    if (!confirm('Permanently delete this property and all its data? This cannot be undone.')) return;
-    const { error } = await supabase.from('properties').delete().eq('id', propertyId);
-    if (error) toast.error('Failed to delete property: ' + error.message);
-    else { toast.success('Property deleted successfully.'); setProperties(prev => prev.filter(p => p.id !== propertyId)); }
+  const archiveProperty = async (propertyId) => {
+    const reason = window.prompt(
+      'Archive this property?\n\nIt will disappear from Browse Hostels and stop new public applications. Rooms, tenants, payments, requests, and history remain preserved.\n\nReason:'
+    );
+    if (reason === null) return;
+    const { error } = await supabase.rpc('archive_property', { p_property_id: propertyId, p_reason: reason.trim() || 'Admin archived property' });
+    if (error) toast.error('Failed to archive property: ' + error.message);
+    else { toast.success('Property archived. Historical records were preserved.'); await loadProperties(true); }
+  };
+
+  const restoreProperty = async (propertyId) => {
+    const reason = window.prompt('Restore this property to active status? It will only appear publicly if it has active tenants.\n\nReason:');
+    if (reason === null) return;
+    const { error } = await supabase.rpc('restore_property', { p_property_id: propertyId, p_reason: reason.trim() || 'Admin restored property' });
+    if (error) toast.error('Failed to restore property: ' + error.message);
+    else { toast.success('Property restored. Public visibility still depends on active tenants.'); await loadProperties(true); }
   };
 
   useEffect(() => { if (enabled) loadProperties(); }, [enabled]);
   useRealtimeRefresh('admin-properties-live', ['properties', 'users'], loadProperties, enabled);
-  return { properties, loading, deleteProperty, refreshProperties: loadProperties };
+  return { properties, loading, archiveProperty, restoreProperty, deleteProperty: archiveProperty, refreshProperties: loadProperties };
 }

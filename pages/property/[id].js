@@ -137,10 +137,11 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
     if (!background) setLoading(true)
     if (!background) setLoadError('')
     try {
-      let propertyQuery = supabase.from('properties').select('*').eq('is_active', true)
-      propertyQuery = UUID_PATTERN.test(String(id || '')) ? propertyQuery.eq('id', id) : propertyQuery.eq('slug', id)
-      const { data: propertyData, error: propertyError } = await propertyQuery.single()
+      const { data: propertyData, error: propertyError } = await supabase
+        .rpc('get_public_property_by_identifier', { p_identifier: String(id || '') })
+        .maybeSingle()
       if (propertyError) throw propertyError
+      if (!propertyData) throw new Error('This property is currently unavailable for public applications.')
       const [{ data: roomsData, error: roomsError }, { data: settingsData }] = await Promise.all([
         supabase.from('rooms').select('*').eq('property_id', propertyData.id).order('room_number'),
         supabase.from('owner_settings').select('*').eq('property_id', propertyData.id).maybeSingle(),
@@ -1367,10 +1368,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
 }
 
 export async function getStaticPaths() {
-  const { data } = await supabase
-    .from('properties')
-    .select('id, slug')
-    .eq('is_active', true)
+  const { data } = await supabase.rpc('get_public_properties')
 
   return {
     paths: (data || []).map(property => ({ params: { id: property.slug || property.id } })),
@@ -1381,9 +1379,9 @@ export async function getStaticPaths() {
 export async function getStaticProps({ params }) {
   const propertyId = params?.id
   const usesUuid = UUID_PATTERN.test(String(propertyId || ''))
-  let propertyQuery = supabase.from('properties').select('*').eq('is_active', true)
-  propertyQuery = usesUuid ? propertyQuery.eq('id', propertyId) : propertyQuery.eq('slug', propertyId)
-  const propertyResult = await propertyQuery.maybeSingle()
+  const propertyResult = await supabase
+    .rpc('get_public_property_by_identifier', { p_identifier: String(propertyId || '') })
+    .maybeSingle()
 
   if (propertyResult.error || !propertyResult.data) {
     return { notFound: true, revalidate: 60 }
@@ -1403,13 +1401,10 @@ export async function getStaticProps({ params }) {
   let similarProperties = []
   if (propertyResult.data.city) {
     const { data } = await supabase
-      .from('properties')
-      .select('id, slug, name, city, address, formatted_address')
-      .eq('is_active', true)
-      .eq('city', propertyResult.data.city)
-      .neq('id', propertyResult.data.id)
-      .limit(4)
-    similarProperties = data || []
+      .rpc('get_public_properties')
+    similarProperties = (data || [])
+      .filter(property => property.city === propertyResult.data.city && property.id !== propertyResult.data.id)
+      .slice(0, 4)
   }
 
   return {
