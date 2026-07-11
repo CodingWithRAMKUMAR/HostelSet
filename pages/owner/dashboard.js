@@ -58,6 +58,7 @@ const OWNER_VIEW_KEYS = {
   VACATE: 'vacate',
   ROOM_CHANGE: 'room-change',
   NOTICES: 'notices',
+  MEMBERSHIP: 'membership',
 }
 
 const OWNER_VIEW_ALIASES = {
@@ -740,7 +741,7 @@ function OwnerDashboardContent() {
     ['overview', 'Overview'], ['analytics', 'Analytics'], ['rooms', `Rooms (${rooms.length})`], ['tenants', `Tenants (${tenants.length})`],
     ['archived-tenants', `Archived (${archivedTenants.length})`], ['rent-payments', `Rent (${stats.pendingRentConfirmations})`], ['payment-history', 'History'],
     ['pre-bookings', 'Pre-bookings'], ['applications', `Applications (${safeApplications.length})`], ['existing-imports', `Imports (${existingImports.pendingCount})`],
-    ['complaints', `Complaints (${stats.totalComplaints || 0})`], ['vacate', `Vacate (${stats.pendingVacate || 0})`], ['room-change', `Room change (${roomChangeRequests.length})`], ['notices', `Notices (${notices.length})`],
+    ['complaints', `Complaints (${stats.totalComplaints || 0})`], ['vacate', `Vacate (${stats.pendingVacate || 0})`], ['room-change', `Room change (${roomChangeRequests.length})`], ['notices', `Notices (${notices.length})`], ['membership', 'Membership'],
   ].map(([id, label]) => ({ id, label }))
   const ownerViewTitle = ownerTabs.find(item => item.id === activeTab)?.label.replace(/ \(.*\)$/, '') || 'Dashboard'
   const ownerBottomItems = [
@@ -749,7 +750,7 @@ function OwnerDashboardContent() {
   ]
   const ownerBottomIcons = { overview: 'dashboard', rooms: 'rooms', tenants: 'users', 'rent-payments': 'payments', more: 'more' }
   ownerBottomItems.forEach(item => { item.icon = ownerBottomIcons[item.id] })
-  const ownerSidebarItems = ownerTabs.map(item => ({ ...item, icon: ({ overview:'dashboard', rooms:'rooms', tenants:'users', 'rent-payments':'payments', 'payment-history':'payments', notices:'notices', complaints:'complaints', analytics:'analytics' })[item.id] || 'settings', disabled: !membershipActive && item.id !== 'overview' }))
+  const ownerSidebarItems = ownerTabs.map(item => ({ ...item, icon: ({ overview:'dashboard', rooms:'rooms', tenants:'users', 'rent-payments':'payments', 'payment-history':'payments', notices:'notices', complaints:'complaints', analytics:'analytics', membership:'settings' })[item.id] || 'settings', disabled: !membershipActive && !['overview', 'membership'].includes(item.id) }))
   const logout = async () => { await signOut(); window.location.replace('/login') }
   const renderOwnerOverview = () => (
     <div className="space-y-4 sm:space-y-6">
@@ -811,11 +812,48 @@ function OwnerDashboardContent() {
       case 'vacate': return <VacateRequestList requests={filteredVacateRequests} onApprove={handleApproveVacate} onReject={(request) => { setSelectedVacateRequest(request); setVacateRejectionReason(''); }} isSubmitting={isSubmitting || Boolean(vacateRejectingId)} />
       case 'room-change': return <RoomChangeRequestList requests={filteredRoomChangeRequests} onApprove={handleApproveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />
       case 'notices': return <NoticeList notices={filteredNotices} onDelete={deleteNotice} onPost={() => setShowNoticeModal(true)} isSubmitting={isSubmitting} />
+      case 'membership': return renderOwnerMembershipView(false)
       default:
         if (process.env.NODE_ENV !== 'production') console.warn(`[OwnerDashboard] No renderer for owner view key: ${activeTab}`)
         return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">This owner section is not available. Please choose another section from the menu.</div>
     }
   }
+  const renderOwnerMembershipView = (mobile = false) => (
+    <section className={`${mobile ? 'rounded-3xl border border-white/10 bg-white p-3 shadow-sm' : 'rounded-2xl border border-slate-200 bg-white p-5 shadow-sm'}`} aria-labelledby="owner-membership-title">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-widest text-orange-500">Membership</p>
+          <h2 id="owner-membership-title" className={`${mobile ? 'text-base' : 'text-lg'} font-black text-slate-900`}>{property?.name || 'Current property'}</h2>
+          <p className="mt-1 text-xs text-slate-500">Property access and renewal status.</p>
+        </div>
+        <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-black ${membershipActive ? 'bg-emerald-100 text-emerald-700' : pendingMembershipRequest ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700'}`}>
+          {membershipActive ? 'Active' : pendingMembershipRequest ? 'Pending' : membershipStatus === 'expired' ? 'Expired' : 'Inactive'}
+        </span>
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-2xl bg-slate-50 p-2.5">
+          <dt className="font-bold text-slate-500">Expiry</dt>
+          <dd className="mt-1 font-black text-slate-900">{membershipExpiry ? membershipExpiry.toLocaleDateString('en-IN') : 'Not available'}</dd>
+        </div>
+        <div className="rounded-2xl bg-slate-50 p-2.5">
+          <dt className="font-bold text-slate-500">Days left</dt>
+          <dd className="mt-1 font-black text-slate-900">{Number.isFinite(daysLeft) ? daysLeft : '—'}</dd>
+        </div>
+      </dl>
+      {pendingMembershipRequest && (
+        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          <p className="font-black">Request pending</p>
+          <p className="mt-1">Plan {pendingMembershipRequest.plan_id || 'selected'} · {pendingMembershipRequest.requested_at ? new Date(pendingMembershipRequest.requested_at).toLocaleDateString('en-IN') : 'Awaiting admin review'}</p>
+          {pendingMembershipRequest.admin_note && <p className="mt-1">Admin note: {pendingMembershipRequest.admin_note}</p>}
+        </div>
+      )}
+      {!pendingMembershipRequest && (
+        <button type="button" onClick={() => setShowMembershipModal(true)} disabled={membershipLoading} className="mt-3 h-9 w-full rounded-2xl bg-orange-500 px-3 text-sm font-black text-white shadow-sm disabled:opacity-50 sm:w-auto">
+          {membershipLoading ? 'Loading...' : membershipActive ? 'Request renewal' : 'Request membership'}
+        </button>
+      )}
+    </section>
+  )
   const ownerMobileMoreItems = [
     { id: 'dashboard', group: 'Management', label: 'Dashboard', onClick: () => openSection('overview') },
     { id: 'rooms', group: 'Management', label: 'Rooms', onClick: () => openSection('rooms') },
@@ -832,6 +870,7 @@ function OwnerDashboardContent() {
     { id: 'notices', group: 'Communication', label: 'Notices', onClick: () => openSection('notices') },
     { id: 'notifications', group: 'Communication', label: 'Notifications', onClick: () => window.dispatchEvent(new Event('hostelset:open-notifications')) },
     { id: 'analytics', group: 'Insights', label: 'Analytics', onClick: () => openSection('analytics') },
+    { id: 'membership', group: 'Insights', label: pendingMembershipRequest ? 'Membership pending' : 'Membership', onClick: () => openSection('membership') },
     { id: 'profile', group: 'Account', label: 'Owner profile', onClick: () => setShowOwnerProfileModal(true) },
     { id: 'settings', group: 'Account', label: 'Property settings', onClick: () => setShowSettingsModal(true) },
     { id: 'add-property', group: 'Account', label: 'Add property', onClick: () => router.push('/owner/register-property') },
@@ -842,7 +881,13 @@ function OwnerDashboardContent() {
     if (activeTab === 'rooms') return <OwnerMobileRooms {...common} rooms={filteredRooms} tenants={safeTenants} onBack={() => openSection('overview')} onAddRoom={() => membershipActive && setShowRoomModal(true)} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />
     if (activeTab === 'tenants') return <OwnerMobileTenants {...common} tenants={filteredTenants} onBack={() => openSection('overview')} onAddTenant={() => membershipActive && setShowAddModal(true)} onCollect={(tenant) => { setSelectedTenant(tenant); setPaymentAmount(Number(tenant.pending_amount || tenant.rent_amount || 0)); setCollectionRequestId(crypto.randomUUID()); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onTenantProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} />
     if (activeTab === 'rent-payments') return <OwnerMobilePayments {...common} payments={filteredPendingPayments} onBack={() => openSection('overview')} onConfirm={(id) => handleReviewRentPayment(id, true)} onReject={(id) => handleReviewRentPayment(id, false)} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={isSubmitting} />
-    if (activeTab === 'overview') return <OwnerMobileDashboard {...common} stats={stats} counts={{ tenants: safeTenants.length, applications: safeApplications.length, complaints: safeComplaints.length, payments: safePendingRentPayments.length, vacate: safeVacateRequests.filter(item => item.status === 'pending').length, roomChanges: safeRoomChangeRequests.length }} onNavigate={openSection} />
+    if (activeTab === 'overview') return <OwnerMobileDashboard {...common} stats={stats} counts={{ tenants: safeTenants.length, applications: safeApplications.length, complaints: safeComplaints.length, payments: safePendingRentPayments.length, vacate: safeVacateRequests.filter(item => item.status === 'pending').length, roomChanges: safeRoomChangeRequests.length }} membershipActive={membershipActive} membershipStatus={membershipStatus} membershipExpiry={membershipExpiry} daysLeft={daysLeft} pendingMembershipRequest={pendingMembershipRequest} onMembership={() => openSection('membership')} onNavigate={openSection} />
+    if (activeTab === 'membership') return (
+      <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
+        <MobileTopbar title="Membership" subtitle={property?.name} isHome={false} onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} avatar="" fallbackIcon="users" controls={<NotificationBell listenForGlobalOpen />} />
+        <main className="mx-auto max-w-md space-y-2 px-3 py-2">{renderOwnerMembershipView(true)}</main>
+      </div>
+    )
     return (
       <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
         <MobileTopbar title={ownerViewTitle} subtitle={property?.name} isHome={false} onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} avatar="" fallbackIcon="users" controls={<NotificationBell listenForGlobalOpen />} />

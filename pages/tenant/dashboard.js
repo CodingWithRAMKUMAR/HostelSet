@@ -601,6 +601,7 @@ function TenantDashboardContent() {
             tenant={tenant}
             room={room}
             profilePhotoUrl={profilePhotoUrl}
+            rentStatus={rentStatus}
             profileForm={profileForm}
             setProfileForm={setProfileForm}
             editProfile={editProfile}

@@ -3,37 +3,41 @@ import BrandLogo from './BrandLogo'
 
 const footerGroups = [
   {
+    id: 'tenants',
     title: 'For Tenants',
     links: [
-      ['Browse Hostels', '/properties'],
-      ['How Applications Work', '/faq'],
-      ['Tenant Login', '/login/tenant'],
-      ['FAQ', '/faq'],
+      { id: 'tenant-browse', label: 'Browse Hostels', href: '/properties' },
+      { id: 'tenant-how-it-works', label: 'How Applications Work', href: '/faq' },
+      { id: 'tenant-login', label: 'Tenant Login', href: '/login/tenant' },
+      { id: 'tenant-faq', label: 'FAQ', href: '/faq' },
     ],
   },
   {
+    id: 'owners',
     title: 'For Owners',
     links: [
-      ['Register Your Property', '/register'],
-      ['Owner Login', '/login/owner'],
-      ['Features for Owners', '/#for-owners'],
-      ['Support', '/support'],
+      { id: 'owner-register', label: 'Register Your Property', href: '/register' },
+      { id: 'owner-login', label: 'Owner Login', href: '/login/owner' },
+      { id: 'owner-features', label: 'Features for Owners', href: '/#for-owners' },
+      { id: 'owner-support', label: 'Support', href: '/support' },
     ],
   },
   {
+    id: 'company',
     title: 'Company / Legal',
     links: [
-      ['About', '/about'],
-      ['Contact / Support', '/contact'],
-      ['Privacy Policy', '/privacy-policy'],
-      ['Terms and Conditions', '/terms'],
-      ['FAQ', '/faq'],
+      { id: 'company-about', label: 'About', href: '/about' },
+      { id: 'company-contact', label: 'Contact / Support', href: '/contact' },
+      { id: 'company-privacy', label: 'Privacy Policy', href: '/privacy-policy' },
+      { id: 'company-terms', label: 'Terms and Conditions', href: '/terms' },
+      { id: 'company-faq', label: 'FAQ', href: '/faq' },
     ],
   },
   {
+    id: 'admin',
     title: 'Admin',
     links: [
-      ['Admin Login', '/login/admin'],
+      { id: 'admin-login', label: 'Admin Login', href: '/login/admin' },
     ],
   },
 ]
@@ -46,25 +50,25 @@ export default function PublicFooter({ dark = false }) {
   const linkClass = dark ? 'text-slate-400 hover:text-orange-200' : 'text-slate-600 hover:text-indigo-700'
 
   return (
-    <footer className={`${shell} w-full overflow-hidden py-8 sm:py-10`}>
-      <div className="mx-auto grid w-full max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[1.4fr_repeat(4,minmax(0,1fr))] lg:px-8">
+    <footer className={`${shell} w-full overflow-hidden py-6 sm:py-10`}>
+      <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 sm:px-6 lg:grid-cols-[1.4fr_repeat(4,minmax(0,1fr))] lg:gap-8 lg:px-8">
         <div className="min-w-0">
           <Link href="/" aria-label="HostelSet home" className="inline-flex max-w-[150px]">
             <BrandLogo size="footer" />
           </Link>
-          <p className={`mt-4 max-w-sm text-sm leading-6 ${muted}`}>
+          <p className={`mt-3 max-w-sm text-sm leading-6 ${muted}`}>
             HostelSet helps hostel owners manage rooms, tenants, rent, notices, and requests while helping tenants browse hostels and apply online.
           </p>
-          <p className={`mt-5 text-xs ${muted}`}>© {year} HostelSet. All rights reserved.</p>
+          <p className={`mt-4 text-xs ${muted}`}>© {year} HostelSet. All rights reserved.</p>
         </div>
 
         {footerGroups.map(group => (
-          <nav key={group.title} aria-label={group.title} className="min-w-0">
+          <nav key={group.id} aria-label={group.title} className="min-w-0">
             <h2 className={`text-sm font-black ${heading}`}>{group.title}</h2>
-            <ul className="mt-3 space-y-2.5 text-sm">
-              {group.links.map(([label, href]) => (
-                <li key={`${group.title}-${href}`}>
-                  <Link href={href} className={linkClass}>{label}</Link>
+            <ul className="mt-2.5 space-y-2 text-sm sm:mt-3 sm:space-y-2.5">
+              {group.links.map(link => (
+                <li key={link.id}>
+                  <Link href={link.href} className={linkClass}>{link.label}</Link>
                 </li>
               ))}
             </ul>

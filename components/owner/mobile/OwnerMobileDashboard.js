@@ -21,7 +21,7 @@ function Stat({ label, value, icon, onClick }) {
   )
 }
 
-export default function OwnerMobileDashboard({ property, stats, counts, avatar = 'O', onProfile, onNavigate }) {
+export default function OwnerMobileDashboard({ property, stats, counts, membershipActive, membershipStatus, membershipExpiry, daysLeft, pendingMembershipRequest, avatar = 'O', onProfile, onNavigate, onMembership }) {
   return (
     <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
       <Header title="HostelSet" subtitle={property?.name} avatar={avatar} onProfile={onProfile} />
@@ -36,6 +36,17 @@ export default function OwnerMobileDashboard({ property, stats, counts, avatar =
             <span className="rounded-full bg-white/10 px-2 py-1 text-[11px] font-bold">Owner</span>
           </div>
         </section>
+        <button type="button" onClick={onMembership} className="flex w-full min-w-0 items-center justify-between gap-2 rounded-3xl border border-white/10 bg-white p-2.5 text-left shadow-sm">
+          <span className="min-w-0">
+            <span className="block text-[10px] font-black uppercase tracking-widest text-orange-500">Membership</span>
+            <span className="mt-0.5 block truncate text-xs font-bold text-slate-600">
+              {membershipExpiry ? `Expires ${membershipExpiry.toLocaleDateString('en-IN')}` : pendingMembershipRequest ? 'Request awaiting admin review' : 'No expiry date available'}
+            </span>
+          </span>
+          <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-black ${membershipActive ? 'bg-emerald-100 text-emerald-700' : pendingMembershipRequest ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700'}`}>
+            {membershipActive ? (Number.isFinite(daysLeft) ? `${daysLeft}d left` : 'Active') : pendingMembershipRequest ? 'Pending' : membershipStatus === 'expired' ? 'Expired' : 'Request'}
+          </span>
+        </button>
 
         <section className="grid grid-cols-2 gap-2">
           <Stat label="Rooms" icon="rooms" value={stats?.totalRooms || 0} onClick={() => onNavigate('rooms')} />

@@ -23,6 +23,7 @@ function ProtectedRouteLoading() {
 export default function App({ Component, pageProps }) {
   const router = useRouter()
   const [authorized, setAuthorized] = useState(false)
+  const isDashboardRoute = router.pathname.startsWith('/owner') || router.pathname.startsWith('/tenant') || router.pathname.startsWith('/admin')
 
   useEffect(() => {
     let active = true
@@ -126,12 +127,18 @@ export default function App({ Component, pageProps }) {
         }}
       />
       <ThemeProvider>
-        {(!router.pathname.startsWith('/owner') && !router.pathname.startsWith('/tenant') && !router.pathname.startsWith('/admin')) || authorized ? (
-          <NotificationProvider>
+        {!isDashboardRoute || authorized ? (
+          isDashboardRoute ? (
+            <NotificationProvider>
+              <ErrorBoundary key={router.asPath}>
+                <Component {...pageProps} />
+              </ErrorBoundary>
+            </NotificationProvider>
+          ) : (
             <ErrorBoundary key={router.asPath}>
               <Component {...pageProps} />
             </ErrorBoundary>
-          </NotificationProvider>
+          )
         ) : <ProtectedRouteLoading />}
       </ThemeProvider>
     </>

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { clearHostelSetSessionCache, findTenantDocumentRecord, getRestoredSession, signPrivateDocumentFields, supabase, syncServerSession } from '../lib/supabase';
+import { clearHostelSetSessionCache, getRestoredSession, supabase, syncServerSession } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 const TenantContext = createContext();
@@ -26,7 +26,9 @@ export function TenantProvider({ children }) {
       return null;
     }
 
-    const cacheKey = `${tenantData.id}:${tenantData.property_id}:${tenantData.updated_at || tenantData.move_in_date || ''}`;
+    const { data: { session } } = await supabase.auth.getSession();
+    const userScope = session?.user?.id || 'anonymous';
+    const cacheKey = `${userScope}:${tenantData.id}:${tenantData.property_id}:${tenantData.updated_at || tenantData.move_in_date || ''}`;
     if (profilePhotoCacheRef.current.has(cacheKey)) {
       const cachedUrl = profilePhotoCacheRef.current.get(cacheKey);
       setProfilePhotoUrl(cachedUrl);
@@ -34,9 +36,22 @@ export function TenantProvider({ children }) {
     }
 
     try {
-      const { record, source_type } = await findTenantDocumentRecord(tenantData, tenantData.property_id);
-      const signed = record ? await signPrivateDocumentFields({ ...record, source_type }, ['photo']) : null;
-      const url = signed?.photo || null;
+      const response = await fetch('/api/tenant/profile-photo-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({}),
+      });
+      if (response.status === 404) {
+        profilePhotoCacheRef.current.set(cacheKey, null);
+        setProfilePhotoUrl(null);
+        return null;
+      }
+      if (!response.ok) throw new Error('Profile photo unavailable');
+      const data = await response.json();
+      const url = data?.signedUrl || null;
       profilePhotoCacheRef.current.set(cacheKey, url);
       setProfilePhotoUrl(url);
       return url;
@@ -173,6 +188,8 @@ export function TenantProvider({ children }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         clearHostelSetSessionCache();
+        profilePhotoCacheRef.current.clear();
+        setProfilePhotoUrl(null);
         router.replace('/login/tenant');
       } else if (event === 'TOKEN_REFRESHED' && session) {
         syncServerSession(session).catch((sessionError) => console.error('Unable to refresh server session:', sessionError));

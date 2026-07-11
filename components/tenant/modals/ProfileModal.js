@@ -29,6 +29,7 @@ export default function ProfileModal({
   tenant = {},
   room = {},
   profilePhotoUrl,
+  rentStatus = {},
   profileForm = {},
   setProfileForm = () => {},
   editProfile = false,
@@ -76,6 +77,7 @@ export default function ProfileModal({
                 <InfoRow icon="mail" label="Email" value={tenant?.email} />
                 <InfoRow icon="users" label="Blood group" value={displayBloodGroup(tenant?.blood_group)} />
                 <InfoRow icon="rooms" label="Room" value={room?.room_number} />
+                <InfoRow icon="calendar" label="Next due" value={rentStatus?.dueDate ? formatDate(rentStatus.dueDate) : rentStatus?.message} />
                 <InfoRow icon="calendar" label="Joined" value={formatDate(tenant?.move_in_date)} />
               </div>
             </div>

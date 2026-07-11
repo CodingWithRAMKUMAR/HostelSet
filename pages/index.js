@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Head from 'next/head'
 import Link from 'next/link'
 import BrandLogo from '../components/BrandLogo'
@@ -28,11 +28,11 @@ const tenantFlow = ['Browse Hostels', 'View Property', 'Apply', 'Owner Approval'
 function RoleCard({ id, eyebrow, title, description, benefits, children, accent = 'orange' }) {
   const isOwner = accent === 'white'
   return (
-    <section id={id} className="rounded-[2rem] border border-white/10 bg-white/[0.07] p-5 shadow-2xl shadow-black/20 backdrop-blur sm:p-6">
+    <section id={id} className="rounded-[1.5rem] border border-white/10 bg-white/[0.07] p-4 shadow-2xl shadow-black/20 backdrop-blur sm:rounded-[2rem] sm:p-6">
       <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-300">{eyebrow}</p>
-      <h2 className="mt-3 text-2xl font-black tracking-tight text-white">{title}</h2>
+      <h2 className="mt-2 text-xl font-black tracking-tight text-white sm:mt-3 sm:text-2xl">{title}</h2>
       <p className="mt-2 text-sm leading-6 text-slate-300">{description}</p>
-      <ul className="mt-5 grid gap-2 text-sm text-slate-200">
+      <ul className="mt-4 grid gap-1.5 text-sm text-slate-200 sm:mt-5 sm:gap-2">
         {benefits.map(item => (
           <li key={item} className="flex gap-2">
             <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${isOwner ? 'bg-white' : 'bg-orange-400'}`} />
@@ -40,7 +40,7 @@ function RoleCard({ id, eyebrow, title, description, benefits, children, accent 
           </li>
         ))}
       </ul>
-      <div className="mt-6 flex flex-col gap-3 sm:flex-row">{children}</div>
+      <div className="mt-4 flex flex-col gap-2.5 sm:mt-6 sm:flex-row sm:gap-3">{children}</div>
     </section>
   )
 }
@@ -48,7 +48,7 @@ function RoleCard({ id, eyebrow, title, description, benefits, children, accent 
 function LoginChooser({ open, onClose }) {
   if (!open) return null
   return (
-    <div className="absolute right-0 top-12 z-30 w-56 rounded-2xl border border-white/10 bg-slate-900 p-2 shadow-2xl shadow-black/40">
+    <div className="absolute right-0 top-full z-[120] mt-2 w-56 rounded-2xl border border-white/10 bg-slate-900 p-2 shadow-2xl shadow-black/40">
       <Link onClick={onClose} href="/login/tenant" className="block rounded-xl px-3 py-2 text-sm font-semibold text-slate-100 hover:bg-white/10">Tenant Login</Link>
       <Link onClick={onClose} href="/login/owner" className="block rounded-xl px-3 py-2 text-sm font-semibold text-slate-100 hover:bg-white/10">Owner Login</Link>
       <Link onClick={onClose} href="/login/admin" className="block rounded-xl px-3 py-2 text-sm font-semibold text-slate-100 hover:bg-white/10">Admin Login</Link>
@@ -58,6 +58,20 @@ function LoginChooser({ open, onClose }) {
 
 export default function Home() {
   const [loginOpen, setLoginOpen] = useState(false)
+  const loginRef = useRef(null)
+
+  useEffect(() => {
+    if (!loginOpen) return undefined
+    const close = event => {
+      if (event.key === 'Escape' || (event.type === 'pointerdown' && !loginRef.current?.contains(event.target))) setLoginOpen(false)
+    }
+    document.addEventListener('keydown', close)
+    document.addEventListener('pointerdown', close)
+    return () => {
+      document.removeEventListener('keydown', close)
+      document.removeEventListener('pointerdown', close)
+    }
+  }, [loginOpen])
 
   return (
     <>
@@ -75,21 +89,21 @@ export default function Home() {
         <meta name="twitter:description" content={HOME_DESCRIPTION} />
       </Head>
 
-      <main className="min-h-screen overflow-hidden bg-slate-950 text-white">
-        <div className="absolute inset-0 -z-0 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.25),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(251,191,36,0.18),transparent_30%)]" />
-        <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-4 sm:px-6 lg:px-8">
-          <header className="flex items-center justify-between gap-4 rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 backdrop-blur">
+      <main className="relative isolate min-h-screen overflow-x-hidden bg-slate-950 text-white">
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.25),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(251,191,36,0.18),transparent_30%)]" />
+        <div className="relative mx-auto w-full max-w-7xl px-3 py-3 sm:px-6 sm:py-4 lg:px-8">
+          <header className="relative z-[100] grid grid-cols-[auto_auto] items-center justify-between gap-3 overflow-visible rounded-3xl border border-white/10 bg-white/[0.04] px-3 py-2.5 backdrop-blur sm:rounded-full sm:px-4 sm:py-3 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
             <Link href="/" aria-label="HostelSet home" className="shrink-0">
               <BrandLogo priority />
             </Link>
-            <nav className="hidden items-center gap-5 text-sm font-semibold text-slate-300 lg:flex" aria-label="Public navigation">
+            <nav className="hidden min-w-0 items-center justify-center gap-4 text-sm font-semibold text-slate-300 xl:gap-5 lg:flex" aria-label="Public navigation">
               <Link href="/" className="hover:text-white">Home</Link>
               <Link href="/properties" className="hover:text-white">Browse Hostels</Link>
               <Link href="#for-tenants" className="hover:text-white">For Tenants</Link>
               <Link href="#for-owners" className="hover:text-white">For Owners</Link>
               <Link href="/faq" className="hover:text-white">FAQ</Link>
             </nav>
-            <div className="relative">
+            <div ref={loginRef} className="relative justify-self-end">
               <button
                 type="button"
                 onClick={() => setLoginOpen(open => !open)}
@@ -103,18 +117,18 @@ export default function Home() {
             </div>
           </header>
 
-          <section className="grid flex-1 items-center gap-8 py-10 lg:grid-cols-[1.05fr_0.95fr] lg:py-14">
+          <section className="relative z-10 grid items-start gap-5 py-5 sm:gap-8 sm:py-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:py-14">
             <div>
-              <p className="inline-flex rounded-full border border-orange-300/20 bg-orange-400/10 px-3 py-1 text-xs font-black uppercase tracking-[0.22em] text-orange-200">
+              <p className="inline-flex rounded-full border border-orange-300/20 bg-orange-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-orange-200 sm:text-xs sm:tracking-[0.22em]">
                 Hostel management + PG discovery
               </p>
-              <h1 className="mt-5 max-w-3xl text-4xl font-black tracking-tight text-white sm:text-6xl lg:text-7xl">
+              <h1 className="mt-4 max-w-3xl text-3xl font-black tracking-tight text-white sm:mt-5 sm:text-6xl lg:text-7xl">
                 Manage hostels. Find better stays.
               </h1>
-              <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:mt-5 sm:text-lg sm:leading-7">
                 HostelSet helps hostel owners manage rooms, tenants, rent, notices, and requests. Tenants can browse hostels, apply online, and access their account after approval.
               </p>
-              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <div className="mt-5 flex flex-col gap-2.5 sm:mt-7 sm:flex-row sm:gap-3">
                 <Link href="/properties" className="inline-flex items-center justify-center rounded-2xl bg-orange-500 px-5 py-3 text-sm font-black text-white shadow-xl shadow-orange-950/30 transition hover:bg-orange-400">
                   Browse Hostels
                 </Link>
@@ -124,7 +138,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="grid gap-4">
+            <div className="grid gap-3 sm:gap-4">
               <RoleCard
                 id="for-tenants"
                 eyebrow="For tenants"
@@ -161,9 +175,9 @@ export default function Home() {
             </div>
           </section>
 
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
+          <section className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-3 sm:rounded-[2rem] sm:p-5">
             <h2 className="text-sm font-black uppercase tracking-[0.22em] text-orange-200">Tenant flow</h2>
-            <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="mt-3 grid gap-2 sm:mt-4 sm:grid-cols-3 lg:grid-cols-6">
               {tenantFlow.map((step, index) => (
                 <div key={step} className="rounded-2xl bg-slate-900/80 p-3 text-sm font-bold text-slate-100 ring-1 ring-white/10">
                   <span className="text-xs text-orange-300">0{index + 1}</span>

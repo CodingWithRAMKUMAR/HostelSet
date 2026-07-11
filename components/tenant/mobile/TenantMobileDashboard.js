@@ -1,5 +1,5 @@
 ﻿import MobileTopbar from '../../dashboard/MobileTopbar'
-import { formatCurrency, getSharingDetails } from '../../../lib/utils'
+import { formatCurrency, formatDate, getSharingDetails } from '../../../lib/utils'
 
 function Header({ title, subtitle, avatar, avatarUrl, avatarAlt, onProfile }) {
   return (
@@ -17,6 +17,14 @@ function Stat({ label, value, onClick }) {
   )
 }
 
+function formatNextDue(rentStatus) {
+  if (!rentStatus?.dueDate) return rentStatus?.message || 'Due date unavailable'
+  if (rentStatus.status === 'paid') return `Rent paid — next due ${formatDate(rentStatus.dueDate)}`
+  if (rentStatus.status === 'due_today') return 'Due today'
+  if (rentStatus.status === 'overdue') return rentStatus.message || 'Rent overdue'
+  return `Next due: ${formatDate(rentStatus.dueDate)}`
+}
+
 export default function TenantMobileDashboard({ tenant, room, property, roommates = [], notices = [], complaints = [], rentStatus = {}, existingVacateRequest, pendingRoomChangeRequest, avatar = 'U', avatarUrl, avatarAlt, onProfile, onNavigate, onPayRent }) {
   return (
     <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
@@ -28,6 +36,7 @@ export default function TenantMobileDashboard({ tenant, room, property, roommate
               <p className="text-[10px] font-bold uppercase tracking-widest text-orange-300">Welcome</p>
               <h1 className="truncate text-base font-black">{tenant?.name || 'Tenant'}</h1>
               <p className="truncate text-xs text-slate-400">Room {room?.room_number || '—'} · {getSharingDetails(room?.sharing_type || '')?.label || 'Room'}</p>
+              <p className="mt-1 truncate text-[11px] font-bold text-orange-200">{formatNextDue(rentStatus)}</p>
             </div>
             <span className="max-w-[42%] truncate rounded-full bg-white/10 px-2 py-1 text-[11px] font-bold">{rentStatus?.status || 'active'}</span>
           </div>
