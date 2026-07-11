@@ -1,4 +1,10 @@
 const isProduction = process.env.NODE_ENV === 'production'
+const isVercelPreview = process.env.VERCEL_ENV === 'preview'
+
+const manifestSrc = [
+  "'self'",
+  ...(isVercelPreview ? ['https://vercel.com'] : []),
+].join(' ')
 
 const supabaseHttpOrigin = (() => {
   try {
@@ -37,7 +43,7 @@ const contentSecurityPolicy = [
   `connect-src ${compact(["'self'", 'https://*.supabase.co', 'wss://*.supabase.co', supabaseHttpOrigin, supabaseWebSocketOrigin, 'https://api.geoapify.com', 'https://maps.geoapify.com', analyticsEnabled && 'https://www.google-analytics.com', analyticsEnabled && 'https://region1.google-analytics.com', sentryOrigin, posthogOrigin]).join(' ')}`,
   `media-src ${compact(["'self'", 'blob:', 'https://*.supabase.co', supabaseHttpOrigin]).join(' ')}`,
   "worker-src 'self' blob:",
-  "manifest-src 'self'",
+  `manifest-src ${manifestSrc}`,
   "frame-src 'none'",
   isProduction && 'upgrade-insecure-requests',
 ].filter(Boolean).join('; ')
