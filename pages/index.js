@@ -165,7 +165,7 @@ export default function Home() {
                 benefits={ownerBenefits}
                 accent="white"
               >
-                <Link href="/register" className="inline-flex flex-1 items-center justify-center rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-orange-100">
+                  <Link href="/register" className="inline-flex flex-1 items-center justify-center rounded-2xl border border-orange-500 bg-orange-500 px-4 py-3 text-sm font-black text-white opacity-100 transition hover:border-orange-400 hover:bg-orange-400 active:bg-orange-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-300">
                   Register Your Property
                 </Link>
                 <Link href="/login/owner" className="inline-flex flex-1 items-center justify-center rounded-2xl border border-white/15 px-4 py-3 text-sm font-black text-white transition hover:border-orange-300 hover:text-orange-200">

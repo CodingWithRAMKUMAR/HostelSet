@@ -127,12 +127,7 @@ export function TenantProvider({ children }) {
           ? supabase.from('users').select('full_name, phone, email').eq('id', tenantData.property.owner_id).maybeSingle()
           : Promise.resolve({ data: null, error: null }),
         tenantData.room_id
-          ? supabase
-              .from('tenants')
-              .select('id, name, phone, email, status, room_id, move_in_date')
-              .eq('room_id', tenantData.room_id)
-              .neq('id', tenantData.id)
-              .in('status', ['active', 'notice_period', 'payment_pending'])
+          ? supabase.rpc('get_my_roommate_contacts')
           : Promise.resolve({ data: [], error: null }),
       ]);
 

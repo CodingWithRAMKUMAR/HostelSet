@@ -48,7 +48,6 @@ export default function PayRentModal({
                 <p className="mb-2 break-all font-mono text-sm">{ownerUpiId}</p>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => copyUpiId(ownerUpiId)} className="h-8 rounded-full bg-gray-600 px-3 text-xs font-semibold text-white transition hover:bg-gray-700">Copy UPI ID</button>
-                  <a href={`upi://pay?pa=${encodeURIComponent(ownerUpiId)}&pn=HostelSet&am=${amount}&cu=INR`} className="inline-flex h-8 items-center rounded-full bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700">Pay with UPI</a>
                 </div>
               </div>
             )}

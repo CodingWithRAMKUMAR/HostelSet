@@ -1237,15 +1237,6 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                   {validOwnerUpiId && <div><p className="text-xs font-semibold text-slate-600 dark:text-slate-300">UPI ID</p><p className="break-all font-mono text-sm font-semibold">{ownerSettings.upi_id}</p><button type="button" aria-label="Copy owner UPI ID" onClick={() => copyPaymentDestination(ownerSettings.upi_id, 'UPI ID copied')} className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-orange-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white">Copy UPI ID</button></div>}
                   {validPaymentPhone && <div><p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Payment phone number</p><p className="break-all font-mono text-sm font-semibold">{ownerSettings.upi_phone}</p><button type="button" aria-label="Copy owner payment phone number" onClick={() => copyPaymentDestination(ownerSettings.upi_phone, 'Phone number copied')} className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-orange-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white">Copy Phone Number</button></div>}
                   {copyFeedback && <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300" role="status">{copyFeedback}</p>}
-                  {validOwnerUpiId && <>
-                  <a
-                    href={`upi://pay?pa=${ownerSettings.upi_id}&pn=HostelSet&am=${calculateTotalAmount()}&cu=INR`}
-                    className="mt-2 inline-block bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition"
-                    target="_blank"
-                  >
-                    Pay with UPI App
-                  </a>
-                  </>}
                 </div>
               )}
               <div className="space-y-4">
@@ -1373,15 +1364,6 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                   {validOwnerUpiId && <div><p className="text-xs font-semibold text-slate-600 dark:text-slate-300">UPI ID</p><p className="break-all font-mono text-sm font-semibold">{ownerSettings.upi_id}</p><button type="button" aria-label="Copy owner UPI ID" onClick={() => copyPaymentDestination(ownerSettings.upi_id, 'UPI ID copied')} className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-white">Copy UPI ID</button></div>}
                   {validPaymentPhone && <div><p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Payment phone number</p><p className="break-all font-mono text-sm font-semibold">{ownerSettings.upi_phone}</p><button type="button" aria-label="Copy owner payment phone number" onClick={() => copyPaymentDestination(ownerSettings.upi_phone, 'Phone number copied')} className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-white">Copy Phone Number</button></div>}
                   {copyFeedback && <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300" role="status">{copyFeedback}</p>}
-                  {validOwnerUpiId && <>
-                  <a
-                    href={`upi://pay?pa=${ownerSettings.upi_id}&pn=HostelSet&am=${ownerSettings.pre_booking_fee}&cu=INR`}
-                    className="mt-2 inline-block bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition"
-                    target="_blank"
-                  >
-                    Pay with UPI App
-                  </a>
-                  </>}
                 </div>
               )}
               <div className="space-y-4">

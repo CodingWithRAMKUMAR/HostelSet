@@ -72,7 +72,7 @@ export default function PropertiesPage() {
     if (!background) setLoading(true)
     setLoadError('')
     try {
-      const { data: propertiesData, error: propError } = await supabase.rpc('get_public_properties')
+      const { data: propertiesData, error: propError } = await supabase.rpc('get_public_properties_v2')
 
       if (propError) throw propError
 
@@ -86,7 +86,7 @@ export default function PropertiesPage() {
         return {
           ...property,
           totalRooms: Number(property.total_rooms || 0),
-          occupiedRooms: Number(property.current_occupants || 0),
+          availableRooms: Number(property.available_room_count || 0),
           activeTenantCount: Number(property.active_tenant_count || 0),
           lowestRent: property.lowest_rent == null ? null : Number(property.lowest_rent),
           firstPhoto: property.photos && property.photos.length > 0 ? property.photos[0] : null,
@@ -241,7 +241,7 @@ export default function PropertiesPage() {
                     <span>{property.totalRooms} rooms</span>
                     <span>{property.activeTenantCount} active tenant{property.activeTenantCount === 1 ? '' : 's'}</span>
                   </div>
-                  <p className={`mb-3 text-xs font-bold ${property.totalRooms > property.occupiedRooms ? 'text-emerald-700' : 'text-amber-700'}`}>{property.totalRooms > property.occupiedRooms ? `${property.totalRooms - property.occupiedRooms} room${property.totalRooms - property.occupiedRooms === 1 ? '' : 's'} showing availability` : 'Currently full'}</p>
+                  <p className={`mb-3 text-xs font-bold ${property.availableRooms > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>{property.availableRooms > 0 ? `${property.availableRooms} room${property.availableRooms === 1 ? '' : 's'} with availability` : 'Currently full'}</p>
                   <Link
                     href={propertyPublicPath(property)}
                     className="block w-full rounded-xl bg-orange-600 py-2.5 text-center font-bold text-white transition hover:bg-orange-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500"
