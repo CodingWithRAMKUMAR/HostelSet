@@ -1,5 +1,5 @@
 ﻿import MobileTopbar from '../../dashboard/MobileTopbar'
-import { formatCurrency, formatDate, getSharingDetails } from '../../../lib/utils'
+import { formatCurrency, formatDate, formatRentDueLabel, getSharingDetails } from '../../../lib/utils'
 
 function Header({ title, subtitle, avatar, avatarUrl, avatarAlt, onProfile }) {
   return (
@@ -18,11 +18,8 @@ function Stat({ label, value, onClick }) {
 }
 
 function formatNextDue(rentStatus) {
-  if (!rentStatus?.dueDate) return rentStatus?.message || 'Due date unavailable'
-  if (rentStatus.status === 'paid') return `Rent paid — next due ${formatDate(rentStatus.dueDate)}`
-  if (rentStatus.status === 'due_today') return 'Due today'
-  if (rentStatus.status === 'overdue') return rentStatus.message || 'Rent overdue'
-  return `Next due: ${formatDate(rentStatus.dueDate)}`
+  const label = formatRentDueLabel(rentStatus)
+  return rentStatus?.dueDate ? `${label} · ${formatDate(rentStatus.dueDate)}` : label
 }
 
 export default function TenantMobileDashboard({ tenant, room, property, roommates = [], notices = [], complaints = [], rentStatus = {}, existingVacateRequest, pendingRoomChangeRequest, avatar = 'U', avatarUrl, avatarAlt, onProfile, onNavigate, onPayRent }) {

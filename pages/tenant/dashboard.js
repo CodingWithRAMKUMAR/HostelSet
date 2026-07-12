@@ -18,7 +18,7 @@ import { usePayments } from '../../hooks/usePayments'
 import { useRoomChange } from '../../hooks/useRoomChange'
 // ------------------------------------------------
 
-import { calculateRentDueStatus, formatCurrency, formatDate, getSharingDetails } from '../../lib/utils'
+import { calculateRentDueStatus, formatCurrency, formatDate, formatRentDueLabel, getSharingDetails } from '../../lib/utils'
 import { normalizeBloodGroup } from '../../lib/bloodGroups'
 
 // Content Components (static)
@@ -396,13 +396,13 @@ function TenantDashboardContent() {
               <p className="mt-0.5 truncate text-[11px] text-white/50 sm:mt-1 sm:text-sm">{property?.name}</p>
             </div>
             <div className={`rounded-full px-2.5 py-1 text-xs font-bold shadow-lg backdrop-blur-sm sm:px-5 sm:py-2.5 sm:text-sm ${isUrgent ? 'bg-red-500/90 text-white animate-pulse border border-red-400' : 'bg-white/10 text-white border border-white/20'}`}>
-              {rentStatus.message}
+              {formatRentDueLabel(rentStatus)}
             </div>
           </div>
-          {rentStatus.dueDate && isUrgent && (
+          {rentStatus.dueDate && (
             <div className="mt-4 text-center relative z-10">
               <div className="inline-block bg-black/40 backdrop-blur-sm px-5 py-2.5 rounded-lg text-orange-400 font-bold border border-orange-500/30">
-                Next due date: {formatDate(rentStatus.dueDate)}
+                Due date: {formatDate(rentStatus.dueDate)}
               </div>
             </div>
           )}

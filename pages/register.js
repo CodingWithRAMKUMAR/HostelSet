@@ -29,6 +29,8 @@ export default function Register() {
   const [step, setStep] = useState(1)
   const [propertyImages, setPropertyImages] = useState([])
   const [location, setLocation] = useState(null)
+  const [policyConsent, setPolicyConsent] = useState(false)
+  const [policyConsentError, setPolicyConsentError] = useState('')
   const [formData, setFormData] = useState({
     name: '',
     ownerName: '',
@@ -151,6 +153,11 @@ export default function Register() {
     if (loading) return
     setRegistrationError(null)
     if (![1, 2, 3, 4].every(validateStep)) return
+    if (!policyConsent) {
+      setPolicyConsentError('You must agree to the Privacy Policy and Terms & Conditions before registering.')
+      return
+    }
+    setPolicyConsentError('')
     // Validate password
     const pwError = passwordError(formData.password)
     if (pwError) {
@@ -356,6 +363,11 @@ export default function Register() {
                 )}
               </div>
             )}
+
+            {step === 5 && <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-start gap-2"><input type="checkbox" id="ownerPolicyConsent" checked={policyConsent} onChange={event => { setPolicyConsent(event.target.checked); if (event.target.checked) setPolicyConsentError('') }} className="mt-1" /><label htmlFor="ownerPolicyConsent" className="text-sm text-slate-700">I have read and agree to HostelSet’s <Link href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 underline">Privacy Policy</Link> and <Link href="/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 underline">Terms &amp; Conditions</Link>.</label></div>
+              {policyConsentError && <p className="mt-2 text-xs font-semibold text-red-600" role="alert">{policyConsentError}</p>}
+            </div>}
 
             <div className="flex gap-4 mt-8">
               {step > 1 && (

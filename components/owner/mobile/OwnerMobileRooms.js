@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import NotificationBell from '../../common/NotificationBell'
 import DashboardIcon from '../../dashboard/DashboardIcon'
 import { formatCurrency, getSharingDetails } from '../../../lib/utils'
+import RoomActionMenu from '../RoomActionMenu'
 
 function Header({ onBack, onAddRoom }) {
   return (
@@ -22,6 +23,7 @@ function Header({ onBack, onAddRoom }) {
 export default function OwnerMobileRooms({ rooms = [], tenants = [], onBack, onRoomClick, onDeleteRoom, onAddRoom, isSubmitting }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
+  const [openRoomMenu, setOpenRoomMenu] = useState(null)
   const filteredRooms = useMemo(() => rooms.filter(room => {
     const text = `${room.room_number || ''} ${room.room_audience || ''} ${room.sharing_type || ''}`.toLowerCase()
     const occupancy = Number(room.current_occupants || 0)
@@ -48,18 +50,18 @@ export default function OwnerMobileRooms({ rooms = [], tenants = [], onBack, onR
           const occupants = Number(room.current_occupants || tenants.filter(t => t.room_id === room.id).length || 0)
           const capacity = Number(room.capacity || 0)
           return (
-            <button key={room.id} type="button" onClick={() => onRoomClick(room)} className="flex min-h-[78px] w-full min-w-0 items-center gap-2 rounded-3xl border border-white/10 bg-white p-2.5 text-left shadow-sm">
+            <article key={room.id} role="button" tabIndex={0} onClick={() => onRoomClick(room)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onRoomClick(room) } }} className="flex min-h-[78px] w-full min-w-0 items-center gap-2 rounded-3xl border border-white/10 bg-white p-2.5 text-left shadow-sm">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-orange-600"><DashboardIcon name="rooms" className="h-4 w-4" /></span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-black leading-tight text-slate-900">Room {room.room_number}</span>
                 <span className="mt-0.5 block truncate text-[11px] font-semibold text-slate-500">{sharing?.label || 'Room'} · {room.room_audience || 'Co-living'}</span>
                 <span className="mt-1 block truncate text-xs font-black text-slate-900">{formatCurrency(room.monthly_rent || 0)} <span className="font-semibold text-slate-400">/month</span></span>
               </span>
-              <span className="flex shrink-0 flex-col items-end gap-2">
+              <div className="flex shrink-0 flex-col items-end gap-2">
                 <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-black text-orange-700">{occupants}/{capacity}</span>
-                <span onClick={(event) => { event.stopPropagation(); if (!isSubmitting && occupants <= 0 && confirm(`Delete Room ${room.room_number}?`)) onDeleteRoom(room.id) }} className="flex h-7 w-7 items-center justify-center rounded-xl bg-slate-100 text-lg font-black leading-none text-slate-500">⋮</span>
-              </span>
-            </button>
+                <RoomActionMenu room={room} open={openRoomMenu === room.id} onToggle={open => setOpenRoomMenu(open ? room.id : null)} onEdit={onRoomClick} deleteDisabled={occupants > 0} disabled={isSubmitting} onDelete={selected => { if (confirm(`Delete Room ${selected.room_number}?`)) onDeleteRoom(selected.id) }} />
+              </div>
+            </article>
           )
         })}
       </main>

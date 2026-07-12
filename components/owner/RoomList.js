@@ -1,6 +1,8 @@
 // Cache clear update 2026-06-23
 import { motion } from 'framer-motion';
+import { useState } from 'react';
 import { formatCurrency, getSharingDetails } from '../../lib/utils';
+import RoomActionMenu from './RoomActionMenu';
 
 export default function RoomList({ 
   rooms, 
@@ -11,6 +13,7 @@ export default function RoomList({
   onDeleteRoom, 
   isSubmitting 
 }) {
+  const [openRoomMenu, setOpenRoomMenu] = useState(null);
   if (!rooms || rooms.length === 0) {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
@@ -80,22 +83,7 @@ export default function RoomList({
                 ))}
                 <span className="min-w-0 truncate text-[11px] text-slate-500">{occupants.length ? occupants.slice(0, 2).map(t => t.name).join(', ') : 'No residents'}{occupants.length > 2 ? ` +${occupants.length - 2}` : ''}</span>
               </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirm(`Are you sure you want to delete Room ${room.room_number}?`)) {
-                    onDeleteRoom(room.id);
-                  }
-                }}
-                disabled={isSubmitting || room.current_occupants > 0}
-                className={`shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold transition ${
-                  room.current_occupants > 0 
-                    ? 'text-gray-400 cursor-not-allowed bg-slate-100' 
-                    : 'text-red-600 bg-red-50 hover:text-red-700'
-                }`}
-              >
-                {room.current_occupants > 0 ? 'Locked' : 'Delete'}
-              </button>
+              <RoomActionMenu room={room} open={openRoomMenu === room.id} onToggle={open => setOpenRoomMenu(open ? room.id : null)} onEdit={onRoomClick} deleteDisabled={room.current_occupants > 0} disabled={isSubmitting} onDelete={selected => { if (confirm(`Are you sure you want to delete Room ${selected.room_number}?`)) onDeleteRoom(selected.id) }} />
             </div>
           </motion.div>
         );

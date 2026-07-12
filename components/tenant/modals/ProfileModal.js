@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { formatDate } from '../../../lib/utils'
+import { formatDate, formatRentDueLabel } from '../../../lib/utils'
 import { useModalAccessibility } from '../../../hooks/useModalAccessibility'
 import { useUnsavedChangesGuard } from '../../../hooks/useUnsavedChangesGuard'
 import { BLOOD_GROUPS, displayBloodGroup } from '../../../lib/bloodGroups'
@@ -77,7 +77,7 @@ export default function ProfileModal({
                 <InfoRow icon="mail" label="Email" value={tenant?.email} />
                 <InfoRow icon="users" label="Blood group" value={displayBloodGroup(tenant?.blood_group)} />
                 <InfoRow icon="rooms" label="Room" value={room?.room_number} />
-                <InfoRow icon="calendar" label="Next due" value={rentStatus?.dueDate ? formatDate(rentStatus.dueDate) : rentStatus?.message} />
+                <InfoRow icon="calendar" label="Next due" value={rentStatus?.dueDate ? `${formatRentDueLabel(rentStatus)} · ${formatDate(rentStatus.dueDate)}` : formatRentDueLabel(rentStatus)} />
                 <InfoRow icon="calendar" label="Joined" value={formatDate(tenant?.move_in_date)} />
               </div>
             </div>

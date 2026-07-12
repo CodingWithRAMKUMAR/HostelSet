@@ -25,6 +25,7 @@ const normalizeProperty = property => property ? {
 
 const settingsFor = (property, settings) => ({
   upi_id: settings?.upi_id || property?.owner_upi_id || '',
+  upi_phone: settings?.upi_phone || '',
   advance_months: settings?.advance_months || 1,
   joining_fee: settings?.joining_fee || 0,
   pre_booking_fee: settings?.pre_booking_fee ?? 999,
@@ -74,6 +75,10 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const [transactionId, setTransactionId] = useState('')
   const [paymentSubmitting, setPaymentSubmitting] = useState(false)
   const [paymentProgress, setPaymentProgress] = useState('')
+  const [copyFeedback, setCopyFeedback] = useState('')
+  const copyFeedbackTimerRef = useRef(null)
+  const [applicationConsent, setApplicationConsent] = useState(false)
+  const [applicationConsentError, setApplicationConsentError] = useState('')
 
   // Pre‑booking state
   const [vacateInfo, setVacateInfo] = useState(() => buildVacateInfo(initialRooms))
@@ -83,6 +88,8 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const [prebookIdProof, setPrebookIdProof] = useState(null)
   const [prebookPhoto, setPrebookPhoto] = useState(null)
   const [agreeTerms, setAgreeTerms] = useState(false)
+  const [prebookPolicyConsent, setPrebookPolicyConsent] = useState(false)
+  const [prebookConsentError, setPrebookConsentError] = useState('')
   const [prebookSubmitting, setPrebookSubmitting] = useState(false)
 
   // Pre‑booking payment modal
@@ -113,7 +120,20 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const redirectTimerRef = useRef(null)
   const resolvedPropertyId = property?.id || (UUID_PATTERN.test(String(id || '')) ? id : null)
 
-  useEffect(() => () => clearTimeout(redirectTimerRef.current), [])
+  useEffect(() => () => { clearTimeout(redirectTimerRef.current); clearTimeout(copyFeedbackTimerRef.current) }, [])
+
+  const copyPaymentDestination = async (value, message) => {
+    if (!value) return
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value)
+      else {
+        const input = document.createElement('textarea'); input.value = value; input.setAttribute('readonly', ''); input.style.position = 'fixed'; input.style.opacity = '0'; document.body.appendChild(input); input.select()
+        try { if (!document.execCommand('copy')) throw new Error('Copy unavailable') }
+        finally { document.body.removeChild(input) }
+      }
+      setCopyFeedback(message); clearTimeout(copyFeedbackTimerRef.current); copyFeedbackTimerRef.current = setTimeout(() => setCopyFeedback(''), 2200)
+    } catch { setCopyFeedback('Copy failed. Select and copy the value manually.') }
+  }
 
   useEffect(() => {
     if (!id) return
@@ -428,6 +448,11 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   // ========== Regular Application Flow ==========
   // Step 1: Validate and open payment modal (no DB insert yet)
   const submitApplication = async () => {
+    if (!applicationConsent) {
+      setApplicationConsentError('You must agree to the Privacy Policy and Terms & Conditions before continuing.')
+      return
+    }
+    setApplicationConsentError('')
     if (!applyForm.name || !applyForm.phone || !applyForm.email || !applyForm.bloodGroup) {
       toast.error('Please fill all required fields, including blood group')
       return
@@ -495,6 +520,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       toast.success('Application submitted. You will receive a password setup email after approval.', { duration: 8000 })
       setShowPaymentModal(false)
       setApplyForm({ name: '', phone: '', email: '', message: '' })
+      setApplicationConsent(false); setApplicationConsentError('')
       setIdProof(null); setPhoto(null); setPaymentScreenshot(null); setTransactionId('')
       clearTimeout(redirectTimerRef.current)
       redirectTimerRef.current = setTimeout(() => router.push('/login'), 8000)
@@ -520,6 +546,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
     setPrebookIdProof(null)
     setPrebookPhoto(null)
     setAgreeTerms(false)
+    setPrebookPolicyConsent(false); setPrebookConsentError('')
     setPrebookPhoneError('')
     setPrebookEmailError('')
     setPrebookPhoneValid(false)
@@ -549,6 +576,11 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       toast.error('You must agree to the terms & conditions')
       return
     }
+    if (!prebookPolicyConsent) {
+      setPrebookConsentError('You must agree to the Privacy Policy and Terms & Conditions before continuing.')
+      return
+    }
+    setPrebookConsentError('')
     if (!prebookRoomId) {
       toast.error('Room not selected')
       return
@@ -602,6 +634,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       setPrebookForm({ name: '', phone: '', email: '', move_in_date: '', message: '' })
       setPrebookRoomId(null); setPrebookIdProof(null); setPrebookPhoto(null)
       setPrebookPaymentScreenshot(null); setPrebookTransactionId(''); setAgreeTerms(false)
+      setPrebookPolicyConsent(false); setPrebookConsentError('')
       return
 
       const idProofUrl = await uploadFile(prebookIdProof, 'prebook_id')
@@ -697,6 +730,8 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const hasNoRooms = rooms.length === 0
   const isApplyFormValid = applyForm.name && phoneValid && emailValid && applyForm.bloodGroup && idProof && photo
   const isPrebookFormValid = prebookForm.name && prebookPhoneValid && prebookEmailValid && prebookIdProof && prebookPhoto && agreeTerms && prebookForm.move_in_date
+  const validOwnerUpiId = typeof ownerSettings.upi_id === 'string' && /^[^\s@]+@[^\s@]+$/.test(ownerSettings.upi_id.trim())
+  const validPaymentPhone = typeof ownerSettings.upi_phone === 'string' && /^\+?\d{10,15}$/.test(ownerSettings.upi_phone.replace(/[\s()-]/g, ''))
   const city = property.city || 'India'
   const propertyType = getPropertyTypeLabel(property.property_type)
   const amenities = Array.isArray(property.amenities) ? property.amenities.filter(Boolean) : []
@@ -855,13 +890,13 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
 
         {/* Tabs – unchanged */}
         <div className="mb-6 grid grid-cols-3 gap-1 rounded-2xl border border-slate-200 bg-white p-1" role="tablist" aria-label="Property details">
-          <button role="tab" aria-selected={activeTab === 'rooms'} onClick={() => setActiveTab('rooms')} className={`min-w-0 rounded-xl px-1 py-2.5 text-xs font-bold transition sm:text-sm ${activeTab === 'rooms' ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+          <button role="tab" aria-selected={activeTab === 'rooms'} onClick={() => setActiveTab('rooms')} className={`min-w-0 rounded-xl border px-1 py-2.5 text-xs font-bold transition sm:text-sm ${activeTab === 'rooms' ? 'border-orange-500 bg-orange-500 text-white' : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'}`}>
             🏠 Rooms & Availability
           </button>
-          <button role="tab" aria-selected={activeTab === 'amenities'} onClick={() => setActiveTab('amenities')} className={`min-w-0 rounded-xl px-1 py-2.5 text-xs font-bold transition sm:text-sm ${activeTab === 'amenities' ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+          <button role="tab" aria-selected={activeTab === 'amenities'} onClick={() => setActiveTab('amenities')} className={`min-w-0 rounded-xl border px-1 py-2.5 text-xs font-bold transition sm:text-sm ${activeTab === 'amenities' ? 'border-orange-500 bg-orange-500 text-white' : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'}`}>
             ✨ Amenities
           </button>
-          <button role="tab" aria-selected={activeTab === 'about'} onClick={() => setActiveTab('about')} className={`min-w-0 rounded-xl px-1 py-2.5 text-xs font-bold transition sm:text-sm ${activeTab === 'about' ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+          <button role="tab" aria-selected={activeTab === 'about'} onClick={() => setActiveTab('about')} className={`min-w-0 rounded-xl border px-1 py-2.5 text-xs font-bold transition sm:text-sm ${activeTab === 'about' ? 'border-orange-500 bg-orange-500 text-white' : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'}`}>
             📖 About
           </button>
         </div>
@@ -972,24 +1007,25 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
 
         {/* Amenities Tab – unchanged */}
         {activeTab === 'amenities' && (
-          <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-8 shadow-sm border border-gray-100">
-            <h2 className="text-xl font-bold text-slate-800 mb-4">Amenities & Facilities</h2>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 sm:p-8">
+            <h2 className="mb-4 text-xl font-bold text-slate-900 dark:text-white">Amenities & Facilities</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {(property.amenities || []).map((amenity, i) => (
-                <div key={i} className="flex items-center gap-2 text-gray-700">
-                  <span className="text-green-500">✓</span>
+                <div key={i} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 font-medium text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">✓</span>
                   <span>{amenity}</span>
                 </div>
               ))}
             </div>
+            {!(property.amenities || []).length && <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">No amenities have been listed for this property yet.</p>}
           </div>
         )}
 
         {/* About Tab – unchanged */}
         {activeTab === 'about' && (
-          <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-8 shadow-sm border border-gray-100">
-            <h2 className="text-xl font-bold text-slate-800 mb-4">About this Property</h2>
-            <p className="text-gray-600 leading-relaxed">{property.description || 'No description provided.'}</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 sm:p-8">
+            <h2 className="mb-4 text-xl font-bold text-slate-900 dark:text-white">About this Property</h2>
+            <p className="leading-relaxed text-slate-700 dark:text-slate-200">{property.description || 'No description provided.'}</p>
             <div className="mt-6 pt-6 border-t border-gray-200">
               <h3 className="font-semibold text-slate-800 mb-2">Property Details</h3>
               <div className="grid sm:grid-cols-2 gap-4 text-sm">
@@ -1167,6 +1203,10 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                   <label className="block text-sm font-semibold mb-1">Passport Size Photo *</label>
                   <input type="file" accept="image/*" onChange={e => handleFileChange(e, setPhoto)} className="w-full" />
                 </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-start gap-2"><input type="checkbox" id="applicationPolicyConsent" checked={applicationConsent} onChange={event => { setApplicationConsent(event.target.checked); if (event.target.checked) setApplicationConsentError('') }} className="mt-1" /><label htmlFor="applicationPolicyConsent" className="text-sm text-slate-700">I have read and agree to HostelSet’s <Link href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 underline">Privacy Policy</Link> and <Link href="/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 underline">Terms &amp; Conditions</Link>.</label></div>
+                  {applicationConsentError && <p className="mt-2 text-xs font-semibold text-red-600" role="alert">{applicationConsentError}</p>}
+                </div>
                 <button 
                   onClick={submitApplication} 
                   disabled={applySubmitting || !isApplyFormValid || checkingPhone || checkingEmail} 
@@ -1184,17 +1224,20 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       <AnimatePresence>
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={closePaymentModal}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-2xl font-bold mb-4">Application / Security Deposit</h2>
-              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" onClick={(e) => e.stopPropagation()}>
+              <h2 className="mb-4 text-2xl font-bold text-slate-900 dark:text-white">Application / Security Deposit</h2>
+              <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
                 <p className="text-sm text-gray-600">Room {rooms.find(r => r.id === selectedRoom)?.room_number} – {getSharingDetails(rooms.find(r => r.id === selectedRoom)?.sharing_type)?.label}</p>
                 <p className="text-lg font-bold mt-1">Application / Security Deposit: {formatCurrency(calculateTotalAmount())}</p>
                 <p className="text-sm font-semibold text-red-700 mt-1">Non-refundable</p>
                 <p className="text-xs text-gray-600 mt-2">This deposit is only for application/security confirmation. Room rent is separate and must be paid after joining.</p>
               </div>
-              {ownerSettings.upi_id && (
-                <div className="bg-blue-50 p-3 rounded-lg mb-4">
-                  <p className="text-sm font-semibold">Owner UPI ID: {ownerSettings.upi_id}</p>
+              {(validOwnerUpiId || validPaymentPhone) && (
+                <div className="mb-4 space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-slate-900 dark:border-blue-800 dark:bg-slate-900 dark:text-slate-100">
+                  {validOwnerUpiId && <div><p className="text-xs font-semibold text-slate-600 dark:text-slate-300">UPI ID</p><p className="break-all font-mono text-sm font-semibold">{ownerSettings.upi_id}</p><button type="button" aria-label="Copy owner UPI ID" onClick={() => copyPaymentDestination(ownerSettings.upi_id, 'UPI ID copied')} className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-orange-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white">Copy UPI ID</button></div>}
+                  {validPaymentPhone && <div><p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Payment phone number</p><p className="break-all font-mono text-sm font-semibold">{ownerSettings.upi_phone}</p><button type="button" aria-label="Copy owner payment phone number" onClick={() => copyPaymentDestination(ownerSettings.upi_phone, 'Phone number copied')} className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-orange-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white">Copy Phone Number</button></div>}
+                  {copyFeedback && <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300" role="status">{copyFeedback}</p>}
+                  {validOwnerUpiId && <>
                   <a
                     href={`upi://pay?pa=${ownerSettings.upi_id}&pn=HostelSet&am=${calculateTotalAmount()}&cu=INR`}
                     className="mt-2 inline-block bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition"
@@ -1202,6 +1245,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                   >
                     Pay with UPI App
                   </a>
+                  </>}
                 </div>
               )}
               <div className="space-y-4">
@@ -1294,6 +1338,10 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                     I agree that the pre‑booking fee of <strong>{formatCurrency(ownerSettings.pre_booking_fee)}</strong> is <strong>non‑refundable</strong>. If I do not move in by the expected date, my booking will be automatically cancelled and the fee will not be returned.
                   </label>
                 </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-start gap-2"><input type="checkbox" id="prebookPolicyConsent" checked={prebookPolicyConsent} onChange={event => { setPrebookPolicyConsent(event.target.checked); if (event.target.checked) setPrebookConsentError('') }} className="mt-1" /><label htmlFor="prebookPolicyConsent" className="text-sm text-slate-700">I have read and agree to HostelSet’s <Link href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 underline">Privacy Policy</Link> and <Link href="/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 underline">Terms &amp; Conditions</Link>.</label></div>
+                  {prebookConsentError && <p className="mt-2 text-xs font-semibold text-red-600" role="alert">{prebookConsentError}</p>}
+                </div>
                 <button 
                   onClick={submitPreBookingForm} 
                   disabled={prebookSubmitting || !isPrebookFormValid || prebookCheckingPhone || prebookCheckingEmail} 
@@ -1310,9 +1358,9 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       <AnimatePresence>
         {showPrebookPaymentModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookPaymentModal(false)}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-2xl font-bold mb-4">Pay Pre‑booking Fee</h2>
-              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" onClick={(e) => e.stopPropagation()}>
+              <h2 className="mb-4 text-2xl font-bold text-slate-900 dark:text-white">Pay Pre‑booking Fee</h2>
+              <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
                 <p className="text-sm text-gray-600">Room {rooms.find(r => r.id === prebookRoomId)?.room_number}</p>
                 <p className="text-lg font-bold mt-1">Non‑refundable Fee: {formatCurrency(ownerSettings.pre_booking_fee)}</p>
                 <p className="text-xs text-gray-500 mt-1">This amount will be adjusted against your first month's rent.</p>
@@ -1320,9 +1368,12 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                   ⚠️ If you do not move in by the expected date, your booking will be cancelled and the fee will not be refunded.
                 </div>
               </div>
-              {ownerSettings.upi_id && (
-                <div className="bg-blue-50 p-3 rounded-lg mb-4">
-                  <p className="text-sm font-semibold">Owner UPI ID: {ownerSettings.upi_id}</p>
+              {(validOwnerUpiId || validPaymentPhone) && (
+                <div className="mb-4 space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-slate-900 dark:border-blue-800 dark:bg-slate-900 dark:text-slate-100">
+                  {validOwnerUpiId && <div><p className="text-xs font-semibold text-slate-600 dark:text-slate-300">UPI ID</p><p className="break-all font-mono text-sm font-semibold">{ownerSettings.upi_id}</p><button type="button" aria-label="Copy owner UPI ID" onClick={() => copyPaymentDestination(ownerSettings.upi_id, 'UPI ID copied')} className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-white">Copy UPI ID</button></div>}
+                  {validPaymentPhone && <div><p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Payment phone number</p><p className="break-all font-mono text-sm font-semibold">{ownerSettings.upi_phone}</p><button type="button" aria-label="Copy owner payment phone number" onClick={() => copyPaymentDestination(ownerSettings.upi_phone, 'Phone number copied')} className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-white">Copy Phone Number</button></div>}
+                  {copyFeedback && <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300" role="status">{copyFeedback}</p>}
+                  {validOwnerUpiId && <>
                   <a
                     href={`upi://pay?pa=${ownerSettings.upi_id}&pn=HostelSet&am=${ownerSettings.pre_booking_fee}&cu=INR`}
                     className="mt-2 inline-block bg-green-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-green-700 transition"
@@ -1330,6 +1381,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                   >
                     Pay with UPI App
                   </a>
+                  </>}
                 </div>
               )}
               <div className="space-y-4">
@@ -1390,7 +1442,7 @@ export async function getStaticProps({ params }) {
 
   const [resolvedRoomsResult, resolvedSettingsResult] = await Promise.all([
     supabase.from('rooms').select('*').eq('property_id', propertyResult.data.id).order('room_number'),
-    supabase.from('owner_settings').select('upi_id, advance_months, joining_fee, pre_booking_fee').eq('property_id', propertyResult.data.id).maybeSingle(),
+      supabase.from('owner_settings').select('upi_id, upi_phone, advance_months, joining_fee, pre_booking_fee').eq('property_id', propertyResult.data.id).maybeSingle(),
   ])
 
   if (resolvedRoomsResult.error) throw resolvedRoomsResult.error
