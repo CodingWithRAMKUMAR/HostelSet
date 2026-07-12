@@ -9,7 +9,7 @@ function Header({ onBack, title, subtitle, avatar, avatarUrl, avatarAlt, onProfi
 
 export default function TenantMobileNotices({ notices = [], property, avatar = 'U', avatarUrl, avatarAlt, onBack, onProfile }) {
   return (
-    <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
+    <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
       <Header title="Notices" subtitle={property?.name} avatar={avatar} avatarUrl={avatarUrl} avatarAlt={avatarAlt} onBack={onBack} onProfile={onProfile} />
       <main className="mx-auto max-w-md space-y-2 px-3 py-2">
         {notices.length === 0 ? <div className="rounded-2xl bg-white p-4 text-center text-sm text-slate-500">No notices yet.</div> : notices.map(notice => (

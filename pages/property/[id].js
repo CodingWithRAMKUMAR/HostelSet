@@ -2,11 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { supabase } from '../../lib/supabase'
+import { publicSupabase as supabase } from '../../lib/publicSupabase'
 import { formatCurrency, getSharingDetails, getPropertyTypeLabel, cleanPhoneNumber, formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import NearbyHostelMap from '../../components/maps/NearbyHostelMap'
-import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
+import { usePublicRealtimeRefresh as useRealtimeRefresh } from '../../hooks/usePublicRealtimeRefresh'
 import BrandLogo from '../../components/BrandLogo'
 import Head from 'next/head'
 import Image from 'next/image'
@@ -821,8 +821,8 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
         </div>
 
         {/* Gallery – unchanged */}
-        <div className="mb-8 rounded-2xl overflow-hidden shadow-xl">
-          <div className="relative bg-gray-900/5 backdrop-blur-sm">
+        <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
+          <div className="relative bg-slate-100">
             {property.photos && property.photos.length > 0 ? (
               <>
                 <div className="relative h-[260px] w-full sm:h-[400px] md:h-[500px]"><Image loader={propertyImageLoader} unoptimized src={property.photos[currentImageIndex]} alt={imageAlt} fill priority sizes="(max-width: 768px) 100vw, 1152px" className="object-cover" /></div>
@@ -839,7 +839,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                 )}
               </>
             ) : (
-              <div className="w-full h-[260px] sm:h-[400px] flex items-center justify-center text-6xl sm:text-8xl bg-gradient-to-br from-slate-100 to-gray-100">🏠</div>
+              <div className="flex min-h-32 w-full items-center gap-4 bg-gradient-to-br from-slate-900 to-slate-800 p-5 text-white sm:min-h-40"><div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-orange-500 text-2xl font-black" aria-hidden="true">H</div><div className="min-w-0"><p className="text-xs font-black uppercase tracking-[.2em] text-orange-300">HostelSet property</p><p className="mt-1 truncate text-xl font-black">{property.name}</p><p className="mt-1 truncate text-sm text-slate-300">{property.city || 'Location available on request'}</p></div></div>
             )}
           </div>
           {property.photos && property.photos.length > 1 && (
@@ -854,18 +854,15 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
         </div>
 
         {/* Tabs – unchanged */}
-        <div className="flex border-b border-gray-200 mb-6">
-          <button onClick={() => setActiveTab('rooms')} className={`px-6 py-3 font-semibold transition relative ${activeTab === 'rooms' ? 'text-slate-800' : 'text-gray-500 hover:text-slate-600'}`}>
+        <div className="mb-6 grid grid-cols-3 gap-1 rounded-2xl border border-slate-200 bg-white p-1" role="tablist" aria-label="Property details">
+          <button role="tab" aria-selected={activeTab === 'rooms'} onClick={() => setActiveTab('rooms')} className={`min-w-0 rounded-xl px-1 py-2.5 text-xs font-bold transition sm:text-sm ${activeTab === 'rooms' ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
             🏠 Rooms & Availability
-            {activeTab === 'rooms' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-slate-800 rounded-full"></span>}
           </button>
-          <button onClick={() => setActiveTab('amenities')} className={`px-6 py-3 font-semibold transition relative ${activeTab === 'amenities' ? 'text-slate-800' : 'text-gray-500 hover:text-slate-600'}`}>
+          <button role="tab" aria-selected={activeTab === 'amenities'} onClick={() => setActiveTab('amenities')} className={`min-w-0 rounded-xl px-1 py-2.5 text-xs font-bold transition sm:text-sm ${activeTab === 'amenities' ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
             ✨ Amenities
-            {activeTab === 'amenities' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-slate-800 rounded-full"></span>}
           </button>
-          <button onClick={() => setActiveTab('about')} className={`px-6 py-3 font-semibold transition relative ${activeTab === 'about' ? 'text-slate-800' : 'text-gray-500 hover:text-slate-600'}`}>
+          <button role="tab" aria-selected={activeTab === 'about'} onClick={() => setActiveTab('about')} className={`min-w-0 rounded-xl px-1 py-2.5 text-xs font-bold transition sm:text-sm ${activeTab === 'about' ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
             📖 About
-            {activeTab === 'about' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-slate-800 rounded-full"></span>}
           </button>
         </div>
 

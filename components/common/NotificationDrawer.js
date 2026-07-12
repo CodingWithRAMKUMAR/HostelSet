@@ -4,6 +4,7 @@ import { useRouter } from 'next/router'
 import { useNotificationContext } from '../../context/NotificationContext'
 import { formatDate } from '../../lib/utils'
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
+import { resetDashboardScroll } from '../../lib/dashboardScroll'
 
 export default function NotificationDrawer({ open, onClose }) {
   const router = useRouter()
@@ -32,14 +33,17 @@ export default function NotificationDrawer({ open, onClose }) {
 
   const openNotification = async notification => {
     if (!notification.is_read) await markRead(notification.id)
-    if (notification.action_url) router.push(notification.action_url)
     onClose()
+    if (notification.action_url) {
+      await router.push(notification.action_url)
+      resetDashboardScroll()
+    }
   }
 
   const drawer = (
     <div className="fixed inset-0 z-[9999] overflow-hidden" role="dialog" aria-modal="true" aria-label="Notifications">
       <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Close notifications" />
-      <aside className="fixed inset-x-2 top-2 flex max-h-[86dvh] min-h-[min(30rem,86dvh)] min-w-0 flex-col overflow-hidden rounded-[1.1rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:left-auto sm:right-3 sm:top-3 sm:max-h-[calc(100dvh_-_1.5rem_-_env(safe-area-inset-bottom))] sm:w-[min(420px,calc(100vw_-_1.5rem))]">
+      <aside className="fixed inset-x-2 top-2 flex max-h-[86dvh] min-w-0 flex-col overflow-hidden rounded-[1.1rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:left-auto sm:right-3 sm:top-3 sm:max-h-[calc(100dvh_-_1.5rem_-_env(safe-area-inset-bottom))] sm:w-[min(420px,calc(100vw_-_1.5rem))]">
         <header className="shrink-0 border-b border-slate-200 p-2.5 dark:border-slate-700">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">

@@ -6,7 +6,7 @@ export function AdminMobileHeader({ title, subtitle, avatar = 'A', onBack, onPro
 
 export function AdminMobilePage({ title, subtitle, avatar = 'A', onBack, onProfile, children }) {
   return (
-    <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
+    <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
       <AdminMobileHeader title={title} subtitle={subtitle} avatar={avatar} onBack={onBack} onProfile={onProfile} />
       <main className="mx-auto max-w-md space-y-2 px-3 py-2">{children}</main>
     </div>

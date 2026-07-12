@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
+import toast from 'react-hot-toast';
 import { signOut, signPrivateDocumentFields } from '../../lib/supabase';
 import { formatCurrency } from '../../lib/utils';
 import { AdminProvider, useAdmin } from '../../context/AdminContext';
@@ -34,6 +35,7 @@ import MobileBottomNav from '../../components/dashboard/MobileBottomNav';
 import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu';
 import AccountMenu from '../../components/dashboard/AccountMenu';
 import { resetDashboardScroll } from '../../lib/dashboardScroll';
+import { resolveDashboardQuery } from '../../lib/dashboardRouting';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import AdminMobileDashboard from '../../components/admin/mobile/AdminMobileDashboard';
 import AdminMobileSearch from '../../components/admin/mobile/AdminMobileSearch';
@@ -240,11 +242,11 @@ function AdminDashboardContent() {
   useBodyScrollLock(hasOpenOverlay);
 
   useEffect(() => {
-    const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
-    const nextTab = ADMIN_VIEW_ALIASES[tab] || tab
-    if (ADMIN_VIEW_KEYS.has(nextTab)) setActiveTab(nextTab)
-    else if (tab && process.env.NODE_ENV !== 'production') console.warn('[HostelSet] Unknown admin dashboard query tab:', tab)
-  }, [router.query.tab])
+    if (!router.isReady) return
+    setActiveTab(resolveDashboardQuery('admin', router.query).view)
+    setMobileMenu(null)
+    resetDashboardScroll()
+  }, [router.isReady, router.query.tab, router.query.property_id, router.query.membership_id, router.query.payment_id, router.query.application_id, router.query.complaint_id, router.query.request_id])
   const [actionKey, setActionKey] = useState(null);
 
   const runAdminAction = async (key, action) => {
@@ -255,30 +257,40 @@ function AdminDashboardContent() {
   };
 
   const openSignedApplicationProof = async (application) => {
+    const loadingToast = toast.loading('Opening document…')
     try {
       const signed = await signPrivateDocumentFields({ ...application, source_type: 'application' }, ['payment_screenshot'])
       const url = signed?.payment_screenshot || null
       if (!url) {
         setApplicationProof(null)
+        toast.error('This document is unavailable or has been removed.')
         return
       }
       setApplicationProof({ url, name: application.name })
     } catch {
       setApplicationProof(null)
+      toast.error('This document is unavailable or has been removed.')
+    } finally {
+      toast.dismiss(loadingToast)
     }
   };
 
   const openSignedPaymentProof = async (payment) => {
+    const loadingToast = toast.loading('Opening document…')
     try {
       const signed = await signPrivateDocumentFields(payment, ['payment_screenshot'])
       const url = signed?.payment_screenshot || null
       if (!url) {
         setApplicationProof(null)
+        toast.error('This document is unavailable or has been removed.')
         return
       }
       setApplicationProof({ url, name: payment.tenants?.name || 'Payment' })
     } catch {
       setApplicationProof(null)
+      toast.error('This document is unavailable or has been removed.')
+    } finally {
+      toast.dismiss(loadingToast)
     }
   };
 

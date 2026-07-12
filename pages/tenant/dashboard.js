@@ -31,6 +31,7 @@ import DashboardSidebar from '../../components/dashboard/DashboardSidebar'
 import DashboardIcon from '../../components/dashboard/DashboardIcon'
 import AccountMenu from '../../components/dashboard/AccountMenu'
 import { resetDashboardScroll } from '../../lib/dashboardScroll'
+import { resolveDashboardQuery } from '../../lib/dashboardRouting'
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 import TenantMobileDashboard from '../../components/tenant/mobile/TenantMobileDashboard'
 import TenantMobilePayments from '../../components/tenant/mobile/TenantMobilePayments'
@@ -128,10 +129,11 @@ function TenantDashboardContent() {
   useBodyScrollLock(hasOpenOverlay)
 
   useEffect(() => {
-    const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
-    if (TENANT_VIEW_KEYS.has(tab)) setActiveTab(tab)
-    else if (tab && process.env.NODE_ENV !== 'production') console.warn('[HostelSet] Unknown tenant dashboard query tab:', tab)
-  }, [router.query.tab])
+    if (!router.isReady) return
+    setActiveTab(resolveDashboardQuery('tenant', router.query).view)
+    setMobileMenu(null)
+    resetDashboardScroll()
+  }, [router.isReady, router.query.tab, router.query.payment_id, router.query.notice_id, router.query.complaint_id, router.query.request_id])
 
   // ----- Helper Functions -----
   const copyPaymentDetail = async (value, label) => {
@@ -155,18 +157,21 @@ function TenantDashboardContent() {
   }
 
   const openSignedPaymentScreenshot = async (payment) => {
+    const loadingToast = toast.loading('Opening document…')
     try {
       const record = typeof payment === 'string' ? { payment_screenshot: payment } : payment
       const signed = await signPrivateDocumentFields(record, ['payment_screenshot'])
       const url = signed?.payment_screenshot || null
       if (!url) {
-        toast.error('Payment proof is unavailable.')
+        toast.error('This document is unavailable or has been removed.')
         return
       }
       setScreenshotUrl(url)
       setShowScreenshotModal(true)
     } catch {
-      toast.error('Unable to open payment proof. Please try again.')
+      toast.error('This document is unavailable or has been removed.')
+    } finally {
+      toast.dismiss(loadingToast)
     }
   }
 
@@ -236,7 +241,7 @@ function TenantDashboardContent() {
 
   const getRentStatus = () => {
     if (!tenant) return { status: 'loading', message: '', daysUntilDue: null, dueDate: null }
-    return calculateRentDueStatus(tenant)
+    return calculateRentDueStatus(tenant, paymentHistory)
   }
 
   const rentStatus = getRentStatus() || { message: 'Loading...' }

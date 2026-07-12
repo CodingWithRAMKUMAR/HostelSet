@@ -52,17 +52,25 @@ export function OwnerProvider({ children }) {
         setProperty(propertyData); setPropertyImages(propertyData.photos || []); updateMembershipFromProperty(propertyData);
         
         // Rooms and tenants are independent after the property is known, so load them together.
-        const [{ data: roomsData, error: roomsError }, { data: tenantsData, error: tenantsError }, { data: archivedData, error: archivedError }] = await Promise.all([
+        const [{ data: roomsData, error: roomsError }, { data: tenantsData, error: tenantsError }, { data: archivedData, error: archivedError }, successfulPaymentsResult] = await Promise.all([
           supabase.from('rooms').select('*').eq('property_id', propertyData.id).order('room_number'),
           supabase.from('tenants').select('*').eq('property_id', propertyData.id).in('status', ['active', 'notice_period', 'payment_pending']),
           supabase.from('tenants').select('*, check_out_requests(expected_check_out, status, completed_at, created_at)').eq('property_id', propertyData.id).eq('status', 'inactive').order('archived_at', { ascending: false, nullsFirst: false }),
+          supabase.from('payment_history').select('id, tenant_id, amount, payment_date, payment_method, status, tenants!inner(room_id, property_id)').eq('status', 'success').eq('tenants.property_id', propertyData.id),
         ]);
         if (roomsError) throw roomsError;
         if (tenantsError) throw tenantsError;
         if (archivedError) throw archivedError;
+        if (successfulPaymentsResult.error) throw successfulPaymentsResult.error;
         setRooms(roomsData || []);
         const total = roomsData?.length || 0; const occupied = roomsData?.filter(r => r.current_occupants >= r.capacity).length || 0; const vacant = total - occupied;
-        const tenantsWithRoomNumber = (tenantsData || []).map(t => { const room = roomsData?.find(r => r.id === t.room_id); return { ...t, room_number: room ? room.room_number : 'N/A', dueStatus: calculateRentDueStatus(t) } });
+        const successfulPayments = successfulPaymentsResult.data || [];
+        const paymentsByTenant = successfulPayments.reduce((grouped, payment) => {
+          if (!grouped.has(payment.tenant_id)) grouped.set(payment.tenant_id, []);
+          grouped.get(payment.tenant_id).push(payment);
+          return grouped;
+        }, new Map());
+        const tenantsWithRoomNumber = (tenantsData || []).map(t => { const room = roomsData?.find(r => r.id === t.room_id); return { ...t, room_number: room ? room.room_number : 'N/A', dueStatus: calculateRentDueStatus(t, paymentsByTenant.get(t.id) || []) } });
         setTenants(tenantsWithRoomNumber);
         setArchivedTenants((archivedData || []).map(tenant => {
           const latestCheckout = [...(tenant.check_out_requests || [])].sort((a, b) => new Date(b.completed_at || b.created_at) - new Date(a.completed_at || a.created_at))[0];
@@ -79,19 +87,13 @@ export function OwnerProvider({ children }) {
         const pendingPaymentCount = tenantsWithRoomNumber.filter(t => t.status === 'payment_pending').length;
         const tenantIds = tenantsData?.map(t => t.id) || [];
         const now = new Date(); const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]; const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-        const [revenueResult, pendingResult, complaintResult, vacateResult] = await Promise.all([
-          supabase.from('payment_history')
-            .select('amount, payment_date, payment_method, tenants!inner(room_id, property_id)')
-            .eq('status', 'success')
-            .eq('tenants.property_id', propertyData.id),
+        const [pendingResult, complaintResult, vacateResult] = await Promise.all([
           tenantIds.length
             ? supabase.from('payment_history').select('id').eq('status', 'payment_pending').in('tenant_id', tenantIds)
             : Promise.resolve({ data: [] }),
           supabase.from('complaints').select('*', { count: 'exact', head: true }).eq('property_id', propertyData.id).in('status', ['open', 'in_progress']),
           supabase.from('check_out_requests').select('*', { count: 'exact', head: true }).eq('property_id', propertyData.id).eq('status', 'pending'),
         ]);
-        if (revenueResult.error) throw revenueResult.error;
-        const successfulPayments = revenueResult.data || [];
         const rentPayments = successfulPayments.filter(payment => payment.payment_method !== 'security_deposit');
         const depositPayments = successfulPayments.filter(payment => payment.payment_method === 'security_deposit');
         const totalCollected = rentPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);

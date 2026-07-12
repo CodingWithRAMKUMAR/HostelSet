@@ -60,7 +60,7 @@ export default function RoomDetailsModal({
         .eq('tenant_id', tenant.id)
         .order('payment_date', { ascending: false });
       if (error) throw error;
-      setTenantPayments(await Promise.all((data || []).map(item => signPrivateDocumentFields(item, ['payment_screenshot']))));
+      setTenantPayments(data || []);
     } catch (error) {
       toast.error('Failed to load payment history');
     } finally { setLoadingPayments(false); }
@@ -82,15 +82,13 @@ export default function RoomDetailsModal({
       if (tenantResult.error) throw tenantResult.error;
       if (paymentHistoryResult.error) throw paymentHistoryResult.error;
       const fullTenant = tenantResult.data;
-      const signedTenant = await signPrivateDocumentFields(fullTenant, ['payment_screenshot']);
       const { record, source_type } = await findTenantDocumentRecord(fullTenant, room.property_id);
-      const signed = record ? await signPrivateDocumentFields({ ...record, source_type }, ['id_proof', 'photo', 'payment_screenshot']) : null;
-      const signedHistory = await Promise.all((paymentHistoryResult.data || []).map(item => signPrivateDocumentFields(item, ['payment_screenshot'])));
-      const extraDocuments = signedHistory
+      const documentRecord = record ? { ...record, source_type } : null;
+      const extraDocuments = (paymentHistoryResult.data || [])
         .filter(item => item.payment_screenshot)
-        .map((item, index) => ({ label: `Payment receipt ${index + 1}`, url: item.payment_screenshot }));
-      setSelectedTenantForProfile(signedTenant);
-      setTenantApplication(signed);
+        .map((item, index) => ({ label: `Payment receipt ${index + 1}`, record: item, field: 'payment_screenshot' }));
+      setSelectedTenantForProfile(fullTenant);
+      setTenantApplication(documentRecord);
       setTenantExtraDocuments(extraDocuments);
     } catch (error) {
       toast.error('Could not fetch documents');
@@ -123,6 +121,19 @@ export default function RoomDetailsModal({
       toast.success('Room updated');
     } catch (error) { toast.error('Failed to update room: ' + error.message); }
     finally { setSavingRoom(false); }
+  };
+
+  const openSignedDocument = async ({ record, field = 'payment_screenshot' }) => {
+    const loadingToast = toast.loading('Opening document…');
+    try {
+      const signed = await signPrivateDocumentFields(record, [field]);
+      if (!signed?.[field]) return toast.error('This document is unavailable or has been removed.');
+      setScreenshotUrl(signed[field]);
+    } catch {
+      toast.error('This document is unavailable or has been removed.');
+    } finally {
+      toast.dismiss(loadingToast);
+    }
   };
 
   return (
@@ -260,7 +271,7 @@ export default function RoomDetailsModal({
           payments={tenantPayments}
           loading={loadingPayments}
           onClose={() => setShowTenantPayments(false)}
-          onViewScreenshot={setScreenshotUrl}
+          onViewScreenshot={openSignedDocument}
         />
       )}
 
@@ -271,7 +282,7 @@ export default function RoomDetailsModal({
           extraDocuments={tenantExtraDocuments}
           loading={loadingProfile}
           onClose={() => setShowTenantProfile(false)}
-          onViewScreenshot={setScreenshotUrl}
+          onViewScreenshot={openSignedDocument}
         />
       )}
 

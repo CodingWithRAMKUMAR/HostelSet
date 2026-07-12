@@ -9,7 +9,7 @@ function Header({ onBack, title, subtitle, avatar, avatarUrl, avatarAlt, onProfi
 
 export default function TenantMobilePayments({ payments = [], property, avatar = 'U', avatarUrl, avatarAlt, onBack, onProfile, onPayRent, onViewScreenshot }) {
   return (
-    <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
+    <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
       <Header title="Payments" subtitle={property?.name} avatar={avatar} avatarUrl={avatarUrl} avatarAlt={avatarAlt} onBack={onBack} onProfile={onProfile} />
       <main className="mx-auto max-w-md space-y-2 px-3 py-2">
         <button type="button" onClick={onPayRent} className="h-8 w-full rounded-xl bg-orange-500 px-3 text-xs font-black text-white shadow-sm">Pay rent with UPI</button>

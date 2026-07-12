@@ -28,7 +28,7 @@ function StatCard({ stat, onNavigate }) {
 
 export default function AdminMobileDashboard({ stats = [], globalStats = {}, realtimeConnected, avatar = 'A', onProfile, onNavigate, onRefresh }) {
   return (
-    <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
+    <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
       <AdminMobileHeader title="Admin dashboard" subtitle={realtimeConnected ? 'Platform live' : 'Platform console'} avatar={avatar} onProfile={onProfile} />
       <main className="mx-auto max-w-md space-y-2 px-3 py-2">
         <section className="rounded-2xl border border-white/10 bg-slate-900 p-2.5 text-white shadow-sm">

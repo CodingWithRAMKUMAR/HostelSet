@@ -8,6 +8,7 @@ import Head from 'next/head'
 import MonitoringScripts from '../components/MonitoringScripts'
 import { NotificationProvider } from '../context/NotificationContext'
 import { ThemeProvider } from '../context/ThemeContext'
+import { isDashboardPath } from '../lib/routeScope'
 
 function ProtectedRouteLoading() {
   return (
@@ -23,9 +24,10 @@ function ProtectedRouteLoading() {
 export default function App({ Component, pageProps }) {
   const router = useRouter()
   const [authorized, setAuthorized] = useState(false)
-  const isDashboardRoute = router.pathname.startsWith('/owner') || router.pathname.startsWith('/tenant') || router.pathname.startsWith('/admin')
+  const isDashboardRoute = isDashboardPath(router.pathname)
 
   useEffect(() => {
+    if (!isDashboardRoute) return undefined
     let active = true
     let subscription
     import('../lib/supabase').then(async ({ supabase, syncServerSession, getRestoredSession }) => {
@@ -41,14 +43,13 @@ export default function App({ Component, pageProps }) {
       subscription = result.data.subscription
     }).catch(() => {})
     return () => { active = false; subscription?.unsubscribe() }
-  }, [])
+  }, [isDashboardRoute])
 
   useEffect(() => {
     let active = true
     const checkSession = async () => {
       try {
-        const protectedRoutes = ['/owner', '/tenant', '/admin']
-        const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
+        const isProtectedRoute = isDashboardPath(router.pathname)
         if (!isProtectedRoute) { if (active) setAuthorized(true); return }
         // getSession reads the persisted session locally and avoids an extra
         // network round-trip on every dashboard navigation.
@@ -62,8 +63,7 @@ export default function App({ Component, pageProps }) {
         else if (router.pathname !== '/login') router.replace(`/login?next=${encodeURIComponent(router.asPath)}`)
       } catch (e) {
         // If accessing localStorage fails, treat as not authorized for protected routes
-        const protectedRoutes = ['/owner', '/tenant', '/admin']
-        const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
+        const isProtectedRoute = isDashboardPath(router.pathname)
         if (isProtectedRoute && router.pathname !== '/login') router.replace(`/login?next=${encodeURIComponent(router.asPath)}`)
         else setAuthorized(true)
       }
@@ -77,8 +77,7 @@ export default function App({ Component, pageProps }) {
   useEffect(() => {
     const handlePageShow = async (event) => {
       if (!event.persisted) return
-      const protectedRoutes = ['/owner', '/tenant', '/admin']
-      const isProtectedRoute = protectedRoutes.some(route => router.pathname.startsWith(route))
+      const isProtectedRoute = isDashboardPath(router.pathname)
       if (!isProtectedRoute) return
       const { getRestoredSession } = await import('../lib/supabase')
       const { data: { session } } = await getRestoredSession()

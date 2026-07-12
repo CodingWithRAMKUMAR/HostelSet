@@ -33,7 +33,7 @@ export default function OwnerMobileRooms({ rooms = [], tenants = [], onBack, onR
   }), [rooms, query, filter])
 
   return (
-    <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
+    <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
       <Header onBack={onBack} onAddRoom={onAddRoom} />
       <main className="mx-auto max-w-md space-y-2 px-3 py-2">
         <label className="flex h-9 items-center gap-2 rounded-2xl border border-white/10 bg-white/8 px-3 text-slate-300">

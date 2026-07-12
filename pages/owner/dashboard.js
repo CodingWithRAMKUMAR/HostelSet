@@ -10,6 +10,7 @@ import BrandLogo from '../../components/BrandLogo';
 import NotificationBell from '../../components/common/NotificationBell';
 import ThemeToggle from '../../components/common/ThemeToggle';
 import { formatCurrency } from '../../lib/utils';
+import { resolveOwnerDashboardQuery } from '../../lib/dashboardRouting';
 
 // Modular Imports
 import { useOwner, OwnerProvider } from '../../context/OwnerContext';
@@ -183,11 +184,15 @@ function OwnerDashboardContent() {
   const { formData, setFormData, addTenant } = useOwnerTenants(property, rooms, tenants, setTenants, setStats, loadData);
   const propertyReady = Boolean(property?.id);
 
+  const [focusedRequestId, setFocusedRequestId] = useState(null)
   useEffect(() => {
-    const tab = typeof router.query.tab === 'string' ? router.query.tab : ''
-    const nextTab = OWNER_VIEW_ALIASES[tab] || tab
-    if (OWNER_VIEW_SET.has(nextTab)) setActiveTab(nextTab)
-  }, [router.query.tab])
+    if (!router.isReady) return
+    const resolved = resolveOwnerDashboardQuery(router.query)
+    setActiveTab(resolved.view)
+    setFocusedRequestId(resolved.requestId)
+    setMobileMenu(null)
+    resetDashboardScroll()
+  }, [router.isReady, router.query.tab, router.query.request_id])
   const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, propertyReady);
   const { vacateRequests, approveVacateRequest, rejectVacateRequest, rejectingId: vacateRejectingId } = useOwnerVacate(property, propertyReady);
   const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment, refreshPayments } = useOwnerPayments(property, tenants, archivedTenants, setStats, loadData, propertyReady);
@@ -260,9 +265,9 @@ function OwnerDashboardContent() {
         .eq('tenant_id', tenant.id)
         .order('payment_date', { ascending: false });
       if (error) throw error;
-      const signed = await Promise.all((data || []).map(item => signPrivateDocumentFields(item, ['payment_screenshot'])));
-      paymentCache.current.set(tenant.id, signed);
-      setTenantPayments(signed);
+      const payments = data || [];
+      paymentCache.current.set(tenant.id, payments);
+      setTenantPayments(payments);
     } catch (error) {
       toast.error('Failed to load payment history');
     } finally { setLoadingPayments(false); }
@@ -292,16 +297,14 @@ function OwnerDashboardContent() {
       if (tenantResult.error) throw tenantResult.error;
       if (paymentHistoryResult.error) throw paymentHistoryResult.error;
       const fullTenant = tenantResult.data;
-      const signedTenant = await signPrivateDocumentFields(fullTenant, ['payment_screenshot']);
       const { record, source_type } = await findTenantDocumentRecord(fullTenant, property.id);
-      const signed = record ? await signPrivateDocumentFields({ ...record, source_type }, ['id_proof', 'photo', 'payment_screenshot']) : null;
-      const signedHistory = await Promise.all((paymentHistoryResult.data || []).map(item => signPrivateDocumentFields(item, ['payment_screenshot'])));
-      const extraDocuments = signedHistory
+      const documentRecord = record ? { ...record, source_type } : null;
+      const extraDocuments = (paymentHistoryResult.data || [])
         .filter(item => item.payment_screenshot)
-        .map((item, index) => ({ label: `Payment receipt ${index + 1}`, url: item.payment_screenshot }));
-      profileCache.current.set(tenant.id, { tenant: signedTenant, application: signed, extraDocuments });
-      setSelectedProfileTenant(signedTenant);
-      setTenantApplication(signed);
+        .map((item, index) => ({ label: `Payment receipt ${index + 1}`, record: item, field: 'payment_screenshot' }));
+      profileCache.current.set(tenant.id, { tenant: fullTenant, application: documentRecord, extraDocuments });
+      setSelectedProfileTenant(fullTenant);
+      setTenantApplication(documentRecord);
       setTenantExtraDocuments(extraDocuments);
     } catch (error) {
       toast.error('Could not fetch documents');
@@ -671,21 +674,25 @@ function OwnerDashboardContent() {
   };
 
   const openSignedPaymentScreenshot = async (proof) => {
+    const loadingToast = toast.loading('Opening document…')
     try {
-      const record = typeof proof === 'string' ? { payment_screenshot: proof } : proof
+      const field = proof?.field || 'payment_screenshot'
+      const record = proof?.record || (typeof proof === 'string' ? { payment_screenshot: proof } : proof)
       const sourceRecord = record?.payment_screenshot_url && !record?.payment_screenshot
         ? { ...record, source_type: 'application' }
         : record
-      const signed = await signPrivateDocumentFields(sourceRecord, ['payment_screenshot'])
-      const url = signed?.payment_screenshot || record?.payment_screenshot_url || null
+      const signed = await signPrivateDocumentFields(sourceRecord, [field])
+      const url = signed?.[field] || (field === 'payment_screenshot' ? record?.payment_screenshot_url : null) || null
       if (!url) {
-        toast.error('Payment proof is unavailable.')
+        toast.error('This document is unavailable or has been removed.')
         return
       }
       setScreenshotUrl(url)
       setShowScreenshotModal(true)
     } catch {
-      toast.error('Unable to open payment proof. Please try again.')
+      toast.error('This document is unavailable or has been removed.')
+    } finally {
+      toast.dismiss(loadingToast)
     }
   };
 
@@ -841,7 +848,7 @@ function OwnerDashboardContent() {
       case 'existing-imports': return <div className="space-y-5"><ExistingTenantImportSettings link={existingImports.link} property={property} busy={existingImports.linkBusy} onGenerate={existingImports.rotateLink} onToggle={existingImports.setLinkEnabled} /><ExistingTenantImportList imports={filteredExistingImports} loading={existingImports.loading} total={existingImports.total} page={existingImports.page} pageSize={existingImports.pageSize} processingId={existingImports.processingId} onApprove={existingImports.approve} onReject={existingImports.reject} onPage={existingImports.loadPage} /></div>
       case 'complaints': return <ComplaintList complaints={filteredComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setComplaintResponse(''); setShowComplaintResponseModal(true) }} onResolve={handleResolveComplaint} isSubmitting={isSubmitting} />
       case 'vacate': return <VacateRequestList requests={filteredVacateRequests} onApprove={handleApproveVacate} onReject={(request) => { setSelectedVacateRequest(request); setVacateRejectionReason(''); }} isSubmitting={isSubmitting || Boolean(vacateRejectingId)} />
-      case 'room-change': return <RoomChangeRequestList requests={filteredRoomChangeRequests} onApprove={handleApproveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />
+      case 'room-change': return <RoomChangeRequestList focusedRequestId={focusedRequestId} requests={filteredRoomChangeRequests} onApprove={handleApproveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />
       case 'notices': return <NoticeList notices={filteredNotices} onDelete={deleteNotice} onPost={() => setShowNoticeModal(true)} isSubmitting={isSubmitting} />
       case 'membership': return renderOwnerMembershipView(false)
       default:
@@ -915,13 +922,13 @@ function OwnerDashboardContent() {
     if (activeTab === 'rent-payments') return <OwnerMobilePayments {...common} payments={filteredPendingPayments} onBack={() => openSection('overview')} onConfirm={(id) => handleReviewRentPayment(id, true)} onReject={(id) => handleReviewRentPayment(id, false)} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={isSubmitting} />
     if (activeTab === 'overview') return <OwnerMobileDashboard {...common} stats={stats} counts={{ tenants: safeTenants.length, applications: safeApplications.length, complaints: safeComplaints.length, payments: safePendingRentPayments.length, vacate: safeVacateRequests.filter(item => item.status === 'pending').length, roomChanges: safeRoomChangeRequests.length }} membershipActive={membershipActive} membershipStatus={membershipStatus} membershipExpiry={membershipExpiry} daysLeft={daysLeft} pendingMembershipRequest={pendingMembershipRequest} onMembership={() => openSection('membership')} onNavigate={openSection} />
     if (activeTab === 'membership') return (
-      <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
+      <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
         <MobileTopbar title="Membership" subtitle={property?.name} isHome={false} onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} avatar="" fallbackIcon="users" controls={<NotificationBell listenForGlobalOpen />} />
         <main className="mx-auto max-w-md space-y-2 px-3 py-2">{renderOwnerMembershipView(true)}</main>
       </div>
     )
     return (
-      <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
+      <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
         <MobileTopbar title={ownerViewTitle} subtitle={property?.name} isHome={false} onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} avatar="" fallbackIcon="users" controls={<NotificationBell listenForGlobalOpen />} />
         <main className="mx-auto max-w-md space-y-2 px-3 py-2">
           {activeTab === 'notices' && <button type="button" onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive || isSubmitting} className="w-full rounded-2xl bg-orange-500 px-3 py-2 text-sm font-black text-white shadow-sm disabled:opacity-50">+ Add Notice</button>}
@@ -1050,7 +1057,7 @@ function OwnerDashboardContent() {
         {activeTab === 'existing-imports' && <div className="space-y-5"><ExistingTenantImportSettings link={existingImports.link} property={property} busy={existingImports.linkBusy} onGenerate={existingImports.rotateLink} onToggle={existingImports.setLinkEnabled} /><ExistingTenantImportList imports={filteredExistingImports} loading={existingImports.loading} total={existingImports.total} page={existingImports.page} pageSize={existingImports.pageSize} processingId={existingImports.processingId} onApprove={existingImports.approve} onReject={existingImports.reject} onPage={existingImports.loadPage} /></div>}
         {activeTab === 'complaints' && <ComplaintList complaints={filteredComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setComplaintResponse(''); setShowComplaintResponseModal(true) }} onResolve={handleResolveComplaint} isSubmitting={isSubmitting} />}
         {activeTab === 'vacate' && <VacateRequestList requests={filteredVacateRequests} onApprove={handleApproveVacate} onReject={(request) => { setSelectedVacateRequest(request); setVacateRejectionReason(''); }} isSubmitting={isSubmitting || Boolean(vacateRejectingId)} />}
-        {activeTab === 'room-change' && <RoomChangeRequestList requests={filteredRoomChangeRequests} onApprove={handleApproveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />}
+        {activeTab === 'room-change' && <RoomChangeRequestList focusedRequestId={focusedRequestId} requests={filteredRoomChangeRequests} onApprove={handleApproveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />}
         {activeTab === 'notices' && <NoticeList notices={filteredNotices} onDelete={deleteNotice} onPost={() => setShowNoticeModal(true)} isSubmitting={isSubmitting} />}
         </div>
       </main>
@@ -1093,7 +1100,7 @@ function OwnerDashboardContent() {
             extraDocuments={tenantExtraDocuments}
             loading={loadingProfile}
             onClose={() => { setShowTenantProfileModal(false); setTenantExtraDocuments([]) }}
-            onViewScreenshot={(url) => { setScreenshotUrl(url); setShowScreenshotModal(true) }}
+            onViewScreenshot={openSignedPaymentScreenshot}
           />
         )}
         {showScreenshotModal && (

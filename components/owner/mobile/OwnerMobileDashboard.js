@@ -23,7 +23,7 @@ function Stat({ label, value, icon, onClick }) {
 
 export default function OwnerMobileDashboard({ property, stats, counts, membershipActive, membershipStatus, membershipExpiry, daysLeft, pendingMembershipRequest, avatar = 'O', onProfile, onNavigate, onMembership }) {
   return (
-    <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
+    <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
       <Header title="HostelSet" subtitle={property?.name} avatar={avatar} onProfile={onProfile} />
       <main className="mx-auto max-w-md space-y-2 px-3 py-2">
         <section className="rounded-3xl border border-white/10 bg-slate-900 p-2.5 text-white shadow-sm">

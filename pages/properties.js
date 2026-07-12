@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Head from 'next/head'
 import { motion } from 'framer-motion'
-import { supabase } from '../lib/supabase'
+import { publicSupabase as supabase } from '../lib/publicSupabase'
 import { formatCurrency } from '../lib/utils'
 import NearbyHostelMap from '../components/maps/NearbyHostelMap'
-import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
+import { usePublicRealtimeRefresh as useRealtimeRefresh } from '../hooks/usePublicRealtimeRefresh'
 import PublicFooter from '../components/PublicFooter'
 import { propertyPublicPath } from '../lib/propertySlug'
 
@@ -188,8 +188,8 @@ export default function PropertiesPage() {
       {/* Property Cards */}
       <div className="container mx-auto px-4 py-12">
         {loading ? (
-          <div className="flex justify-center py-20">
-            <div className="w-10 h-10 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true" aria-label="Loading properties">
+            {[0,1,2].map(item => <div key={item} className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="h-36 animate-pulse bg-slate-200"/><div className="space-y-3 p-4"><div className="h-5 w-2/3 animate-pulse rounded bg-slate-200"/><div className="h-4 w-1/2 animate-pulse rounded bg-slate-100"/><div className="h-10 animate-pulse rounded-xl bg-slate-200"/></div></div>)}
           </div>
         ) : loadError ? (
           <div className="text-center py-20"><p className="text-red-600 mb-4">{loadError}</p><button onClick={loadProperties} className="btn-primary">Try again</button></div>
@@ -200,7 +200,7 @@ export default function PropertiesPage() {
         ) : view === 'map' ? (
           <NearbyHostelMap properties={filteredProperties} userLocation={userLocation} />
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-8">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredProperties.map((property, index) => (
               <motion.div
                 key={property.id}
@@ -208,10 +208,10 @@ export default function PropertiesPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
                 whileHover={{ y: -5 }}
-                className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-150 overflow-hidden border border-gray-100"
+                className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-150 hover:shadow-lg"
               >
                 {/* Image */}
-                <div className="h-48 bg-gray-100 relative">
+                <div className="relative h-36 bg-slate-100 sm:h-40">
                   {property.firstPhoto ? (
                     <img
                       src={property.firstPhoto}
@@ -233,7 +233,7 @@ export default function PropertiesPage() {
                 </div>
 
                 {/* Details */}
-                <div className="p-5">
+                <div className="p-4">
                   <h3 className="text-xl font-bold text-slate-800 mb-1">{property.name}</h3>
                   <p className="text-sm text-gray-500 mb-3">{property.city || 'Location not specified'}</p>
                   {property.distance != null && <p className="mb-3 text-sm font-semibold text-blue-700">{property.distance < 1 ? `${Math.round(property.distance * 1000)} m away` : `${property.distance.toFixed(1)} km away`}</p>}
@@ -241,9 +241,10 @@ export default function PropertiesPage() {
                     <span>{property.totalRooms} rooms</span>
                     <span>{property.activeTenantCount} active tenant{property.activeTenantCount === 1 ? '' : 's'}</span>
                   </div>
+                  <p className={`mb-3 text-xs font-bold ${property.totalRooms > property.occupiedRooms ? 'text-emerald-700' : 'text-amber-700'}`}>{property.totalRooms > property.occupiedRooms ? `${property.totalRooms - property.occupiedRooms} room${property.totalRooms - property.occupiedRooms === 1 ? '' : 's'} showing availability` : 'Currently full'}</p>
                   <Link
                     href={propertyPublicPath(property)}
-                    className="block w-full bg-slate-800 text-white text-center py-2.5 rounded-full font-semibold hover:bg-slate-700 transition"
+                    className="block w-full rounded-xl bg-orange-600 py-2.5 text-center font-bold text-white transition hover:bg-orange-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500"
                   >
                     View Details →
                   </Link>

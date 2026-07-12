@@ -107,7 +107,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setLoginOpen(open => !open)}
-                className="rounded-full bg-white px-4 py-2 text-sm font-black text-slate-950 shadow-lg shadow-black/20 transition hover:bg-orange-100"
+                className="public-login-button rounded-full px-4 py-2 text-sm font-black shadow-lg shadow-black/20 transition"
                 aria-expanded={loginOpen}
                 aria-haspopup="menu"
               >

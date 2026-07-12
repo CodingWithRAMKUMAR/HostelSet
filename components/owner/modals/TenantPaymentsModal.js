@@ -26,9 +26,7 @@ export default function TenantPaymentsModal({ tenant, payments = [], loading = f
                   </div>
                   {pay.payment_screenshot && (
                     <div>
-                      <button onClick={() => onViewScreenshot(pay.payment_screenshot)}>
-                        <img src={pay.payment_screenshot} alt="Screenshot" className="w-24 h-24 object-cover rounded-lg border cursor-pointer hover:opacity-80" />
-                      </button>
+                      <button onClick={() => onViewScreenshot({ record: pay, field: 'payment_screenshot' })} className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">Open proof</button>
                     </div>
                   )}
                 </div>

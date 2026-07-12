@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { signPrivateDocumentFields, supabase } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 
 const PAGE_SIZE = 20
 
@@ -34,8 +34,7 @@ export function useExistingTenantImports(property, listEnabled = false, onApprov
       const { data, error, count } = await supabase.from('existing_tenant_imports').select('*,rooms(room_number)', { count: 'exact' })
         .eq('property_id', property.id).is('deleted_at', null).order('created_at', { ascending: false }).range(from, from + PAGE_SIZE - 1)
       if (error) throw error
-      const signed = await Promise.all((data || []).map(item => signPrivateDocumentFields(item, ['id_proof', 'profile_photo'])))
-      setImports(signed); setTotal(count || 0); setPage(targetPage)
+      setImports(data || []); setTotal(count || 0); setPage(targetPage)
     } catch (error) { toast.error(`Unable to load imports: ${error.message}`) }
     finally { setLoading(false) }
   }, [property?.id, listEnabled, page])

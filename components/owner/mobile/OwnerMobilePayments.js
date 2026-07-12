@@ -22,7 +22,7 @@ export default function OwnerMobilePayments({ payments = [], onBack, onConfirm, 
   const withProof = payments.filter(payment => payment.payment_screenshot).length
 
   return (
-    <div className="min-h-dvh max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
+    <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
       <Header onBack={onBack} />
       <main className="mx-auto max-w-md space-y-2 px-3 py-2">
         <section className="grid grid-cols-2 gap-2">

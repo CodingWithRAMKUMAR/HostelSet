@@ -54,6 +54,27 @@ button, a, input, select, textarea {
   touch-action: manipulation;
 }
 
+.public-login-button,
+.dark .public-login-button {
+  background:#fff !important;
+  border:1px solid #e2e8f0;
+  color:#0f172a !important;
+}
+.public-login-button:hover,
+.dark .public-login-button:hover { background:#f1f5f9 !important; color:#0f172a !important; }
+.public-login-button:active,
+.dark .public-login-button:active { background:#e2e8f0 !important; transform:translateY(1px); }
+.public-login-button:disabled,
+.dark .public-login-button:disabled { background:#f1f5f9 !important; color:#64748b !important; cursor:not-allowed; opacity:1; }
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #fb923c;
+  outline-offset: 2px;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
@@ -73,7 +94,7 @@ button, a, input, select, textarea {
 
 /* Buttons */
 .btn-primary {
-  background: #1e293b;
+  background: #ea580c;
   color: white;
   padding: 12px 24px;
   border-radius: 12px;
@@ -91,7 +112,7 @@ button, a, input, select, textarea {
   outline-offset: 2px;
 }
 .btn-primary:hover {
-  background: #334155;
+  background: #c2410c;
   transform: translateY(-2px);
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
 }
@@ -536,8 +557,7 @@ button, a, input, select, textarea {
 .dark .bg-gray-100,
 .dark .bg-slate-100,
 .dark .bg-orange-50,
-.dark .bg-orange-50\/60,
-.dark .bg-slate-900 {
+.dark .bg-orange-50\/60 {
   background-color: var(--hs-surface-muted) !important;
 }
 
@@ -574,12 +594,23 @@ button, a, input, select, textarea {
   background-color: var(--hs-surface-muted);
   border-color: var(--hs-border);
   color: var(--hs-text);
+  color-scheme: dark;
 }
+
+.dark select option { background:var(--hs-surface-muted); color:var(--hs-text); }
+.dark button:disabled { opacity:.68; }
 
 .dark input::placeholder,
 .dark textarea::placeholder {
   color: #94a3b8;
 }
+
+.dark .btn-secondary { background:#1f2937; border-color:#475569; color:#f8fafc; }
+.dark .btn-outline { border-color:#fb923c; color:#fdba74; }
+.dark .btn-outline:hover { background:#c2410c; color:#fff; }
+.dark input:-webkit-autofill,
+.dark select:-webkit-autofill,
+.dark textarea:-webkit-autofill { -webkit-text-fill-color:#f8fafc; box-shadow:0 0 0 1000px #1f2937 inset; caret-color:#f8fafc; }
 
 .dark .card,
 .dark .stat-card,

@@ -1,23 +1,24 @@
 import { formatCurrency, formatDate } from '../../lib/utils';
 
-export default function RoomChangeRequestList({ requests = [], onApprove = () => {}, onReject = () => {}, isSubmitting = false }) {
+export default function RoomChangeRequestList({ requests = [], focusedRequestId = null, onApprove = () => {}, onReject = () => {}, isSubmitting = false }) {
   if (requests.length === 0) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-xl">
         <div className="text-5xl mb-3">🔄</div>
-        <p className="text-gray-500">No pending room change requests</p>
+        <p className="text-gray-500">{focusedRequestId ? 'This request is no longer available.' : 'No pending room change requests'}</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      {focusedRequestId && !requests.some(request => request.id === focusedRequestId) && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">This request is no longer available.</p>}
       {requests.map(request => {
         const tenant = request.tenants;
         const oldRoom = request.old_room;
         const newRoom = request.new_room;
         return (
-          <div key={request.id} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition">
+          <div key={request.id} className={`bg-white rounded-xl border p-5 shadow-sm hover:shadow-md transition ${request.id === focusedRequestId ? 'border-orange-500 ring-2 ring-orange-200' : 'border-gray-200'}`}>
             <div className="flex flex-col md:flex-row justify-between items-start gap-4">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">

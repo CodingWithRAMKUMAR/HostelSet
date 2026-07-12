@@ -67,6 +67,7 @@ const securityHeaders = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
+  devIndicators: false,
   ...(!isProduction ? { allowedDevOrigins: ['172.20.10.7'] } : {}),
   async headers() {
     return [

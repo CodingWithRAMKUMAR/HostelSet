@@ -1,24 +1,12 @@
 import { formatCurrency, formatDate } from '../../../lib/utils'
 import { displayBloodGroup } from '../../../lib/bloodGroups'
 
-const isPdf = url => {
-  try { return decodeURIComponent(new URL(url).pathname).toLowerCase().endsWith('.pdf') }
-  catch { return false }
-}
-
-function DocumentItem({ label, url, onOpen }) {
-  if (!url) return null
-  const pdf = isPdf(url)
+function DocumentItem({ label, record, field, onOpen }) {
+  if (!record?.[field]) return null
   return (
     <div className="rounded-xl border bg-slate-50 p-3">
       <p className="mb-2 text-sm font-medium text-slate-700">{label}</p>
-      {pdf ? (
-        <button onClick={() => onOpen(url)} className="rounded-lg border bg-white px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">Open PDF document</button>
-      ) : (
-        <button onClick={() => onOpen(url)} className="block">
-          <img src={url} alt={label} className="h-32 w-40 rounded-lg border bg-white object-contain hover:opacity-80" />
-        </button>
-      )}
+      <button onClick={() => onOpen({ record, field })} className="rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-500">Open secure document</button>
     </div>
   )
 }
@@ -26,17 +14,17 @@ function DocumentItem({ label, url, onOpen }) {
 const Detail = ({ label, value }) => value !== null && value !== undefined && value !== '' ? <p><strong>{label}:</strong> {value}</p> : null
 
 export default function TenantProfileModal({ tenant, application, extraDocuments = [], loading, onClose, onViewScreenshot = () => {} }) {
-  const tenantPaymentProof = tenant?.payment_screenshot ? [{ label: 'Tenant Payment Proof', url: tenant.payment_screenshot }] : []
+  const tenantPaymentProof = tenant?.payment_screenshot ? [{ label: 'Tenant Payment Proof', record: tenant, field: 'payment_screenshot' }] : []
   const applicationDocuments = application ? [
-    { label: application.source_type === 'existing_tenant_import' ? 'Profile Photo' : 'Tenant Photo', url: application.photo },
-    { label: 'ID Proof / Aadhaar / PAN', url: application.id_proof },
-    { label: 'Payment Proof', url: application.payment_screenshot },
+    { label: application.source_type === 'existing_tenant_import' ? 'Profile Photo' : 'Tenant Photo', record: application, field: 'photo' },
+    { label: 'ID Proof / Aadhaar / PAN', record: application, field: 'id_proof' },
+    { label: 'Payment Proof', record: application, field: 'payment_screenshot' },
   ] : []
   const documents = [
     ...applicationDocuments,
     ...tenantPaymentProof,
-    ...((extraDocuments || []).map(doc => ({ label: doc.label, url: doc.url }))),
-  ].filter((document, index, all) => document.url && all.findIndex(item => item.url === document.url) === index)
+    ...(extraDocuments || []),
+  ].filter((document, index, all) => document.record?.[document.field] && all.findIndex(item => item.record?.[item.field] === document.record?.[document.field]) === index)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -48,13 +36,7 @@ export default function TenantProfileModal({ tenant, application, extraDocuments
         {loading ? <div className="py-8 text-center">Loading...</div> : (
           <div className="space-y-4">
             <div className="flex justify-center">
-              {application?.photo ? (
-                <button onClick={() => onViewScreenshot(application.photo)}>
-                  <img src={application.photo} alt="Tenant profile" className="h-32 w-32 rounded-full border-4 border-slate-200 object-cover" />
-                </button>
-              ) : (
-                <div className="flex h-32 w-32 items-center justify-center rounded-full bg-slate-200 text-4xl font-bold text-slate-500">{(tenant?.name?.charAt(0) || 'U').toUpperCase()}</div>
-              )}
+              <div className="flex h-32 w-32 items-center justify-center rounded-full bg-slate-200 text-4xl font-bold text-slate-500">{(tenant?.name?.charAt(0) || 'U').toUpperCase()}</div>
             </div>
 
             <section className="border-t pt-4">

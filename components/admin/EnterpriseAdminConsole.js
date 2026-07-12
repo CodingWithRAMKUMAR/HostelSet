@@ -42,12 +42,12 @@ function Metric({ label, value }) {
 }
 
 function DocumentGrid({ documents, onOpen }) {
-  const visible = documents.filter(doc => doc.url)
+  const visible = documents.filter(doc => doc.record?.[doc.field])
   if (!visible.length) return <p className="text-sm text-slate-500">No document uploaded.</p>
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {visible.map(doc => (
-        <button key={doc.label} onClick={() => onOpen(doc.url)} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-left hover:border-orange-300">
+        <button key={doc.label} onClick={() => onOpen(doc)} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-left hover:border-orange-300">
           <p className="text-sm font-semibold text-slate-700">{doc.label}</p>
           <p className="mt-1 truncate text-xs text-blue-700">Open secure document</p>
         </button>
@@ -253,19 +253,18 @@ export default function EnterpriseAdminConsole() {
       const tenantWarnings = tenantResults.filter(result => result.error)
       if (tenantWarnings.length) toast.error(`${tenantWarnings.length} tenant profile section(s) could not load.`)
       const { record, source_type } = await findTenantDocumentRecord(tenant, tenant.property_id)
-      const signedRecord = record ? await signPrivateDocumentFields({ ...record, source_type }, ['id_proof', 'photo', 'payment_screenshot']) : null
-      const signedPayments = await Promise.all((tenantData.payments || []).map(payment => signPrivateDocumentFields(payment, ['payment_screenshot'])))
+      const documentRecord = record ? { ...record, source_type } : null
       setTenantProfile({
-        payments: signedPayments,
+        payments: tenantData.payments || [],
         complaints: tenantData.complaints || [],
         roomChanges: tenantData.roomChanges || [],
         vacates: tenantData.vacates || [],
         imports: tenantData.imports || [],
         applications: tenantData.applications || [],
-        documents: signedRecord ? [
-          { label: signedRecord.source_type === 'existing_tenant_import' ? 'Profile Photo' : 'Tenant Photo', url: signedRecord.photo },
-          { label: 'ID Proof / Aadhaar / PAN', url: signedRecord.id_proof },
-          { label: 'Payment Proof', url: signedRecord.payment_screenshot },
+        documents: documentRecord ? [
+          { label: documentRecord.source_type === 'existing_tenant_import' ? 'Profile Photo' : 'Tenant Photo', record: documentRecord, field: 'photo' },
+          { label: 'ID Proof / Aadhaar / PAN', record: documentRecord, field: 'id_proof' },
+          { label: 'Payment Proof', record: documentRecord, field: 'payment_screenshot' },
         ] : [],
       })
     } catch (error) {
@@ -292,6 +291,20 @@ export default function EnterpriseAdminConsole() {
       notices: data.notices.filter(item => ownerPropertyIds.has(item.property_id)),
       revenue: ownerPayments.filter(payment => payment.status === 'success').reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
     })
+  }
+
+  const openTenantDocument = async ({ record, field }) => {
+    const loadingToast = toast.loading('Opening document…')
+    try {
+      const signed = await signPrivateDocumentFields(record, [field])
+      const url = signed?.[field]
+      if (!url) return toast.error('This document is unavailable or has been removed.')
+      setScreenshotUrl(url)
+    } catch {
+      toast.error('This document is unavailable or has been removed.')
+    } finally {
+      toast.dismiss(loadingToast)
+    }
   }
 
   if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500">Loading enterprise console...</div>
@@ -544,7 +557,7 @@ export default function EnterpriseAdminConsole() {
             {tenantLoading ? <p className="py-8 text-center text-slate-500">Loading tenant profile...</p> : tenantProfile && (
               <div className="space-y-5">
                 <Section title="Personal / Room / Rent"><div className="grid gap-2 text-sm sm:grid-cols-3"><p><strong>Room:</strong> {selectedTenant.rooms?.room_number || 'N/A'}</p><p><strong>Rent:</strong> {formatCurrency(selectedTenant.rent_amount)}</p><p><strong>Status:</strong> {selectedTenant.status}</p><p><strong>Rent status:</strong> {selectedTenant.rent_status}</p><p><strong>Move-in:</strong> {formatDate(selectedTenant.move_in_date)}</p><p><strong>Realtime:</strong> Live dashboard updates enabled</p></div></Section>
-                <Section title="Documents"><DocumentGrid documents={tenantProfile.documents} onOpen={setScreenshotUrl} /></Section>
+                <Section title="Documents"><DocumentGrid documents={tenantProfile.documents} onOpen={openTenantDocument} /></Section>
                 <Section title="Payments"><div className="space-y-2">{tenantProfile.payments.length ? tenantProfile.payments.map(payment => <p key={payment.id} className="rounded-lg bg-slate-50 p-2 text-sm">{formatDate(payment.payment_date)} - {formatCurrency(payment.amount)} - {payment.status}</p>) : <p className="text-sm text-slate-500">No payments found.</p>}</div></Section>
                 <Section title="Complaints"><div className="space-y-2">{tenantProfile.complaints.length ? tenantProfile.complaints.map(item => <p key={item.id} className="rounded-lg bg-slate-50 p-2 text-sm">{item.title} - {item.status}</p>) : <p className="text-sm text-slate-500">No complaints found.</p>}</div></Section>
                 <Section title="Room Changes / Vacate History"><div className="grid gap-3 md:grid-cols-2"><div>{tenantProfile.roomChanges.length ? tenantProfile.roomChanges.map(item => <p key={item.id} className="rounded-lg bg-slate-50 p-2 text-sm">{item.old_room?.room_number} to {item.new_room?.room_number} - {item.status}</p>) : <p className="text-sm text-slate-500">No room changes.</p>}</div><div>{tenantProfile.vacates.length ? tenantProfile.vacates.map(item => <p key={item.id} className="rounded-lg bg-slate-50 p-2 text-sm">{formatDate(item.expected_check_out)} - {item.status}</p>) : <p className="text-sm text-slate-500">No vacate history.</p>}</div></div></Section>

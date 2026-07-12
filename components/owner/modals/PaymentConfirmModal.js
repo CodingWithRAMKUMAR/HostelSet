@@ -10,9 +10,7 @@ export default function PaymentConfirmModal({ tenant, onConfirm, onCancel, isSub
           {tenant?.payment_screenshot && (
             <div className="mt-2">
               <p className="text-xs text-gray-500 mb-1">Payment Screenshot:</p>
-              <button onClick={() => onViewScreenshot(tenant.payment_screenshot)}>
-                <img src={tenant.payment_screenshot} alt="Payment proof" className="w-full rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-80" />
-              </button>
+              <button onClick={() => onViewScreenshot({ record: tenant, field: 'payment_screenshot' })} className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">Open proof</button>
             </div>
           )}
         </div>
