@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from '../../../lib/server/supabaseAdmin'
 import { logger } from '../../../lib/logger'
 import { getLoginUrl, getResetPasswordUrl } from '../../../lib/server/appUrl'
+import { safeProfilePhotoPath } from '../../../lib/profilePhoto'
 
 async function sendApprovalNotification({ email, name }) {
   const apiKey = process.env.BREVO_API_KEY
@@ -114,7 +115,7 @@ export default async function handler(req, res) {
     if (type === 'application') {
       const { data: application, error: applicationError } = await supabaseAdmin
         .from('applications')
-        .select('id,email,phone,name,user_id,status,property_id')
+        .select('id,email,phone,name,user_id,status,property_id,photo')
         .eq('id', id)
         .single()
       if (applicationError) throw applicationError
@@ -169,9 +170,12 @@ export default async function handler(req, res) {
       const response = await caller.rpc('approve_application_atomic', { p_application_id: id })
       if (response.error) throw response.error
       result = response.data
+      if (result?.tenant_id && safeProfilePhotoPath(application.photo, application.property_id)) {
+        await supabaseAdmin.from('tenants').update({ profile_photo_path: application.photo }).eq('id', result.tenant_id)
+      }
     } else {
       const { data: booking, error: bookingError } = await supabaseAdmin.from('pre_bookings')
-        .select('email, phone, name, user_id, property_id').eq('id', id).single()
+        .select('email, phone, name, user_id, property_id, photo').eq('id', id).single()
       if (bookingError) throw bookingError
       await assertCanApproveProperty(actor, booking.property_id)
       let userId = booking.user_id
@@ -201,6 +205,9 @@ export default async function handler(req, res) {
       const response = await caller.rpc('approve_prebooking_atomic', { p_booking_id: id, p_user_id: userId })
       if (response.error) throw response.error
       result = response.data
+      if (result?.tenant_id && safeProfilePhotoPath(booking.photo, booking.property_id)) {
+        await supabaseAdmin.from('tenants').update({ profile_photo_path: booking.photo }).eq('id', result.tenant_id)
+      }
     }
 
     // Approval is committed independently of the informational notification.

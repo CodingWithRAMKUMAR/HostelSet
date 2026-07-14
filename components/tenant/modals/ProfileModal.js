@@ -32,6 +32,8 @@ export default function ProfileModal({
   rentStatus = {},
   profileForm = {},
   setProfileForm = () => {},
+  profilePhotoPreview = '',
+  onProfilePhotoChange = () => {},
   editProfile = false,
   setEditProfile = () => {},
   isSubmitting = false,
@@ -41,7 +43,8 @@ export default function ProfileModal({
   const isDirty = editProfile && (
     (profileForm.name || '') !== (tenant?.name || '') ||
     (profileForm.phone || '') !== (tenant?.phone || '') ||
-    (profileForm.blood_group || '') !== (tenant?.blood_group || '')
+    (profileForm.blood_group || '') !== (tenant?.blood_group || '') ||
+    Boolean(profileForm.profilePhotoFile)
   )
   const confirmDiscard = useUnsavedChangesGuard(isDirty && !isSubmitting)
   const requestCancel = () => { if (!isSubmitting && confirmDiscard()) onCancel() }
@@ -83,6 +86,16 @@ export default function ProfileModal({
             </div>
           ) : (
             <div className="space-y-2.5">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <label htmlFor="tenant-profile-photo" className="mb-2 block text-xs font-bold text-slate-700">Profile photo</label>
+                <div className="flex items-center gap-3">
+                  <TenantProfilePhoto src={profilePhotoPreview || profilePhotoUrl} name={tenant?.name} />
+                  <div className="min-w-0 flex-1">
+                    <input id="tenant-profile-photo" name="profile_photo" type="file" accept="image/jpeg,image/png,image/webp" className="block w-full text-xs text-slate-700 file:mr-2 file:rounded-lg file:border-0 file:bg-orange-100 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-orange-700" onChange={onProfilePhotoChange} />
+                    <p className="mt-1 text-[11px] text-slate-500">JPEG, PNG, or WEBP image under 5MB. Not an ID document.</p>
+                  </div>
+                </div>
+              </div>
               <div>
                 <label htmlFor="tenant-profile-name" className="mb-1 block text-xs font-bold text-slate-700">Full name</label>
                 <input id="tenant-profile-name" name="name" type="text" className={inputClass} value={profileForm.name || ''} onChange={e => setProfileForm({ ...profileForm, name: e.target.value })} />

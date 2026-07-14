@@ -16,11 +16,11 @@ export function useOwnerPayments(property, tenants, archivedTenants, setStats, l
       setAllPayments([]);
       return;
     }
-    const pendingQuery = supabase.from('payment_history').select('*, tenants(name, phone, email, room_id, rooms(room_number))').eq('status', 'payment_pending').order('payment_date', { ascending: false });
+    const pendingQuery = supabase.from('payment_history').select('*, tenants(id, name, phone, email, room_id, profile_photo_path, rooms(room_number))').eq('status', 'payment_pending').order('payment_date', { ascending: false });
     const { data: pending, error: pendingError } = activeTenantIds.length ? await pendingQuery.in('tenant_id', activeTenantIds) : { data: [], error: null };
     if (pendingError) { console.error('Pending payments load failed:', pendingError); return; }
     setPendingRentPayments(pending || []);
-    const { data: all, error: allError } = await supabase.from('payment_history').select('*, tenants(name, phone, email, room_id, rooms(room_number))').in('tenant_id', historyTenantIds).order('payment_date', { ascending: false }).limit(100);
+    const { data: all, error: allError } = await supabase.from('payment_history').select('*, tenants(id, name, phone, email, room_id, profile_photo_path, rooms(room_number))').in('tenant_id', historyTenantIds).order('payment_date', { ascending: false }).limit(100);
     if (allError) { console.error('Payment history load failed:', allError); return; }
     setAllPayments(all || []);
   };

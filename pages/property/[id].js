@@ -64,6 +64,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const [applyForm, setApplyForm] = useState({ name: '', phone: '', email: '', bloodGroup: '', message: '' })
   const [idProof, setIdProof] = useState(null)
   const [photo, setPhoto] = useState(null)
+  const [photoPreview, setPhotoPreview] = useState('')
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [activeTab, setActiveTab] = useState('rooms')
   const [ownerSettings, setOwnerSettings] = useState(() => settingsFor(initialProperty, initialSettings))
@@ -87,6 +88,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const [prebookForm, setPrebookForm] = useState({ name: '', phone: '', email: '', move_in_date: '', message: '' })
   const [prebookIdProof, setPrebookIdProof] = useState(null)
   const [prebookPhoto, setPrebookPhoto] = useState(null)
+  const [prebookPhotoPreview, setPrebookPhotoPreview] = useState('')
   const [agreeTerms, setAgreeTerms] = useState(false)
   const [prebookPolicyConsent, setPrebookPolicyConsent] = useState(false)
   const [prebookConsentError, setPrebookConsentError] = useState('')
@@ -121,6 +123,18 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const resolvedPropertyId = property?.id || (UUID_PATTERN.test(String(id || '')) ? id : null)
 
   useEffect(() => () => { clearTimeout(redirectTimerRef.current); clearTimeout(copyFeedbackTimerRef.current) }, [])
+  useEffect(() => {
+    if (!photo) { setPhotoPreview(''); return undefined }
+    const url = URL.createObjectURL(photo)
+    setPhotoPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [photo])
+  useEffect(() => {
+    if (!prebookPhoto) { setPrebookPhotoPreview(''); return undefined }
+    const url = URL.createObjectURL(prebookPhoto)
+    setPrebookPhotoPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [prebookPhoto])
 
   const copyPaymentDestination = async (value, message) => {
     if (!value) return
@@ -1202,6 +1216,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                 <div>
                   <label className="block text-sm font-semibold mb-1">Passport Size Photo *</label>
                   <input type="file" accept="image/*" onChange={e => handleFileChange(e, setPhoto)} className="w-full" />
+                  {photoPreview && <img src={photoPreview} alt="Selected profile photo preview" className="mt-2 h-20 w-20 rounded-full object-cover" />}
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex items-start gap-2"><input type="checkbox" id="applicationPolicyConsent" checked={applicationConsent} onChange={event => { setApplicationConsent(event.target.checked); if (event.target.checked) setApplicationConsentError('') }} className="mt-1" /><label htmlFor="applicationPolicyConsent" className="text-sm text-slate-700">I have read and agree to HostelSet’s <Link href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 underline">Privacy Policy</Link> and <Link href="/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 underline">Terms &amp; Conditions</Link>.</label></div>
@@ -1322,6 +1337,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                 <div>
                   <label className="block text-sm font-semibold mb-1">Passport Size Photo *</label>
                   <input type="file" accept="image/*" onChange={e => handleFileChange(e, setPrebookPhoto)} className="w-full" />
+                  {prebookPhotoPreview && <img src={prebookPhotoPreview} alt="Selected pre-booking profile photo preview" className="mt-2 h-20 w-20 rounded-full object-cover" />}
                 </div>
                 <div className="flex items-start gap-2">
                   <input type="checkbox" id="prebookTerms" checked={agreeTerms} onChange={e => setAgreeTerms(e.target.checked)} className="mt-1" />

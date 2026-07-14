@@ -4,7 +4,7 @@ import { formatCurrency } from '../../../lib/utils'
 
 function Header({ title, subtitle, avatar, onProfile }) {
   return (
-    <MobileTopbar title={title} subtitle={subtitle} isHome onProfile={onProfile} avatar={avatar} fallbackIcon="users" />
+    <MobileTopbar title={title} subtitle={subtitle} isHome onProfile={onProfile} avatar={avatar} fallbackIcon="users" stablePaint />
   )
 }
 

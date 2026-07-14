@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { clearHostelSetSessionCache, getRestoredSession, supabase } from '../lib/supabase';
-import { calculateMembershipStatus, calculateRentDueStatus } from '../lib/utils';
+import { calculateMembershipStatus } from '../lib/utils';
+import { enrichTenantRentStatus } from '../lib/tenantRentStatus';
 import toast from 'react-hot-toast';
 
 const OwnerContext = createContext();
@@ -28,6 +29,7 @@ export function OwnerProvider({ children }) {
   const [roomMonthlyIncome, setRoomMonthlyIncome] = useState({});
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const autoRefreshRef = useRef(null);
+  const tenantPhotoCacheRef = useRef(new Map());
 
   const updateMembershipFromProperty = (propertyData) => {
     const membership = calculateMembershipStatus(propertyData);
@@ -35,6 +37,35 @@ export function OwnerProvider({ children }) {
     setMembershipStatus(membership.status);
     setMembershipExpiry(membership.expiryDate);
     setDaysLeft(membership.daysLeft);
+  };
+
+  const loadTenantPhotoUrls = async (tenantRows) => {
+    const ids = tenantRows.map(tenant => tenant.id).filter(Boolean);
+    if (!ids.length) return tenantRows;
+    const cacheKey = ids.map(id => {
+      const tenant = tenantRows.find(item => item.id === id);
+      return `${id}:${tenant?.profile_photo_path || ''}:${tenant?.updated_at || ''}`;
+    }).join('|');
+    if (tenantPhotoCacheRef.current.has(cacheKey)) {
+      const urls = tenantPhotoCacheRef.current.get(cacheKey);
+      return tenantRows.map(tenant => ({ ...tenant, profilePhotoUrl: urls[tenant.id] || null }));
+    }
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch('/api/owner/tenant-profile-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({ action:'batch-sign', tenantIds: ids }),
+      });
+      if (!response.ok) return tenantRows;
+      const data = await response.json();
+      const urls = data?.urls || {};
+      tenantPhotoCacheRef.current.set(cacheKey, urls);
+      if (tenantPhotoCacheRef.current.size > 25) tenantPhotoCacheRef.current.delete(tenantPhotoCacheRef.current.keys().next().value);
+      return tenantRows.map(tenant => ({ ...tenant, profilePhotoUrl: urls[tenant.id] || null }));
+    } catch {
+      return tenantRows;
+    }
   };
 
   const loadData = useCallback(async (isBackground = false, preferredPropertyId = null) => {
@@ -70,8 +101,12 @@ export function OwnerProvider({ children }) {
           grouped.get(payment.tenant_id).push(payment);
           return grouped;
         }, new Map());
-        const tenantsWithRoomNumber = (tenantsData || []).map(t => { const room = roomsData?.find(r => r.id === t.room_id); return { ...t, room_number: room ? room.room_number : 'N/A', dueStatus: calculateRentDueStatus(t, paymentsByTenant.get(t.id) || []) } });
-        setTenants(tenantsWithRoomNumber);
+        const tenantsWithRoomNumber = (tenantsData || []).map(t => {
+          const room = roomsData?.find(r => r.id === t.room_id);
+          const rentSummary = enrichTenantRentStatus(t, paymentsByTenant.get(t.id) || []);
+          return { ...t, room_number: room ? room.room_number : 'N/A', dueStatus: rentSummary, rentSummary };
+        });
+        setTenants(await loadTenantPhotoUrls(tenantsWithRoomNumber));
         setArchivedTenants((archivedData || []).map(tenant => {
           const latestCheckout = [...(tenant.check_out_requests || [])].sort((a, b) => new Date(b.completed_at || b.created_at) - new Date(a.completed_at || a.created_at))[0];
           return { ...tenant, room_number: roomsData?.find(room => room.id === tenant.room_id)?.room_number || 'N/A', checkout_date:tenant.notice_period_end || latestCheckout?.expected_check_out || null };

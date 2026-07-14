@@ -32,6 +32,7 @@ export default function ExistingTenantImportPage() {
   const [form, setForm] = useState(initial)
   const [idProof, setIdProof] = useState(null)
   const [profilePhoto, setProfilePhoto] = useState(null)
+  const [profilePhotoPreview, setProfilePhotoPreview] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [progress, setProgress] = useState('')
@@ -45,7 +46,15 @@ export default function ExistingTenantImportPage() {
     return () => { active = false }
   }, [router.isReady, token])
 
+  useEffect(() => () => { if (profilePhotoPreview) URL.revokeObjectURL(profilePhotoPreview) }, [profilePhotoPreview])
+
   const change = event => setForm(current => ({ ...current, [event.target.name]: event.target.value }))
+  const chooseProfilePhoto = event => {
+    const file = event.target.files?.[0] || null
+    setProfilePhoto(file)
+    if (profilePhotoPreview) URL.revokeObjectURL(profilePhotoPreview)
+    setProfilePhotoPreview(file ? URL.createObjectURL(file) : '')
+  }
   const submit = async event => {
     event.preventDefault()
     if (submitting) return
@@ -90,7 +99,11 @@ export default function ExistingTenantImportPage() {
             <label className="text-sm font-medium text-slate-700">Blood group *<select required name="bloodGroup" value={form.bloodGroup} onChange={change} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5"><option value="">Select blood group</option>{BLOOD_GROUPS.map(group => <option key={group} value={group}>{group}</option>)}</select></label>
             <label className="text-sm font-medium text-slate-700">Occupation<select required name="occupation" value={form.occupation} onChange={change} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5"><option value="">Select</option><option value="student">Student</option><option value="employee">Employee</option><option value="other">Other</option></select></label>
             <label className="text-sm font-medium text-slate-700">ID proof (image or PDF)<input required type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setIdProof(e.target.files?.[0] || null)} className="mt-1 block w-full rounded-lg border border-slate-300 p-2" /></label>
-            <label className="text-sm font-medium text-slate-700">Profile photo<input required type="file" accept="image/jpeg,image/png,image/webp" onChange={e => setProfilePhoto(e.target.files?.[0] || null)} className="mt-1 block w-full rounded-lg border border-slate-300 p-2" /></label>
+            <label className="text-sm font-medium text-slate-700">Profile photo
+              <input required type="file" accept="image/jpeg,image/png,image/webp" onChange={chooseProfilePhoto} className="mt-1 block w-full rounded-lg border border-slate-300 p-2" />
+              {profilePhotoPreview && <img src={profilePhotoPreview} alt="Selected profile photo preview" className="mt-2 h-20 w-20 rounded-full object-cover" />}
+              <span className="mt-1 block text-xs text-slate-500">JPEG, PNG, or WEBP under 5MB. This is not ID proof.</span>
+            </label>
           </div>
           <label className="mt-4 block text-sm font-medium text-slate-700">Optional notes<textarea name="notes" maxLength={2000} value={form.notes} onChange={change} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5" /></label>
           {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}

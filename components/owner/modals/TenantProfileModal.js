@@ -1,5 +1,6 @@
 import { formatCurrency, formatDate } from '../../../lib/utils'
 import { displayBloodGroup } from '../../../lib/bloodGroups'
+import { useState } from 'react'
 
 function DocumentItem({ label, record, field, onOpen }) {
   if (!record?.[field]) return null
@@ -13,7 +14,8 @@ function DocumentItem({ label, record, field, onOpen }) {
 
 const Detail = ({ label, value }) => value !== null && value !== undefined && value !== '' ? <p><strong>{label}:</strong> {value}</p> : null
 
-export default function TenantProfileModal({ tenant, application, extraDocuments = [], loading, onClose, onViewScreenshot = () => {} }) {
+export default function TenantProfileModal({ tenant, application, extraDocuments = [], loading, onClose, onViewScreenshot = () => {}, onProfilePhotoChange = () => {}, photoUpdating = false }) {
+  const [failed, setFailed] = useState(false)
   const tenantPaymentProof = tenant?.payment_screenshot ? [{ label: 'Tenant Payment Proof', record: tenant, field: 'payment_screenshot' }] : []
   const applicationDocuments = application ? [
     { label: application.source_type === 'existing_tenant_import' ? 'Profile Photo' : 'Tenant Photo', record: application, field: 'photo' },
@@ -35,8 +37,14 @@ export default function TenantProfileModal({ tenant, application, extraDocuments
         </div>
         {loading ? <div className="py-8 text-center">Loading...</div> : (
           <div className="space-y-4">
-            <div className="flex justify-center">
-              <div className="flex h-32 w-32 items-center justify-center rounded-full bg-slate-200 text-4xl font-bold text-slate-500">{(tenant?.name?.charAt(0) || 'U').toUpperCase()}</div>
+            <div className="flex flex-col items-center gap-3">
+              {tenant?.profilePhotoUrl && !failed ? <img src={tenant.profilePhotoUrl} alt={tenant?.name ? `${tenant.name} profile photo` : 'Tenant profile photo'} onError={() => setFailed(true)} className="h-32 w-32 rounded-full object-cover" /> : <div className="flex h-32 w-32 items-center justify-center rounded-full bg-slate-200 text-4xl font-bold text-slate-500">{(tenant?.name?.charAt(0) || 'U').toUpperCase()}</div>}
+              <label className="text-center text-sm font-semibold text-slate-700">
+                <span className="mb-1 block">Profile photo</span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={onProfilePhotoChange} disabled={photoUpdating} className="block max-w-xs text-xs text-slate-700 file:mr-2 file:rounded-lg file:border-0 file:bg-orange-100 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-orange-700 disabled:opacity-60" />
+                <span className="mt-1 block text-xs font-normal text-slate-500">JPEG, PNG, or WEBP under 5MB. Not an identity document.</span>
+              </label>
+              {photoUpdating && <p className="text-xs font-semibold text-orange-700">Saving photo...</p>}
             </div>
 
             <section className="border-t pt-4">

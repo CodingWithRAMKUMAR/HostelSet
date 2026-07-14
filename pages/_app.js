@@ -10,6 +10,13 @@ import { NotificationProvider } from '../context/NotificationContext'
 import { ThemeProvider } from '../context/ThemeContext'
 import { isDashboardPath } from '../lib/routeScope'
 
+function dashboardForRole(role) {
+  if (role === 'admin') return '/admin/dashboard'
+  if (role === 'owner') return '/owner/dashboard'
+  if (role === 'tenant') return '/tenant/dashboard'
+  return ''
+}
+
 function ProtectedRouteLoading() {
   return (
     <main className="min-h-screen bg-slate-50 flex items-center justify-center" aria-busy="true" aria-label="Checking session">
@@ -44,6 +51,22 @@ export default function App({ Component, pageProps }) {
     }).catch(() => {})
     return () => { active = false; subscription?.unsubscribe() }
   }, [isDashboardRoute])
+
+  useEffect(() => {
+    const publicAuthEntry = router.pathname === '/' || router.pathname === '/login' || router.pathname === '/login/[role]'
+    if (!publicAuthEntry) return undefined
+    let active = true
+    import('../lib/supabase').then(async ({ supabase, getRestoredSession, syncServerSession }) => {
+      const { data: { session } } = await getRestoredSession({ retryDelay: 100 })
+      if (!active || !session) return
+      syncServerSession(session).catch(() => {})
+      const { data: profile } = await supabase.from('users').select('role,is_active').eq('id', session.user.id).maybeSingle()
+      if (!active || !profile?.is_active) return
+      const destination = dashboardForRole(profile.role)
+      if (destination) router.replace(destination)
+    }).catch(() => {})
+    return () => { active = false }
+  }, [router])
 
   useEffect(() => {
     let active = true

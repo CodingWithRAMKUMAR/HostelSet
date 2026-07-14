@@ -18,9 +18,9 @@ function ProfileAvatar({ avatar, avatarUrl, avatarAlt, fallbackIcon }) {
   return <span>{avatar}</span>
 }
 
-export default function MobileTopbar({ title, subtitle, isHome, onBack, controls, onProfile, avatar = 'U', avatarUrl, avatarAlt, fallbackIcon, accountMenu }) {
+export default function MobileTopbar({ title, subtitle, isHome, onBack, controls, onProfile, avatar = 'U', avatarUrl, avatarAlt, fallbackIcon, accountMenu, stablePaint = false }) {
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/95 pt-[env(safe-area-inset-top)] text-white backdrop-blur lg:hidden">
+    <header className={`sticky top-0 z-50 border-b border-white/10 pt-[env(safe-area-inset-top)] text-white ${stablePaint ? 'bg-slate-950' : 'bg-slate-950/95 backdrop-blur'}`}>
       <div className="flex min-h-[44px] w-full min-w-0 items-center gap-1.5 px-2.5 py-1">
         {isHome ? (
           <div className="w-8 shrink-0 overflow-hidden">

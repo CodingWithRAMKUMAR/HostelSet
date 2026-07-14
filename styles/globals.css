@@ -664,6 +664,7 @@ textarea:focus-visible {
 .dashboard-icon-button svg { width:1.15rem; height:1.15rem; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 .dashboard-sidebar { display:none; }
 .dashboard-desktop-header { display:none; }
+.dashboard-content { min-width:0; width:100%; }
 .dashboard-account-menu { position:absolute; right:0; top:calc(100% + .65rem); z-index:100; width:min(18rem,calc(100vw - 1rem)); overflow:hidden; border:1px solid #e2e8f0; border-radius:1rem; background:#fff; color:#0f172a; box-shadow:0 20px 50px rgba(15,23,42,.25); }
 .notification-drawer { position:absolute; right:0; top:0; display:flex; height:100%; width:min(26rem,100%); min-width:0; flex-direction:column; overflow:hidden; border-left:1px solid #e2e8f0; background:#fff; box-shadow:-20px 0 60px rgba(15,23,42,.3); }
 .notification-drawer header { flex:none; border-bottom:1px solid #e2e8f0; padding:1.25rem; }
@@ -672,9 +673,10 @@ textarea:focus-visible {
 .notification-item:hover,.notification-item.unread { background:#fff7ed; }
 .notification-drawer footer { flex:none; border-top:1px solid #e2e8f0; padding:1rem; }
 
-@media (min-width:1024px) {
-  .dashboard-shell { padding-left:15rem; }
-  .dashboard-sidebar { position:fixed; inset:0 auto 0 0; z-index:60; display:flex; width:15rem; flex-direction:column; overflow:hidden; border-right:1px solid rgba(255,255,255,.08); background:linear-gradient(180deg,#0b1120,#111827); color:#cbd5e1; box-shadow:12px 0 40px rgba(2,6,23,.16); }
+@media (min-width:1280px) {
+  .dashboard-shell { box-sizing:border-box; display:flex; align-items:stretch; padding-left:0; }
+  .dashboard-sidebar { position:sticky; top:0; z-index:60; display:flex; height:100dvh; width:15rem; flex:0 0 15rem; flex-direction:column; overflow:hidden; border-right:1px solid rgba(255,255,255,.08); background:linear-gradient(180deg,#0b1120,#111827); color:#cbd5e1; box-shadow:12px 0 40px rgba(2,6,23,.16); }
+  .dashboard-content { min-width:0; flex:1 1 auto; width:auto; }
   .dashboard-sidebar-brand { display:flex; height:5rem; flex:none; align-items:center; justify-content:space-between; gap:.75rem; border-bottom:1px solid rgba(255,255,255,.08); padding:0 1.15rem; }
   .dashboard-sidebar-brand>span { border:1px solid rgba(251,146,60,.3); border-radius:999px; padding:.25rem .6rem; color:#fb923c; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
   .dashboard-sidebar-nav { min-height:0; flex:1; overflow-y:auto; padding:.9rem .7rem; }
@@ -691,10 +693,11 @@ textarea:focus-visible {
   .dashboard-desktop-header>div>div:first-child { display:none; }
   .dashboard-desktop-header>div { justify-content:flex-end; }
   .dashboard-desktop-header .dashboard-icon-button { border-color:#e2e8f0; background:#f8fafc; color:#334155; }
-  .dashboard-main { width:100%; max-width:90rem; }
+  .dashboard-main { width:100%; max-width:90rem; min-width:0; }
+  .dashboard-main > * { min-width:0; }
 }
 
-@media (max-width:1023px) {
+@media (max-width:1279px) {
   .dashboard-shell main, .dashboard-shell main * { min-width:0; }
   .dashboard-shell main section, .dashboard-shell main article, .dashboard-shell main>div { max-width:100%; }
   .dashboard-shell button { max-width:100%; }
@@ -723,8 +726,9 @@ body,
 }
 
 .dashboard-shell {
+  box-sizing: border-box;
   width: 100%;
-  max-width: 100vw;
+  max-width: 100%;
   overflow-x: hidden;
 }
 
@@ -942,7 +946,7 @@ body,
   font-size: 0;
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1279px) {
   .dashboard-shell {
     min-height: 100dvh;
     padding-bottom: 0 !important;
@@ -963,15 +967,6 @@ body,
     max-width: 100%;
   }
 
-  .dashboard-shell .grid {
-    max-width: 100%;
-  }
-
-  .dashboard-shell .rounded-2xl,
-  .dashboard-shell .rounded-xl {
-    max-width: 100%;
-  }
-
   .dashboard-shell button,
   .dashboard-shell a,
   .dashboard-shell input,
@@ -980,76 +975,12 @@ body,
     min-width: 0;
   }
 
-  .dashboard-shell [class*="gap-6"] {
-    gap: .9rem;
-  }
-
-  .dashboard-shell [class*="p-6"] {
-    padding: .9rem;
-  }
-
-  .dashboard-shell [class*="p-5"] {
-    padding: .85rem;
-  }
-
-  .dashboard-shell [class*="text-2xl"] {
-    font-size: 1.25rem;
-    line-height: 1.75rem;
-  }
-
-  .dashboard-shell [class*="text-xl"] {
-    font-size: 1rem;
-    line-height: 1.45rem;
-  }
-
-  .dashboard-shell [class*="py-12"] {
-    padding-top: 2rem;
-    padding-bottom: 2rem;
-  }
-
-  .dashboard-shell [class*="space-y-6"] > :not([hidden]) ~ :not([hidden]) {
-    margin-top: .9rem;
-  }
-
-  .dashboard-shell [class*="space-y-4"] > :not([hidden]) ~ :not([hidden]) {
-    margin-top: .75rem;
-  }
-
-  .dashboard-shell .bg-white.rounded-2xl,
-  .dashboard-shell .bg-white.rounded-xl,
-  .dashboard-shell .card,
-  .dashboard-shell .room-card {
-    border-radius: 1rem;
-  }
-
-  .dashboard-shell .shadow-sm {
-    box-shadow: 0 8px 24px rgba(15, 23, 42, .06);
-  }
-
   .dashboard-shell .flex {
     min-width: 0;
   }
 
   .dashboard-shell .flex > * {
     min-width: 0;
-  }
-
-  .dashboard-shell .flex.gap-2,
-  .dashboard-shell .flex.gap-3,
-  .dashboard-shell .flex.gap-4 {
-    flex-wrap: wrap;
-  }
-
-  .dashboard-shell .flex button {
-    white-space: normal;
-  }
-
-  .dashboard-shell .text-sm {
-    font-size: .8125rem;
-  }
-
-  .dashboard-shell .text-xs {
-    font-size: .72rem;
   }
 
   .dashboard-icon-button {
@@ -1069,15 +1000,25 @@ body,
   }
 }
 
-@media (min-width:1024px) {
+@media (min-width:1280px) {
   .dashboard-shell {
+    display: flex;
+    align-items: stretch;
+    padding-left: 0;
     background:
       radial-gradient(circle at top left, rgba(249,115,22,.08), transparent 28rem),
       linear-gradient(180deg, #f8fafc, #eef2f7);
   }
 
+  .dashboard-content {
+    min-width: 0;
+    flex: 1 1 auto;
+    width: auto;
+  }
+
   .dashboard-main {
     max-width: 82rem;
+    min-width: 0;
     padding-left: 1.5rem;
     padding-right: 1.5rem;
   }
@@ -1089,13 +1030,10 @@ body,
 
   .dashboard-sidebar {
     width: 15.5rem;
+    flex-basis: 15.5rem;
     background:
       radial-gradient(circle at 20% 0%, rgba(249,115,22,.22), transparent 12rem),
       linear-gradient(180deg,#020617,#0f172a 48%,#111827);
-  }
-
-  .dashboard-shell {
-    padding-left: 15.5rem;
   }
 }
 

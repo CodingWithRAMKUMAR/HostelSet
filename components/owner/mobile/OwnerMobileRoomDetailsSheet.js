@@ -62,7 +62,7 @@ export default function OwnerMobileRoomDetailsSheet({ room, tenants = [], onClos
   }
 
   return (
-    <div className="fixed inset-0 z-[105] bg-slate-950 text-white lg:hidden" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[105] bg-slate-950 text-white" role="dialog" aria-modal="true">
       <header className="sticky top-0 z-10 border-b border-white/10 bg-slate-950 px-3 pt-[calc(env(safe-area-inset-top)_+_0.25rem)] pb-1">
         <div className="flex min-h-[42px] items-center gap-2">
           <button type="button" onClick={editing ? () => setEditing(false) : onClose} className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10" aria-label="Back">←</button>

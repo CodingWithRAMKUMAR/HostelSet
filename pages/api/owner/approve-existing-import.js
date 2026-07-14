@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../../../lib/server/supabaseAdmin'
 import { allowPostOnly, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { logger } from '../../../lib/logger'
 import { getResetPasswordUrl } from '../../../lib/server/appUrl'
+import { safeProfilePhotoPath } from '../../../lib/profilePhoto'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -66,7 +67,7 @@ export default async function handler(req, res) {
 
     const { data: importRecord, error: importError } = await supabaseAdmin
       .from('existing_tenant_imports')
-      .select('id,property_id,user_id,full_name,phone,email,status,properties(owner_id)')
+      .select('id,property_id,user_id,full_name,phone,email,status,profile_photo,properties(owner_id)')
       .eq('id', importId)
       .single()
     if (importError || !importRecord) return res.status(404).json({ error: 'Import submission not found' })
@@ -128,6 +129,9 @@ export default async function handler(req, res) {
       p_user_id: userId,
     })
     if (approvalError) throw approvalError
+    if (data?.tenant_id && safeProfilePhotoPath(importRecord.profile_photo, importRecord.property_id)) {
+      await supabaseAdmin.from('tenants').update({ profile_photo_path: importRecord.profile_photo }).eq('id', data.tenant_id)
+    }
 
     return res.status(200).json({ success: true, tenantId: data?.tenant_id, inviteEmailSent })
   } catch (error) {

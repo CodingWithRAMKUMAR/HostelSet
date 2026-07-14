@@ -4,11 +4,38 @@ import { cleanPhoneNumber } from '../lib/utils';
 import toast from 'react-hot-toast';
 
 export function useOwnerTenants(property, rooms, tenants, setTenants, setStats, loadData) {
-  const [formData, setFormData] = useState({ name:'', phone:'', email:'', blood_group:'', rent_amount:'', room_id:'', advance_amount:'0', joining_fee:'0' });
+  const [formData, setFormData] = useState({ name:'', phone:'', email:'', blood_group:'', rent_amount:'', room_id:'', advance_amount:'0', joining_fee:'0', profile_photo_file:null });
+
+  const uploadProfilePhoto = async (tenantId, file, session) => {
+    if (!file) return null
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('Profile photo must be a JPEG, PNG, or WEBP image')
+    if (file.size > 5 * 1024 * 1024) throw new Error('Profile photo must be under 5MB')
+    const preparedResponse = await fetch('/api/owner/tenant-profile-photo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ action: 'upload-url', tenantId, contentType: file.type, size: file.size }),
+    })
+    const prepared = await preparedResponse.json().catch(() => ({}))
+    if (!preparedResponse.ok) throw new Error(prepared.error || 'Unable to prepare profile photo upload')
+    const { error: uploadError } = await supabase.storage.from('tenant-documents').uploadToSignedUrl(prepared.path, prepared.token, file, { contentType: file.type })
+    if (uploadError) throw new Error('Profile photo upload failed. Please try again.')
+    const updateResponse = await fetch('/api/owner/tenant-profile-photo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ action: 'update', tenantId, path: prepared.path }),
+    })
+    const updated = await updateResponse.json().catch(() => ({}))
+    if (!updateResponse.ok) throw new Error(updated.error || 'Unable to save profile photo')
+    return prepared.path
+  };
 
   const addTenant = async (isSubmitting, setIsSubmitting) => {
     if (isSubmitting) return;
     if (!formData.name || !formData.phone || !formData.email || !formData.blood_group || !formData.rent_amount || !formData.room_id) { toast.error('Please fill all required fields, including blood group'); return; }
+    if (formData.profile_photo_file && (!['image/jpeg', 'image/png', 'image/webp'].includes(formData.profile_photo_file.type) || formData.profile_photo_file.size > 5 * 1024 * 1024)) {
+      toast.error('Profile photo must be a JPEG, PNG, or WEBP image under 5MB');
+      return;
+    }
     const cleanPhone = cleanPhoneNumber(formData.phone);
     if (cleanPhone.length !== 10) { toast.error('Enter valid 10-digit phone number'); return; }
     const selectedRoom = rooms.find(r => r.id === formData.room_id);
@@ -42,8 +69,15 @@ export function useOwnerTenants(property, rooms, tenants, setTenants, setStats, 
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Tenant registration failed');
+      if (formData.profile_photo_file && result.tenantId) {
+        try {
+          await uploadProfilePhoto(result.tenantId, formData.profile_photo_file, session);
+        } catch (photoError) {
+          toast.error(`Tenant added, but profile photo was not saved: ${photoError.message}`);
+        }
+      }
       toast.success(result.emailSent ? `Tenant "${formData.name}" added and invited!` : `Tenant "${formData.name}" added. Password email can be resent.`);
-      setFormData({ name:'', phone:'', email:'', blood_group:'', rent_amount:'', room_id:'', advance_amount:'0', joining_fee:'0' });
+      setFormData({ name:'', phone:'', email:'', blood_group:'', rent_amount:'', room_id:'', advance_amount:'0', joining_fee:'0', profile_photo_file:null });
       await loadData(true);
     } catch (error) { toast.error('Failed to add tenant: ' + error.message); }
     finally { setIsSubmitting(false); }

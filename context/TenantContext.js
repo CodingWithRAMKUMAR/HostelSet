@@ -28,7 +28,7 @@ export function TenantProvider({ children }) {
 
     const { data: { session } } = await supabase.auth.getSession();
     const userScope = session?.user?.id || 'anonymous';
-    const cacheKey = `${userScope}:${tenantData.id}:${tenantData.property_id}:${tenantData.updated_at || tenantData.move_in_date || ''}`;
+    const cacheKey = `${userScope}:${tenantData.id}:${tenantData.property_id}:${tenantData.profile_photo_path || ''}:${tenantData.updated_at || tenantData.move_in_date || ''}`;
     if (profilePhotoCacheRef.current.has(cacheKey)) {
       const cachedUrl = profilePhotoCacheRef.current.get(cacheKey);
       setProfilePhotoUrl(cachedUrl);

@@ -20,6 +20,7 @@ import { useRoomChange } from '../../hooks/useRoomChange'
 
 import { calculateRentDueStatus, formatCurrency, formatDate, formatRentDueLabel, getSharingDetails } from '../../lib/utils'
 import { normalizeBloodGroup } from '../../lib/bloodGroups'
+import { uploadProfilePhotoWithSignedUrl, validateProfilePhotoFile } from '../../lib/profilePhotos'
 
 // Content Components (static)
 import OverviewSection from '../../components/tenant/OverviewSection'
@@ -120,11 +121,16 @@ function TenantDashboardContent() {
   }
   const [editProfile, setEditProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({ name:'', phone:'', email:'', blood_group:'' })
+  const [profilePhotoPreview, setProfilePhotoPreview] = useState('')
   const [ratingHover, setRatingHover] = useState(0)
   const [paymentScreenshot, setPaymentScreenshot] = useState(null)
   const [paymentTransactionId, setPaymentTransactionId] = useState('')
   const [showScreenshotModal, setShowScreenshotModal] = useState(false)
   const [screenshotUrl, setScreenshotUrl] = useState('')
+
+  useEffect(() => () => {
+    if (profilePhotoPreview) URL.revokeObjectURL(profilePhotoPreview)
+  }, [profilePhotoPreview])
   const hasOpenOverlay = showComplaintModal || showPaymentModal || showVacateModal || showProfileModal || showRoomChangeModal || showScreenshotModal || profileMenuOpen || Boolean(mobileMenu)
   useBodyScrollLock(hasOpenOverlay)
 
@@ -177,9 +183,33 @@ function TenantDashboardContent() {
 
   // ----- Profile -----
   const openProfile = () => {
+    if (profilePhotoPreview) URL.revokeObjectURL(profilePhotoPreview)
     setProfileForm({ name: tenant?.name || '', phone: tenant?.phone || '', email: tenant?.email || '', blood_group: tenant?.blood_group || '' })
+    setProfilePhotoPreview('')
     setEditProfile(false)
     setShowProfileModal(true)
+  }
+
+  const handleProfilePhotoChange = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const validationError = validateProfilePhotoFile(file)
+    if (validationError) { toast.error(validationError); return }
+    if (profilePhotoPreview) URL.revokeObjectURL(profilePhotoPreview)
+    setProfilePhotoPreview(URL.createObjectURL(file))
+    setProfileForm(current => ({ ...current, profilePhotoFile: file }))
+  }
+
+  const uploadTenantProfilePhoto = async (file) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const uploadedPath = await uploadProfilePhotoWithSignedUrl('/api/tenant/profile-photo', file)
+    const updateResponse = await fetch('/api/tenant/profile-photo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ action: 'update', path: uploadedPath }),
+    })
+    const updated = await updateResponse.json().catch(() => ({}))
+    if (!updateResponse.ok) throw new Error(updated.error || 'Could not update profile photo')
   }
 
   const updateProfile = async () => {
@@ -190,10 +220,12 @@ function TenantDashboardContent() {
     try {
       const { error } = await supabase.rpc('update_tenant_profile', { p_name:profileForm.name, p_phone:profileForm.phone, p_blood_group:normalizeBloodGroup(profileForm.blood_group) })
       if (error) throw error
+      if (profileForm.profilePhotoFile) await uploadTenantProfilePhoto(profileForm.profilePhotoFile)
       toast.success('Profile updated successfully!')
       setEditProfile(false)
+      setProfilePhotoPreview('')
       await refreshData(true)
-    } catch (error) { toast.error('Failed to update profile') }
+    } catch (error) { toast.error(error.message || 'Failed to update profile') }
     finally { setIsSubmitting(false) }
   }
 
@@ -609,11 +641,13 @@ function TenantDashboardContent() {
             rentStatus={rentStatus}
             profileForm={profileForm}
             setProfileForm={setProfileForm}
+            profilePhotoPreview={profilePhotoPreview}
+            onProfilePhotoChange={handleProfilePhotoChange}
             editProfile={editProfile}
             setEditProfile={setEditProfile}
             isSubmitting={isSubmitting}
             onUpdate={updateProfile}
-            onCancel={() => setShowProfileModal(false)}
+            onCancel={() => { if (profilePhotoPreview) URL.revokeObjectURL(profilePhotoPreview); setShowProfileModal(false); setProfilePhotoPreview('') }}
           />
         )}
       </AnimatePresence>

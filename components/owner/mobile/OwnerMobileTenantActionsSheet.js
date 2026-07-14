@@ -13,7 +13,7 @@ export default function OwnerMobileTenantActionsSheet({ tenant, onClose, onColle
   ]
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-end bg-black/60 lg:hidden" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="fixed inset-0 z-[110] flex items-end bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="w-full rounded-t-3xl border border-white/10 bg-slate-950 p-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] text-white shadow-2xl" onClick={event => event.stopPropagation()}>
         <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-white/20" />
         <div className="mb-3 flex items-center gap-2">

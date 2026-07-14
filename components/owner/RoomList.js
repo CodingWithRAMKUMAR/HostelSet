@@ -4,6 +4,14 @@ import { useState } from 'react';
 import { formatCurrency, getSharingDetails } from '../../lib/utils';
 import RoomActionMenu from './RoomActionMenu';
 
+function ResidentAvatar({ tenant }) {
+  const [failed, setFailed] = useState(false)
+  if (tenant.profilePhotoUrl && !failed) {
+    return <img src={tenant.profilePhotoUrl} alt={tenant.name ? `${tenant.name} profile photo` : 'Resident profile photo'} onError={() => setFailed(true)} className="h-5 w-5 shrink-0 rounded-full object-cover" title={tenant.name} />
+  }
+  return <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white" title={tenant.name}>{tenant.name?.charAt(0) || '?'}</span>
+}
+
 export default function RoomList({ 
   rooms, 
   tenants, 
@@ -78,9 +86,7 @@ export default function RoomList({
 
             <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
               <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-                {occupants.slice(0, 3).map((t) => (
-                  <span key={t.id} className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white" title={t.name}>{t.name?.charAt(0) || '?'}</span>
-                ))}
+                {occupants.slice(0, 3).map((t) => <ResidentAvatar key={t.id} tenant={t} />)}
                 <span className="min-w-0 truncate text-[11px] text-slate-500">{occupants.length ? occupants.slice(0, 2).map(t => t.name).join(', ') : 'No residents'}{occupants.length > 2 ? ` +${occupants.length - 2}` : ''}</span>
               </div>
               <RoomActionMenu room={room} open={openRoomMenu === room.id} onToggle={open => setOpenRoomMenu(open ? room.id : null)} onEdit={onRoomClick} deleteDisabled={room.current_occupants > 0} disabled={isSubmitting} onDelete={selected => { if (confirm(`Are you sure you want to delete Room ${selected.room_number}?`)) onDeleteRoom(selected.id) }} />

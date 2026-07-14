@@ -6,6 +6,7 @@ import { allowPostOnly, requireJson, setPrivateApiResponse } from '../../../lib/
 import { logger } from '../../../lib/logger'
 import { getResetPasswordUrl } from '../../../lib/server/appUrl'
 import { normalizeBloodGroup } from '../../../lib/bloodGroups'
+import { isIdentityDocumentPath, safeProfilePhotoPath } from '../../../lib/profilePhoto'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -44,6 +45,7 @@ export default async function handler(req, res) {
   const monthlyRent = Number(req.body?.monthlyRent)
   const advanceMonths = Number(req.body?.advanceMonths)
   const joiningFee = Number(req.body?.joiningFee)
+  const profilePhotoPath = cleanText(req.body?.profilePhotoPath, 1024)
 
   if (!UUID_PATTERN.test(propertyId) || !UUID_PATTERN.test(roomId) || !name || !EMAIL_PATTERN.test(email) || phone.length !== 10) {
     return res.status(400).json({ error: 'Provide valid tenant and room details' })
@@ -80,6 +82,17 @@ export default async function handler(req, res) {
       p_joining_fee: joiningFee,
     })
     if (error) throw error
+    if (profilePhotoPath) {
+      if (isIdentityDocumentPath(profilePhotoPath) || !safeProfilePhotoPath(profilePhotoPath, propertyId)) {
+        throw new Error('Profile photo upload is invalid')
+      }
+      const { error: photoError } = await supabaseAdmin
+        .from('tenants')
+        .update({ profile_photo_path: profilePhotoPath, updated_at: new Date().toISOString() })
+        .eq('id', data?.tenant_id)
+        .eq('property_id', propertyId)
+      if (photoError) throw photoError
+    }
 
     let emailSent = true
     const redirectTo = getResetPasswordUrl()

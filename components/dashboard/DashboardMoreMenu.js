@@ -64,7 +64,7 @@ export default function DashboardMoreMenu({ open, title = 'More', subtitle, item
   }
 
   return (
-    <div className="dashboard-more-overlay lg:hidden" role="presentation">
+    <div className="dashboard-more-overlay" role="presentation">
       <button type="button" className="dashboard-more-backdrop" onClick={onClose} aria-label="Close menu" />
       <aside role="dialog" aria-modal="true" aria-labelledby="dashboard-more-title" className="dashboard-more-drawer">
         <header className="dashboard-more-header">

@@ -1,11 +1,38 @@
 import { formatCurrency, getSharingDetails } from '../../../lib/utils'
 import { BLOOD_GROUPS } from '../../../lib/bloodGroups'
 import { useBodyScrollLock } from '../../../hooks/useBodyScrollLock'
+import { useEffect, useState } from 'react'
 
 export default function AddTenantModal({ formData, setFormData, rooms = [], onAdd, onCancel, isSubmitting }) {
   useBodyScrollLock(true)
   const availableRooms = rooms.filter(r => r.current_occupants < r.capacity)
   const inputClass = 'h-9 w-full rounded-xl border border-gray-200 px-3 text-sm'
+  const [preview, setPreview] = useState('')
+  const [photoError, setPhotoError] = useState('')
+
+  useEffect(() => {
+    if (!formData.profile_photo_file) { setPreview(''); return undefined }
+    const url = URL.createObjectURL(formData.profile_photo_file)
+    setPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [formData.profile_photo_file])
+
+  const choosePhoto = event => {
+    const file = event.target.files?.[0] || null
+    setPhotoError('')
+    if (!file) { setFormData({ ...formData, profile_photo_file:null }); return }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setPhotoError('Use a JPEG, PNG, or WEBP image.')
+      event.target.value = ''
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError('Profile photo must be under 5MB.')
+      event.target.value = ''
+      return
+    }
+    setFormData({ ...formData, profile_photo_file:file })
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-2 pt-[calc(env(safe-area-inset-top)_+_0.5rem)] sm:items-center sm:p-4" onClick={onCancel}>
@@ -17,6 +44,15 @@ export default function AddTenantModal({ formData, setFormData, rooms = [], onAd
           <input type="text" placeholder="Full Name *" className={inputClass} value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
           <input type="tel" placeholder="Phone Number *" className={inputClass} value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} maxLength={10} />
           <input type="email" placeholder="Email Address * (required for login)" className={inputClass} value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} required />
+          <div className="rounded-xl border border-slate-200 p-2">
+            <label htmlFor="owner-add-tenant-photo" className="block text-xs font-bold text-slate-700">Profile photo</label>
+            <p className="mb-2 text-[11px] text-slate-500">JPEG, PNG, or WEBP under 5MB. This is not ID proof.</p>
+            <div className="flex items-center gap-3">
+              {preview ? <img src={preview} alt="Selected tenant profile preview" className="h-14 w-14 rounded-full object-cover" /> : <span className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-lg font-bold text-white">{formData.name?.charAt(0) || '?'}</span>}
+              <input id="owner-add-tenant-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={choosePhoto} className="min-w-0 flex-1 text-xs" />
+            </div>
+            {photoError && <p className="mt-1 text-xs font-semibold text-red-600" role="alert">{photoError}</p>}
+          </div>
           <label className="block text-xs font-bold text-slate-700">Blood group *
             <select required className={`${inputClass} mt-1 bg-white`} value={formData.blood_group} onChange={(e) => setFormData({...formData, blood_group: e.target.value})}>
               <option value="">Select blood group</option>

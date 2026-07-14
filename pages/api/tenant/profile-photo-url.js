@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../../lib/server/supabaseAdmin'
 import { allowPostOnly, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { logger } from '../../../lib/logger'
+import { safeLegacyProfilePhotoPath, safeTenantProfilePhotoPath } from '../../../lib/profilePhoto'
 
 const COOKIE_NAME = 'hostelset_access_token'
 const TENANT_STATUSES = ['active', 'notice_period', 'payment_pending']
@@ -25,10 +26,13 @@ function safePhotoPath(source, propertyId) {
   if (!source?.path || !propertyId) return ''
   const path = String(source.path)
   if (!path || path.startsWith('/') || path.includes('..')) return ''
-  if (source.type === 'existing_tenant_import') {
-    return path.startsWith(`${propertyId}/imports/`) ? path : ''
+  if (source.type === 'tenant_profile') {
+    return safeTenantProfilePhotoPath(path, propertyId) || ''
   }
-  return path.startsWith(`${propertyId}/photos/`) ? path : ''
+  if (source.type === 'existing_tenant_import') {
+    return safeLegacyProfilePhotoPath(path, propertyId, 'existing_tenant_import') || ''
+  }
+  return safeLegacyProfilePhotoPath(path, propertyId, source.type) || ''
 }
 
 export default async function handler(req, res) {
@@ -55,7 +59,7 @@ export default async function handler(req, res) {
 
     const { data: tenant, error: tenantError } = await supabaseAdmin
       .from('tenants')
-      .select('id,user_id,property_id,phone,email,status')
+      .select('id,user_id,property_id,phone,email,status,profile_photo_path')
       .eq('user_id', auth.user.id)
       .in('status', TENANT_STATUSES)
       .maybeSingle()
@@ -97,6 +101,7 @@ export default async function handler(req, res) {
     const application = applicationResult.data?.[0]
     const preBooking = preBookingResult.data?.[0]
     const candidates = [
+      tenant.profile_photo_path && { type: 'tenant_profile', createdAt: new Date(), path: tenant.profile_photo_path },
       imported && { type: 'existing_tenant_import', createdAt: imported.processed_at, path: firstPresent(imported, ['profile_photo']) },
       application && { type: 'application', createdAt: application.created_at, path: application.photo },
       preBooking && { type: 'pre_booking', createdAt: preBooking.created_at, path: preBooking.photo },
