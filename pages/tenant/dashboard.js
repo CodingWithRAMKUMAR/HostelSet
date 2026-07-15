@@ -32,7 +32,7 @@ import DashboardSidebar from '../../components/dashboard/DashboardSidebar'
 import DashboardIcon from '../../components/dashboard/DashboardIcon'
 import AccountMenu from '../../components/dashboard/AccountMenu'
 import { resetDashboardScroll } from '../../lib/dashboardScroll'
-import { buildDashboardHref, dashboardHrefToPath, isCanonicalDashboardQuery, resolveDashboardQuery } from '../../lib/dashboardRouting'
+import { buildDashboardHref, dashboardHrefToPath, isCanonicalDashboardQuery, pushDashboardHistory, replaceDashboardHistory, resolveDashboardQuery } from '../../lib/dashboardRouting'
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 import TenantMobileDashboard from '../../components/tenant/mobile/TenantMobileDashboard'
 import TenantMobilePayments from '../../components/tenant/mobile/TenantMobilePayments'
@@ -118,7 +118,7 @@ function TenantDashboardContent() {
       console.warn('[HostelSet] Unknown tenant dashboard view key:', tab)
     }
     if (nextTab !== tab) {
-      router.replace(buildDashboardHref('tenant', 'overview', router.query), undefined, { shallow: true, scroll: false })
+      replaceDashboardHistory(router, buildDashboardHref('tenant', 'overview', router.query))
       setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll()
       return
     }
@@ -130,7 +130,7 @@ function TenantDashboardContent() {
     const targetPath = dashboardHrefToPath(href)
     if (router.asPath === targetPath) return
     dashboardNavigationStackRef.current.push(activeTab)
-    router.push(href, undefined, { shallow: true, scroll: false })
+    pushDashboardHistory(router, href)
     setActiveTab(nextTab)
     setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll()
   }
@@ -142,7 +142,7 @@ function TenantDashboardContent() {
       return
     }
     if (activeTab !== 'overview') {
-      router.replace(buildDashboardHref('tenant', 'overview', router.query), undefined, { shallow: true, scroll: false })
+      replaceDashboardHistory(router, buildDashboardHref('tenant', 'overview', router.query))
       setActiveTab('overview')
       resetDashboardScroll()
     }
@@ -166,7 +166,10 @@ function TenantDashboardContent() {
     if (!router.isReady) return
     const resolved = resolveDashboardQuery('tenant', router.query)
     if (!isCanonicalDashboardQuery('tenant', router.query)) {
-      router.replace(buildDashboardHref('tenant', resolved.view, router.query), undefined, { shallow: true, scroll: false })
+      replaceDashboardHistory(router, buildDashboardHref('tenant', resolved.view, router.query))
+      setActiveTab(resolved.view)
+      setMobileMenu(null)
+      resetDashboardScroll()
       return
     }
     setActiveTab(resolved.view)

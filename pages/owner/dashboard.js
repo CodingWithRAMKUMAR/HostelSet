@@ -10,7 +10,7 @@ import BrandLogo from '../../components/BrandLogo';
 import NotificationBell from '../../components/common/NotificationBell';
 import ThemeToggle from '../../components/common/ThemeToggle';
 import { formatCurrency } from '../../lib/utils';
-import { buildDashboardHref, dashboardHrefToPath, isCanonicalDashboardQuery, resolveOwnerDashboardQuery } from '../../lib/dashboardRouting';
+import { buildDashboardHref, dashboardHrefToPath, isCanonicalDashboardQuery, pushDashboardHistory, replaceDashboardHistory, resolveOwnerDashboardQuery } from '../../lib/dashboardRouting';
 import { filterTenantsByRentStatus, summarizeTenantRentStatuses } from '../../lib/tenantRentStatus';
 
 // Modular Imports
@@ -187,7 +187,7 @@ function OwnerDashboardContent() {
     if (!OWNER_VIEW_SET.has(nextTab)) {
       if (process.env.NODE_ENV !== 'production') console.warn(`[OwnerDashboard] Unknown owner view key: ${tab}`);
       const fallbackHref = buildDashboardHref('owner', OWNER_VIEW_KEYS.OVERVIEW, router.query)
-      router.replace(fallbackHref, undefined, { shallow: true, scroll: false })
+      replaceDashboardHistory(router, fallbackHref)
       return;
     }
     if (!router.isReady || nextTab === activeTab) {
@@ -199,7 +199,7 @@ function OwnerDashboardContent() {
     const targetPath = dashboardHrefToPath(href)
     if (router.asPath === targetPath) return;
     dashboardNavigationStackRef.current.push(activeTab)
-    router.push(href, undefined, { shallow: true, scroll: false })
+    pushDashboardHistory(router, href)
     setActiveTab(nextTab);
     setMobileMenu(null);
     setProfileMenuOpen(false);
@@ -214,7 +214,7 @@ function OwnerDashboardContent() {
       return;
     }
     if (activeTab !== OWNER_VIEW_KEYS.OVERVIEW) {
-      router.replace(buildDashboardHref('owner', OWNER_VIEW_KEYS.OVERVIEW, router.query), undefined, { shallow: true, scroll: false });
+      replaceDashboardHistory(router, buildDashboardHref('owner', OWNER_VIEW_KEYS.OVERVIEW, router.query));
       setActiveTab(OWNER_VIEW_KEYS.OVERVIEW);
       resetDashboardScroll();
     }
@@ -240,7 +240,11 @@ function OwnerDashboardContent() {
     if (!router.isReady) return
     const resolved = resolveOwnerDashboardQuery(router.query)
     if (!isCanonicalDashboardQuery('owner', router.query)) {
-      router.replace(buildDashboardHref('owner', resolved.view, router.query), undefined, { shallow: true, scroll: false })
+      replaceDashboardHistory(router, buildDashboardHref('owner', resolved.view, router.query))
+      setActiveTab(resolved.view)
+      setFocusedRequestId(resolved.requestId)
+      setMobileMenu(null)
+      resetDashboardScroll()
       return
     }
     setActiveTab(resolved.view)

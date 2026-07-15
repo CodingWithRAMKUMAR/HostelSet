@@ -35,7 +35,7 @@ import MobileBottomNav from '../../components/dashboard/MobileBottomNav';
 import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu';
 import AccountMenu from '../../components/dashboard/AccountMenu';
 import { resetDashboardScroll } from '../../lib/dashboardScroll';
-import { buildDashboardHref, dashboardHrefToPath, isCanonicalDashboardQuery, resolveDashboardQuery } from '../../lib/dashboardRouting';
+import { buildDashboardHref, dashboardHrefToPath, isCanonicalDashboardQuery, pushDashboardHistory, replaceDashboardHistory, resolveDashboardQuery } from '../../lib/dashboardRouting';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import AdminMobileDashboard from '../../components/admin/mobile/AdminMobileDashboard';
 import AdminMobileSearch from '../../components/admin/mobile/AdminMobileSearch';
@@ -210,7 +210,7 @@ function AdminDashboardContent() {
     const nextTab = ADMIN_VIEW_ALIASES[tab] || tab;
     if (!ADMIN_VIEW_KEYS.has(nextTab)) {
       if (process.env.NODE_ENV !== 'production') console.warn('[HostelSet] Unknown admin dashboard view key:', tab);
-      router.replace(buildDashboardHref('admin', 'overview', router.query), undefined, { shallow: true, scroll: false });
+      replaceDashboardHistory(router, buildDashboardHref('admin', 'overview', router.query));
       setActiveTab('overview');
       setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll();
       return;
@@ -223,7 +223,7 @@ function AdminDashboardContent() {
     const targetPath = dashboardHrefToPath(href);
     if (router.asPath === targetPath) return;
     dashboardNavigationStackRef.current.push(activeTab);
-    router.push(href, undefined, { shallow: true, scroll: false });
+    pushDashboardHistory(router, href);
     setActiveTab(nextTab);
     setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll();
   };
@@ -235,7 +235,7 @@ function AdminDashboardContent() {
       return;
     }
     if (activeTab !== 'overview') {
-      router.replace(buildDashboardHref('admin', 'overview', router.query), undefined, { shallow: true, scroll: false });
+      replaceDashboardHistory(router, buildDashboardHref('admin', 'overview', router.query));
       setActiveTab('overview');
       resetDashboardScroll();
     }
@@ -269,7 +269,10 @@ function AdminDashboardContent() {
     if (!router.isReady) return
     const resolved = resolveDashboardQuery('admin', router.query)
     if (!isCanonicalDashboardQuery('admin', router.query)) {
-      router.replace(buildDashboardHref('admin', resolved.view, router.query), undefined, { shallow: true, scroll: false })
+      replaceDashboardHistory(router, buildDashboardHref('admin', resolved.view, router.query))
+      setActiveTab(resolved.view)
+      setMobileMenu(null)
+      resetDashboardScroll()
       return
     }
     setActiveTab(resolved.view)
