@@ -4,13 +4,13 @@ import { AnimatePresence } from 'framer-motion';
 import { DashboardSkeleton } from '../../components/ui/Skeleton';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { clearOwnerTenantProfilePhotoCache, getOwnerTenantProfilePhotoUrls, getResetPasswordRedirectTo, supabase, signOut, signPrivateDocumentFields, findTenantDocumentRecord } from '../../lib/supabase';
+import { clearOwnerTenantProfilePhotoCache, getOwnerTenantProfilePhotoUrls, getResetPasswordRedirectTo, supabase, signOut, signPrivateDocumentFields, findTenantDocumentRecord, openSignedPrivateDocument } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 import BrandLogo from '../../components/BrandLogo';
 import NotificationBell from '../../components/common/NotificationBell';
 import ThemeToggle from '../../components/common/ThemeToggle';
 import { formatCurrency } from '../../lib/utils';
-import { resolveOwnerDashboardQuery } from '../../lib/dashboardRouting';
+import { buildDashboardHref, dashboardHrefToPath, isCanonicalDashboardQuery, resolveOwnerDashboardQuery } from '../../lib/dashboardRouting';
 import { filterTenantsByRentStatus, summarizeTenantRentStatuses } from '../../lib/tenantRentStatus';
 
 // Modular Imports
@@ -181,17 +181,43 @@ function OwnerDashboardContent() {
   const [mobileMenu, setMobileMenu] = useState(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const sectionRef = useRef(null);
+  const dashboardNavigationStackRef = useRef([]);
   const openSection = (tab) => {
     const nextTab = OWNER_VIEW_ALIASES[tab] || tab;
     if (!OWNER_VIEW_SET.has(nextTab)) {
       if (process.env.NODE_ENV !== 'production') console.warn(`[OwnerDashboard] Unknown owner view key: ${tab}`);
-      setActiveTab(OWNER_VIEW_KEYS.OVERVIEW);
-    } else {
-      setActiveTab(nextTab);
+      const fallbackHref = buildDashboardHref('owner', OWNER_VIEW_KEYS.OVERVIEW, router.query)
+      router.replace(fallbackHref, undefined, { shallow: true, scroll: false })
+      return;
     }
+    if (!router.isReady || nextTab === activeTab) {
+      setMobileMenu(null);
+      setProfileMenuOpen(false);
+      return;
+    }
+    const href = buildDashboardHref('owner', nextTab, router.query)
+    const targetPath = dashboardHrefToPath(href)
+    if (router.asPath === targetPath) return;
+    dashboardNavigationStackRef.current.push(activeTab)
+    router.push(href, undefined, { shallow: true, scroll: false })
+    setActiveTab(nextTab);
     setMobileMenu(null);
     setProfileMenuOpen(false);
     resetDashboardScroll();
+  };
+  const navigateDashboardBack = () => {
+    setMobileMenu(null);
+    setProfileMenuOpen(false);
+    if (dashboardNavigationStackRef.current.length > 0) {
+      dashboardNavigationStackRef.current.pop();
+      router.back();
+      return;
+    }
+    if (activeTab !== OWNER_VIEW_KEYS.OVERVIEW) {
+      router.replace(buildDashboardHref('owner', OWNER_VIEW_KEYS.OVERVIEW, router.query), undefined, { shallow: true, scroll: false });
+      setActiveTab(OWNER_VIEW_KEYS.OVERVIEW);
+      resetDashboardScroll();
+    }
   };
 
   useEffect(() => {
@@ -213,6 +239,10 @@ function OwnerDashboardContent() {
   useEffect(() => {
     if (!router.isReady) return
     const resolved = resolveOwnerDashboardQuery(router.query)
+    if (!isCanonicalDashboardQuery('owner', router.query)) {
+      router.replace(buildDashboardHref('owner', resolved.view, router.query), undefined, { shallow: true, scroll: false })
+      return
+    }
     setActiveTab(resolved.view)
     setFocusedRequestId(resolved.requestId)
     setMobileMenu(null)
@@ -828,6 +858,18 @@ function OwnerDashboardContent() {
     }
   };
 
+  const openExistingImportDocument = async (item, documentType) => {
+    const loadingToast = toast.loading('Opening document...')
+    try {
+      const url = await openSignedPrivateDocument({ id: item.id, source_type: 'existing_tenant_import' }, documentType)
+      if (!url) toast.error('This document is unavailable or has been removed.')
+    } catch {
+      toast.error('This document is unavailable or has been removed.')
+    } finally {
+      toast.dismiss(loadingToast)
+    }
+  };
+
   const handlePostNotice = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
@@ -974,7 +1016,7 @@ function OwnerDashboardContent() {
       case 'payment-history': return <PaymentHistoryTable payments={filteredAllPayments} getRoomNumberById={getRoomNumberById} onViewScreenshot={openSignedPaymentScreenshot} />
       case 'pre-bookings': return <PreBookingList bookings={filteredPreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={Boolean(prebookingProcessingId)} />
       case 'applications': return <ApplicationList applications={filteredApplications} onApprove={(id, data) => approveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={Boolean(applicationProcessingId)} />
-      case 'existing-imports': return <div className="space-y-5"><ExistingTenantImportSettings link={existingImports.link} property={property} busy={existingImports.linkBusy} onGenerate={existingImports.rotateLink} onToggle={existingImports.setLinkEnabled} /><ExistingTenantImportList imports={filteredExistingImports} loading={existingImports.loading} total={existingImports.total} page={existingImports.page} pageSize={existingImports.pageSize} processingId={existingImports.processingId} onApprove={existingImports.approve} onReject={existingImports.reject} onPage={existingImports.loadPage} /></div>
+      case 'existing-imports': return <div className="space-y-5"><ExistingTenantImportSettings link={existingImports.link} property={property} busy={existingImports.linkBusy} onGenerate={existingImports.rotateLink} onToggle={existingImports.setLinkEnabled} /><ExistingTenantImportList imports={filteredExistingImports} loading={existingImports.loading} total={existingImports.total} page={existingImports.page} pageSize={existingImports.pageSize} processingId={existingImports.processingId} onApprove={existingImports.approve} onReject={existingImports.reject} onPage={existingImports.loadPage} onViewDocument={openExistingImportDocument} /></div>
       case 'complaints': return <ComplaintList complaints={filteredComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setComplaintResponse(''); setShowComplaintResponseModal(true) }} onResolve={handleResolveComplaint} isSubmitting={isSubmitting} />
       case 'vacate': return <VacateRequestList requests={filteredVacateRequests} onApprove={handleApproveVacate} onReject={(request) => { setSelectedVacateRequest(request); setVacateRejectionReason(''); }} isSubmitting={isSubmitting || Boolean(vacateRejectingId)} />
       case 'room-change': return <RoomChangeRequestList focusedRequestId={focusedRequestId} requests={filteredRoomChangeRequests} onApprove={handleApproveRoomChange} onReject={(request) => { setSelectedRoomChangeRequest(request); setRejectionReason(''); setShowRoomChangeReasonModal(true) }} isSubmitting={isSubmitting} />
@@ -1069,19 +1111,19 @@ function OwnerDashboardContent() {
   ]
   const renderOwnerMobileView = () => {
     const common = { property, avatar: ownerProfile?.full_name?.charAt(0) || 'O', onProfile: () => setProfileMenuOpen(value => !value) }
-    if (activeTab === 'rooms') return <OwnerMobileRooms {...common} rooms={filteredRooms} tenants={tenantsWithPhotos} onBack={() => openSection('overview')} onAddRoom={() => membershipActive && setShowRoomModal(true)} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />
-    if (activeTab === 'tenants') return <OwnerMobileTenants {...common} tenants={searchedTenants.map(withTenantPhoto)} onBack={() => openSection('overview')} onAddTenant={() => membershipActive && setShowAddModal(true)} onCollect={(tenant) => { setSelectedTenant(tenant); setPaymentAmount(Number(tenant.pending_amount || tenant.rent_amount || 0)); setCollectionRequestId(crypto.randomUUID()); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onTenantProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} />
-    if (activeTab === 'rent-payments') return <OwnerMobilePayments {...common} payments={filteredPendingPayments} onBack={() => openSection('overview')} onConfirm={(id) => handleReviewRentPayment(id, true)} onReject={(id) => handleReviewRentPayment(id, false)} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={isSubmitting} />
+    if (activeTab === 'rooms') return <OwnerMobileRooms {...common} rooms={filteredRooms} tenants={tenantsWithPhotos} onBack={navigateDashboardBack} onAddRoom={() => membershipActive && setShowRoomModal(true)} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />
+    if (activeTab === 'tenants') return <OwnerMobileTenants {...common} tenants={searchedTenants.map(withTenantPhoto)} onBack={navigateDashboardBack} onAddTenant={() => membershipActive && setShowAddModal(true)} onCollect={(tenant) => { setSelectedTenant(tenant); setPaymentAmount(Number(tenant.pending_amount || tenant.rent_amount || 0)); setCollectionRequestId(crypto.randomUUID()); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onTenantProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} />
+    if (activeTab === 'rent-payments') return <OwnerMobilePayments {...common} payments={filteredPendingPayments} onBack={navigateDashboardBack} onConfirm={(id) => handleReviewRentPayment(id, true)} onReject={(id) => handleReviewRentPayment(id, false)} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={isSubmitting} />
     if (activeTab === 'overview') return <OwnerMobileDashboard {...common} stats={stats} counts={{ tenants: safeTenants.length, applications: safeApplications.length, complaints: safeComplaints.length, payments: safePendingRentPayments.length, vacate: safeVacateRequests.filter(item => item.status === 'pending').length, roomChanges: safeRoomChangeRequests.length }} membershipActive={membershipActive} membershipStatus={membershipStatus} membershipExpiry={membershipExpiry} daysLeft={daysLeft} pendingMembershipRequest={pendingMembershipRequest} onMembership={() => openSection('membership')} onNavigate={openSection} />
     if (activeTab === 'membership') return (
       <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
-        <MobileTopbar title="Membership" subtitle={property?.name} isHome={false} onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} avatar="" fallbackIcon="users" controls={<NotificationBell listenForGlobalOpen />} />
+        <MobileTopbar title="Membership" subtitle={property?.name} isHome={false} onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} avatar="" fallbackIcon="users" controls={<NotificationBell listenForGlobalOpen />} />
         <main className="mx-auto max-w-md space-y-2 px-3 py-2">{renderOwnerMembershipView(true)}</main>
       </div>
     )
     return (
       <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
-        <MobileTopbar title={ownerViewTitle} subtitle={property?.name} isHome={false} onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} avatar="" fallbackIcon="users" controls={<NotificationBell listenForGlobalOpen />} />
+        <MobileTopbar title={ownerViewTitle} subtitle={property?.name} isHome={false} onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} avatar="" fallbackIcon="users" controls={<NotificationBell listenForGlobalOpen />} />
         <main className="mx-auto max-w-md space-y-2 px-3 py-2">
           {activeTab === 'notices' && <button type="button" onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive || isSubmitting} className="w-full rounded-2xl bg-orange-500 px-3 py-2 text-sm font-black text-white shadow-sm disabled:opacity-50">+ Add Notice</button>}
           {renderOwnerView()}

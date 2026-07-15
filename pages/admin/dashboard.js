@@ -35,7 +35,7 @@ import MobileBottomNav from '../../components/dashboard/MobileBottomNav';
 import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu';
 import AccountMenu from '../../components/dashboard/AccountMenu';
 import { resetDashboardScroll } from '../../lib/dashboardScroll';
-import { resolveDashboardQuery } from '../../lib/dashboardRouting';
+import { buildDashboardHref, dashboardHrefToPath, isCanonicalDashboardQuery, resolveDashboardQuery } from '../../lib/dashboardRouting';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import AdminMobileDashboard from '../../components/admin/mobile/AdminMobileDashboard';
 import AdminMobileSearch from '../../components/admin/mobile/AdminMobileSearch';
@@ -205,16 +205,40 @@ function AdminDashboardContent() {
   const [mobileMenu, setMobileMenu] = useState(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const sectionRef = useRef(null);
+  const dashboardNavigationStackRef = useRef([]);
   const openSection = (tab) => {
     const nextTab = ADMIN_VIEW_ALIASES[tab] || tab;
     if (!ADMIN_VIEW_KEYS.has(nextTab)) {
       if (process.env.NODE_ENV !== 'production') console.warn('[HostelSet] Unknown admin dashboard view key:', tab);
+      router.replace(buildDashboardHref('admin', 'overview', router.query), undefined, { shallow: true, scroll: false });
       setActiveTab('overview');
       setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll();
       return;
     }
+    if (!router.isReady || nextTab === activeTab) {
+      setMobileMenu(null); setProfileMenuOpen(false);
+      return;
+    }
+    const href = buildDashboardHref('admin', nextTab, router.query);
+    const targetPath = dashboardHrefToPath(href);
+    if (router.asPath === targetPath) return;
+    dashboardNavigationStackRef.current.push(activeTab);
+    router.push(href, undefined, { shallow: true, scroll: false });
     setActiveTab(nextTab);
     setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll();
+  };
+  const navigateDashboardBack = () => {
+    setMobileMenu(null); setProfileMenuOpen(false);
+    if (dashboardNavigationStackRef.current.length > 0) {
+      dashboardNavigationStackRef.current.pop();
+      router.back();
+      return;
+    }
+    if (activeTab !== 'overview') {
+      router.replace(buildDashboardHref('admin', 'overview', router.query), undefined, { shallow: true, scroll: false });
+      setActiveTab('overview');
+      resetDashboardScroll();
+    }
   };
   
   // Only the visible tab loads its dataset. This keeps login fast and reduces database traffic.
@@ -243,7 +267,12 @@ function AdminDashboardContent() {
 
   useEffect(() => {
     if (!router.isReady) return
-    setActiveTab(resolveDashboardQuery('admin', router.query).view)
+    const resolved = resolveDashboardQuery('admin', router.query)
+    if (!isCanonicalDashboardQuery('admin', router.query)) {
+      router.replace(buildDashboardHref('admin', resolved.view, router.query), undefined, { shallow: true, scroll: false })
+      return
+    }
+    setActiveTab(resolved.view)
     setMobileMenu(null)
     resetDashboardScroll()
   }, [router.isReady, router.query.tab, router.query.property_id, router.query.membership_id, router.query.payment_id, router.query.application_id, router.query.complaint_id, router.query.request_id])
@@ -368,7 +397,7 @@ function AdminDashboardContent() {
   ]
 
   const renderMobileOperationList = ({ title, subtitle, loading, items, emptyMessage, renderItem }) => (
-    <AdminMobilePage title={title} subtitle={subtitle} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)}>
+    <AdminMobilePage title={title} subtitle={subtitle} avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)}>
       {loading && items.length === 0 ? <AdminLoadingState /> : null}
       {!loading && items.length === 0 ? <AdminEmptyState>{emptyMessage}</AdminEmptyState> : null}
       {items.map(renderItem)}
@@ -380,22 +409,22 @@ function AdminDashboardContent() {
       return <AdminMobileDashboard stats={statsData} globalStats={globalStats} realtimeConnected={realtimeConnected} avatar="A" onProfile={() => setProfileMenuOpen(value => !value)} onNavigate={openSection} onRefresh={refreshStats} />
     }
     if (activeTab === 'global-search') {
-      return <AdminMobileSearch avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onOpen={(group, item) => setSearchDetail({ group, item })} />
+      return <AdminMobileSearch avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} onOpen={(group, item) => setSearchDetail({ group, item })} />
     }
     if (activeTab === 'properties') {
-      return <AdminMobileProperties properties={properties} loading={propertiesLoading} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onView={viewPropertyDetails} onArchive={archiveProperty} onRestore={restoreProperty} />
+      return <AdminMobileProperties properties={properties} loading={propertiesLoading} avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} onView={viewPropertyDetails} onArchive={archiveProperty} onRestore={restoreProperty} />
     }
     if (activeTab === 'owners') {
-      return <AdminMobileOwners owners={owners} loading={ownersLoading} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onView={viewOwnerDetails} onToggle={toggleOwnerStatus} />
+      return <AdminMobileOwners owners={owners} loading={ownersLoading} avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} onView={viewOwnerDetails} onToggle={toggleOwnerStatus} />
     }
     if (activeTab === 'users') {
-      return <AdminMobileUsers title="Users" mode="users" users={users} loading={usersLoading} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} searchTerm={searchTerm} setSearchTerm={setSearchTerm} roleFilter={roleFilter} setRoleFilter={setRoleFilter} onToggleStatus={toggleUserStatus} onChangeRole={changeUserRole} />
+      return <AdminMobileUsers title="Users" mode="users" users={users} loading={usersLoading} avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} searchTerm={searchTerm} setSearchTerm={setSearchTerm} roleFilter={roleFilter} setRoleFilter={setRoleFilter} onToggleStatus={toggleUserStatus} onChangeRole={changeUserRole} />
     }
     if (activeTab === 'tenants') {
-      return <AdminMobileUsers title="Tenants" mode="tenants" tenants={tenants} loading={tenantsLoading} error={tenantsError} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onViewTenant={(tenant) => setSearchDetail({ group: 'Tenant', item: tenant })} onDeleteTenant={deleteTenant} />
+      return <AdminMobileUsers title="Tenants" mode="tenants" tenants={tenants} loading={tenantsLoading} error={tenantsError} avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} onViewTenant={(tenant) => setSearchDetail({ group: 'Tenant', item: tenant })} onDeleteTenant={deleteTenant} />
     }
     if (activeTab === 'payments') {
-      return <AdminMobilePayments payments={payments} loading={paymentsLoading} actionKey={actionKey} avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)} onConfirm={(payment) => runAdminAction(`payment:${payment.id}`, () => confirmPayment(payment.id))} onReject={(payment) => runAdminAction(`payment:${payment.id}`, () => rejectPayment(payment.id))} onViewProof={openSignedPaymentProof} />
+      return <AdminMobilePayments payments={payments} loading={paymentsLoading} actionKey={actionKey} avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} onConfirm={(payment) => runAdminAction(`payment:${payment.id}`, () => confirmPayment(payment.id))} onReject={(payment) => runAdminAction(`payment:${payment.id}`, () => rejectPayment(payment.id))} onViewProof={openSignedPaymentProof} />
     }
     if (activeTab === 'prebookings') {
       return renderMobileOperationList({
@@ -484,10 +513,10 @@ function AdminDashboardContent() {
       })
     }
     if (activeTab === 'analytics') {
-      return <AdminMobilePage title="Analytics" subtitle="Platform insights" avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)}><AdminAnalytics {...adminAnalytics} /></AdminMobilePage>
+      return <AdminMobilePage title="Analytics" subtitle="Platform insights" avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)}><AdminAnalytics {...adminAnalytics} /></AdminMobilePage>
     }
     if (activeTab === 'membership') {
-      return <AdminMobilePage title="Membership" subtitle="Owner memberships" avatar="A" onBack={() => openSection('overview')} onProfile={() => setProfileMenuOpen(value => !value)}><MembershipManager owners={membershipOwners} requests={membershipRequests} loading={membershipLoading} processingId={membershipProcessingId} getDaysLeft={getDaysLeft} sendRenewalEmail={sendRenewalEmail} grantMembership={grantMembership} revokeMembership={revokeMembership} reviewRequest={reviewRequest} onRefresh={() => refreshMemberships(false)} /></AdminMobilePage>
+      return <AdminMobilePage title="Membership" subtitle="Owner memberships" avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)}><MembershipManager owners={membershipOwners} requests={membershipRequests} loading={membershipLoading} processingId={membershipProcessingId} getDaysLeft={getDaysLeft} sendRenewalEmail={sendRenewalEmail} grantMembership={grantMembership} revokeMembership={revokeMembership} reviewRequest={reviewRequest} onRefresh={() => refreshMemberships(false)} /></AdminMobilePage>
     }
     if (process.env.NODE_ENV !== 'production') console.warn('[HostelSet] Unhandled admin mobile view key:', activeTab)
     return <AdminMobileDashboard stats={statsData} globalStats={globalStats} realtimeConnected={realtimeConnected} avatar="A" onProfile={() => setProfileMenuOpen(value => !value)} onNavigate={openSection} onRefresh={refreshStats} />

@@ -32,7 +32,7 @@ import DashboardSidebar from '../../components/dashboard/DashboardSidebar'
 import DashboardIcon from '../../components/dashboard/DashboardIcon'
 import AccountMenu from '../../components/dashboard/AccountMenu'
 import { resetDashboardScroll } from '../../lib/dashboardScroll'
-import { resolveDashboardQuery } from '../../lib/dashboardRouting'
+import { buildDashboardHref, dashboardHrefToPath, isCanonicalDashboardQuery, resolveDashboardQuery } from '../../lib/dashboardRouting'
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 import TenantMobileDashboard from '../../components/tenant/mobile/TenantMobileDashboard'
 import TenantMobilePayments from '../../components/tenant/mobile/TenantMobilePayments'
@@ -111,13 +111,41 @@ function TenantDashboardContent() {
   const [mobileMenu, setMobileMenu] = useState(null)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const sectionRef = useRef(null)
+  const dashboardNavigationStackRef = useRef([])
   const openSection = tab => {
     const nextTab = TENANT_VIEW_KEYS.has(tab) ? tab : 'overview'
     if (nextTab !== tab && process.env.NODE_ENV !== 'production') {
       console.warn('[HostelSet] Unknown tenant dashboard view key:', tab)
     }
+    if (nextTab !== tab) {
+      router.replace(buildDashboardHref('tenant', 'overview', router.query), undefined, { shallow: true, scroll: false })
+      setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll()
+      return
+    }
+    if (!router.isReady || nextTab === activeTab) {
+      setMobileMenu(null); setProfileMenuOpen(false)
+      return
+    }
+    const href = buildDashboardHref('tenant', nextTab, router.query)
+    const targetPath = dashboardHrefToPath(href)
+    if (router.asPath === targetPath) return
+    dashboardNavigationStackRef.current.push(activeTab)
+    router.push(href, undefined, { shallow: true, scroll: false })
     setActiveTab(nextTab)
     setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll()
+  }
+  const navigateDashboardBack = () => {
+    setMobileMenu(null); setProfileMenuOpen(false)
+    if (dashboardNavigationStackRef.current.length > 0) {
+      dashboardNavigationStackRef.current.pop()
+      router.back()
+      return
+    }
+    if (activeTab !== 'overview') {
+      router.replace(buildDashboardHref('tenant', 'overview', router.query), undefined, { shallow: true, scroll: false })
+      setActiveTab('overview')
+      resetDashboardScroll()
+    }
   }
   const [editProfile, setEditProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({ name:'', phone:'', email:'', blood_group:'' })
@@ -136,7 +164,12 @@ function TenantDashboardContent() {
 
   useEffect(() => {
     if (!router.isReady) return
-    setActiveTab(resolveDashboardQuery('tenant', router.query).view)
+    const resolved = resolveDashboardQuery('tenant', router.query)
+    if (!isCanonicalDashboardQuery('tenant', router.query)) {
+      router.replace(buildDashboardHref('tenant', resolved.view, router.query), undefined, { shallow: true, scroll: false })
+      return
+    }
+    setActiveTab(resolved.view)
     setMobileMenu(null)
     resetDashboardScroll()
   }, [router.isReady, router.query.tab, router.query.payment_id, router.query.notice_id, router.query.complaint_id, router.query.request_id])
@@ -376,7 +409,7 @@ function TenantDashboardContent() {
     )
   }
   const renderTenantMobileView = () => {
-    const common = { property, avatar: tenant?.name?.charAt(0) || 'U', avatarUrl: profilePhotoUrl, avatarAlt: tenant?.name ? `${tenant.name} profile photo` : 'Tenant profile photo', onProfile: openProfile, onBack: () => openSection('overview') }
+    const common = { property, avatar: tenant?.name?.charAt(0) || 'U', avatarUrl: profilePhotoUrl, avatarAlt: tenant?.name ? `${tenant.name} profile photo` : 'Tenant profile photo', onProfile: openProfile, onBack: navigateDashboardBack }
     if (activeTab === 'payments') return <TenantMobilePayments {...common} payments={paymentHistory} onPayRent={() => setShowPaymentModal(true)} onViewScreenshot={openSignedPaymentScreenshot} />
     if (activeTab === 'notices') return <TenantMobileNotices {...common} notices={notices} />
     if (['complaints', 'room-change', 'vacate', 'roommates'].includes(activeTab)) return <TenantMobileRequests {...common} view={activeTab} complaints={complaints} roommates={roommates} room={room} onDeleteComplaint={deleteComplaint} onRaiseComplaint={() => setShowComplaintModal(true)} isSubmitting={isSubmitting} pendingRoomChangeRequest={pendingRoomChangeRequest} onRoomChange={openRoomChangeModal} existingVacateRequest={existingVacateRequest} vacateBlockedReason={vacateBlockedReason} onVacate={() => setShowVacateModal(true)} onCancelVacate={cancelVacateRequest} />
