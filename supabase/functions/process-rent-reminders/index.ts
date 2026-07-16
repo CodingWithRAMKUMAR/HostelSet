@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.39.8";
 import { createBrevoEmailService } from "../_shared/brevo-email-service.ts";
+import { dryRunRentReminders } from "../_shared/rent-reminder-dry-run.ts";
 import { RentReminderService } from "../_shared/rent-reminder-service.ts";
 import { SupabaseRentReminderRepository } from "../_shared/supabase-rent-reminder-repository.ts";
 
@@ -26,6 +27,12 @@ Deno.serve(async (request) => {
     return json({ error: "Method not allowed" }, 405);
   }
   if (!authorized(request)) return json({ error: "Unauthorized" }, 401);
+  const body = await request.json().catch(() => ({})) as {
+    dryRun?: boolean;
+    rentId?: string;
+    tenantId?: string;
+    limit?: number;
+  };
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -40,6 +47,17 @@ Deno.serve(async (request) => {
     const client = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    if (body.dryRun) {
+      const result = await dryRunRentReminders(client, {
+        rentId: body.rentId,
+        tenantId: body.tenantId,
+        limit: body.limit,
+        getEnvironmentValue: (name) => Deno.env.get(name),
+      });
+      return json(result, 200);
+    }
+
     const repository = new SupabaseRentReminderRepository(client);
 
     const emailService = createBrevoEmailService((name) => Deno.env.get(name));

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import NotificationBell from '../../common/NotificationBell'
 import DashboardIcon from '../../dashboard/DashboardIcon'
 import { formatCurrency, getSharingDetails } from '../../../lib/utils'
@@ -20,7 +20,7 @@ function Header({ onBack, onAddRoom }) {
   )
 }
 
-export default function OwnerMobileRooms({ rooms = [], tenants = [], onBack, onRoomClick, onDeleteRoom, onAddRoom, isSubmitting }) {
+function OwnerMobileRooms({ rooms = [], tenants = [], onBack, onRoomClick, onDeleteRoom, onAddRoom, isSubmitting }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
   const [openRoomMenu, setOpenRoomMenu] = useState(null)
@@ -42,8 +42,8 @@ export default function OwnerMobileRooms({ rooms = [], tenants = [], onBack, onR
           <DashboardIcon name="search" className="h-4 w-4 shrink-0" />
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search rooms" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-slate-500" />
         </label>
-        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-          {['all', 'vacant', 'full'].map(item => <button key={item} type="button" onClick={() => setFilter(item)} className={`h-7 shrink-0 rounded-full px-3 text-[11px] font-black capitalize ${filter === item ? 'bg-orange-500 text-white' : 'bg-white/8 text-slate-300'}`}>{item}</button>)}
+        <div className="grid grid-cols-3 gap-1.5">
+          {['all', 'vacant', 'full'].map(item => <button key={item} type="button" onClick={() => setFilter(item)} className={`min-h-11 rounded-2xl px-3 text-[11px] font-black capitalize ${filter === item ? 'bg-orange-500 text-white' : 'bg-white/8 text-slate-300'}`}>{item}</button>)}
         </div>
         {filteredRooms.length === 0 ? <div className="rounded-2xl bg-white/8 p-4 text-center text-sm text-slate-400">No matching rooms.</div> : filteredRooms.map(room => {
           const sharing = getSharingDetails(room.sharing_type)
@@ -68,3 +68,5 @@ export default function OwnerMobileRooms({ rooms = [], tenants = [], onBack, onR
     </div>
   )
 }
+
+export default memo(OwnerMobileRooms)

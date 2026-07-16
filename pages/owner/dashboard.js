@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AnimatePresence } from 'framer-motion';
 import { DashboardSkeleton } from '../../components/ui/Skeleton';
@@ -10,7 +10,7 @@ import BrandLogo from '../../components/BrandLogo';
 import NotificationBell from '../../components/common/NotificationBell';
 import ThemeToggle from '../../components/common/ThemeToggle';
 import { formatCurrency } from '../../lib/utils';
-import { buildDashboardHref, dashboardHrefToPath, isCanonicalDashboardQuery, pushDashboardHistory, replaceDashboardHistory, resolveOwnerDashboardQuery } from '../../lib/dashboardRouting';
+import { buildDashboardHref, isCanonicalDashboardQuery, pushDashboardHistory, replaceDashboardHistory, resolveOwnerDashboardQuery } from '../../lib/dashboardRouting';
 import { filterTenantsByRentStatus, summarizeTenantRentStatuses } from '../../lib/tenantRentStatus';
 
 // Modular Imports
@@ -73,21 +73,37 @@ const OWNER_VIEW_ALIASES = {
 }
 
 const OWNER_VIEW_SET = new Set(Object.values(OWNER_VIEW_KEYS))
+const MAIN_OWNER_MOBILE_TABS = [OWNER_VIEW_KEYS.OVERVIEW, OWNER_VIEW_KEYS.ROOMS, OWNER_VIEW_KEYS.TENANTS, OWNER_VIEW_KEYS.RENT_PAYMENTS]
 
-const RoomList = dynamic(() => import('../../components/owner/RoomList'));
-const TenantTable = dynamic(() => import('../../components/owner/TenantTable'));
-const ArchivedTenantList = dynamic(() => import('../../components/owner/ArchivedTenantList'));
-const RentPaymentsList = dynamic(() => import('../../components/owner/RentPaymentsList'));
-const PaymentHistoryTable = dynamic(() => import('../../components/owner/PaymentHistoryTable'));
-const PreBookingList = dynamic(() => import('../../components/owner/PreBookingList'));
-const ApplicationList = dynamic(() => import('../../components/owner/ApplicationList'));
-const ComplaintList = dynamic(() => import('../../components/owner/ComplaintList'));
-const VacateRequestList = dynamic(() => import('../../components/owner/VacateRequestList'));
-const NoticeList = dynamic(() => import('../../components/owner/NoticeList'));
-const RoomChangeRequestList = dynamic(() => import('../../components/owner/RoomChangeRequestList'));
-const ExistingTenantImportList = dynamic(() => import('../../components/owner/ExistingTenantImportList'));
-const ExistingTenantImportSettings = dynamic(() => import('../../components/owner/ExistingTenantImportSettings'));
-const OwnerAnalytics = dynamic(() => import('../../components/analytics/OwnerAnalytics'));
+function OwnerSectionSkeleton({ rows = 3 }) {
+  return (
+    <section className="space-y-2" aria-busy="true" aria-label="Loading section">
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="rounded-2xl border border-white/10 bg-white p-3 shadow-sm">
+          <div className="mb-3 h-4 w-2/3 animate-pulse rounded bg-slate-200" />
+          <div className="h-3 w-full animate-pulse rounded bg-slate-100" />
+        </div>
+      ))}
+    </section>
+  )
+}
+
+const sectionLoading = () => <OwnerSectionSkeleton />
+
+const RoomList = dynamic(() => import('../../components/owner/RoomList'), { loading: sectionLoading });
+const TenantTable = dynamic(() => import('../../components/owner/TenantTable'), { loading: sectionLoading });
+const ArchivedTenantList = dynamic(() => import('../../components/owner/ArchivedTenantList'), { loading: sectionLoading });
+const RentPaymentsList = dynamic(() => import('../../components/owner/RentPaymentsList'), { loading: sectionLoading });
+const PaymentHistoryTable = dynamic(() => import('../../components/owner/PaymentHistoryTable'), { loading: sectionLoading });
+const PreBookingList = dynamic(() => import('../../components/owner/PreBookingList'), { loading: sectionLoading });
+const ApplicationList = dynamic(() => import('../../components/owner/ApplicationList'), { loading: sectionLoading });
+const ComplaintList = dynamic(() => import('../../components/owner/ComplaintList'), { loading: sectionLoading });
+const VacateRequestList = dynamic(() => import('../../components/owner/VacateRequestList'), { loading: sectionLoading });
+const NoticeList = dynamic(() => import('../../components/owner/NoticeList'), { loading: sectionLoading });
+const RoomChangeRequestList = dynamic(() => import('../../components/owner/RoomChangeRequestList'), { loading: sectionLoading });
+const ExistingTenantImportList = dynamic(() => import('../../components/owner/ExistingTenantImportList'), { loading: sectionLoading });
+const ExistingTenantImportSettings = dynamic(() => import('../../components/owner/ExistingTenantImportSettings'), { loading: sectionLoading });
+const OwnerAnalytics = dynamic(() => import('../../components/analytics/OwnerAnalytics'), { loading: sectionLoading });
 
 // Modal Components
 const ConfirmDeleteModal = dynamic(() => import('../../components/owner/modals/ConfirmDeleteModal'), { ssr: false });
@@ -121,6 +137,30 @@ function useDesktopDashboard() {
     return () => media.removeEventListener?.('change', update)
   }, [])
   return isDesktop
+}
+
+function useStableCallback(callback) {
+  const callbackRef = useRef(callback)
+  useEffect(() => { callbackRef.current = callback }, [callback])
+  return useCallback((...args) => callbackRef.current?.(...args), [])
+}
+
+function markOwnerPerf(label, detail = '') {
+  if (typeof window === 'undefined' || window.localStorage?.getItem('hostelsetOwnerPerf') !== '1' || typeof performance === 'undefined') return
+  if (process.env.NODE_ENV === 'production' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) return
+  const ms = Math.round(performance.now())
+  console.debug(`[OwnerDashboard perf] ${label}${detail ? ` ${detail}` : ''} @ ${ms}ms`)
+}
+
+function OwnerMobileTabPanel({ tab, active, children }) {
+  useEffect(() => {
+    if (active) markOwnerPerf('visible-commit', tab)
+  }, [active, tab])
+  return (
+    <section key={tab} hidden={!active} aria-hidden={!active} data-owner-mobile-tab={tab}>
+      {children}
+    </section>
+  )
 }
 
 function safeTenantPhotoIds(tenants = []) {
@@ -181,12 +221,15 @@ function OwnerDashboardContent() {
   const [mobileMenu, setMobileMenu] = useState(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const sectionRef = useRef(null);
-  const dashboardNavigationStackRef = useRef([]);
   const openSection = (tab) => {
+    markOwnerPerf('tab-click', String(tab))
     const nextTab = OWNER_VIEW_ALIASES[tab] || tab;
     if (!OWNER_VIEW_SET.has(nextTab)) {
       if (process.env.NODE_ENV !== 'production') console.warn(`[OwnerDashboard] Unknown owner view key: ${tab}`);
       const fallbackHref = buildDashboardHref('owner', OWNER_VIEW_KEYS.OVERVIEW, router.query)
+      setActiveTab(OWNER_VIEW_KEYS.OVERVIEW)
+      setMobileMenu(null)
+      setProfileMenuOpen(false)
       replaceDashboardHistory(router, fallbackHref)
       return;
     }
@@ -196,39 +239,42 @@ function OwnerDashboardContent() {
       return;
     }
     const href = buildDashboardHref('owner', nextTab, router.query)
-    const targetPath = dashboardHrefToPath(href)
-    if (router.asPath === targetPath) return;
-    dashboardNavigationStackRef.current.push(activeTab)
-    pushDashboardHistory(router, href)
+    markOwnerPerf('set-activeTab', nextTab)
     setActiveTab(nextTab);
     setMobileMenu(null);
     setProfileMenuOpen(false);
     resetDashboardScroll();
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => {
+        markOwnerPerf('router-push-start', nextTab)
+        Promise.resolve(pushDashboardHistory(router, href)).finally(() => markOwnerPerf('router-push-finish', nextTab))
+      });
+      return;
+    }
+    markOwnerPerf('router-push-start', nextTab)
+    Promise.resolve(pushDashboardHistory(router, href)).finally(() => markOwnerPerf('router-push-finish', nextTab))
   };
   const navigateDashboardBack = () => {
     setMobileMenu(null);
     setProfileMenuOpen(false);
-    if (dashboardNavigationStackRef.current.length > 0) {
-      dashboardNavigationStackRef.current.pop();
-      router.back();
-      return;
-    }
     if (activeTab !== OWNER_VIEW_KEYS.OVERVIEW) {
       replaceDashboardHistory(router, buildDashboardHref('owner', OWNER_VIEW_KEYS.OVERVIEW, router.query));
       setActiveTab(OWNER_VIEW_KEYS.OVERVIEW);
       resetDashboardScroll();
+      return
     }
+    router.back();
   };
 
   useEffect(() => {
     if (!property?.id) return undefined;
     const preload = () => {
-      [RoomList, TenantTable, RentPaymentsList, PaymentHistoryTable, PreBookingList, ApplicationList, ComplaintList, VacateRequestList, NoticeList, RoomChangeRequestList,
-        AddTenantModal, AddRoomModal, CollectRentModal, PostNoticeModal, ComplaintResponseModal, RoomDetailsModal, PaymentConfirmModal, TenantPaymentsModal, TenantProfileModal,
+      [RoomList, TenantTable, RentPaymentsList, PaymentHistoryTable, ApplicationList, ComplaintList, VacateRequestList, NoticeList, RoomChangeRequestList,
+        AddTenantModal, AddRoomModal, CollectRentModal, RoomDetailsModal, PaymentConfirmModal, TenantPaymentsModal, TenantProfileModal,
       ].forEach(component => component.preload?.());
     };
-    const idleId = typeof window.requestIdleCallback === 'function' ? window.requestIdleCallback(preload, { timeout: 800 }) : window.setTimeout(preload, 250);
-    return () => typeof window.cancelIdleCallback === 'function' ? window.cancelIdleCallback(idleId) : window.clearTimeout(idleId);
+    const timerId = window.setTimeout(preload, 0);
+    return () => window.clearTimeout(timerId);
   }, [property?.id]);
 
   const { showRoomModal, setShowRoomModal, roomForm, setRoomForm, sharingTypes, addRoom, deleteRoom } = useOwnerRooms(property, rooms, setRooms, setStats);
@@ -247,10 +293,12 @@ function OwnerDashboardContent() {
       resetDashboardScroll()
       return
     }
-    setActiveTab(resolved.view)
+    setActiveTab(current => {
+      if (current !== resolved.view) resetDashboardScroll()
+      return resolved.view
+    })
     setFocusedRequestId(resolved.requestId)
     setMobileMenu(null)
-    resetDashboardScroll()
   }, [router.isReady, router.query.tab, router.query.request_id])
   const { complaints, respondToComplaint, resolveComplaint } = useOwnerComplaints(property, propertyReady);
   const { vacateRequests, approveVacateRequest, rejectVacateRequest, rejectingId: vacateRejectingId } = useOwnerVacate(property, propertyReady);
@@ -294,6 +342,7 @@ function OwnerDashboardContent() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [collectionRequestId, setCollectionRequestId] = useState(null);
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
+  const [mountedMobileTabs, setMountedMobileTabs] = useState(() => new Set([OWNER_VIEW_KEYS.OVERVIEW]));
 
   // Modal States for History & Profile
   const [showTenantPaymentsModal, setShowTenantPaymentsModal] = useState(false);
@@ -312,6 +361,16 @@ function OwnerDashboardContent() {
   const hasOpenOverlay = showPaymentModal || showConfirmDeleteModal || showSettingsModal || showAddModal || showRoomModal || showNoticeModal || showMembershipModal || showOwnerProfileModal || showArchivedHistoryModal || showComplaintResponseModal || showRoomChangeReasonModal || Boolean(selectedVacateRequest) || showPaymentConfirmModal || showRoomDetailsModal || showTenantPaymentsModal || showTenantProfileModal || showScreenshotModal || profileMenuOpen || mobileMenu === 'more';
   useBodyScrollLock(hasOpenOverlay);
   const tenantPhotoSignature = useMemo(() => safeTenantPhotoIds(tenants).map(item => item.cacheKey).join('|'), [tenants]);
+
+  useEffect(() => {
+    if (!MAIN_OWNER_MOBILE_TABS.includes(activeTab)) return;
+    setMountedMobileTabs(previous => {
+      if (previous.has(activeTab)) return previous;
+      const next = new Set(previous);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
 
   useEffect(() => {
     const tenantRows = Array.isArray(tenants) ? tenants.filter(tenant => tenant?.id) : [];
@@ -886,6 +945,86 @@ function OwnerDashboardContent() {
     } finally { setIsSubmitting(false); }
   };
 
+  const safeRooms = useMemo(() => Array.isArray(rooms) ? rooms : [], [rooms])
+  const safeTenants = useMemo(() => Array.isArray(tenants) ? tenants : [], [tenants])
+  const safeArchivedTenants = useMemo(() => Array.isArray(archivedTenants) ? archivedTenants : [], [archivedTenants])
+  const safeAllPayments = useMemo(() => Array.isArray(allPayments) ? allPayments : [], [allPayments])
+  const safePendingRentPayments = useMemo(() => Array.isArray(pendingRentPayments) ? pendingRentPayments : [], [pendingRentPayments])
+  const safeComplaints = useMemo(() => Array.isArray(complaints) ? complaints : [], [complaints])
+  const safeVacateRequests = useMemo(() => Array.isArray(vacateRequests) ? vacateRequests : [], [vacateRequests])
+  const safeNotices = useMemo(() => Array.isArray(notices) ? notices : [], [notices])
+  const safeRoomChangeRequests = useMemo(() => Array.isArray(roomChangeRequests) ? roomChangeRequests : [], [roomChangeRequests])
+  const safeApplications = useMemo(() => Array.isArray(applications) ? applications : [], [applications])
+  const safePreBookings = useMemo(() => Array.isArray(preBookings) ? preBookings : [], [preBookings])
+  const safeExistingImports = useMemo(() => Array.isArray(existingImports.imports) ? existingImports.imports : [], [existingImports.imports])
+  const searchLower = searchTerm.trim().toLowerCase()
+  const matchesSearch = useCallback((...values) => !searchLower || values.some(value => String(value ?? '').toLowerCase().includes(searchLower)), [searchLower])
+  const getTenantPhotoUrl = useCallback((tenant) => tenantPhotoUrls[tenant?.id] || tenant?.profilePhotoUrl || null, [tenantPhotoUrls])
+  const filteredRooms = useMemo(() => safeRooms.filter(room => matchesSearch(room.room_number, room.status, room.sharing_type, room.room_audience)), [safeRooms, matchesSearch])
+  const tenantsWithPhotos = useMemo(() => safeTenants.map(tenant => ({ ...tenant, profilePhotoUrl: getTenantPhotoUrl(tenant) })), [safeTenants, getTenantPhotoUrl])
+  const searchedTenants = useMemo(() => tenantsWithPhotos.filter(tenant => matchesSearch(tenant.name, tenant.phone, tenant.email, tenant.room_number, tenant.pending_amount, tenant.rent_status, tenant.status, tenant.dueStatus?.status, tenant.rentSummary?.label)), [tenantsWithPhotos, matchesSearch])
+  const tenantRentCounts = useMemo(() => summarizeTenantRentStatuses(searchedTenants), [searchedTenants])
+  const filteredTenants = useMemo(() => filterTenantsByRentStatus(searchedTenants, tenantRentFilter), [searchedTenants, tenantRentFilter])
+  const displayTenants = filteredTenants
+  const filteredArchivedTenants = useMemo(() => safeArchivedTenants.filter(tenant => matchesSearch(tenant.name, tenant.phone, tenant.email, tenant.room_number)), [safeArchivedTenants, matchesSearch])
+  const attachPaymentTenantPhoto = useCallback(payment => payment?.tenants?.id ? { ...payment, tenants: { ...payment.tenants, profilePhotoUrl: tenantPhotoUrls[payment.tenants.id] || null } } : payment, [tenantPhotoUrls])
+  const filteredPendingPayments = useMemo(() => safePendingRentPayments.filter(payment => matchesSearch(payment.tenants?.name, payment.tenants?.phone, payment.tenants?.email, payment.tenants?.rooms?.room_number, payment.amount, payment.status, payment.upi_transaction_id)).map(attachPaymentTenantPhoto), [safePendingRentPayments, matchesSearch, attachPaymentTenantPhoto])
+  const filteredAllPayments = useMemo(() => safeAllPayments.filter(payment => matchesSearch(payment.tenants?.name, payment.tenants?.phone, payment.tenants?.email, payment.tenants?.rooms?.room_number, payment.amount, payment.status, payment.payment_method, payment.upi_transaction_id)).map(attachPaymentTenantPhoto), [safeAllPayments, matchesSearch, attachPaymentTenantPhoto])
+  const filteredApplications = useMemo(() => safeApplications.filter(application => matchesSearch(application.name, application.phone, application.email, application.status, application.rooms?.room_number, application.payment_transaction_id)), [safeApplications, matchesSearch])
+  const filteredExistingImports = useMemo(() => safeExistingImports.filter(item => matchesSearch(item.full_name, item.phone, item.email, item.status, item.room_number, item.occupation)), [safeExistingImports, matchesSearch])
+  const filteredPreBookings = useMemo(() => safePreBookings.filter(booking => matchesSearch(booking.name, booking.phone, booking.email, booking.status, booking.room_number, booking.payment_transaction_id)), [safePreBookings, matchesSearch])
+  const filteredComplaints = useMemo(() => safeComplaints.filter(complaint => matchesSearch(complaint.tenant_name, complaint.room_number, complaint.title, complaint.description, complaint.priority, complaint.status, complaint.admin_response)), [safeComplaints, matchesSearch])
+  const filteredNotices = useMemo(() => safeNotices.filter(notice => matchesSearch(notice.title, notice.content, notice.type)), [safeNotices, matchesSearch])
+  const filteredVacateRequests = useMemo(() => safeVacateRequests.filter(request => matchesSearch(request.tenant_name, request.room_number, request.status, request.reason, request.expected_check_out)), [safeVacateRequests, matchesSearch])
+  const filteredRoomChangeRequests = useMemo(() => safeRoomChangeRequests.filter(request => matchesSearch(request.tenants?.name, request.tenants?.phone, request.tenants?.email, request.old_room?.room_number, request.new_room?.room_number, request.reason, request.status)), [safeRoomChangeRequests, matchesSearch])
+  const getTenantDueAmount = useCallback((tenant) => Number(tenant?.rentSummary?.dueAmount ?? tenant?.dueStatus?.dueAmount ?? tenant?.pending_amount ?? tenant?.rent_amount ?? 0), [])
+  const openCollectRent = useCallback((tenant) => {
+    const dueAmount = getTenantDueAmount(tenant)
+    setSelectedTenant({ ...tenant, pending_amount: dueAmount })
+    setPaymentAmount(dueAmount)
+    setCollectionRequestId(crypto.randomUUID())
+    setShowPaymentModal(true)
+  }, [getTenantDueAmount])
+  const openSectionStable = useStableCallback(openSection)
+  const navigateDashboardBackStable = useStableCallback(navigateDashboardBack)
+  const toggleProfileMenu = useCallback(() => setProfileMenuOpen(value => !value), [])
+  const openMembershipSection = useCallback(() => openSectionStable('membership'), [openSectionStable])
+  const openAddRoomModal = useCallback(() => { if (membershipActive) setShowRoomModal(true) }, [membershipActive])
+  const openAddTenantModal = useCallback(() => { if (membershipActive) setShowAddModal(true) }, [membershipActive])
+  const openRoomDetails = useCallback((room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }, [])
+  const removeRoom = useCallback((id) => deleteRoom(id, isSubmitting, setIsSubmitting), [deleteRoom, isSubmitting])
+  const openTenantDelete = useCallback((tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }, [])
+  const confirmPendingPayment = useStableCallback((id) => handleReviewRentPayment(id, true))
+  const rejectPendingPayment = useStableCallback((id) => handleReviewRentPayment(id, false))
+  const searchGroups = useMemo(() => [
+    ['tenants', 'Tenants', filteredTenants.length],
+    ['archived-tenants', 'Archived tenants', filteredArchivedTenants.length],
+    ['rooms', 'Rooms', filteredRooms.length],
+    ['rent-payments', 'Pending payments', filteredPendingPayments.length],
+    ['payment-history', 'Payment history', filteredAllPayments.length],
+    ['applications', 'Applications', filteredApplications.length],
+    ['existing-imports', 'Existing tenant imports', filteredExistingImports.length],
+    ['pre-bookings', 'Pre-bookings', filteredPreBookings.length],
+    ['complaints', 'Complaints', filteredComplaints.length],
+    ['notices', 'Notices', filteredNotices.length],
+    ['vacate', 'Vacate requests', filteredVacateRequests.length],
+    ['room-change', 'Room changes', filteredRoomChangeRequests.length],
+  ].filter(([, , count]) => count > 0), [filteredTenants.length, filteredArchivedTenants.length, filteredRooms.length, filteredPendingPayments.length, filteredAllPayments.length, filteredApplications.length, filteredExistingImports.length, filteredPreBookings.length, filteredComplaints.length, filteredNotices.length, filteredVacateRequests.length, filteredRoomChangeRequests.length])
+  const ownerTabs = useMemo(() => [
+    ['overview', 'Overview'], ['analytics', 'Analytics'], ['rooms', `Rooms (${safeRooms.length})`], ['tenants', `Tenants (${safeTenants.length})`],
+    ['archived-tenants', `Archived (${safeArchivedTenants.length})`], ['rent-payments', `Rent (${stats.pendingRentConfirmations})`], ['payment-history', 'History'],
+    ['pre-bookings', 'Pre-bookings'], ['applications', `Applications (${safeApplications.length})`], ['existing-imports', `Imports (${existingImports.pendingCount})`],
+    ['complaints', `Complaints (${stats.totalComplaints || 0})`], ['vacate', `Vacate (${stats.pendingVacate || 0})`], ['room-change', `Room change (${safeRoomChangeRequests.length})`], ['notices', `Notices (${safeNotices.length})`], ['membership', 'Membership'],
+  ].map(([id, label]) => ({ id, label })), [safeRooms.length, safeTenants.length, safeArchivedTenants.length, stats.pendingRentConfirmations, safeApplications.length, existingImports.pendingCount, stats.totalComplaints, stats.pendingVacate, safeRoomChangeRequests.length, safeNotices.length])
+  const ownerViewTitle = ownerTabs.find(item => item.id === activeTab)?.label.replace(/ \(.*\)$/, '') || 'Dashboard'
+  const ownerBottomItems = useMemo(() => [
+    { id: 'overview', label: 'Dashboard', icon: 'dashboard' }, { id: 'rooms', label: 'Rooms', icon: 'rooms' }, { id: 'tenants', label: 'Tenants', icon: 'users' },
+    { id: 'rent-payments', label: 'Payments', icon: 'payments' }, { id: 'more', label: 'More', icon: 'more' },
+  ], [])
+  const ownerSidebarItems = useMemo(() => ownerTabs.map(item => ({ ...item, icon: ({ overview:'dashboard', rooms:'rooms', tenants:'users', 'rent-payments':'payments', 'payment-history':'payments', notices:'notices', complaints:'complaints', analytics:'analytics', membership:'settings' })[item.id] || 'settings', disabled: !membershipActive && !['overview', 'membership'].includes(item.id) })), [ownerTabs, membershipActive])
+  const overviewStats = useMemo(() => ({ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length, pendingApplications: safeApplications.length, pendingImports: existingImports.pendingCount, totalComplaints: safeComplaints.length, pendingVacate: safeVacateRequests.filter(request => request.status === 'pending').length, pendingRoomChanges: safeRoomChangeRequests.length, pendingRentConfirmations: safePendingRentPayments.length }), [stats, safeTenants.length, safeNotices.length, safeApplications.length, existingImports.pendingCount, safeComplaints.length, safeVacateRequests, safeRoomChangeRequests.length, safePendingRentPayments.length])
+  const mobileOverviewCounts = useMemo(() => ({ tenants: safeTenants.length, applications: safeApplications.length, complaints: safeComplaints.length, payments: safePendingRentPayments.length, vacate: safeVacateRequests.filter(item => item.status === 'pending').length, roomChanges: safeRoomChangeRequests.length }), [safeTenants.length, safeApplications.length, safeComplaints.length, safePendingRentPayments.length, safeVacateRequests, safeRoomChangeRequests.length])
+
   if (loading) {
     return <DashboardSkeleton cards={12} />
   }
@@ -912,72 +1051,10 @@ function OwnerDashboardContent() {
     )
   }
 
-  const safeRooms = Array.isArray(rooms) ? rooms : []
-  const safeTenants = Array.isArray(tenants) ? tenants : []
-  const safeArchivedTenants = Array.isArray(archivedTenants) ? archivedTenants : []
-  const safeAllPayments = Array.isArray(allPayments) ? allPayments : []
-  const safePendingRentPayments = Array.isArray(pendingRentPayments) ? pendingRentPayments : []
-  const safeComplaints = Array.isArray(complaints) ? complaints : []
-  const safeVacateRequests = Array.isArray(vacateRequests) ? vacateRequests : []
-  const safeNotices = Array.isArray(notices) ? notices : []
-  const safeRoomChangeRequests = Array.isArray(roomChangeRequests) ? roomChangeRequests : []
-  const safeApplications = Array.isArray(applications) ? applications : []
-  const safePreBookings = Array.isArray(preBookings) ? preBookings : []
-  const safeExistingImports = Array.isArray(existingImports.imports) ? existingImports.imports : []
-
-  const searchLower = searchTerm.trim().toLowerCase()
-  const matchesSearch = (...values) => !searchLower || values.some(value => String(value ?? '').toLowerCase().includes(searchLower))
-  const filteredRooms = safeRooms.filter(room => matchesSearch(room.room_number, room.status, room.sharing_type, room.room_audience))
-  const getTenantPhotoUrl = (tenant) => tenantPhotoUrls[tenant?.id] || tenant?.profilePhotoUrl || null
-  const tenantsWithPhotos = safeTenants.map(tenant => ({ ...tenant, profilePhotoUrl: getTenantPhotoUrl(tenant) }))
-  const searchedTenants = tenantsWithPhotos.filter(tenant => matchesSearch(tenant.name, tenant.phone, tenant.email, tenant.room_number, tenant.pending_amount, tenant.rent_status, tenant.status, tenant.dueStatus?.status, tenant.rentSummary?.label))
-  const tenantRentCounts = summarizeTenantRentStatuses(searchedTenants)
-  const filteredTenants = filterTenantsByRentStatus(searchedTenants, tenantRentFilter)
-  const withTenantPhoto = (tenant) => ({ ...tenant, profilePhotoUrl: getTenantPhotoUrl(tenant) })
-  const displayTenants = filteredTenants.map(withTenantPhoto)
-  const filteredArchivedTenants = safeArchivedTenants.filter(tenant => matchesSearch(tenant.name, tenant.phone, tenant.email, tenant.room_number))
-  const attachPaymentTenantPhoto = payment => payment?.tenants?.id ? { ...payment, tenants: { ...payment.tenants, profilePhotoUrl: tenantPhotoUrls[payment.tenants.id] || null } } : payment
-  const filteredPendingPayments = safePendingRentPayments.filter(payment => matchesSearch(payment.tenants?.name, payment.tenants?.phone, payment.tenants?.email, payment.tenants?.rooms?.room_number, payment.amount, payment.status, payment.upi_transaction_id)).map(attachPaymentTenantPhoto)
-  const filteredAllPayments = safeAllPayments.filter(payment => matchesSearch(payment.tenants?.name, payment.tenants?.phone, payment.tenants?.email, payment.tenants?.rooms?.room_number, payment.amount, payment.status, payment.payment_method, payment.upi_transaction_id)).map(attachPaymentTenantPhoto)
-  const filteredApplications = safeApplications.filter(application => matchesSearch(application.name, application.phone, application.email, application.status, application.rooms?.room_number, application.payment_transaction_id))
-  const filteredExistingImports = safeExistingImports.filter(item => matchesSearch(item.full_name, item.phone, item.email, item.status, item.room_number, item.occupation))
-  const filteredPreBookings = safePreBookings.filter(booking => matchesSearch(booking.name, booking.phone, booking.email, booking.status, booking.room_number, booking.payment_transaction_id))
-  const filteredComplaints = safeComplaints.filter(complaint => matchesSearch(complaint.tenant_name, complaint.room_number, complaint.title, complaint.description, complaint.priority, complaint.status, complaint.admin_response))
-  const filteredNotices = safeNotices.filter(notice => matchesSearch(notice.title, notice.content, notice.type))
-  const filteredVacateRequests = safeVacateRequests.filter(request => matchesSearch(request.tenant_name, request.room_number, request.status, request.reason, request.expected_check_out))
-  const filteredRoomChangeRequests = safeRoomChangeRequests.filter(request => matchesSearch(request.tenants?.name, request.tenants?.phone, request.tenants?.email, request.old_room?.room_number, request.new_room?.room_number, request.reason, request.status))
-  const searchGroups = [
-    ['tenants', 'Tenants', filteredTenants.length],
-    ['archived-tenants', 'Archived tenants', filteredArchivedTenants.length],
-    ['rooms', 'Rooms', filteredRooms.length],
-    ['rent-payments', 'Pending payments', filteredPendingPayments.length],
-    ['payment-history', 'Payment history', filteredAllPayments.length],
-    ['applications', 'Applications', filteredApplications.length],
-    ['existing-imports', 'Existing tenant imports', filteredExistingImports.length],
-    ['pre-bookings', 'Pre-bookings', filteredPreBookings.length],
-    ['complaints', 'Complaints', filteredComplaints.length],
-    ['notices', 'Notices', filteredNotices.length],
-    ['vacate', 'Vacate requests', filteredVacateRequests.length],
-    ['room-change', 'Room changes', filteredRoomChangeRequests.length],
-  ].filter(([, , count]) => count > 0)
-  const ownerTabs = [
-    ['overview', 'Overview'], ['analytics', 'Analytics'], ['rooms', `Rooms (${rooms.length})`], ['tenants', `Tenants (${tenants.length})`],
-    ['archived-tenants', `Archived (${archivedTenants.length})`], ['rent-payments', `Rent (${stats.pendingRentConfirmations})`], ['payment-history', 'History'],
-    ['pre-bookings', 'Pre-bookings'], ['applications', `Applications (${safeApplications.length})`], ['existing-imports', `Imports (${existingImports.pendingCount})`],
-    ['complaints', `Complaints (${stats.totalComplaints || 0})`], ['vacate', `Vacate (${stats.pendingVacate || 0})`], ['room-change', `Room change (${roomChangeRequests.length})`], ['notices', `Notices (${notices.length})`], ['membership', 'Membership'],
-  ].map(([id, label]) => ({ id, label }))
-  const ownerViewTitle = ownerTabs.find(item => item.id === activeTab)?.label.replace(/ \(.*\)$/, '') || 'Dashboard'
-  const ownerBottomItems = [
-    { id: 'overview', label: 'Dashboard', icon: 'dashboard' }, { id: 'rooms', label: 'Rooms', icon: 'rooms' }, { id: 'tenants', label: 'Tenants', icon: 'users' },
-    { id: 'rent-payments', label: 'Payments', icon: 'payments' }, { id: 'more', label: 'More', icon: 'more' },
-  ]
-  const ownerBottomIcons = { overview: 'dashboard', rooms: 'rooms', tenants: 'users', 'rent-payments': 'payments', more: 'more' }
-  ownerBottomItems.forEach(item => { item.icon = ownerBottomIcons[item.id] })
-  const ownerSidebarItems = ownerTabs.map(item => ({ ...item, icon: ({ overview:'dashboard', rooms:'rooms', tenants:'users', 'rent-payments':'payments', 'payment-history':'payments', notices:'notices', complaints:'complaints', analytics:'analytics', membership:'settings' })[item.id] || 'settings', disabled: !membershipActive && !['overview', 'membership'].includes(item.id) }))
   const logout = async () => { await signOut(); window.location.replace('/login') }
   const renderOwnerOverview = () => (
     <div className="space-y-4 sm:space-y-6">
-      <StatsCards stats={{ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length, pendingApplications: safeApplications.length, pendingImports: existingImports.pendingCount, totalComplaints: safeComplaints.length, pendingVacate: safeVacateRequests.filter(request => request.status === 'pending').length, pendingRoomChanges: safeRoomChangeRequests.length, pendingRentConfirmations: safePendingRentPayments.length }} onSelect={openSection} />
+      <StatsCards stats={overviewStats} onSelect={openSection} />
       {searchLower && (
         <div className="rounded-xl border border-orange-100 bg-white p-4 shadow-sm">
           <p className="mb-3 text-sm font-semibold text-slate-700">Search results for "{searchTerm.trim()}"</p>
@@ -1036,13 +1113,14 @@ function OwnerDashboardContent() {
       <section aria-label="Current cycle tenant summary" className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-4">
         <div><p className="text-[11px] font-bold uppercase text-slate-400">Paid this cycle</p><p className="text-lg font-black text-emerald-700">{tenantRentCounts.paid}</p></div>
         <div><p className="text-[11px] font-bold uppercase text-slate-400">Due today/overdue</p><p className="text-lg font-black text-red-700">{tenantRentCounts.due}</p></div>
-        <div><p className="text-[11px] font-bold uppercase text-slate-400">Upcoming in 3 days</p><p className="text-lg font-black text-orange-700">{tenantRentCounts.upcoming}</p></div>
+        <div><p className="text-[11px] font-bold uppercase text-slate-400">Upcoming</p><p className="text-lg font-black text-orange-700">{tenantRentCounts.upcoming}</p></div>
         <div><p className="text-[11px] font-bold uppercase text-slate-400">Total active tenants</p><p className="text-lg font-black text-slate-900">{tenantRentCounts.total}</p></div>
       </section>
       <div role="tablist" aria-label="Tenant rent filters" className="flex gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
         {[
           ['all', 'All', tenantRentCounts.total],
           ['due', 'Due', tenantRentCounts.due],
+          ['pending_confirmation', 'Pending confirmation', tenantRentCounts.pending_confirmation],
           ['paid', 'Paid', tenantRentCounts.paid],
           ['upcoming', 'Upcoming', tenantRentCounts.upcoming],
         ].map(([id, label, count]) => (
@@ -1051,7 +1129,7 @@ function OwnerDashboardContent() {
           </button>
         ))}
       </div>
-      <TenantTable tenants={displayTenants} vacateRequests={safeVacateRequests} onCollect={(tenant) => { setSelectedTenant(tenant); setPaymentAmount(Number(tenant.pending_amount || tenant.rent_amount || 0)); setCollectionRequestId(crypto.randomUUID()); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />
+      <TenantTable tenants={displayTenants} vacateRequests={safeVacateRequests} onCollect={openCollectRent} onHistory={fetchTenantPayments} onProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} isSubmitting={isSubmitting} getRoomNumberById={getRoomNumberById} />
     </div>
   )
   const renderOwnerMembershipView = (mobile = false) => (
@@ -1113,26 +1191,47 @@ function OwnerDashboardContent() {
     { id: 'archive-property', group: 'Account', label: 'Archive property', danger: true, onClick: handleArchiveProperty },
     { id: 'logout', group: 'Account', label: 'Logout', danger: true, onClick: async () => { await signOut(); window.location.replace('/login') } },
   ]
+  const renderOwnerMobileMainTab = (tab, common) => {
+    if (tab === 'rooms') return <OwnerMobileRooms {...common} rooms={filteredRooms} tenants={tenantsWithPhotos} onBack={navigateDashboardBackStable} onAddRoom={openAddRoomModal} onRoomClick={openRoomDetails} onDeleteRoom={removeRoom} isSubmitting={isSubmitting} />
+    if (tab === 'tenants') return <OwnerMobileTenants {...common} tenants={searchedTenants} onBack={navigateDashboardBackStable} onAddTenant={openAddTenantModal} onCollect={openCollectRent} onHistory={fetchTenantPayments} onTenantProfile={fetchTenantApplication} onDelete={openTenantDelete} onConfirmPayment={openPaymentConfirmation} />
+    if (tab === 'rent-payments') return <OwnerMobilePayments {...common} payments={filteredPendingPayments} onBack={navigateDashboardBackStable} onConfirm={confirmPendingPayment} onReject={rejectPendingPayment} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={isSubmitting} />
+    return <OwnerMobileDashboard {...common} stats={stats} counts={mobileOverviewCounts} membershipActive={membershipActive} membershipStatus={membershipStatus} membershipExpiry={membershipExpiry} daysLeft={daysLeft} pendingMembershipRequest={pendingMembershipRequest} onMembership={openMembershipSection} onNavigate={openSectionStable} />
+  }
+
+  const renderMountedOwnerMobileTabs = (common) => (
+    <div className={MAIN_OWNER_MOBILE_TABS.includes(activeTab) ? '' : 'hidden'} data-owner-mobile-mounted-tabs>
+      {MAIN_OWNER_MOBILE_TABS.filter(tab => mountedMobileTabs.has(tab) || tab === activeTab).map(tab => (
+        <OwnerMobileTabPanel key={tab} tab={tab} active={activeTab === tab}>
+          {renderOwnerMobileMainTab(tab, common)}
+        </OwnerMobileTabPanel>
+      ))}
+    </div>
+  )
+
   const renderOwnerMobileView = () => {
-    const common = { property, avatar: ownerProfile?.full_name?.charAt(0) || 'O', onProfile: () => setProfileMenuOpen(value => !value) }
-    if (activeTab === 'rooms') return <OwnerMobileRooms {...common} rooms={filteredRooms} tenants={tenantsWithPhotos} onBack={navigateDashboardBack} onAddRoom={() => membershipActive && setShowRoomModal(true)} onRoomClick={(room) => { setSelectedRoom(room); setShowRoomDetailsModal(true) }} onDeleteRoom={(id) => deleteRoom(id, isSubmitting, setIsSubmitting)} isSubmitting={isSubmitting} />
-    if (activeTab === 'tenants') return <OwnerMobileTenants {...common} tenants={searchedTenants.map(withTenantPhoto)} onBack={navigateDashboardBack} onAddTenant={() => membershipActive && setShowAddModal(true)} onCollect={(tenant) => { setSelectedTenant(tenant); setPaymentAmount(Number(tenant.pending_amount || tenant.rent_amount || 0)); setCollectionRequestId(crypto.randomUUID()); setShowPaymentModal(true) }} onHistory={fetchTenantPayments} onTenantProfile={fetchTenantApplication} onDelete={(tenant) => { setTenantToDelete(tenant); setShowConfirmDeleteModal(true) }} onConfirmPayment={openPaymentConfirmation} />
-    if (activeTab === 'rent-payments') return <OwnerMobilePayments {...common} payments={filteredPendingPayments} onBack={navigateDashboardBack} onConfirm={(id) => handleReviewRentPayment(id, true)} onReject={(id) => handleReviewRentPayment(id, false)} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={isSubmitting} />
-    if (activeTab === 'overview') return <OwnerMobileDashboard {...common} stats={stats} counts={{ tenants: safeTenants.length, applications: safeApplications.length, complaints: safeComplaints.length, payments: safePendingRentPayments.length, vacate: safeVacateRequests.filter(item => item.status === 'pending').length, roomChanges: safeRoomChangeRequests.length }} membershipActive={membershipActive} membershipStatus={membershipStatus} membershipExpiry={membershipExpiry} daysLeft={daysLeft} pendingMembershipRequest={pendingMembershipRequest} onMembership={() => openSection('membership')} onNavigate={openSection} />
+    const common = { property, avatar: ownerProfile?.full_name?.charAt(0) || 'O', onProfile: toggleProfileMenu }
+    const mountedMainTabs = renderMountedOwnerMobileTabs(common)
+    if (MAIN_OWNER_MOBILE_TABS.includes(activeTab)) return mountedMainTabs
     if (activeTab === 'membership') return (
-      <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
-        <MobileTopbar title="Membership" subtitle={property?.name} isHome={false} onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} avatar="" fallbackIcon="users" controls={<NotificationBell listenForGlobalOpen />} />
-        <main className="mx-auto max-w-md space-y-2 px-3 py-2">{renderOwnerMembershipView(true)}</main>
-      </div>
+      <>
+        {mountedMainTabs}
+        <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
+          <MobileTopbar title="Membership" subtitle={property?.name} isHome={false} onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} avatar="" fallbackIcon="users" controls={<NotificationBell listenForGlobalOpen />} />
+          <main className="mx-auto max-w-md space-y-2 px-3 py-2">{renderOwnerMembershipView(true)}</main>
+        </div>
+      </>
     )
     return (
-      <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
-        <MobileTopbar title={ownerViewTitle} subtitle={property?.name} isHome={false} onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} avatar="" fallbackIcon="users" controls={<NotificationBell listenForGlobalOpen />} />
-        <main className="mx-auto max-w-md space-y-2 px-3 py-2">
-          {activeTab === 'notices' && <button type="button" onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive || isSubmitting} className="w-full rounded-2xl bg-orange-500 px-3 py-2 text-sm font-black text-white shadow-sm disabled:opacity-50">+ Add Notice</button>}
-          {renderOwnerView()}
-        </main>
-      </div>
+      <>
+        {mountedMainTabs}
+        <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
+          <MobileTopbar title={ownerViewTitle} subtitle={property?.name} isHome={false} onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} avatar="" fallbackIcon="users" controls={<NotificationBell listenForGlobalOpen />} />
+          <main className="mx-auto max-w-md space-y-2 px-3 py-2">
+            {activeTab === 'notices' && <button type="button" onClick={() => membershipActive && setShowNoticeModal(true)} disabled={!membershipActive || isSubmitting} className="w-full rounded-2xl bg-orange-500 px-3 py-2 text-sm font-black text-white shadow-sm disabled:opacity-50">+ Add Notice</button>}
+            {renderOwnerView()}
+          </main>
+        </div>
+      </>
     )
   }
 

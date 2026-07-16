@@ -17,6 +17,7 @@ function TenantAvatar({ tenant }) {
 
 function statusClass(due = {}) {
   if (due.category === 'paid') return 'bg-emerald-100 text-emerald-700';
+  if (due.status === 'pending_confirmation') return 'bg-purple-100 text-purple-700';
   if (due.status === 'overdue') return 'bg-red-100 text-red-700';
   if (due.status === 'due_today') return 'bg-amber-100 text-amber-800';
   if (due.category === 'upcoming') return 'bg-orange-100 text-orange-700';
@@ -80,7 +81,7 @@ function TenantTable({
             <div className="mt-2 flex min-w-0 items-center justify-between gap-2 rounded-xl bg-slate-50 p-2">
               <div className="min-w-0">
                 <p className="text-[11px] leading-tight text-slate-400">{due.category === 'paid' ? 'Current cycle' : 'Pending'}</p>
-                <p className="truncate text-sm font-bold leading-tight text-slate-900">{formatCurrency(t.pending_amount || 0)}</p>
+                <p className="truncate text-sm font-bold leading-tight text-slate-900">{formatCurrency(due.dueAmount || 0)}</p>
                 {dueDate && <p className="mt-0.5 text-[11px] font-semibold text-slate-500">{due.category === 'paid' ? `Next due ${dueDate}` : `Due ${dueDate}`}</p>}
               </div>
               {vacate && <p className="truncate text-right text-[11px] text-gray-500">Vacate {formatDate(vacate.expected_check_out)}</p>}

@@ -19,7 +19,7 @@ export default function PayRentModal({
   submitPaymentWithProof = () => {},
   onCancel = () => {},
 }) {
-  const amount = Number(tenant?.pending_amount ?? tenant?.rent_amount ?? 0)
+  const amount = Number(tenant?.rentSummary?.dueAmount ?? tenant?.dueStatus?.dueAmount ?? tenant?.pending_amount ?? tenant?.rent_amount ?? 0)
   const busy = paymentLoading || isSubmitting
   const isDirty = Boolean(paymentTransactionId?.trim() || paymentScreenshot)
   const confirmDiscard = useUnsavedChangesGuard(isDirty && !busy)

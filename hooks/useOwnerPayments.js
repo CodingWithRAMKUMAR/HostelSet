@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
+import { isPendingRentPayment } from '../lib/rentDue';
+
+const PENDING_RENT_STATUSES = ['payment_pending', 'pending', 'pending_confirmation', 'pending_owner_verification'];
 
 export function useOwnerPayments(property, tenants, archivedTenants, setStats, loadData, enabled = true) {
   const [pendingRentPayments, setPendingRentPayments] = useState([]);
@@ -16,10 +19,10 @@ export function useOwnerPayments(property, tenants, archivedTenants, setStats, l
       setAllPayments([]);
       return;
     }
-    const pendingQuery = supabase.from('payment_history').select('*, tenants(id, name, phone, email, room_id, profile_photo_path, rooms(room_number))').eq('status', 'payment_pending').order('payment_date', { ascending: false });
+    const pendingQuery = supabase.from('payment_history').select('*, tenants(id, name, phone, email, room_id, profile_photo_path, rooms(room_number))').in('status', PENDING_RENT_STATUSES).order('payment_date', { ascending: false });
     const { data: pending, error: pendingError } = activeTenantIds.length ? await pendingQuery.in('tenant_id', activeTenantIds) : { data: [], error: null };
     if (pendingError) { console.error('Pending payments load failed:', pendingError); return; }
-    setPendingRentPayments(pending || []);
+    setPendingRentPayments((pending || []).filter(isPendingRentPayment));
     const { data: all, error: allError } = await supabase.from('payment_history').select('*, tenants(id, name, phone, email, room_id, profile_photo_path, rooms(room_number))').in('tenant_id', historyTenantIds).order('payment_date', { ascending: false }).limit(100);
     if (allError) { console.error('Payment history load failed:', allError); return; }
     setAllPayments(all || []);

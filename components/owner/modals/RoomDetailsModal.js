@@ -6,6 +6,13 @@ import { formatCurrency, formatDate } from '../../../lib/utils';
 import toast from 'react-hot-toast';
 import { useBodyScrollLock } from '../../../hooks/useBodyScrollLock';
 
+function rentBadgeClass(rentSummary = {}) {
+  if (rentSummary.status === 'paid') return 'bg-green-100 text-green-700'
+  if (rentSummary.status === 'pending_confirmation') return 'bg-purple-100 text-purple-700'
+  if (rentSummary.status === 'overdue') return 'bg-red-100 text-red-700'
+  return 'bg-yellow-100 text-yellow-700'
+}
+
 // Dynamically import the sub-modals (lazy-loaded)
 const TenantPaymentsModal = dynamic(() => import('./TenantPaymentsModal'), { ssr: false });
 const TenantProfileModal = dynamic(() => import('./TenantProfileModal'), { ssr: false });
@@ -81,7 +88,7 @@ export default function RoomDetailsModal({
       ]);
       if (tenantResult.error) throw tenantResult.error;
       if (paymentHistoryResult.error) throw paymentHistoryResult.error;
-      const fullTenant = tenantResult.data;
+      const fullTenant = { ...tenantResult.data, rentSummary: tenant.rentSummary || tenant.dueStatus || null };
       const { record, source_type } = await findTenantDocumentRecord(fullTenant, room.property_id);
       const documentRecord = record ? { ...record, source_type } : null;
       const extraDocuments = (paymentHistoryResult.data || [])
@@ -220,12 +227,8 @@ export default function RoomDetailsModal({
                         </div>
                         <div className="text-right">
                           <p className="font-semibold text-green-600">{formatCurrency(tenant.rent_amount)}<span className="text-xs text-gray-400 font-normal">/month</span></p>
-                          <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
-                            tenant.rent_status === 'paid' ? 'bg-green-100 text-green-700' :
-                            tenant.rent_status === 'overdue' ? 'bg-red-100 text-red-700' :
-                            'bg-yellow-100 text-yellow-700'
-                          }`}>
-                            {tenant.rent_status === 'pending' ? 'Pending' : tenant.rent_status}
+                          <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${rentBadgeClass(tenant.rentSummary || tenant.dueStatus)}`}>
+                            {(tenant.rentSummary || tenant.dueStatus)?.label || tenant.rent_status || 'Unknown'}
                           </span>
                         </div>
                       </div>

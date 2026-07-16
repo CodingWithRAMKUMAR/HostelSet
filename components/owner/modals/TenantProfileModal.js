@@ -16,6 +16,7 @@ const Detail = ({ label, value }) => value !== null && value !== undefined && va
 
 export default function TenantProfileModal({ tenant, application, extraDocuments = [], loading, onClose, onViewScreenshot = () => {}, onProfilePhotoChange = () => {}, photoUpdating = false }) {
   const [failed, setFailed] = useState(false)
+  const rentSummary = tenant?.rentSummary || tenant?.dueStatus || null
   const tenantPaymentProof = tenant?.payment_screenshot ? [{ label: 'Tenant Payment Proof', record: tenant, field: 'payment_screenshot' }] : []
   const applicationDocuments = application ? [
     { label: application.source_type === 'existing_tenant_import' ? 'Profile Photo' : 'Tenant Photo', record: application, field: 'photo' },
@@ -55,11 +56,11 @@ export default function TenantProfileModal({ tenant, application, extraDocuments
                 <Detail label="Email" value={tenant?.email} />
                 <Detail label="Blood group" value={displayBloodGroup(tenant?.blood_group)} />
                 <Detail label="Status" value={tenant?.status} />
-                <Detail label="Rent status" value={tenant?.rent_status} />
+                <Detail label="Rent status" value={rentSummary?.label || tenant?.rent_status} />
                 <Detail label="Move-in date" value={formatDate(tenant?.move_in_date)} />
                 <Detail label="Monthly rent" value={formatCurrency(tenant?.rent_amount)} />
                 <Detail label="Total paid" value={formatCurrency(tenant?.total_paid || 0)} />
-                <Detail label="Pending amount" value={formatCurrency(tenant?.pending_amount || 0)} />
+                <Detail label="Pending amount" value={formatCurrency(rentSummary?.dueAmount ?? tenant?.pending_amount ?? 0)} />
                 <Detail label="Last payment" value={tenant?.last_payment_date ? formatDate(tenant.last_payment_date) : null} />
                 <Detail label="Address" value={tenant?.address} />
                 <Detail label="Guardian name" value={tenant?.guardian_name} />

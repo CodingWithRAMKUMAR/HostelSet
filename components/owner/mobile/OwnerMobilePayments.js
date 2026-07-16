@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react'
 import NotificationBell from '../../common/NotificationBell'
 import DashboardIcon from '../../dashboard/DashboardIcon'
 import { formatCurrency, formatDate } from '../../../lib/utils'
@@ -17,9 +18,9 @@ function Header({ onBack }) {
   )
 }
 
-export default function OwnerMobilePayments({ payments = [], onBack, onConfirm, onReject, onViewScreenshot, isSubmitting }) {
-  const total = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
-  const withProof = payments.filter(payment => payment.payment_screenshot).length
+function OwnerMobilePayments({ payments = [], onBack, onConfirm, onReject, onViewScreenshot, isSubmitting }) {
+  const total = useMemo(() => payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0), [payments])
+  const withProof = useMemo(() => payments.filter(payment => payment.payment_screenshot).length, [payments])
 
   return (
     <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
@@ -62,3 +63,5 @@ export default function OwnerMobilePayments({ payments = [], onBack, onConfirm, 
     </div>
   )
 }
+
+export default memo(OwnerMobilePayments)

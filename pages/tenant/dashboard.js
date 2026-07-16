@@ -18,7 +18,7 @@ import { usePayments } from '../../hooks/usePayments'
 import { useRoomChange } from '../../hooks/useRoomChange'
 // ------------------------------------------------
 
-import { calculateRentDueStatus, formatCurrency, formatDate, formatRentDueLabel, getSharingDetails } from '../../lib/utils'
+import { calculateRentDueStatus, formatCurrency, formatDate, formatRentDueLabel, getSharingDetails, isPendingRentPayment } from '../../lib/utils'
 import { normalizeBloodGroup } from '../../lib/bloodGroups'
 import { uploadProfilePhotoWithSignedUrl, validateProfilePhotoFile } from '../../lib/profilePhotos'
 
@@ -32,7 +32,7 @@ import DashboardSidebar from '../../components/dashboard/DashboardSidebar'
 import DashboardIcon from '../../components/dashboard/DashboardIcon'
 import AccountMenu from '../../components/dashboard/AccountMenu'
 import { resetDashboardScroll } from '../../lib/dashboardScroll'
-import { buildDashboardHref, dashboardHrefToPath, isCanonicalDashboardQuery, pushDashboardHistory, replaceDashboardHistory, resolveDashboardQuery } from '../../lib/dashboardRouting'
+import { buildDashboardHref, isCanonicalDashboardQuery, pushDashboardHistory, replaceDashboardHistory, resolveDashboardQuery } from '../../lib/dashboardRouting'
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 import TenantMobileDashboard from '../../components/tenant/mobile/TenantMobileDashboard'
 import TenantMobilePayments from '../../components/tenant/mobile/TenantMobilePayments'
@@ -111,7 +111,6 @@ function TenantDashboardContent() {
   const [mobileMenu, setMobileMenu] = useState(null)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const sectionRef = useRef(null)
-  const dashboardNavigationStackRef = useRef([])
   const openSection = tab => {
     const nextTab = TENANT_VIEW_KEYS.has(tab) ? tab : 'overview'
     if (nextTab !== tab && process.env.NODE_ENV !== 'production') {
@@ -119,6 +118,7 @@ function TenantDashboardContent() {
     }
     if (nextTab !== tab) {
       replaceDashboardHistory(router, buildDashboardHref('tenant', 'overview', router.query))
+      setActiveTab('overview')
       setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll()
       return
     }
@@ -127,25 +127,19 @@ function TenantDashboardContent() {
       return
     }
     const href = buildDashboardHref('tenant', nextTab, router.query)
-    const targetPath = dashboardHrefToPath(href)
-    if (router.asPath === targetPath) return
-    dashboardNavigationStackRef.current.push(activeTab)
     pushDashboardHistory(router, href)
     setActiveTab(nextTab)
     setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll()
   }
   const navigateDashboardBack = () => {
     setMobileMenu(null); setProfileMenuOpen(false)
-    if (dashboardNavigationStackRef.current.length > 0) {
-      dashboardNavigationStackRef.current.pop()
-      router.back()
-      return
-    }
     if (activeTab !== 'overview') {
       replaceDashboardHistory(router, buildDashboardHref('tenant', 'overview', router.query))
       setActiveTab('overview')
       resetDashboardScroll()
+      return
     }
+    router.back()
   }
   const [editProfile, setEditProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({ name:'', phone:'', email:'', blood_group:'' })
@@ -172,9 +166,11 @@ function TenantDashboardContent() {
       resetDashboardScroll()
       return
     }
-    setActiveTab(resolved.view)
+    setActiveTab(current => {
+      if (current !== resolved.view) resetDashboardScroll()
+      return resolved.view
+    })
     setMobileMenu(null)
-    resetDashboardScroll()
   }, [router.isReady, router.query.tab, router.query.payment_id, router.query.notice_id, router.query.complaint_id, router.query.request_id])
 
   // ----- Helper Functions -----
@@ -313,9 +309,10 @@ function TenantDashboardContent() {
   }
 
   const rentStatus = getRentStatus() || { message: 'Loading...' }
-  const isUrgent = rentStatus.urgent && (rentStatus.status === 'due_soon' || rentStatus.status === 'overdue')
-  const hasPaymentAwaitingApproval = paymentHistory.some((payment) => payment.status === 'payment_pending')
-  const hasOutstandingRent = Number(tenant?.pending_amount || 0) > 0 || tenant?.rent_status !== 'paid' || rentStatus.status !== 'paid'
+  const isUrgent = rentStatus.urgent && ['due_soon', 'due_today', 'overdue', 'pending_confirmation'].includes(rentStatus.status)
+  const hasPaymentAwaitingApproval = rentStatus.status === 'pending_confirmation' || paymentHistory.some(isPendingRentPayment)
+  const hasOutstandingRent = rentStatus.status !== 'paid' && rentStatus.status !== 'inactive' && Number(rentStatus.dueAmount || 0) > 0
+  const tenantWithRentSummary = { ...tenant, pending_amount: rentStatus.dueAmount || 0, rentSummary: rentStatus, dueStatus: rentStatus }
   const vacateBlockedReason = !vacateLoaded || !paymentsLoaded
     ? 'Checking vacate eligibility...'
     : existingVacateRequest
@@ -416,7 +413,7 @@ function TenantDashboardContent() {
     if (activeTab === 'payments') return <TenantMobilePayments {...common} payments={paymentHistory} onPayRent={() => setShowPaymentModal(true)} onViewScreenshot={openSignedPaymentScreenshot} />
     if (activeTab === 'notices') return <TenantMobileNotices {...common} notices={notices} />
     if (['complaints', 'room-change', 'vacate', 'roommates'].includes(activeTab)) return <TenantMobileRequests {...common} view={activeTab} complaints={complaints} roommates={roommates} room={room} onDeleteComplaint={deleteComplaint} onRaiseComplaint={() => setShowComplaintModal(true)} isSubmitting={isSubmitting} pendingRoomChangeRequest={pendingRoomChangeRequest} onRoomChange={openRoomChangeModal} existingVacateRequest={existingVacateRequest} vacateBlockedReason={vacateBlockedReason} onVacate={() => setShowVacateModal(true)} onCancelVacate={cancelVacateRequest} />
-    return <TenantMobileDashboard tenant={tenant} room={room} property={property} roommates={roommates} notices={notices} complaints={complaints} rentStatus={rentStatus} existingVacateRequest={existingVacateRequest} pendingRoomChangeRequest={pendingRoomChangeRequest} avatar={tenant?.name?.charAt(0) || 'U'} avatarUrl={profilePhotoUrl} avatarAlt={tenant?.name ? `${tenant.name} profile photo` : 'Tenant profile photo'} onProfile={openProfile} onNavigate={openSection} onPayRent={() => setShowPaymentModal(true)} />
+    return <TenantMobileDashboard tenant={tenantWithRentSummary} room={room} property={property} roommates={roommates} notices={notices} complaints={complaints} rentStatus={rentStatus} existingVacateRequest={existingVacateRequest} pendingRoomChangeRequest={pendingRoomChangeRequest} avatar={tenant?.name?.charAt(0) || 'U'} avatarUrl={profilePhotoUrl} avatarAlt={tenant?.name ? `${tenant.name} profile photo` : 'Tenant profile photo'} onProfile={openProfile} onNavigate={openSection} onPayRent={() => setShowPaymentModal(true)} />
   }
 
   return (
@@ -508,7 +505,7 @@ function TenantDashboardContent() {
             <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-full bg-red-100/50 flex items-center justify-center text-base sm:text-xl text-red-600"><DashboardIcon name="complaints" className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             <div>
               <p className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Pending Amount</p>
-              <p className="text-base sm:text-xl font-bold text-red-500 truncate">{formatCurrency(tenant?.pending_amount || 0)}</p>
+              <p className="text-base sm:text-xl font-bold text-red-500 truncate">{formatCurrency(rentStatus.dueAmount || 0)}</p>
             </div>
           </button>
           <button type="button" onClick={() => openSection('payments')} className="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition flex items-center gap-2 sm:gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
@@ -623,7 +620,7 @@ function TenantDashboardContent() {
       <AnimatePresence>
         {showPaymentModal && (
           <PayRentModal
-            tenant={tenant}
+            tenant={tenantWithRentSummary}
             room={room}
             ownerUpiId={ownerUpiId}
             ownerUpiPhone={ownerUpiPhone}
@@ -671,7 +668,7 @@ function TenantDashboardContent() {
       <AnimatePresence>
         {showProfileModal && (
           <ProfileModal
-            tenant={tenant}
+            tenant={tenantWithRentSummary}
             room={room}
             profilePhotoUrl={profilePhotoUrl}
             rentStatus={rentStatus}

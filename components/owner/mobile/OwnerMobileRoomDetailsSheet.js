@@ -30,6 +30,7 @@ export default function OwnerMobileRoomDetailsSheet({ room, tenants = [], onClos
   const slots = Math.max(0, capacity - occupied)
   const pct = Math.min(100, (occupied / capacity) * 100)
   const sharing = getSharingDetails(room.sharing_type)
+  const rentBadge = (tenant) => tenant.rentSummary || tenant.dueStatus || {}
 
   const saveRoom = async () => {
     if (saving) return
@@ -109,7 +110,7 @@ export default function OwnerMobileRoomDetailsSheet({ room, tenants = [], onClos
                   <p className="truncate text-sm font-bold">{tenant.name}</p>
                   <p className="truncate text-[11px] text-slate-400">{tenant.phone || 'No phone'} · Joined {formatDate(tenant.move_in_date)}</p>
                 </div>
-                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-300">{tenant.rent_status || 'active'}</span>
+                <span className={`max-w-[7rem] truncate rounded-full px-2 py-0.5 text-[10px] font-bold ${rentBadge(tenant).status === 'paid' ? 'bg-emerald-500/15 text-emerald-300' : rentBadge(tenant).status === 'pending_confirmation' ? 'bg-purple-500/15 text-purple-200' : 'bg-orange-500/15 text-orange-200'}`}>{rentBadge(tenant).label || tenant.rent_status || 'Unknown'}</span>
               </article>
             ))}
           </section>

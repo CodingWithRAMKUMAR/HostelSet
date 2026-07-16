@@ -35,7 +35,7 @@ import MobileBottomNav from '../../components/dashboard/MobileBottomNav';
 import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu';
 import AccountMenu from '../../components/dashboard/AccountMenu';
 import { resetDashboardScroll } from '../../lib/dashboardScroll';
-import { buildDashboardHref, dashboardHrefToPath, isCanonicalDashboardQuery, pushDashboardHistory, replaceDashboardHistory, resolveDashboardQuery } from '../../lib/dashboardRouting';
+import { buildDashboardHref, isCanonicalDashboardQuery, pushDashboardHistory, replaceDashboardHistory, resolveDashboardQuery } from '../../lib/dashboardRouting';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import AdminMobileDashboard from '../../components/admin/mobile/AdminMobileDashboard';
 import AdminMobileSearch from '../../components/admin/mobile/AdminMobileSearch';
@@ -205,7 +205,6 @@ function AdminDashboardContent() {
   const [mobileMenu, setMobileMenu] = useState(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const sectionRef = useRef(null);
-  const dashboardNavigationStackRef = useRef([]);
   const openSection = (tab) => {
     const nextTab = ADMIN_VIEW_ALIASES[tab] || tab;
     if (!ADMIN_VIEW_KEYS.has(nextTab)) {
@@ -220,25 +219,19 @@ function AdminDashboardContent() {
       return;
     }
     const href = buildDashboardHref('admin', nextTab, router.query);
-    const targetPath = dashboardHrefToPath(href);
-    if (router.asPath === targetPath) return;
-    dashboardNavigationStackRef.current.push(activeTab);
     pushDashboardHistory(router, href);
     setActiveTab(nextTab);
     setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll();
   };
   const navigateDashboardBack = () => {
     setMobileMenu(null); setProfileMenuOpen(false);
-    if (dashboardNavigationStackRef.current.length > 0) {
-      dashboardNavigationStackRef.current.pop();
-      router.back();
-      return;
-    }
     if (activeTab !== 'overview') {
       replaceDashboardHistory(router, buildDashboardHref('admin', 'overview', router.query));
       setActiveTab('overview');
       resetDashboardScroll();
+      return;
     }
+    router.back();
   };
   
   // Only the visible tab loads its dataset. This keeps login fast and reduces database traffic.
@@ -275,9 +268,11 @@ function AdminDashboardContent() {
       resetDashboardScroll()
       return
     }
-    setActiveTab(resolved.view)
+    setActiveTab(current => {
+      if (current !== resolved.view) resetDashboardScroll()
+      return resolved.view
+    })
     setMobileMenu(null)
-    resetDashboardScroll()
   }, [router.isReady, router.query.tab, router.query.property_id, router.query.membership_id, router.query.payment_id, router.query.application_id, router.query.complaint_id, router.query.request_id])
   const [actionKey, setActionKey] = useState(null);
 

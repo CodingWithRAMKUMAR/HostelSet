@@ -4,6 +4,11 @@ import type {
   ReminderSchedulerResult,
   RentReminderRepository,
 } from "./rent-reminder-types.ts";
+import {
+  initialReminderRepairsForRents,
+  reminderRepairDueDates,
+  repairableInitialReminderTypes,
+} from "./rent-reminder-schedule.ts";
 
 function assertRpcSucceeded(
   error: { message: string } | null,
@@ -20,7 +25,58 @@ export class SupabaseRentReminderRepository implements RentReminderRepository {
       "run_rent_reminder_scheduler",
     );
     assertRpcSucceeded(error, "Unable to refresh rent reminder schedule");
+    await this.repairReadyInitialReminders();
     return data as ReminderSchedulerResult;
+  }
+
+  private async repairReadyInitialReminders(): Promise<number> {
+    const referenceTime = new Date();
+    const { today, beforeDueDate } = reminderRepairDueDates(referenceTime);
+    const { data: rents, error: rentError } = await this.client
+      .from("rent_records")
+      .select("id,tenant_id,owner_id,due_date,reminder_timezone")
+      .eq("status", "unpaid")
+      .eq("reminders_enabled", true)
+      .in("due_date", [today, beforeDueDate]);
+    assertRpcSucceeded(rentError, "Unable to inspect ready rent reminders");
+
+    const repairs = initialReminderRepairsForRents(rents ?? [], referenceTime);
+    if (!repairs.length) return 0;
+
+    const rentIds = [...new Set(repairs.map((repair) => repair.rent_id))];
+    const { data: existingRows, error: existingError } = await this.client
+      .from("rent_reminder_queue")
+      .select("rent_id,reminder_type,reminder_sequence,status")
+      .in("rent_id", rentIds)
+      .in("reminder_type", [...repairableInitialReminderTypes])
+      .eq("reminder_sequence", 0);
+    assertRpcSucceeded(
+      existingError,
+      "Unable to inspect existing rent reminders",
+    );
+
+    const existingByKey = new Map(
+      (existingRows ?? []).map((row) => [
+        `${row.rent_id}:${row.reminder_type}:${row.reminder_sequence}`,
+        row.status,
+      ]),
+    );
+    const resettable = new Set(["pending", "failed", "cancelled"]);
+    const rowsToUpsert = repairs.filter((repair) => {
+      const key =
+        `${repair.rent_id}:${repair.reminder_type}:${repair.reminder_sequence}`;
+      const status = existingByKey.get(key);
+      return !status || resettable.has(status);
+    });
+    if (!rowsToUpsert.length) return 0;
+
+    const { error: upsertError } = await this.client
+      .from("rent_reminder_queue")
+      .upsert(rowsToUpsert, {
+        onConflict: "rent_id,reminder_type,reminder_sequence",
+      });
+    assertRpcSucceeded(upsertError, "Unable to repair ready rent reminders");
+    return rowsToUpsert.length;
   }
 
   async claimDue(

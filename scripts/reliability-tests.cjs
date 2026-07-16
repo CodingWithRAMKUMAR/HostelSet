@@ -6,6 +6,7 @@ const { enrichTenantRentStatus, filterTenantsByRentStatus, summarizeTenantRentSt
 const { resolveDashboardQuery, buildDashboardHref, dashboardHrefToPath, isCanonicalDashboardQuery } = require('../lib/dashboardRouting')
 const { normalizePrivateDocumentPath, createExpiringRequestCache } = require('../lib/privateDocument')
 const { isDashboardPath } = require('../lib/routeScope')
+const { normalizeIndianPhone, phoneLoginVariants } = require('../lib/server/phoneLogin')
 
 const id = '123e4567-e89b-42d3-a456-426614174000'
 const tenant = { move_in_date:'2026-06-16', rent_amount:10000, status:'active' }
@@ -51,7 +52,7 @@ assert.equal(filterTenantsByRentStatus(rentRows, 'upcoming').length, 3)
 assert.equal(filterTenantsByRentStatus(rentRows, 'due').length, 2)
 assert.equal(filterTenantsByRentStatus(rentRows, 'paid').length, 2)
 assert.equal(filterTenantsByRentStatus(rentRows, 'all').length, 7)
-assert.deepEqual(summarizeTenantRentStatuses(rentRows), { paid:2, due:2, upcoming:3, total:7 })
+assert.deepEqual(summarizeTenantRentStatuses(rentRows), { paid:2, due:2, upcoming:3, pending_confirmation:0, pendingAmount:0, total:7 })
 assert.equal(enrichTenantRentStatus(rentFixture(1)).label, 'Due tomorrow')
 assert.equal(enrichTenantRentStatus(rentFixture(-5)).label, 'Overdue by 5 days')
 assert.equal(enrichTenantRentStatus({ status:'active', dueStatus:{ status:'paid', daysUntilDue:10, paidPeriods:1 } }).label, 'Paid')
@@ -77,7 +78,7 @@ const ramFixture = { id:'ram', status:'active', move_in_date:'2026-07-12', creat
 assert.equal(enrichTenantRentStatus(ramFixture, [payment({ payment_method:'security_deposit', amount:3000, payment_date:'2026-07-12' })], new Date(2026,6,14)).category, 'due')
 assert.equal(enrichTenantRentStatus(ramFixture, [payment({ payment_method:'security_deposit', amount:3000, payment_date:'2026-07-12' })], new Date(2026,6,14)).label, 'Overdue by 2 days')
 const expectedProductionRows = [importedPaidBaseline, ramFixture].map(row => ({ ...row, rentSummary: enrichTenantRentStatus(row, row.id === 'ram' ? [payment({ payment_method:'security_deposit', amount:3000, payment_date:'2026-07-12' })] : [], new Date(2026,6,14)) }))
-assert.deepEqual(summarizeTenantRentStatuses(expectedProductionRows), { paid:0, due:1, upcoming:1, total:2 })
+assert.deepEqual(summarizeTenantRentStatuses(expectedProductionRows), { paid:0, due:1, upcoming:1, pending_confirmation:0, pendingAmount:16000, total:2 })
 
 const mappings = {
   owner: { application:'applications', import:'existing-imports', payment:'rent-payments', complaint:'complaints', 'room-change':'room-change', vacate:'vacate', notice:'notices', membership:'membership', 'archived-tenant':'archived-tenants' },
@@ -112,6 +113,8 @@ assert.equal(isDashboardPath('/owner/dashboard'), true)
 assert.equal(isDashboardPath('/tenant/dashboard'), true)
 assert.equal(isDashboardPath('/admin/dashboard'), true)
 for (const publicPath of ['/', '/property/example', '/properties', '/login/tenant', '/register', '/faq']) assert.equal(isDashboardPath(publicPath), false)
+assert.equal(normalizeIndianPhone('+91 98765-43210'), '9876543210')
+assert.deepEqual(phoneLoginVariants('9876543210'), ['9876543210', '919876543210', '+919876543210'])
 
 const source = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8')
 const roomIsAvailable = room => ['vacant', 'occupied'].includes(room.status) && room.current_occupants < room.capacity
@@ -171,15 +174,15 @@ assert.match(importDocumentApiSource, /objectExists\(objectPath\)/, 'owner impor
 assert.match(importDocumentApiSource, /storage\.from\(BUCKET\)\.createSignedUrl\(objectPath, 300\)/, 'owner import document endpoint must sign only resolved object paths')
 assert.equal(/req\.body\.(path|objectPath|storagePath)/.test(importDocumentApiSource), false, 'owner import document endpoint must never trust browser-supplied storage paths')
 assert.equal(source('hooks/useExistingTenantImports.js').includes('signPrivateDocumentFields'), false, 'existing imports list loading must not eagerly sign documents')
-assert.match(dashboardRoutingSource, /window\.history\[\`\$\{mode\}State\`\]\(state, '', path\)/, 'dashboard section navigation must use native same-page history for instant tab switching')
-assert.match(dashboardRoutingSource, /router\?\.\[mode\]\?\.\(href, undefined, \{ shallow: true, scroll: false \}\)/, 'dashboard history helper must retain router fallback')
-assert.match(ownerDashboardSource, /pushDashboardHistory\(router, href\)/, 'owner section navigation must push an internal history entry without Next route work')
+assert.equal(/window\.history\[\`\$\{mode\}State\`\]/.test(dashboardRoutingSource), false, 'dashboard section navigation must not mutate native history behind Next router')
+assert.match(dashboardRoutingSource, /router\[mode\]\(href, undefined, \{ shallow: true, scroll: false \}\)/, 'dashboard history helper must use shallow Next router navigation')
+assert.match(ownerDashboardSource, /pushDashboardHistory\(router, href\)/, 'owner section navigation must push shallow same-page history')
 assert.match(ownerDashboardSource, /replaceDashboardHistory\(router, buildDashboardHref\('owner', resolved\.view, router\.query\)\)/, 'owner invalid tabs must normalize with replace')
 assert.match(ownerDashboardSource, /nextTab === activeTab[\s\S]*return/, 'owner same-tab click must not push duplicate history')
-assert.match(ownerDashboardSource, /navigateDashboardBack[\s\S]*router\.back\(\)[\s\S]*replaceDashboardHistory\(router, buildDashboardHref\('owner', OWNER_VIEW_KEYS\.OVERVIEW/, 'owner topbar back must use canonical dashboard navigation')
+assert.match(ownerDashboardSource, /navigateDashboardBack[\s\S]*replaceDashboardHistory\(router, buildDashboardHref\('owner', OWNER_VIEW_KEYS\.OVERVIEW[\s\S]*router\.back\(\)/, 'owner topbar back must use canonical dashboard navigation')
 assert.equal(/navigateDashboardBack[\s\S]{0,600}signOut/.test(ownerDashboardSource), false, 'owner back handler must not call logout')
-assert.match(tenantDashboardSource, /pushDashboardHistory\(router, href\)/, 'tenant section navigation must push an internal history entry without Next route work')
-assert.match(adminDashboardSource, /pushDashboardHistory\(router, href\)/, 'admin section navigation must push an internal history entry without Next route work')
+assert.match(tenantDashboardSource, /pushDashboardHistory\(router, href\)/, 'tenant section navigation must push shallow same-page history')
+assert.match(adminDashboardSource, /pushDashboardHistory\(router, href\)/, 'admin section navigation must push shallow same-page history')
 assert.equal(/navigateDashboardBack[\s\S]{0,600}signOut/.test(tenantDashboardSource), false, 'tenant back handler must not call logout')
 assert.equal(/navigateDashboardBack[\s\S]{0,600}signOut/.test(adminDashboardSource), false, 'admin back handler must not call logout')
 const statsCardsSource = source('components/owner/StatsCards.js')

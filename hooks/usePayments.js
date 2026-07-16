@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { calculateCanonicalRentDue, isPendingRentPayment } from '../lib/rentDue';
 
 export function usePayments(tenant, refreshData, owner) {
   const [paymentHistory, setPaymentHistory] = useState([]);
@@ -50,14 +51,15 @@ export function usePayments(tenant, refreshData, owner) {
       toast.error('Upload an image smaller than 5MB');
       return false;
     }
-    if (paymentHistory.some((payment) => payment.status === 'payment_pending')) {
+    if (paymentHistory.some(isPendingRentPayment)) {
       toast.error('A payment proof is already waiting for owner confirmation.');
       return false;
     }
     setPaymentLoading(true);
     try {
       const screenshotUrl = await uploadFile(paymentScreenshot, 'rent');
-      const amount = tenant.pending_amount || tenant.rent_amount;
+      const rentStatus = calculateCanonicalRentDue(tenant, paymentHistory);
+      const amount = rentStatus.dueAmount || tenant.pending_amount || tenant.rent_amount;
       const { error: paymentError } = await supabase.from('payment_history').insert({
         tenant_id: tenant.id,
         amount: amount,

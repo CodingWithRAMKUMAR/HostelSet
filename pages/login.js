@@ -2,10 +2,17 @@ import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { signInWithEmail, resetPassword, syncServerSession, signOut } from '../lib/supabase'
-import { cleanPhoneNumber } from '../lib/utils'
 import toast from 'react-hot-toast'
 import BrandLogo from '../components/BrandLogo'
 import { fetchWithTimeout } from '../lib/fetchWithTimeout'
+
+const normalizeLoginPhone = value => {
+  const digits = String(value || '').replace(/\D/g, '')
+  if (/^[6-9]\d{9}$/.test(digits)) return digits
+  if (/^91[6-9]\d{9}$/.test(digits)) return digits.slice(2)
+  if (/^0[6-9]\d{9}$/.test(digits)) return digits.slice(1)
+  return ''
+}
 
 const ROLE_COPY = {
   tenant: {
@@ -44,7 +51,7 @@ export default function Login() {
   const roleCopy = ROLE_COPY[requestedRole] || { title: 'Login', helper: 'Login with email or mobile number.' }
 
   const isEmail = input => input.includes('@')
-  const isPhone = input => /^\d{10}$/.test(cleanPhoneNumber(input))
+  const isPhone = input => Boolean(normalizeLoginPhone(input))
 
   const roleDestinationFor = role => {
     if (role === 'admin') return '/admin/dashboard'
@@ -79,21 +86,24 @@ export default function Login() {
 
       if (isPhone(identifier)) {
         setLoginStatus('Finding your account...')
+        const normalizedPhone = normalizeLoginPhone(identifier)
         const response = await fetchWithTimeout('/api/auth/resolve-phone', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: identifier }),
+          body: JSON.stringify({ phone: normalizedPhone }),
         }, 10000)
         const payload = await response.json()
         if (!response.ok || !payload.email) {
-          toast.error('No account found with this phone number.')
+          const message = 'No account found with this phone number.'
+          setFormError(message)
+          toast.error(message)
           setLoading(false)
           return
         }
         markLoginTiming('identifier-resolved')
         emailToUse = payload.email
       } else if (!isEmail(identifier)) {
-        const message = 'Enter a valid email or 10-digit mobile number'
+        const message = 'Enter a valid email or Indian mobile number'
         setFormError(message)
         toast.error(message)
         identifierRef.current?.focus()

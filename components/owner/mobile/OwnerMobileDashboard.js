@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import MobileTopbar from '../../dashboard/MobileTopbar'
 import DashboardIcon from '../../dashboard/DashboardIcon'
 import { formatCurrency } from '../../../lib/utils'
@@ -21,7 +22,7 @@ function Stat({ label, value, icon, onClick }) {
   )
 }
 
-export default function OwnerMobileDashboard({ property, stats, counts, membershipActive, membershipStatus, membershipExpiry, daysLeft, pendingMembershipRequest, avatar = 'O', onProfile, onNavigate, onMembership }) {
+function OwnerMobileDashboard({ property, stats, counts, membershipActive, membershipStatus, membershipExpiry, daysLeft, pendingMembershipRequest, avatar = 'O', onProfile, onNavigate, onMembership }) {
   return (
     <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
       <Header title="HostelSet" subtitle={property?.name} avatar={avatar} onProfile={onProfile} />
@@ -77,3 +78,5 @@ export default function OwnerMobileDashboard({ property, stats, counts, membersh
     </div>
   )
 }
+
+export default memo(OwnerMobileDashboard)

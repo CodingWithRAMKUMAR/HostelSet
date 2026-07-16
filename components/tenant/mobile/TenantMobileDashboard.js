@@ -35,13 +35,13 @@ export default function TenantMobileDashboard({ tenant, room, property, roommate
               <p className="truncate text-xs text-slate-400">Room {room?.room_number || '—'} · {getSharingDetails(room?.sharing_type || '')?.label || 'Room'}</p>
               <p className="mt-1 truncate text-[11px] font-bold text-orange-200">{formatNextDue(rentStatus)}</p>
             </div>
-            <span className="max-w-[42%] truncate rounded-full bg-white/10 px-2 py-1 text-[11px] font-bold">{rentStatus?.status || 'active'}</span>
+            <span className="max-w-[42%] truncate rounded-full bg-white/10 px-2 py-1 text-[11px] font-bold">{formatRentDueLabel(rentStatus) || 'Active'}</span>
           </div>
         </section>
 
         <section className="grid grid-cols-2 gap-2">
           <Stat label="Monthly rent" value={formatCurrency(tenant?.rent_amount || 0)} onClick={() => onNavigate('payments')} />
-          <Stat label="Pending" value={formatCurrency(tenant?.pending_amount || 0)} onClick={() => onNavigate('payments')} />
+          <Stat label="Pending" value={formatCurrency(tenant?.rentSummary?.dueAmount ?? tenant?.dueStatus?.dueAmount ?? tenant?.pending_amount ?? 0)} onClick={() => onNavigate('payments')} />
           <Stat label="Paid" value={formatCurrency(tenant?.total_paid || 0)} onClick={() => onNavigate('payments')} />
           <Stat label="Deposit" value={formatCurrency(tenant?.security_deposit_amount || 0)} />
           <Stat label="Roommates" value={roommates.length} onClick={() => onNavigate('roommates')} />
