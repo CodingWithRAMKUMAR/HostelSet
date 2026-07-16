@@ -84,7 +84,6 @@ export function useRoomChange(tenant, refreshData) {
       setShowRoomChangeModal(false);
       setSelectedNewRoom('');
       setRoomChangeReason('');
-      await refreshData(true);
       return true;
     } catch (error) {
       console.error('Room change request error:', error);
@@ -111,10 +110,14 @@ export function useRoomChange(tenant, refreshData) {
               if (payload.new.status === 'approved') toast.success('✅ Your room change request was approved!');
               else toast.error(`❌ Room change rejected${payload.new.rejection_reason ? `: ${payload.new.rejection_reason}` : '.'}`);
             }
-            refreshData(true);
           }
         }
-        loadRoomChangeState().catch((error) => console.error('Room change refresh error:', error));
+        if (payload.eventType === 'INSERT' && payload.new?.status === 'pending') {
+          setPendingRoomChangeRequest(payload.new);
+          setLastRoomChangeDecision(null);
+        } else if (payload.eventType === 'DELETE') {
+          setPendingRoomChangeRequest(current => current?.id === changedRequest?.id ? null : current);
+        }
       })
       .subscribe();
 

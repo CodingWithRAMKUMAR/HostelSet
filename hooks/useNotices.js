@@ -20,7 +20,13 @@ export function useNotices(tenant) {
         if (payload.eventType === 'INSERT' && (!payload.new?.property_id || payload.new.property_id === tenant.property_id)) {
           toast.success(payload.new?.property_id ? '📢 New notice posted by owner!' : '📢 New HostelSet announcement!');
         }
-        loadNotices();
+        setNotices(current => {
+          if (payload.eventType === 'DELETE') return current.filter(notice => notice.id !== changedNotice?.id);
+          if (!payload.new) return current;
+          const index = current.findIndex(notice => notice.id === payload.new.id);
+          if (index === -1) return [payload.new, ...current].slice(0, 10);
+          return current.map(notice => notice.id === payload.new.id ? { ...notice, ...payload.new } : notice);
+        });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };

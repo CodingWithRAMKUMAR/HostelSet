@@ -54,6 +54,12 @@ const RoomChangeModal = dynamic(() => import('../../components/tenant/modals/Roo
 const ScreenshotModal = dynamic(() => import('../../components/tenant/modals/ScreenshotModal'), { ssr: false })
 
 const TENANT_VIEW_KEYS = new Set(['overview', 'requests', 'roommates', 'notices', 'complaints', 'payments', 'room-change', 'vacate'])
+const TENANT_PERSISTENT_TABS = ['overview', 'requests', 'roommates', 'notices', 'complaints', 'payments', 'room-change', 'vacate']
+
+function markTenantViewPerf(label, detail = '') {
+  if (typeof window === 'undefined' || window.localStorage?.getItem('hostelsetTenantPerf') !== '1' || typeof performance === 'undefined') return
+  console.info(`[TenantView] ${label}${detail ? ` ${detail}` : ''}`)
+}
 
 function TenantAvatar({ src, name, sizeClass = 'h-8 w-8' }) {
   const [imageFailed, setImageFailed] = useState(false)
@@ -63,13 +69,25 @@ function TenantAvatar({ src, name, sizeClass = 'h-8 w-8' }) {
   return <div className={`${sizeClass} flex items-center justify-center rounded-full bg-gradient-to-r from-orange-500 to-amber-500 text-sm font-bold text-white`}>{name?.charAt(0) || 'U'}</div>
 }
 
+function TenantTabPanel({ tab, active, children }) {
+  useEffect(() => {
+    if (active) markTenantViewPerf('visible-commit', tab)
+  }, [active, tab])
+
+  return (
+    <section hidden={!active} aria-hidden={!active} data-tenant-tab={tab}>
+      {children}
+    </section>
+  )
+}
+
 // ---------------- THE ACTUAL DASHBOARD CONTENT ----------------
 function TenantDashboardContent() {
   const router = useRouter();
   
   // ---------------- MODULAR HOOKS ----------------
   const core = useTenant() || {};
-  const { tenant, room, property, owner, roommates, profilePhotoUrl, loading, realtimeConnected, roommateVacateAlert, refreshData, setTenant } = core;
+  const { tenant, room, property, owner, roommates, profilePhotoUrl, realtimeConnected, roommateVacateAlert, refreshData, setTenant } = core;
   
   const { notices = [] } = useNotices(tenant);
   const { existingVacateRequest, lastVacateDecision, vacateLoaded, cancelVacateRequest, refreshVacate } = useVacate(tenant, setTenant);
@@ -108,10 +126,12 @@ function TenantDashboardContent() {
   const [vacateForm, setVacateForm] = useState({ expected_date:'', reason:'', rating:0, review:'' })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
+  const [mountedTabs, setMountedTabs] = useState(() => new Set(['overview']))
   const [mobileMenu, setMobileMenu] = useState(null)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const sectionRef = useRef(null)
   const openSection = tab => {
+    markTenantViewPerf('tab-click', String(tab))
     const nextTab = TENANT_VIEW_KEYS.has(tab) ? tab : 'overview'
     if (nextTab !== tab && process.env.NODE_ENV !== 'production') {
       console.warn('[HostelSet] Unknown tenant dashboard view key:', tab)
@@ -127,9 +147,10 @@ function TenantDashboardContent() {
       return
     }
     const href = buildDashboardHref('tenant', nextTab, router.query)
-    pushDashboardHistory(router, href)
+    markTenantViewPerf('set-activeTab', nextTab)
     setActiveTab(nextTab)
     setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll()
+    window.requestAnimationFrame?.(() => pushDashboardHistory(router, href)) || pushDashboardHistory(router, href)
   }
   const navigateDashboardBack = () => {
     setMobileMenu(null); setProfileMenuOpen(false)
@@ -172,6 +193,16 @@ function TenantDashboardContent() {
     })
     setMobileMenu(null)
   }, [router.isReady, router.query.tab, router.query.payment_id, router.query.notice_id, router.query.complaint_id, router.query.request_id])
+
+  useEffect(() => {
+    if (!TENANT_VIEW_KEYS.has(activeTab)) return
+    setMountedTabs(previous => {
+      if (previous.has(activeTab)) return previous
+      const next = new Set(previous)
+      next.add(activeTab)
+      return next
+    })
+  }, [activeTab])
 
   // ----- Helper Functions -----
   const copyPaymentDetail = async (value, label) => {
@@ -242,6 +273,7 @@ function TenantDashboardContent() {
     })
     const updated = await updateResponse.json().catch(() => ({}))
     if (!updateResponse.ok) throw new Error(updated.error || 'Could not update profile photo')
+    return { uploadedPath, signedUrl: updated.signedUrl || null }
   }
 
   const updateProfile = async () => {
@@ -252,11 +284,11 @@ function TenantDashboardContent() {
     try {
       const { error } = await supabase.rpc('update_tenant_profile', { p_name:profileForm.name, p_phone:profileForm.phone, p_blood_group:normalizeBloodGroup(profileForm.blood_group) })
       if (error) throw error
-      if (profileForm.profilePhotoFile) await uploadTenantProfilePhoto(profileForm.profilePhotoFile)
+      const photo = profileForm.profilePhotoFile ? await uploadTenantProfilePhoto(profileForm.profilePhotoFile) : null
+      setTenant(current => current ? { ...current, name: profileForm.name, phone: profileForm.phone, blood_group: normalizeBloodGroup(profileForm.blood_group), ...(photo?.uploadedPath ? { profile_photo_path: photo.uploadedPath } : {}) } : current)
       toast.success('Profile updated successfully!')
       setEditProfile(false)
       setProfilePhotoPreview('')
-      await refreshData(true)
     } catch (error) { toast.error(error.message || 'Failed to update profile') }
     finally { setIsSubmitting(false) }
   }
@@ -296,7 +328,6 @@ function TenantDashboardContent() {
       await refreshVacate()
       setShowVacateModal(false)
       setVacateForm({ expected_date:'', reason:'', rating:0, review:'' })
-      await refreshData(true)
     } catch (error) {
       console.error('Vacate request error:', error)
       toast.error('Failed to submit vacate request: ' + error.message)
@@ -328,7 +359,7 @@ function TenantDashboardContent() {
     window.location.replace('/login');
   }
 
-  if (loading || !tenant) {
+  if (!tenant) {
     return <DashboardSkeleton cards={6} />
   }
 
@@ -408,18 +439,69 @@ function TenantDashboardContent() {
       </section>
     )
   }
-  const renderTenantMobileView = () => {
+  const renderTenantMobileTab = (tab) => {
     const common = { property, avatar: tenant?.name?.charAt(0) || 'U', avatarUrl: profilePhotoUrl, avatarAlt: tenant?.name ? `${tenant.name} profile photo` : 'Tenant profile photo', onProfile: openProfile, onBack: navigateDashboardBack }
-    if (activeTab === 'payments') return <TenantMobilePayments {...common} payments={paymentHistory} onPayRent={() => setShowPaymentModal(true)} onViewScreenshot={openSignedPaymentScreenshot} />
-    if (activeTab === 'notices') return <TenantMobileNotices {...common} notices={notices} />
-    if (['complaints', 'room-change', 'vacate', 'roommates'].includes(activeTab)) return <TenantMobileRequests {...common} view={activeTab} complaints={complaints} roommates={roommates} room={room} onDeleteComplaint={deleteComplaint} onRaiseComplaint={() => setShowComplaintModal(true)} isSubmitting={isSubmitting} pendingRoomChangeRequest={pendingRoomChangeRequest} onRoomChange={openRoomChangeModal} existingVacateRequest={existingVacateRequest} vacateBlockedReason={vacateBlockedReason} onVacate={() => setShowVacateModal(true)} onCancelVacate={cancelVacateRequest} />
+    if (tab === 'payments') return <TenantMobilePayments {...common} payments={paymentHistory} onPayRent={() => setShowPaymentModal(true)} onViewScreenshot={openSignedPaymentScreenshot} />
+    if (tab === 'notices') return <TenantMobileNotices {...common} notices={notices} />
+    if (['complaints', 'room-change', 'vacate', 'roommates'].includes(tab)) return <TenantMobileRequests {...common} view={tab} complaints={complaints} roommates={roommates} room={room} onDeleteComplaint={deleteComplaint} onRaiseComplaint={() => setShowComplaintModal(true)} isSubmitting={isSubmitting} pendingRoomChangeRequest={pendingRoomChangeRequest} onRoomChange={openRoomChangeModal} existingVacateRequest={existingVacateRequest} vacateBlockedReason={vacateBlockedReason} onVacate={() => setShowVacateModal(true)} onCancelVacate={cancelVacateRequest} />
     return <TenantMobileDashboard tenant={tenantWithRentSummary} room={room} property={property} roommates={roommates} notices={notices} complaints={complaints} rentStatus={rentStatus} existingVacateRequest={existingVacateRequest} pendingRoomChangeRequest={pendingRoomChangeRequest} avatar={tenant?.name?.charAt(0) || 'U'} avatarUrl={profilePhotoUrl} avatarAlt={tenant?.name ? `${tenant.name} profile photo` : 'Tenant profile photo'} onProfile={openProfile} onNavigate={openSection} onPayRent={() => setShowPaymentModal(true)} />
   }
+  const renderMountedTenantMobileTabs = () => (
+    <div data-tenant-mobile-mounted-tabs>
+      {TENANT_PERSISTENT_TABS.filter(tab => mountedTabs.has(tab) || tab === activeTab).map(tab => (
+        <TenantTabPanel key={tab} tab={tab} active={activeTab === tab}>
+          {renderTenantMobileTab(tab)}
+        </TenantTabPanel>
+      ))}
+    </div>
+  )
+  const renderTenantDesktopTab = (tab) => {
+    if (tab === 'overview') {
+      return (
+        <OverviewSection
+          tenant={tenant}
+          room={room}
+          property={property}
+          owner={owner}
+          pendingRoomChangeRequest={pendingRoomChangeRequest}
+          lastRoomChangeDecision={lastRoomChangeDecision}
+          vacateRequest={existingVacateRequest}
+          lastVacateDecision={lastVacateDecision}
+        />
+      )
+    }
+    if (tab === 'roommates') return <RoommatesSection roommates={roommates} room={room} />
+    if (tab === 'notices') return <NoticesSection notices={notices} />
+    if (tab === 'requests') return renderRequestsOverview()
+    if (tab === 'complaints') {
+      return (
+        <ComplaintsSection
+          complaints={complaints}
+          onDelete={deleteComplaint}
+          isSubmitting={isSubmitting}
+          onRaiseComplaint={() => setShowComplaintModal(true)}
+        />
+      )
+    }
+    if (tab === 'payments') return <PaymentsSection payments={paymentHistory} onViewScreenshot={openSignedPaymentScreenshot} />
+    if (tab === 'room-change') return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-slate-900">Room change</h2><p className="mt-2 text-sm text-slate-600">{pendingRoomChangeRequest ? 'Your room-change request is awaiting approval.' : 'Request a move to another available room.'}</p><button type="button" onClick={openRoomChangeModal} disabled={isSubmitting || Boolean(pendingRoomChangeRequest)} className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white disabled:opacity-50 sm:w-auto">{pendingRoomChangeRequest ? 'Request pending' : 'Choose a room'}</button></section>
+    if (tab === 'vacate') return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-slate-900">Vacate request</h2><p className="mt-2 text-sm text-slate-600">{existingVacateRequest ? `Your request is ${existingVacateRequest.status}.` : (vacateBlockedReason || 'Submit a planned checkout request to your owner.')}</p>{existingVacateRequest ? <button type="button" onClick={cancelVacateRequest} disabled={isSubmitting} className="mt-5 w-full rounded-xl border border-amber-300 px-4 py-3 font-semibold text-amber-700 disabled:opacity-50 sm:w-auto">Cancel request</button> : <button type="button" onClick={() => setShowVacateModal(true)} disabled={isSubmitting || Boolean(vacateBlockedReason)} className="mt-5 w-full rounded-xl bg-red-600 px-4 py-3 font-semibold text-white disabled:opacity-50 sm:w-auto">Request vacate</button>}</section>
+    return null
+  }
+  const renderMountedTenantDesktopTabs = () => (
+    <>
+      {TENANT_PERSISTENT_TABS.filter(tab => mountedTabs.has(tab) || tab === activeTab).map(tab => (
+        <TenantTabPanel key={tab} tab={tab} active={activeTab === tab}>
+          {renderTenantDesktopTab(tab)}
+        </TenantTabPanel>
+      ))}
+    </>
+  )
 
   return (
     <div className="dashboard-shell min-h-screen max-w-full overflow-x-hidden bg-[#f8f9fa] font-sans">
       <div className="lg:hidden">
-        {renderTenantMobileView()}
+        {renderMountedTenantMobileTabs()}
         <MobileBottomNav items={tenantBottomItems} activeId={mobileMenu === 'more' ? 'more' : mobileMenu === 'requests' || ['complaints', 'room-change', 'vacate', 'roommates'].includes(activeTab) ? 'requests' : activeTab} onSelect={id => { if (id === 'requests' || id === 'more') setMobileMenu(id); else { setMobileMenu(null); openSection(id) } }} />
         <TenantMobileMore open={mobileMenu === 'requests'} title="Requests" subtitle={property?.name} onClose={() => setMobileMenu(null)} items={tenantMobileRequestItems} />
         <TenantMobileMore open={mobileMenu === 'more'} title="Tenant menu" subtitle={property?.name} onClose={() => setMobileMenu(null)} items={tenantMobileMoreItems} />
@@ -580,37 +662,7 @@ function TenantDashboardContent() {
 
         {/* --- TAB CONTENT --- */}
         <div ref={sectionRef} className="scroll-mt-28">
-        {activeTab === 'overview' && (
-          <OverviewSection
-            tenant={tenant}
-            room={room}
-            property={property}
-            owner={owner}
-            pendingRoomChangeRequest={pendingRoomChangeRequest}
-            lastRoomChangeDecision={lastRoomChangeDecision}
-            vacateRequest={existingVacateRequest}
-            lastVacateDecision={lastVacateDecision}
-          />
-        )}
-        {activeTab === 'roommates' && <RoommatesSection roommates={roommates} room={room} />}
-        {activeTab === 'notices' && <NoticesSection notices={notices} />}
-        {activeTab === 'requests' && renderRequestsOverview()}
-        {activeTab === 'complaints' && (
-          <ComplaintsSection
-            complaints={complaints}
-            onDelete={deleteComplaint}
-            isSubmitting={isSubmitting}
-            onRaiseComplaint={() => setShowComplaintModal(true)}
-          />
-        )}
-        {activeTab === 'payments' && (
-          <PaymentsSection
-            payments={paymentHistory}
-            onViewScreenshot={openSignedPaymentScreenshot}
-          />
-        )}
-        {activeTab === 'room-change' && <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-slate-900">Room change</h2><p className="mt-2 text-sm text-slate-600">{pendingRoomChangeRequest ? 'Your room-change request is awaiting approval.' : 'Request a move to another available room.'}</p><button type="button" onClick={openRoomChangeModal} disabled={isSubmitting || Boolean(pendingRoomChangeRequest)} className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white disabled:opacity-50 sm:w-auto">{pendingRoomChangeRequest ? 'Request pending' : 'Choose a room'}</button></section>}
-        {activeTab === 'vacate' && <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-slate-900">Vacate request</h2><p className="mt-2 text-sm text-slate-600">{existingVacateRequest ? `Your request is ${existingVacateRequest.status}.` : (vacateBlockedReason || 'Submit a planned checkout request to your owner.')}</p>{existingVacateRequest ? <button type="button" onClick={cancelVacateRequest} disabled={isSubmitting} className="mt-5 w-full rounded-xl border border-amber-300 px-4 py-3 font-semibold text-amber-700 disabled:opacity-50 sm:w-auto">Cancel request</button> : <button type="button" onClick={() => setShowVacateModal(true)} disabled={isSubmitting || Boolean(vacateBlockedReason)} className="mt-5 w-full rounded-xl bg-red-600 px-4 py-3 font-semibold text-white disabled:opacity-50 sm:w-auto">Request vacate</button>}</section>}
+          {renderMountedTenantDesktopTabs()}
         </div>
       </main>
 

@@ -26,7 +26,7 @@ function StatCard({ stat, onNavigate }) {
   )
 }
 
-export default function AdminMobileDashboard({ stats = [], globalStats = {}, realtimeConnected, avatar = 'A', onProfile, onNavigate, onRefresh }) {
+export default function AdminMobileDashboard({ stats = [], actionCards = [], globalStats = {}, realtimeConnected, avatar = 'A', onProfile, onNavigate, onRefresh }) {
   return (
     <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
       <AdminMobileHeader title="Admin dashboard" subtitle={realtimeConnected ? 'Platform live' : 'Platform console'} avatar={avatar} onProfile={onProfile} />
@@ -49,12 +49,12 @@ export default function AdminMobileDashboard({ stats = [], globalStats = {}, rea
         <section className="rounded-2xl border border-white/10 bg-white p-2 shadow-sm">
           <p className="mb-2 text-xs font-black text-slate-900">Action required</p>
           <div className="grid grid-cols-2 gap-2">
-            {[
+            {(actionCards.length ? actionCards.map(card => [card.tab, card.label, card.value]) : [
               ['payments', 'Payments', formatCurrency(globalStats.totalRevenue || 0)],
               ['complaints', 'Complaints', globalStats.pendingComplaints || 0],
               ['vacate', 'Vacates', globalStats.pendingVacates || 0],
               ['users', 'Users', globalStats.totalUsers || globalStats.totalTenants || 0],
-            ].map(([id, label, value]) => (
+            ]).map(([id, label, value]) => (
               <button key={id} type="button" onClick={() => onNavigate(id)} className="flex h-8 min-w-0 items-center justify-between gap-2 rounded-xl bg-slate-50 px-2 text-left">
                 <span className="truncate text-xs font-semibold text-slate-600">{label}</span>
                 <span className="truncate rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-700">{value}</span>

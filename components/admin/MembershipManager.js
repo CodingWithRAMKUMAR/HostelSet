@@ -191,8 +191,8 @@ export default function MembershipManager({
 
                 return (
                   <tr key={`${owner.id}:${property?.id || 'no-property'}`} className="hover:bg-orange-50/50 transition">
-                    <td className="px-6 py-4 font-semibold text-gray-800">{owner.full_name}</td>
-                    <td className="px-6 py-4 text-gray-500">{owner.email}</td>
+                    <td className="px-6 py-4 font-semibold text-gray-800">{owner.full_name || 'Unknown owner'}</td>
+                    <td className="px-6 py-4 text-gray-500">{owner.email || 'Not available'}</td>
                     <td className="px-6 py-4 text-gray-500">{property?.name || 'No property'}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2 min-w-[250px]">

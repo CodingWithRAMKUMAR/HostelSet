@@ -60,7 +60,14 @@ export function useVacate(tenant, setTenant) {
             else if (payload.new.status === 'rejected') { toast.error(`Your vacate request was rejected.${payload.new.rejection_reason ? ` ${payload.new.rejection_reason}` : ''}`); }
           }
         }
-        loadVacate();
+        if (payload.eventType === 'DELETE') {
+          setExistingVacateRequest(current => current?.id === changedRequest?.id ? null : current);
+        } else if (payload.new) {
+          if (['pending', 'approved'].includes(payload.new.status)) setExistingVacateRequest(payload.new);
+          else setExistingVacateRequest(current => current?.id === payload.new.id ? null : current);
+          if (payload.new.status === 'rejected') setLastVacateDecision(payload.new);
+        }
+        setVacateLoaded(true);
       }).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [tenant?.id]);

@@ -11,9 +11,9 @@ export function useComplaints(tenant) {
   };
   const submitComplaint = async (formData) => {
     if (!formData.title || !formData.description) { toast.error('Please fill all fields'); return false; }
-    const { error } = await supabase.from('complaints').insert({ tenant_id:tenant.id, property_id:tenant.property_id, room_id:tenant.room_id, tenant_name:tenant.name, room_number:tenant.rooms?.room_number, title:formData.title, description:formData.description, priority:formData.priority, status:'open', created_at:new Date().toISOString() });
+    const { data, error } = await supabase.from('complaints').insert({ tenant_id:tenant.id, property_id:tenant.property_id, room_id:tenant.room_id, tenant_name:tenant.name, room_number:tenant.rooms?.room_number, title:formData.title, description:formData.description, priority:formData.priority, status:'open', created_at:new Date().toISOString() }).select('*').single();
     if (error) { toast.error('Failed to submit complaint: ' + error.message); return false; }
-    await loadComplaints();
+    if (data) setComplaints(prev => [data, ...prev]);
     toast.success('Complaint submitted successfully!'); return true;
   };
   const deleteComplaint = async (complaintId) => {
@@ -33,7 +33,14 @@ export function useComplaints(tenant) {
             toast.success(`📝 Complaint status updated to: ${payload.new.status}`);
           }
         }
-        loadComplaints();
+        setComplaints(current => {
+          const changedComplaint = payload.new || payload.old;
+          if (payload.eventType === 'DELETE') return current.filter(complaint => complaint.id !== changedComplaint?.id);
+          if (!payload.new) return current;
+          const index = current.findIndex(complaint => complaint.id === payload.new.id);
+          if (index === -1) return [payload.new, ...current];
+          return current.map(complaint => complaint.id === payload.new.id ? { ...complaint, ...payload.new } : complaint);
+        });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };

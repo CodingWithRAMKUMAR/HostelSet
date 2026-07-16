@@ -3,9 +3,56 @@ import { useRouter } from 'next/router';
 import { clearHostelSetSessionCache, getRestoredSession, supabase } from '../lib/supabase';
 import { calculateMembershipStatus } from '../lib/utils';
 import { enrichTenantRentStatus } from '../lib/tenantRentStatus';
+import { isPendingRentPayment } from '../lib/rentDue';
 import toast from 'react-hot-toast';
 
 const OwnerContext = createContext();
+const PENDING_RENT_STATUSES = ['payment_pending', 'pending', 'pending_confirmation', 'pending_owner_verification'];
+const NON_MONTHLY_PAYMENT_METHODS = new Set(['security_deposit', 'deposit', 'pre_booking', 'joining_fee', 'application_fee']);
+
+const markOwnerDataPerf = (label, detail = '', startedAt = null) => {
+  if (typeof window === 'undefined' || window.localStorage?.getItem('hostelsetOwnerPerf') !== '1' || typeof performance === 'undefined') return;
+  const elapsed = typeof startedAt === 'number' ? ` ${Math.round(performance.now() - startedAt)}ms` : '';
+  console.info(`[OwnerData] ${label}${elapsed}${detail ? ` ${detail}` : ''}`);
+};
+
+const timedOwnerQuery = async (label, query) => {
+  const startedAt = typeof performance !== 'undefined' ? performance.now() : null;
+  try {
+    return await query;
+  } finally {
+    markOwnerDataPerf(label, '', startedAt);
+  }
+};
+
+const normalizeLoadArgs = (isBackgroundOrOptions = false, preferredPropertyId = null, options = {}) => {
+  if (isBackgroundOrOptions && typeof isBackgroundOrOptions === 'object') {
+    return {
+      isBackground: Boolean(isBackgroundOrOptions.background),
+      preferredPropertyId: isBackgroundOrOptions.propertyId || null,
+      force: Boolean(isBackgroundOrOptions.force),
+      reason: isBackgroundOrOptions.reason || 'manual-refresh',
+    };
+  }
+  const isBackground = Boolean(isBackgroundOrOptions);
+  return {
+    isBackground,
+    preferredPropertyId,
+    force: options.force ?? isBackground,
+    reason: options.reason || (isBackground ? 'background-refresh' : preferredPropertyId ? 'property-change' : 'initial-auth'),
+  };
+};
+
+const ownerLoadKey = (userId, propertyId) => `${userId || 'anonymous'}:${propertyId || 'auto'}`;
+
+const upsertRecord = (records, record) => {
+  if (!record?.id) return records;
+  const index = records.findIndex(item => item.id === record.id);
+  if (index === -1) return [record, ...records];
+  return records.map(item => item.id === record.id ? { ...item, ...record } : item);
+};
+
+const removeRecord = (records, id) => id ? records.filter(item => item.id !== id) : records;
 
 export function OwnerProvider({ children }) {
   const router = useRouter();
@@ -27,9 +74,20 @@ export function OwnerProvider({ children }) {
   const [pendingMembershipRequest, setPendingMembershipRequest] = useState(null);
   const [daysLeft, setDaysLeft] = useState(null);
   const [roomMonthlyIncome, setRoomMonthlyIncome] = useState({});
+  const [paymentSeed, setPaymentSeed] = useState({ propertyId: null, pendingRentPayments: [], allPayments: [], version: 0 });
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const autoRefreshRef = useRef(null);
-  const tenantPhotoCacheRef = useRef(new Map());
+  const inFlightLoadRef = useRef(null);
+  const lastLoadedKeyRef = useRef(null);
+  const lastLoadedRequestKeyRef = useRef(null);
+  const lastLoadedPropertyRef = useRef(null);
+  const roomsRef = useRef([]);
+  const tenantsRef = useRef([]);
+  const archivedTenantsRef = useRef([]);
+
+  useEffect(() => { roomsRef.current = rooms; }, [rooms]);
+  useEffect(() => { tenantsRef.current = tenants; }, [tenants]);
+  useEffect(() => { archivedTenantsRef.current = archivedTenants; }, [archivedTenants]);
 
   const updateMembershipFromProperty = (propertyData) => {
     const membership = calculateMembershipStatus(propertyData);
@@ -39,128 +97,157 @@ export function OwnerProvider({ children }) {
     setDaysLeft(membership.daysLeft);
   };
 
-  const loadTenantPhotoUrls = async (tenantRows) => {
-    const ids = tenantRows.map(tenant => tenant.id).filter(Boolean);
-    if (!ids.length) return tenantRows;
-    const cacheKey = ids.map(id => {
-      const tenant = tenantRows.find(item => item.id === id);
-      return `${id}:${tenant?.profile_photo_path || ''}:${tenant?.updated_at || ''}`;
-    }).join('|');
-    if (tenantPhotoCacheRef.current.has(cacheKey)) {
-      const urls = tenantPhotoCacheRef.current.get(cacheKey);
-      return tenantRows.map(tenant => ({ ...tenant, profilePhotoUrl: urls[tenant.id] || null }));
-    }
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch('/api/owner/tenant-profile-photo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-        body: JSON.stringify({ action:'batch-sign', tenantIds: ids }),
-      });
-      if (!response.ok) return tenantRows;
-      const data = await response.json();
-      const urls = data?.urls || {};
-      tenantPhotoCacheRef.current.set(cacheKey, urls);
-      if (tenantPhotoCacheRef.current.size > 25) tenantPhotoCacheRef.current.delete(tenantPhotoCacheRef.current.keys().next().value);
-      return tenantRows.map(tenant => ({ ...tenant, profilePhotoUrl: urls[tenant.id] || null }));
-    } catch {
-      return tenantRows;
-    }
-  };
+  const loadData = useCallback(async (isBackgroundOrOptions = false, legacyPreferredPropertyId = null, legacyOptions = {}) => {
+    const { isBackground, preferredPropertyId, force, reason } = normalizeLoadArgs(isBackgroundOrOptions, legacyPreferredPropertyId, legacyOptions);
+    const userId = localStorage.getItem('userId');
+    const requestedPropertyId = preferredPropertyId || localStorage.getItem('ownerPropertyId') || property?.id || null;
+    const requestKey = ownerLoadKey(userId, requestedPropertyId);
+    markOwnerDataPerf('load-requested', `reason=${reason} key=${requestKey}${force ? ' force=true' : ''}`);
 
-  const loadData = useCallback(async (isBackground = false, preferredPropertyId = null) => {
-    if (!isBackground) setLoading(true); else setIsRefreshing(true);
-    try {
-      const userId = localStorage.getItem('userId');
-      const { data: propertyRows, error: propertiesError } = await supabase.from('properties').select('*').eq('owner_id', userId).order('created_at');
-      if (propertiesError) throw propertiesError;
-      const ownedProperties = propertyRows || [];
-      setProperties(ownedProperties);
-      const storedPropertyId = preferredPropertyId || localStorage.getItem('ownerPropertyId');
-      const propertyData = ownedProperties.find(item => item.id === storedPropertyId) || ownedProperties[0] || null;
-      if (propertyData) {
-        localStorage.setItem('ownerPropertyId', propertyData.id);
-        setProperty(propertyData); setPropertyImages(propertyData.photos || []); updateMembershipFromProperty(propertyData);
-        
-        // Rooms and tenants are independent after the property is known, so load them together.
-        const rentPaymentStatuses = ['success', 'payment_pending', 'pending', 'pending_confirmation', 'pending_owner_verification'];
-        const [{ data: roomsData, error: roomsError }, { data: tenantsData, error: tenantsError }, { data: archivedData, error: archivedError }, rentPaymentsResult] = await Promise.all([
-          supabase.from('rooms').select('*').eq('property_id', propertyData.id).order('room_number'),
-          supabase.from('tenants').select('*').eq('property_id', propertyData.id).in('status', ['active', 'notice_period', 'payment_pending']),
-          supabase.from('tenants').select('*, check_out_requests(expected_check_out, status, completed_at, created_at)').eq('property_id', propertyData.id).eq('status', 'inactive').order('archived_at', { ascending: false, nullsFirst: false }),
-          supabase.from('payment_history').select('id, tenant_id, amount, payment_date, payment_method, status, tenants!inner(room_id, property_id)').in('status', rentPaymentStatuses).eq('tenants.property_id', propertyData.id),
-        ]);
-        if (roomsError) throw roomsError;
-        if (tenantsError) throw tenantsError;
-        if (archivedError) throw archivedError;
-        if (rentPaymentsResult.error) throw rentPaymentsResult.error;
-        setRooms(roomsData || []);
-        const total = roomsData?.length || 0; const occupied = roomsData?.filter(r => r.current_occupants >= r.capacity).length || 0; const vacant = total - occupied;
-        const rentPaymentsForStatus = rentPaymentsResult.data || [];
-        const paymentsByTenant = rentPaymentsForStatus.reduce((grouped, payment) => {
-          if (!grouped.has(payment.tenant_id)) grouped.set(payment.tenant_id, []);
-          grouped.get(payment.tenant_id).push(payment);
-          return grouped;
-        }, new Map());
-        const tenantsWithRoomNumber = (tenantsData || []).map(t => {
-          const room = roomsData?.find(r => r.id === t.room_id);
-          const rentSummary = enrichTenantRentStatus(t, paymentsByTenant.get(t.id) || []);
-          return { ...t, room_number: room ? room.room_number : 'N/A', dueStatus: rentSummary, rentSummary };
-        });
-        setTenants(await loadTenantPhotoUrls(tenantsWithRoomNumber));
-        setArchivedTenants((archivedData || []).map(tenant => {
-          const latestCheckout = [...(tenant.check_out_requests || [])].sort((a, b) => new Date(b.completed_at || b.created_at) - new Date(a.completed_at || a.created_at))[0];
-          return { ...tenant, room_number: roomsData?.find(room => room.id === tenant.room_id)?.room_number || 'N/A', checkout_date:tenant.notice_period_end || latestCheckout?.expected_check_out || null };
-        }));
-        // Rooms and tenants are enough to render a useful dashboard. Secondary
-        // financial counters continue below without holding the whole screen.
-        if (!isBackground) setLoading(false);
-        
-        // Stats and Finance
-        const pendingAmount = tenantsWithRoomNumber.reduce((sum, tenant) => sum + (tenant.rentSummary?.hasUnpaidRent ? Number(tenant.rentSummary.dueAmount || 0) : 0), 0);
-        const overdueCount = tenantsWithRoomNumber.filter(t => t.dueStatus.status === 'overdue').length;
-        const noticePeriodCount = tenantsWithRoomNumber.filter(t => t.status === 'notice_period').length;
-        const pendingPaymentCount = tenantsWithRoomNumber.filter(t => t.status === 'payment_pending').length;
-        const tenantIds = tenantsData?.map(t => t.id) || [];
-        const now = new Date(); const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]; const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-        const [pendingResult, complaintResult, vacateResult] = await Promise.all([
-          tenantIds.length
-            ? supabase.from('payment_history').select('id, payment_method, status').in('status', ['payment_pending', 'pending', 'pending_confirmation', 'pending_owner_verification']).in('tenant_id', tenantIds)
-            : Promise.resolve({ data: [] }),
-          supabase.from('complaints').select('*', { count: 'exact', head: true }).eq('property_id', propertyData.id).in('status', ['open', 'in_progress']),
-          supabase.from('check_out_requests').select('*', { count: 'exact', head: true }).eq('property_id', propertyData.id).eq('status', 'pending'),
-        ]);
-        const successfulPayments = rentPaymentsForStatus.filter(payment => payment.status === 'success');
-        const nonMonthlyMethods = new Set(['security_deposit', 'deposit', 'pre_booking', 'joining_fee', 'application_fee']);
-        const rentPayments = successfulPayments.filter(payment => !nonMonthlyMethods.has(String(payment.payment_method || '').toLowerCase()));
-        const depositPayments = successfulPayments.filter(payment => String(payment.payment_method || '').toLowerCase() === 'security_deposit');
-        const totalCollected = rentPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-        const depositCollected = depositPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-        const paymentsThisMonth = rentPayments.filter(payment => payment.payment_date >= startOfMonth && payment.payment_date <= endOfMonth);
-        const monthlyIncome = paymentsThisMonth.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-        const incomeByRoom = paymentsThisMonth.reduce((result, payment) => {
-          const roomId = payment.tenants?.room_id;
-          if (roomId) result[roomId] = (result[roomId] || 0) + Number(payment.amount || 0);
-          return result;
-        }, {});
-        setRoomMonthlyIncome(incomeByRoom);
-        const pendingRentConfirmations = (pendingResult.data || []).filter(payment => !nonMonthlyMethods.has(String(payment.payment_method || '').toLowerCase())).length;
-        const complaintCount = complaintResult.count;
-        const vacateCount = vacateResult.count;
+    const inFlight = inFlightLoadRef.current;
+    const canJoinInFlight = inFlight
+      && inFlight.userId === userId
+      && (!preferredPropertyId || !inFlight.preferredPropertyId || inFlight.preferredPropertyId === preferredPropertyId);
+    if (canJoinInFlight) {
+      markOwnerDataPerf('load-joined-in-flight', `reason=${reason} key=${requestKey}`);
+      return inFlight.promise;
+    }
 
-        setStats({ totalRooms:total, occupied, vacant, totalCollected, depositCollected, pendingAmount, totalComplaints:complaintCount||0, pendingVacate:vacateCount||0, overdueCount, noticePeriodCount, pendingPaymentCount, pendingRentConfirmations, monthlyIncome });
-        return propertyData;
+    if (!force && lastLoadedPropertyRef.current && (lastLoadedKeyRef.current === requestKey || lastLoadedRequestKeyRef.current === requestKey)) {
+      markOwnerDataPerf('load-skipped-cached', `reason=${reason} key=${requestKey}`);
+      return lastLoadedPropertyRef.current;
+    }
+
+    const runLoad = async () => {
+      const loadStartedAt = typeof performance !== 'undefined' ? performance.now() : null;
+      markOwnerDataPerf(isBackground ? 'background-refresh-network-start' : 'core-load-start', `reason=${reason} key=${requestKey}${force ? ' force=true' : ''}`);
+      if (!isBackground) setLoading(true); else setIsRefreshing(true);
+      try {
+        const { data: propertyRows, error: propertiesError } = await timedOwnerQuery('properties', supabase.from('properties').select('*').eq('owner_id', userId).order('created_at'));
+        if (propertiesError) throw propertiesError;
+        const ownedProperties = propertyRows || [];
+        setProperties(ownedProperties);
+        const propertyData = ownedProperties.find(item => item.id === requestedPropertyId) || ownedProperties[0] || null;
+        if (propertyData) {
+          localStorage.setItem('ownerPropertyId', propertyData.id);
+          setProperty(propertyData); setPropertyImages(propertyData.photos || []); updateMembershipFromProperty(propertyData);
+          
+          // Rooms, tenants, and payment summaries are independent after the property is known.
+          const rentPaymentStatuses = ['success', ...PENDING_RENT_STATUSES];
+          const paymentSelect = '*, tenants!inner(id, name, phone, email, room_id, property_id, profile_photo_path, rooms(room_number))';
+          const [{ data: roomsData, error: roomsError }, { data: tenantsData, error: tenantsError }, { data: archivedData, error: archivedError }, rentPaymentsResult, pendingPaymentsResult, allPaymentsResult] = await Promise.all([
+            timedOwnerQuery('rooms', supabase.from('rooms').select('*').eq('property_id', propertyData.id).order('room_number')),
+            timedOwnerQuery('active-tenants', supabase.from('tenants').select('*').eq('property_id', propertyData.id).in('status', ['active', 'notice_period', 'payment_pending'])),
+            timedOwnerQuery('archived-tenants', supabase.from('tenants').select('*, check_out_requests(expected_check_out, status, completed_at, created_at)').eq('property_id', propertyData.id).eq('status', 'inactive').order('archived_at', { ascending: false, nullsFirst: false })),
+            timedOwnerQuery('rent-status-payments', supabase.from('payment_history').select('id, tenant_id, amount, payment_date, payment_method, status, tenants!inner(room_id, property_id)').in('status', rentPaymentStatuses).eq('tenants.property_id', propertyData.id)),
+            timedOwnerQuery('pending-payments', supabase.from('payment_history').select(paymentSelect).in('status', PENDING_RENT_STATUSES).eq('tenants.property_id', propertyData.id).order('payment_date', { ascending: false })),
+            timedOwnerQuery('payment-history', supabase.from('payment_history').select(paymentSelect).eq('tenants.property_id', propertyData.id).order('payment_date', { ascending: false }).limit(100)),
+          ]);
+          if (roomsError) throw roomsError;
+          if (tenantsError) throw tenantsError;
+          if (archivedError) throw archivedError;
+          if (rentPaymentsResult.error) throw rentPaymentsResult.error;
+          if (pendingPaymentsResult.error) throw pendingPaymentsResult.error;
+          if (allPaymentsResult.error) throw allPaymentsResult.error;
+          setRooms(roomsData || []);
+          const total = roomsData?.length || 0; const occupied = roomsData?.filter(r => r.current_occupants >= r.capacity).length || 0; const vacant = total - occupied;
+          const rentPaymentsForStatus = rentPaymentsResult.data || [];
+          const paymentsByTenant = rentPaymentsForStatus.reduce((grouped, payment) => {
+            if (!grouped.has(payment.tenant_id)) grouped.set(payment.tenant_id, []);
+            grouped.get(payment.tenant_id).push(payment);
+            return grouped;
+          }, new Map());
+          const tenantsWithRoomNumber = (tenantsData || []).map(t => {
+            const room = roomsData?.find(r => r.id === t.room_id);
+            const rentSummary = enrichTenantRentStatus(t, paymentsByTenant.get(t.id) || []);
+            return { ...t, room_number: room ? room.room_number : 'N/A', dueStatus: rentSummary, rentSummary };
+          });
+          setTenants(tenantsWithRoomNumber);
+          setArchivedTenants((archivedData || []).map(tenant => {
+            const latestCheckout = [...(tenant.check_out_requests || [])].sort((a, b) => new Date(b.completed_at || b.created_at) - new Date(a.completed_at || a.created_at))[0];
+            return { ...tenant, room_number: roomsData?.find(room => room.id === tenant.room_id)?.room_number || 'N/A', checkout_date:tenant.notice_period_end || latestCheckout?.expected_check_out || null };
+          }));
+          const activeTenantIdSet = new Set((tenantsData || []).map(tenant => tenant.id));
+          const pendingSeed = (pendingPaymentsResult.data || [])
+            .filter(payment => activeTenantIdSet.has(payment.tenant_id))
+            .filter(payment => !NON_MONTHLY_PAYMENT_METHODS.has(String(payment.payment_method || '').toLowerCase()));
+          setPaymentSeed(current => ({
+            propertyId: propertyData.id,
+            pendingRentPayments: pendingSeed,
+            allPayments: allPaymentsResult.data || [],
+            version: current.version + 1,
+          }));
+          if (!isBackground) {
+            markOwnerDataPerf('first-usable-data', `reason=${reason} key=${ownerLoadKey(userId, propertyData.id)}`, loadStartedAt);
+            setLoading(false);
+          }
+          
+          const pendingAmount = tenantsWithRoomNumber.reduce((sum, tenant) => sum + (tenant.rentSummary?.hasUnpaidRent ? Number(tenant.rentSummary.dueAmount || 0) : 0), 0);
+          const overdueCount = tenantsWithRoomNumber.filter(t => t.dueStatus.status === 'overdue').length;
+          const noticePeriodCount = tenantsWithRoomNumber.filter(t => t.status === 'notice_period').length;
+          const pendingPaymentCount = tenantsWithRoomNumber.filter(t => t.status === 'payment_pending').length;
+          const tenantIds = tenantsData?.map(t => t.id) || [];
+          const now = new Date(); const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]; const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+          const [pendingResult, complaintResult, vacateResult] = await Promise.all([
+            tenantIds.length
+              ? supabase.from('payment_history').select('id, payment_method, status').in('status', ['payment_pending', 'pending', 'pending_confirmation', 'pending_owner_verification']).in('tenant_id', tenantIds)
+              : Promise.resolve({ data: [] }),
+            supabase.from('complaints').select('*', { count: 'exact', head: true }).eq('property_id', propertyData.id).in('status', ['open', 'in_progress']),
+            supabase.from('check_out_requests').select('*', { count: 'exact', head: true }).eq('property_id', propertyData.id).eq('status', 'pending'),
+          ]);
+          const successfulPayments = rentPaymentsForStatus.filter(payment => payment.status === 'success');
+          const rentPayments = successfulPayments.filter(payment => !NON_MONTHLY_PAYMENT_METHODS.has(String(payment.payment_method || '').toLowerCase()));
+          const depositPayments = successfulPayments.filter(payment => String(payment.payment_method || '').toLowerCase() === 'security_deposit');
+          const totalCollected = rentPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+          const depositCollected = depositPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+          const paymentsThisMonth = rentPayments.filter(payment => payment.payment_date >= startOfMonth && payment.payment_date <= endOfMonth);
+          const monthlyIncome = paymentsThisMonth.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+          const incomeByRoom = paymentsThisMonth.reduce((result, payment) => {
+            const roomId = payment.tenants?.room_id;
+            if (roomId) result[roomId] = (result[roomId] || 0) + Number(payment.amount || 0);
+            return result;
+          }, {});
+          setRoomMonthlyIncome(incomeByRoom);
+          const pendingRentConfirmations = (pendingResult.data || []).filter(payment => !NON_MONTHLY_PAYMENT_METHODS.has(String(payment.payment_method || '').toLowerCase())).length;
+          const complaintCount = complaintResult.count;
+          const vacateCount = vacateResult.count;
+
+          setStats({ totalRooms:total, occupied, vacant, totalCollected, depositCollected, pendingAmount, totalComplaints:complaintCount||0, pendingVacate:vacateCount||0, overdueCount, noticePeriodCount, pendingPaymentCount, pendingRentConfirmations, monthlyIncome });
+          lastLoadedKeyRef.current = ownerLoadKey(userId, propertyData.id);
+          lastLoadedRequestKeyRef.current = requestKey;
+          lastLoadedPropertyRef.current = propertyData;
+          markOwnerDataPerf(isBackground ? 'background-refresh-finish' : 'core-load-finish', `reason=${reason} key=${ownerLoadKey(userId, propertyData.id)}`, loadStartedAt);
+          return propertyData;
+        }
+        if (isBackground) return null;
+        setProperty(null); setRooms([]); setTenants([]); setArchivedTenants([]); setRoomMonthlyIncome({});
+        setPaymentSeed(current => ({ ...current, propertyId: null, pendingRentPayments: [], allPayments: [], version: current.version + 1 }));
+        lastLoadedKeyRef.current = null;
+        lastLoadedRequestKeyRef.current = null;
+        lastLoadedPropertyRef.current = null;
+        return null;
+      } catch (error) {
+        console.error('Load error:', error);
+        if (!isBackground) toast.error('Failed to load data: ' + error.message);
+        return null;
+      } finally {
+        if (!isBackground) setLoading(false); else setIsRefreshing(false);
       }
-      setProperty(null); setRooms([]); setTenants([]); setArchivedTenants([]); setRoomMonthlyIncome({});
-      return null;
-    } catch (error) { console.error('Load error:', error); if (!isBackground) toast.error('Failed to load data: ' + error.message); return null; }
-    finally { if (!isBackground) setLoading(false); else setIsRefreshing(false); }
-  }, []);
+    };
+
+    const promise = runLoad();
+    inFlightLoadRef.current = { userId, preferredPropertyId, key: requestKey, promise };
+    try {
+      return await promise;
+    } finally {
+      if (inFlightLoadRef.current?.promise === promise) inFlightLoadRef.current = null;
+    }
+  }, [property?.id]);
 
   const startAutoRefresh = () => {
     if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
     autoRefreshRef.current = setInterval(() => {
-      if (document.visibilityState === 'visible') loadData(true);
+      if (document.visibilityState === 'visible') loadData({ background: true, force: true, reason: 'auto-refresh' });
     }, 120000);
   };
 
@@ -245,7 +332,7 @@ export function OwnerProvider({ children }) {
     else { const { error: insertError } = await supabase.from('owner_settings').insert({ owner_id:userId, property_id:property.id, ...updateData }); error = insertError; }
     if (error) throw error;
     if (property && newSettings.upi_id) await supabase.from('properties').update({ owner_upi_id:newSettings.upi_id }).eq('id', property.id);
-    setSettings(newSettings); await loadData(true);
+    setSettings(newSettings); await loadData({ background: true, force: true, reason: 'settings-save-reconciliation' });
   };
 
   const selectProperty = async (propertyId) => {
@@ -253,8 +340,9 @@ export function OwnerProvider({ children }) {
     localStorage.setItem('ownerPropertyId', propertyId);
     setLoading(true);
     setProperty(null); setRooms([]); setTenants([]); setArchivedTenants([]); setRoomMonthlyIncome({});
+    setPaymentSeed(current => ({ ...current, propertyId, pendingRentPayments: [], allPayments: [], version: current.version + 1 }));
     setPendingMembershipRequest(null);
-    const loadedProperty = await loadData(false, propertyId);
+    const loadedProperty = await loadData({ propertyId, force: true, reason: 'property-change' });
     if (loadedProperty) {
       await Promise.all([
         loadSettings(loadedProperty),
@@ -295,12 +383,108 @@ export function OwnerProvider({ children }) {
     finally { setMembershipLoading(false); }
   };
 
+  const patchRoomRealtime = useCallback((payload) => {
+    const row = payload.new || payload.old;
+    if (!row?.id) return;
+    if (payload.eventType === 'DELETE') {
+      setRooms(current => removeRecord(current, row.id));
+      markOwnerDataPerf('realtime-local-patch', `table=rooms action=delete id=${row.id}`);
+      return;
+    }
+    if (row.property_id !== property?.id) return;
+    setRooms(current => upsertRecord(current, row));
+    markOwnerDataPerf('realtime-local-patch', `table=rooms action=${String(payload.eventType || '').toLowerCase()} id=${row.id}`);
+  }, [property?.id]);
+
+  const patchTenantRealtime = useCallback((payload) => {
+    const row = payload.new || payload.old;
+    if (!row?.id) return;
+    const activeStatuses = new Set(['active', 'notice_period', 'payment_pending']);
+    if (payload.eventType === 'DELETE' || row.status === 'inactive' || row.status === 'archived') {
+      setTenants(current => removeRecord(current, row.id));
+      markOwnerDataPerf('realtime-local-patch', `table=tenants action=remove id=${row.id}`);
+      return;
+    }
+    if (row.property_id !== property?.id || !activeStatuses.has(row.status)) return;
+    setTenants(current => {
+      const existing = current.find(item => item.id === row.id);
+      const room = roomsRef.current.find(item => item.id === row.room_id);
+      const merged = {
+        ...(existing || {}),
+        ...row,
+        room_number: room?.room_number || existing?.room_number || 'N/A',
+        dueStatus: existing?.dueStatus || existing?.rentSummary || enrichTenantRentStatus(row, []),
+        rentSummary: existing?.rentSummary || existing?.dueStatus || enrichTenantRentStatus(row, []),
+      };
+      return upsertRecord(current, merged);
+    });
+    markOwnerDataPerf('realtime-local-patch', `table=tenants action=${String(payload.eventType || '').toLowerCase()} id=${row.id}`);
+  }, [property?.id]);
+
+  const paymentDisplayRecord = useCallback((payment) => {
+    if (!payment?.tenant_id) return payment;
+    const tenant = [...tenantsRef.current, ...archivedTenantsRef.current].find(item => item.id === payment.tenant_id);
+    if (!tenant) return payment;
+    return {
+      ...payment,
+      tenants: payment.tenants || {
+        id: tenant.id,
+        name: tenant.name,
+        phone: tenant.phone,
+        email: tenant.email,
+        room_id: tenant.room_id,
+        profile_photo_path: tenant.profile_photo_path,
+        rooms: { room_number: tenant.room_number || roomsRef.current.find(room => room.id === tenant.room_id)?.room_number || 'N/A' },
+      },
+    };
+  }, []);
+
+  const patchPaymentRealtime = useCallback((payload) => {
+    const row = payload.new || payload.old;
+    if (!row?.id) return;
+    const knownTenant = [...tenantsRef.current, ...archivedTenantsRef.current].some(tenant => tenant.id === row.tenant_id);
+    if (!knownTenant) return;
+    setPaymentSeed(current => {
+      const record = paymentDisplayRecord(row);
+      const nextAll = payload.eventType === 'DELETE'
+        ? removeRecord(current.allPayments || [], row.id)
+        : upsertRecord(current.allPayments || [], record);
+      const nextPending = payload.eventType === 'DELETE' || !isPendingRentPayment(record)
+        ? removeRecord(current.pendingRentPayments || [], row.id)
+        : upsertRecord(current.pendingRentPayments || [], record);
+      return {
+        ...current,
+        pendingRentPayments: nextPending,
+        allPayments: nextAll,
+        version: current.version + 1,
+      };
+    });
+    markOwnerDataPerf('realtime-local-patch', `table=payment_history action=${String(payload.eventType || '').toLowerCase()} id=${row.id}`);
+  }, [paymentDisplayRecord]);
+
+  const clearOwnerData = useCallback(() => {
+    inFlightLoadRef.current = null;
+    lastLoadedKeyRef.current = null;
+    lastLoadedRequestKeyRef.current = null;
+    lastLoadedPropertyRef.current = null;
+    setProperties([]);
+    setProperty(null);
+    setOwnerProfile(null);
+    setPropertyImages([]);
+    setRooms([]);
+    setTenants([]);
+    setArchivedTenants([]);
+    setRoomMonthlyIncome({});
+    setPaymentSeed(current => ({ ...current, propertyId: null, pendingRentPayments: [], allPayments: [], version: current.version + 1 }));
+    markOwnerDataPerf('owner-cache-cleared', 'reason=logout');
+  }, []);
+
   useEffect(() => {
     const init = async () => {
       const auth = await checkAuthAndRedirect();
       if (!auth) return; if (auth.role !== 'owner') { router.replace(`/login/${auth.role || 'owner'}`); return; }
       localStorage.setItem('userId', auth.user.id); localStorage.setItem('userEmail', auth.user.email || ''); localStorage.setItem('userName', auth.user.user_metadata?.full_name || '');
-      const loadedProperty = await loadData(false);
+      const loadedProperty = await loadData({ reason: 'initial-auth' });
       await Promise.all([
         loadSettings(loadedProperty),
         loadOwnerProfile(auth.user.id),
@@ -311,49 +495,55 @@ export function OwnerProvider({ children }) {
       startAutoRefresh();
     };
     init();
-    const { data:{subscription} } = supabase.auth.onAuthStateChange((event, session) => { if (event === 'SIGNED_OUT') { clearHostelSetSessionCache(); router.replace('/login/owner'); } });
+    const { data:{subscription} } = supabase.auth.onAuthStateChange((event, session) => { if (event === 'SIGNED_OUT') { clearOwnerData(); clearHostelSetSessionCache(); router.replace('/login/owner'); } });
     return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); if (subscription) subscription.unsubscribe(); };
   }, []);
 
   useEffect(() => {
     if (!property?.id) return undefined;
 
-    let timer;
     let active = true;
     setRealtimeConnected(false);
-    const scheduleRefresh = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => loadData(true), 300);
+    const handleCoreRealtime = (payload) => {
+      if (!active) return;
+      if (payload.table === 'rooms') patchRoomRealtime(payload);
+      else if (payload.table === 'tenants') patchTenantRealtime(payload);
+      else if (payload.table === 'payment_history') patchPaymentRealtime(payload);
+      else if (payload.table === 'properties' && payload.new?.id === property.id) {
+        setProperty(current => current?.id === payload.new.id ? { ...current, ...payload.new } : current);
+        updateMembershipFromProperty(payload.new);
+        markOwnerDataPerf('realtime-local-patch', `table=properties action=${String(payload.eventType || '').toLowerCase()} id=${payload.new.id}`);
+      } else {
+        markOwnerDataPerf('realtime-local-patch-skipped', `table=${payload.table || 'unknown'} action=${String(payload.eventType || '').toLowerCase()}`);
+      }
     };
     const channel = supabase
       .channel(`owner-core-live:${property.id}`)
-      .on('postgres_changes', { event:'*', schema:'public', table:'properties', filter:`owner_id=eq.${property.owner_id}` }, scheduleRefresh)
-      .on('postgres_changes', { event:'*', schema:'public', table:'rooms', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
-      .on('postgres_changes', { event:'*', schema:'public', table:'tenants', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
-      .on('postgres_changes', { event:'*', schema:'public', table:'payment_history' }, scheduleRefresh)
-      .on('postgres_changes', { event:'*', schema:'public', table:'complaints', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
-      .on('postgres_changes', { event:'*', schema:'public', table:'check_out_requests', filter:`property_id=eq.${property.id}` }, scheduleRefresh)
+      .on('postgres_changes', { event:'*', schema:'public', table:'properties', filter:`owner_id=eq.${property.owner_id}` }, handleCoreRealtime)
+      .on('postgres_changes', { event:'*', schema:'public', table:'rooms', filter:`property_id=eq.${property.id}` }, handleCoreRealtime)
+      .on('postgres_changes', { event:'*', schema:'public', table:'tenants', filter:`property_id=eq.${property.id}` }, handleCoreRealtime)
+      .on('postgres_changes', { event:'*', schema:'public', table:'payment_history' }, handleCoreRealtime)
       .on('postgres_changes', { event:'*', schema:'public', table:'owner_settings', filter:`owner_id=eq.${property.owner_id}` }, () => {
-        clearTimeout(timer);
-        timer = setTimeout(() => loadSettings(property), 300);
+        markOwnerDataPerf('resource-specific-refresh', 'table=owner_settings');
+        loadSettings(property);
       })
       .on('postgres_changes', { event:'*', schema:'public', table:'membership_requests', filter:`owner_id=eq.${property.owner_id}` }, () => {
+        markOwnerDataPerf('resource-specific-refresh', 'table=membership_requests');
         loadMembershipRequest(property.owner_id, property.id).catch((error) => console.error('Membership request refresh failed:', error));
       })
       .subscribe((status) => { if (active) setRealtimeConnected(status === 'SUBSCRIBED'); });
 
     return () => {
       active = false;
-      clearTimeout(timer);
       supabase.removeChannel(channel);
     };
-  }, [property?.id, property?.owner_id]);
+  }, [property?.id, property?.owner_id, patchPaymentRealtime, patchRoomRealtime, patchTenantRealtime]);
 
   return (
     <OwnerContext.Provider value={{
       loading, isRefreshing, realtimeConnected, properties, property, selectProperty, propertyImages, setPropertyImages, rooms, tenants, archivedTenants,
       ownerProfile, loadOwnerProfile, updateOwnerProfile,
-      settings, setSettings, stats, roomMonthlyIncome, setRoomMonthlyIncome,
+      settings, setSettings, stats, roomMonthlyIncome, setRoomMonthlyIncome, paymentSeed,
       membershipActive, membershipLoading, membershipStatus, membershipExpiry, daysLeft,
       pendingMembershipRequest, loadMembershipRequest, requestMembership,
       loadData, loadSettings, saveSettings, startAutoRefresh, updateMembershipFromProperty,

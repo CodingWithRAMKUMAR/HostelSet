@@ -216,6 +216,80 @@ test('dashboard routing uses shallow Next router methods, not full reload', () =
   assert.deepStrictEqual(calls[1][3], { shallow: true, scroll: false })
 })
 
+test('tenant dashboard uses cached mounted tabs and does not blank after usable data', () => {
+  const tenantDashboardSource = source('pages/tenant/dashboard.js')
+  assert.match(tenantDashboardSource, /TENANT_PERSISTENT_TABS/)
+  assert.match(tenantDashboardSource, /data-tenant-mobile-mounted-tabs/)
+  assert.match(tenantDashboardSource, /<TenantTabPanel key=\{tab\} tab=\{tab\} active=\{activeTab === tab\}>/)
+  assert.doesNotMatch(tenantDashboardSource, /if \(loading \|\| !tenant\)/)
+})
+
+test('tenant core data reloads are guarded and not used for tab actions', () => {
+  const tenantContextSource = source('context/TenantContext.js')
+  const tenantDashboardSource = source('pages/tenant/dashboard.js')
+  assert.match(tenantContextSource, /inFlightLoadRef/)
+  assert.match(tenantContextSource, /lastLoadedKeyRef/)
+  assert.match(tenantContextSource, /load-skipped-cached/)
+  assert.match(tenantContextSource, /load-joined-in-flight/)
+  assert.doesNotMatch(tenantDashboardSource, /refreshData\(true\)/)
+})
+
+test('tenant realtime hooks patch local state instead of core refreshing', () => {
+  for (const file of ['hooks/usePayments.js', 'hooks/useRoomChange.js', 'pages/tenant/dashboard.js']) {
+    assert.doesNotMatch(source(file), /refreshData\(true\)/, `${file} must not full-refresh tenant core data`)
+  }
+  assert.doesNotMatch(source('context/TenantContext.js'), /scheduleRefresh[\s\S]*refreshData\(true\)/)
+  assert.doesNotMatch(source('hooks/usePayments.js'), /if \(payload\.eventType === 'UPDATE'[\s\S]{0,160}refreshData/)
+})
+
+test('admin core stats load is cached and in-flight guarded', () => {
+  const adminContextSource = source('context/AdminContext.js')
+  assert.match(adminContextSource, /inFlightStatsRef/)
+  assert.match(adminContextSource, /lastLoadedKeyRef/)
+  assert.match(adminContextSource, /load-joined-in-flight/)
+  assert.match(adminContextSource, /load-skipped-cached/)
+  assert.match(adminContextSource, /hostelsetAdminPerf/)
+})
+
+test('admin dashboard uses mounted tabs and visible state before shallow route push', () => {
+  const adminDashboardSource = source('pages/admin/dashboard.js')
+  assert.match(adminDashboardSource, /ADMIN_PERSISTENT_TABS/)
+  assert.match(adminDashboardSource, /const \[mountedTabs, setMountedTabs\] = useState\(\(\) => new Set\(\['overview'\]\)\)/)
+  assert.match(adminDashboardSource, /data-admin-mobile-mounted-tabs/)
+  assert.match(adminDashboardSource, /<AdminTabPanel key=\{tab\} tab=\{tab\} active=\{activeTab === tab\}>/)
+  assert.match(adminDashboardSource, /window\.requestAnimationFrame\?\.\(\(\) => pushDashboardHistory\(router, href\)\)/)
+})
+
+test('admin overview surfaces real pending request queues', () => {
+  const adminDashboardSource = source('pages/admin/dashboard.js')
+  assert.match(adminDashboardSource, /function AdminActionCenter/)
+  assert.match(adminDashboardSource, /Pending memberships/)
+  assert.match(adminDashboardSource, /Pending applications/)
+  assert.match(adminDashboardSource, /Open complaints/)
+  assert.match(adminDashboardSource, /Pending vacates/)
+  assert.match(adminDashboardSource, /Room changes/)
+  assert.match(adminDashboardSource, /Payment issues/)
+  assert.match(adminDashboardSource, /membership_id/)
+})
+
+test('admin membership queries use explicit relationship aliases', () => {
+  const membershipHookSource = source('hooks/useAdminMembershipManager.js')
+  assert.match(membershipHookSource, /properties!properties_owner_id_fkey/)
+  assert.match(membershipHookSource, /owner:users!membership_requests_owner_id_fkey/)
+  assert.match(membershipHookSource, /property:properties!membership_requests_property_id_fkey/)
+  assert.doesNotMatch(membershipHookSource, /properties\(id, name, membership_active, membership_expiry\)/)
+  assert.doesNotMatch(membershipHookSource, /owner:owner_id\(/)
+  assert.doesNotMatch(membershipHookSource, /property:property_id\(/)
+})
+
+test('admin membership requests preserve rows and normalize missing relations', () => {
+  const membershipHookSource = source('hooks/useAdminMembershipManager.js')
+  assert.match(membershipHookSource, /normalizeMembershipRequest/)
+  assert.match(membershipHookSource, /Unknown owner/)
+  assert.match(membershipHookSource, /No property linked/)
+  assert.match(membershipHookSource, /setRequests\(current => current\.filter\(request => request\.id !== requestId\)\)/)
+})
+
 test('labels expose due today and pending confirmation clearly', () => {
   assert.strictEqual(formatRentDueLabel(calculateCanonicalRentDue(tenant(), [], NOW)), 'Due today')
   assert.strictEqual(formatRentDueLabel(calculateCanonicalRentDue(tenant(), [payment({ status: 'pending' })], NOW)), 'Pending confirmation')
@@ -373,7 +447,11 @@ test('owner valid tab click updates visible tab before shallow routing', () => {
 test('first visit to a main owner mobile tab mounts it immediately', () => {
   const ownerDashboard = source('pages/owner/dashboard.js')
   assert.match(ownerDashboard, /const MAIN_OWNER_MOBILE_TABS = \[/)
+  assert.match(ownerDashboard, /const PERSISTENT_OWNER_MOBILE_TABS = \[/)
   assert.match(ownerDashboard, /mountedMobileTabs\.has\(tab\) \|\| tab === activeTab/)
+  for (const tab of ['COMPLAINTS', 'NOTICES', 'ANALYTICS', 'MEMBERSHIP']) {
+    assert.match(ownerDashboard, new RegExp(`OWNER_VIEW_KEYS\\.${tab}`))
+  }
 })
 
 test('returning to a visited owner mobile tab does not remount it', () => {
@@ -389,6 +467,27 @@ test('switching main owner mobile tabs never renders an empty content container'
   assert.match(ownerDashboard, /data-owner-mobile-tab=\{tab\}/)
   assert.match(ownerDashboard, /<OwnerMobileTabPanel key=\{tab\} tab=\{tab\} active=\{activeTab === tab\}>/)
   assert.match(ownerDashboard, /hidden=\{!active\}/)
+  assert.match(ownerDashboard, /PERSISTENT_OWNER_MOBILE_TABS\.includes\(activeTab\)/)
+})
+
+test('owner dashboard full-page skeleton is limited to initial load without usable data', () => {
+  const ownerDashboard = source('pages/owner/dashboard.js')
+  assert.match(ownerDashboard, /const hasUsableDashboardData = Boolean\(property\?\.id\) \|\| safeRooms\.length > 0 \|\| safeTenants\.length > 0/)
+  assert.match(ownerDashboard, /if \(loading && !hasUsableDashboardData\) \{[\s\S]*<DashboardSkeleton cards=\{12\}/)
+  assert.strictEqual(ownerDashboard.includes('OwnerDashboardContent key='), false)
+  assert.strictEqual(ownerDashboard.includes('isDesktopDashboard === null) return <DashboardSkeleton'), false)
+})
+
+test('OwnerDashboardContent does not declare hooks after early returns', () => {
+  const ownerDashboard = source('pages/owner/dashboard.js')
+  const componentStart = ownerDashboard.indexOf('function OwnerDashboardContent()')
+  assert.notStrictEqual(componentStart, -1)
+  const componentSource = ownerDashboard.slice(componentStart)
+  const firstEarlyReturn = componentSource.indexOf('if (loading && !hasUsableDashboardData)')
+  assert.notStrictEqual(firstEarlyReturn, -1)
+  const afterEarlyReturn = componentSource.slice(firstEarlyReturn)
+  assert.strictEqual(/\buse(?:State|Effect|Memo|Callback|Ref|Owner|DesktopDashboard|BodyScrollLock|ExistingTenantImports|OwnerAnalytics)\s*\(/.test(afterEarlyReturn), false)
+  assert.strictEqual(componentSource.includes('const ownerViewTitleFor = useCallback'), false)
 })
 
 test('owner same-tab click does not trigger reload or refetch', () => {
@@ -409,7 +508,75 @@ test('owner browser back and forward still resolve correct section', () => {
 
 test('active tab changes do not refetch owner core data', () => {
   const ownerDashboard = source('pages/owner/dashboard.js')
+  const appSource = source('pages/_app.js')
   assert.strictEqual(/useEffect\([\s\S]*?loadData\([\s\S]*?\], \[[^\]]*activeTab/.test(ownerDashboard), false)
+  assert.match(appSource, /const errorBoundaryKey = isDashboardRoute \? router\.pathname : router\.asPath/)
+  assert.strictEqual(appSource.includes('<ErrorBoundary key={router.asPath}>'), false)
+  assert.strictEqual(appSource.includes('[router.pathname, router.asPath]'), false)
+})
+
+test('owner core tenant data renders without waiting for signed photo URLs', () => {
+  const ownerContext = source('context/OwnerContext.js')
+  const ownerDashboard = source('pages/owner/dashboard.js')
+  assert.strictEqual(ownerContext.includes('loadTenantPhotoUrls'), false)
+  assert.strictEqual(ownerContext.includes('setTenants(await'), false)
+  assert.match(ownerContext, /setTenants\(tenantsWithRoomNumber\)/)
+  assert.match(ownerDashboard, /getOwnerTenantProfilePhotoUrls\(tenantRows\)/)
+})
+
+test('owner payment data is seeded by core load and refreshes without duplicate requests', () => {
+  const ownerContext = source('context/OwnerContext.js')
+  const ownerPayments = source('hooks/useOwnerPayments.js')
+  const ownerDashboard = source('pages/owner/dashboard.js')
+  assert.match(ownerContext, /const \[paymentSeed, setPaymentSeed\]/)
+  assert.match(ownerContext, /setPaymentSeed\(current => \(\{[\s\S]*pendingRentPayments: pendingSeed,[\s\S]*allPayments: allPaymentsResult\.data \|\| \[\]/)
+  assert.match(ownerDashboard, /useOwnerPayments\(property, tenants, archivedTenants, setStats, loadData, propertyReady, paymentSeed\)/)
+  assert.strictEqual(ownerDashboard.includes('refreshPayments'), false)
+  assert.strictEqual(ownerPayments.includes("useRealtimeRefresh"), false)
+  assert.match(ownerPayments, /const \[pendingResult, allResult\] = await Promise\.all\(\[/)
+})
+
+test('owner background refresh preserves existing data on empty or failed refresh', () => {
+  const ownerContext = source('context/OwnerContext.js')
+  assert.match(ownerContext, /if \(isBackground\) return null;\s*setProperty\(null\); setRooms\(\[\]\); setTenants\(\[\]\);/)
+  assert.match(ownerContext, /catch \(error\) \{[\s\S]*if \(!isBackground\) toast\.error/)
+})
+
+test('owner core load is deduped by identity and in-flight requests', () => {
+  const ownerContext = source('context/OwnerContext.js')
+  assert.match(ownerContext, /const inFlightLoadRef = useRef\(null\)/)
+  assert.match(ownerContext, /const lastLoadedKeyRef = useRef\(null\)/)
+  assert.match(ownerContext, /load-joined-in-flight/)
+  assert.match(ownerContext, /load-skipped-cached/)
+  assert.match(ownerContext, /ownerLoadKey\(userId, requestedPropertyId\)/)
+  assert.match(ownerContext, /if \(!force && lastLoadedPropertyRef\.current/)
+})
+
+test('owner realtime patches local records without full core reload', () => {
+  const ownerContext = source('context/OwnerContext.js')
+  const realtimeBlock = ownerContext.match(/useEffect\(\(\) => \{\s*if \(!property\?\.id\)[\s\S]*?owner-core-live:\$\{property\.id\}`[\s\S]*?\n  \}, \[property\?\.id, property\?\.owner_id, patchPaymentRealtime, patchRoomRealtime, patchTenantRealtime\]\);/)?.[0] || ''
+  assert.match(ownerContext, /const patchTenantRealtime = useCallback/)
+  assert.match(ownerContext, /const patchPaymentRealtime = useCallback/)
+  assert.match(ownerContext, /realtime-local-patch/)
+  assert.strictEqual(realtimeBlock.includes('loadData('), false)
+})
+
+test('owner core reads independent data concurrently', () => {
+  const ownerContext = source('context/OwnerContext.js')
+  assert.match(ownerContext, /const \[\{ data: roomsData[\s\S]*allPaymentsResult\] = await Promise\.all\(\[/)
+  for (const label of ['rooms', 'active-tenants', 'archived-tenants', 'rent-status-payments', 'pending-payments', 'payment-history']) {
+    assert.match(ownerContext, new RegExp(`timedOwnerQuery\\('${label}'`))
+  }
+})
+
+test('owner payments hook does not clear lists before ordinary reloads', () => {
+  const ownerPayments = source('hooks/useOwnerPayments.js')
+  const ownerDashboard = source('pages/owner/dashboard.js')
+  assert.strictEqual(/useEffect\(\(\) => \{\s*setPendingRentPayments\(\[\]\);\s*setAllPayments\(\[\]\);/.test(ownerPayments), false)
+  assert.match(ownerPayments, /loadedKeyRef\.current === nextKey/)
+  assert.match(ownerPayments, /initialPayments\?\.version/)
+  assert.strictEqual(ownerPayments.includes('loadData(true)'), false)
+  assert.strictEqual(ownerDashboard.includes('loadData(true)'), false)
 })
 
 test('owner mobile tab data derivations are memoized instead of recomputed every render', () => {

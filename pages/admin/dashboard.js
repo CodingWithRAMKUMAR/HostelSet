@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
 import toast from 'react-hot-toast';
@@ -50,12 +50,31 @@ const EnterpriseAdminConsole = dynamic(() => import('../../components/admin/Ente
 const AdminAnalytics = dynamic(() => import('../../components/analytics/AdminAnalytics'));
 
 const ADMIN_VIEW_KEYS = new Set(['overview', 'analytics', 'global-search', 'properties', 'tenants', 'owners', 'users', 'payments', 'prebookings', 'applications', 'approvedapps', 'complaints', 'vacate', 'roomchange', 'notices', 'membership'])
+const ADMIN_PERSISTENT_TABS = ['overview', 'membership', 'properties', 'owners', 'tenants', 'payments', 'applications', 'complaints', 'vacate', 'roomchange', 'notices', 'analytics', 'global-search', 'users', 'prebookings', 'approvedapps']
+const ADMIN_OVERVIEW_QUEUE_TABS = new Set(['membership', 'applications', 'complaints', 'vacate', 'roomchange', 'notices', 'payments', 'prebookings'])
 const ADMIN_VIEW_ALIASES = {
   search: 'global-search',
   'room-change': 'roomchange',
   roomChange: 'roomchange',
   applicationsApproved: 'approvedapps',
   imports: 'overview',
+}
+
+function markAdminViewPerf(label, detail = '') {
+  if (typeof window === 'undefined' || window.localStorage?.getItem('hostelsetAdminPerf') !== '1' || typeof performance === 'undefined') return
+  console.info(`[AdminView] ${label}${detail ? ` ${detail}` : ''}`)
+}
+
+function AdminTabPanel({ tab, active, children }) {
+  useEffect(() => {
+    if (active) markAdminViewPerf('visible-commit', tab)
+  }, [active, tab])
+
+  return (
+    <section hidden={!active} aria-hidden={!active} data-admin-tab={tab}>
+      {children}
+    </section>
+  )
 }
 
 // ----------------- UTILITY TABLE COMPONENT -----------------
@@ -88,6 +107,136 @@ const AdminTable = ({ headers, data, renderRow, renderCard, emptyMessage, loadin
     </div>
   </div>
 );
+
+const displayDateTime = value => {
+  if (!value) return 'No date'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'No date'
+  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function AdminActionCenter({ cards, membershipRequests, applications, complaints, vacateRequests, roomChanges, notices, paymentIssues, onOpen, onReviewMembership, processingId }) {
+  const primaryMembership = membershipRequests[0]
+  const recentQueues = [
+    ...membershipRequests.slice(0, 2).map(item => ({
+      id: `membership:${item.id}`,
+      tab: 'membership',
+      recordKey: 'membership_id',
+      recordId: item.id,
+      title: item.owner?.full_name || 'Unknown owner',
+      meta: item.property?.name || 'No property linked',
+      date: item.requested_at,
+      badge: item.plan_id === 'yearly' ? 'Yearly' : 'Monthly',
+      tone: 'amber',
+    })),
+    ...applications.slice(0, 2).map(item => ({
+      id: `application:${item.id}`,
+      tab: 'applications',
+      recordKey: 'application_id',
+      recordId: item.id,
+      title: item.name || 'Tenant application',
+      meta: `Room ${item.rooms?.room_number || 'N/A'}`,
+      date: item.created_at,
+      badge: (item.payment_status || 'pending').replaceAll('_', ' '),
+      tone: 'blue',
+    })),
+    ...complaints.slice(0, 2).map(item => ({
+      id: `complaint:${item.id}`,
+      tab: 'complaints',
+      recordKey: 'complaint_id',
+      recordId: item.id,
+      title: item.title || 'Complaint',
+      meta: item.tenants?.name || 'Tenant',
+      date: item.created_at,
+      badge: item.status,
+      tone: item.status === 'open' ? 'red' : 'amber',
+    })),
+    ...vacateRequests.slice(0, 1).map(item => ({
+      id: `vacate:${item.id}`,
+      tab: 'vacate',
+      recordKey: 'request_id',
+      recordId: item.id,
+      title: item.tenants?.name || item.tenant_name || 'Vacate request',
+      meta: item.expected_check_out ? `Checkout ${displayDateTime(item.expected_check_out)}` : 'Pending checkout',
+      date: item.created_at,
+      badge: item.status,
+      tone: 'amber',
+    })),
+    ...roomChanges.slice(0, 1).map(item => ({
+      id: `roomchange:${item.id}`,
+      tab: 'roomchange',
+      recordKey: 'request_id',
+      recordId: item.id,
+      title: item.tenants?.name || 'Room change',
+      meta: `${item.old_room?.room_number || 'Old room'} to ${item.new_room?.room_number || 'new room'}`,
+      date: item.requested_at,
+      badge: item.status || 'pending',
+      tone: 'violet',
+    })),
+  ].slice(0, 6)
+
+  return (
+    <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4" aria-labelledby="admin-action-center-title">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 id="admin-action-center-title" className="text-base font-black text-slate-900 sm:text-lg">Action Center</h2>
+          <p className="text-xs text-slate-500 sm:text-sm">Pending platform requests that need admin attention.</p>
+        </div>
+        <button type="button" onClick={() => onOpen('membership')} className="min-h-[2.5rem] rounded-xl bg-slate-900 px-3 text-xs font-bold text-white">Review memberships</button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+        {cards.map(card => (
+          <button key={card.id} type="button" onClick={() => onOpen(card.tab)} className="min-h-[4.4rem] min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2 text-left transition hover:border-orange-200 hover:bg-orange-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
+            <p className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-500">{card.label}</p>
+            <p className="mt-1 truncate text-xl font-black text-slate-900">{card.value}</p>
+          </button>
+        ))}
+      </div>
+
+      {primaryMembership && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button type="button" onClick={() => onOpen('membership', { membership_id: primaryMembership.id })} className="min-w-0 text-left">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Oldest membership request</p>
+              <p className="truncate text-sm font-black text-slate-900">{primaryMembership.owner?.full_name || 'Unknown owner'} · {primaryMembership.property?.name || 'No property linked'}</p>
+              <p className="truncate text-xs text-slate-600">{primaryMembership.plan_id === 'yearly' ? 'Yearly' : 'Monthly'} plan · {displayDateTime(primaryMembership.requested_at)}</p>
+            </button>
+            <div className="grid grid-cols-2 gap-2 sm:flex">
+              <button type="button" disabled={Boolean(processingId)} onClick={() => onReviewMembership(primaryMembership.id, true)} className="min-h-[2.5rem] rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white disabled:opacity-50">Approve</button>
+              <button type="button" disabled={Boolean(processingId)} onClick={() => onReviewMembership(primaryMembership.id, false)} className="min-h-[2.5rem] rounded-lg bg-red-600 px-3 text-xs font-bold text-white disabled:opacity-50">Reject</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)]">
+        <div className="space-y-2">
+          {recentQueues.length ? recentQueues.map(item => (
+            <button key={item.id} type="button" onClick={() => onOpen(item.tab, { [item.recordKey]: item.recordId })} className="flex min-h-[3.25rem] w-full min-w-0 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-2 text-left hover:border-orange-200 hover:bg-orange-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-slate-900">{item.title}</p>
+                <p className="truncate text-xs text-slate-500">{item.meta} · {displayDateTime(item.date)}</p>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold capitalize ${item.tone === 'red' ? 'bg-red-100 text-red-700' : item.tone === 'blue' ? 'bg-blue-100 text-blue-700' : item.tone === 'violet' ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'}`}>{item.badge}</span>
+            </button>
+          )) : <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">No pending queues are waiting right now.</div>}
+        </div>
+        <div className="grid gap-2">
+          <button type="button" onClick={() => onOpen('payments')} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-left">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Payment issues</p>
+            <p className="mt-1 text-lg font-black text-slate-900">{paymentIssues.length}</p>
+          </button>
+          <button type="button" onClick={() => onOpen('notices')} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-left">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Recent notices</p>
+            <p className="mt-1 text-lg font-black text-slate-900">{notices.length}</p>
+            <p className="mt-1 truncate text-xs text-slate-500">{notices[0]?.title || 'No global notices posted'}</p>
+          </button>
+        </div>
+      </div>
+    </section>
+  )
+}
 
 // ----------------- DETAIL MODAL COMPONENT -----------------
 const detailValue = value => {
@@ -202,10 +351,13 @@ function AdminDashboardContent() {
   const router = useRouter();
   const { globalStats, statsLoading, realtimeConnected, refreshStats } = useAdmin();
   const [activeTab, setActiveTab] = useState('overview');
+  const [mountedTabs, setMountedTabs] = useState(() => new Set(['overview']));
   const [mobileMenu, setMobileMenu] = useState(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const sectionRef = useRef(null);
-  const openSection = (tab) => {
+  const refreshAdminStats = () => refreshStats({ background: true, force: true, reason: 'manual-refresh' });
+  const openSection = (tab, focusQuery = {}) => {
+    markAdminViewPerf('tab-click', String(tab));
     const nextTab = ADMIN_VIEW_ALIASES[tab] || tab;
     if (!ADMIN_VIEW_KEYS.has(nextTab)) {
       if (process.env.NODE_ENV !== 'production') console.warn('[HostelSet] Unknown admin dashboard view key:', tab);
@@ -218,10 +370,11 @@ function AdminDashboardContent() {
       setMobileMenu(null); setProfileMenuOpen(false);
       return;
     }
-    const href = buildDashboardHref('admin', nextTab, router.query);
-    pushDashboardHistory(router, href);
+    const href = buildDashboardHref('admin', nextTab, { ...router.query, ...focusQuery });
+    markAdminViewPerf('set-activeTab', nextTab);
     setActiveTab(nextTab);
     setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll();
+    window.requestAnimationFrame?.(() => pushDashboardHistory(router, href)) || pushDashboardHistory(router, href);
   };
   const navigateDashboardBack = () => {
     setMobileMenu(null); setProfileMenuOpen(false);
@@ -234,22 +387,22 @@ function AdminDashboardContent() {
     router.back();
   };
   
-  // Only the visible tab loads its dataset. This keeps login fast and reduces database traffic.
-  const { properties, loading: propertiesLoading, archiveProperty, restoreProperty } = useAdminProperties(activeTab === 'properties');
-  const { tenants, loading: tenantsLoading, error: tenantsError, deleteTenant } = useAdminTenants(activeTab === 'tenants');
-  const { owners, loading: ownersLoading, toggleOwnerStatus } = useAdminOwners(activeTab === 'owners');
-  const { users, loading: usersLoading, searchTerm, setSearchTerm, roleFilter, setRoleFilter, toggleUserStatus, changeUserRole } = useAdminUsers(activeTab === 'users');
-  const { payments, loading: paymentsLoading, confirmPayment, rejectPayment } = useAdminPayments(activeTab === 'payments');
-  const { preBookings, loading: preBookingsLoading, approvePreBooking, rejectPreBooking } = useAdminPreBookings(activeTab === 'prebookings');
-  const { applications, loading: applicationsLoading, approveApplication, rejectApplication } = useAdminApplications(activeTab === 'applications');
-  const { approvedApps, loading: approvedAppsLoading } = useAdminApprovedApplications(activeTab === 'approvedapps');
-  const { complaints, loading: complaintsLoading, resolveComplaint, deleteComplaint } = useAdminComplaints(activeTab === 'complaints');
-  const { vacateRequests, loading: vacateLoading, approveVacate, rejectVacate } = useAdminVacate(activeTab === 'vacate');
-  const { roomChanges, loading: roomChangesLoading, approveRoomChange, rejectRoomChange } = useAdminRoomChange(activeTab === 'roomchange');
-  const { notices, loading: noticesLoading, postNotice, deleteNotice } = useAdminNotices(activeTab === 'notices');
-  const { owners: membershipOwners, requests: membershipRequests, loading: membershipLoading, processingId: membershipProcessingId, getDaysLeft, sendRenewalEmail, grantMembership, revokeMembership, reviewRequest, refresh: refreshMemberships } = useAdminMembershipManager(activeTab === 'membership');
+  const isAdminSectionEnabled = tab => mountedTabs.has(tab) || activeTab === tab || ADMIN_OVERVIEW_QUEUE_TABS.has(tab);
+  const { properties, loading: propertiesLoading, archiveProperty, restoreProperty } = useAdminProperties(isAdminSectionEnabled('properties'));
+  const { tenants, loading: tenantsLoading, error: tenantsError, deleteTenant } = useAdminTenants(isAdminSectionEnabled('tenants'));
+  const { owners, loading: ownersLoading, toggleOwnerStatus } = useAdminOwners(isAdminSectionEnabled('owners'));
+  const { users, loading: usersLoading, searchTerm, setSearchTerm, roleFilter, setRoleFilter, toggleUserStatus, changeUserRole } = useAdminUsers(isAdminSectionEnabled('users'));
+  const { payments, loading: paymentsLoading, confirmPayment, rejectPayment } = useAdminPayments(isAdminSectionEnabled('payments'));
+  const { preBookings, loading: preBookingsLoading, approvePreBooking, rejectPreBooking } = useAdminPreBookings(isAdminSectionEnabled('prebookings'));
+  const { applications, loading: applicationsLoading, approveApplication, rejectApplication } = useAdminApplications(isAdminSectionEnabled('applications'));
+  const { approvedApps, loading: approvedAppsLoading } = useAdminApprovedApplications(isAdminSectionEnabled('approvedapps'));
+  const { complaints, loading: complaintsLoading, resolveComplaint, deleteComplaint } = useAdminComplaints(isAdminSectionEnabled('complaints'));
+  const { vacateRequests, loading: vacateLoading, approveVacate, rejectVacate } = useAdminVacate(isAdminSectionEnabled('vacate'));
+  const { roomChanges, loading: roomChangesLoading, approveRoomChange, rejectRoomChange } = useAdminRoomChange(isAdminSectionEnabled('roomchange'));
+  const { notices, loading: noticesLoading, postNotice, deleteNotice } = useAdminNotices(isAdminSectionEnabled('notices'));
+  const { owners: membershipOwners, requests: membershipRequests, loading: membershipLoading, processingId: membershipProcessingId, getDaysLeft, sendRenewalEmail, grantMembership, revokeMembership, reviewRequest, refresh: refreshMemberships } = useAdminMembershipManager(isAdminSectionEnabled('membership'));
   const { selectedProperty, selectedOwner, viewPropertyDetails, viewOwnerDetails, closeModals } = useAdminModals();
-  const adminAnalytics = useAdminAnalytics(activeTab === 'analytics');
+  const adminAnalytics = useAdminAnalytics(isAdminSectionEnabled('analytics'));
 
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -274,6 +427,16 @@ function AdminDashboardContent() {
     })
     setMobileMenu(null)
   }, [router.isReady, router.query.tab, router.query.property_id, router.query.membership_id, router.query.payment_id, router.query.application_id, router.query.complaint_id, router.query.request_id])
+
+  useEffect(() => {
+    if (!ADMIN_VIEW_KEYS.has(activeTab)) return
+    setMountedTabs(previous => {
+      if (previous.has(activeTab)) return previous
+      const next = new Set(previous)
+      next.add(activeTab)
+      return next
+    })
+  }, [activeTab])
   const [actionKey, setActionKey] = useState(null);
 
   const runAdminAction = async (key, action) => {
@@ -338,6 +501,20 @@ function AdminDashboardContent() {
     { label: 'Pending Complaints', value: statsLoading ? '-' : globalStats.pendingComplaints, icon: 'complaints', color: 'bg-red-100 text-red-600' },
     { label: 'Pending Vacates', value: statsLoading ? '-' : globalStats.pendingVacates, icon: 'home', color: 'bg-amber-100 text-amber-600' },
   ];
+  const pendingMembershipRequests = useMemo(() => membershipRequests.filter(request => (request.status || 'pending') === 'pending'), [membershipRequests]);
+  const pendingApplications = useMemo(() => applications.filter(application => (application.status || 'pending') === 'pending'), [applications]);
+  const openComplaints = useMemo(() => complaints.filter(complaint => ['open', 'in_progress'].includes(complaint.status)), [complaints]);
+  const pendingVacateRequests = useMemo(() => vacateRequests.filter(request => request.status === 'pending'), [vacateRequests]);
+  const pendingRoomChanges = useMemo(() => roomChanges.filter(request => (request.status || 'pending') === 'pending'), [roomChanges]);
+  const paymentIssues = useMemo(() => payments.filter(payment => ['payment_pending', 'pending', 'failed', 'rejected'].includes(payment.status)), [payments]);
+  const actionCenterCards = useMemo(() => [
+    { id: 'membership', label: 'Pending memberships', value: pendingMembershipRequests.length, tab: 'membership' },
+    { id: 'applications', label: 'Pending applications', value: pendingApplications.length, tab: 'applications' },
+    { id: 'complaints', label: 'Open complaints', value: openComplaints.length, tab: 'complaints' },
+    { id: 'vacate', label: 'Pending vacates', value: pendingVacateRequests.length, tab: 'vacate' },
+    { id: 'roomchange', label: 'Room changes', value: pendingRoomChanges.length, tab: 'roomchange' },
+    { id: 'payments', label: 'Payment issues', value: paymentIssues.length, tab: 'payments' },
+  ], [openComplaints.length, paymentIssues.length, pendingApplications.length, pendingMembershipRequests.length, pendingRoomChanges.length, pendingVacateRequests.length]);
 
   // TABS
   const tabs = [
@@ -402,29 +579,29 @@ function AdminDashboardContent() {
     </AdminMobilePage>
   )
 
-  const renderAdminMobileView = () => {
-    if (activeTab === 'overview') {
-      return <AdminMobileDashboard stats={statsData} globalStats={globalStats} realtimeConnected={realtimeConnected} avatar="A" onProfile={() => setProfileMenuOpen(value => !value)} onNavigate={openSection} onRefresh={refreshStats} />
+  const renderAdminMobileTab = (tab = activeTab) => {
+    if (tab === 'overview') {
+      return <AdminMobileDashboard stats={statsData} actionCards={actionCenterCards} globalStats={globalStats} realtimeConnected={realtimeConnected} avatar="A" onProfile={() => setProfileMenuOpen(value => !value)} onNavigate={openSection} onRefresh={refreshAdminStats} />
     }
-    if (activeTab === 'global-search') {
+    if (tab === 'global-search') {
       return <AdminMobileSearch avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} onOpen={(group, item) => setSearchDetail({ group, item })} />
     }
-    if (activeTab === 'properties') {
+    if (tab === 'properties') {
       return <AdminMobileProperties properties={properties} loading={propertiesLoading} avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} onView={viewPropertyDetails} onArchive={archiveProperty} onRestore={restoreProperty} />
     }
-    if (activeTab === 'owners') {
+    if (tab === 'owners') {
       return <AdminMobileOwners owners={owners} loading={ownersLoading} avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} onView={viewOwnerDetails} onToggle={toggleOwnerStatus} />
     }
-    if (activeTab === 'users') {
+    if (tab === 'users') {
       return <AdminMobileUsers title="Users" mode="users" users={users} loading={usersLoading} avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} searchTerm={searchTerm} setSearchTerm={setSearchTerm} roleFilter={roleFilter} setRoleFilter={setRoleFilter} onToggleStatus={toggleUserStatus} onChangeRole={changeUserRole} />
     }
-    if (activeTab === 'tenants') {
+    if (tab === 'tenants') {
       return <AdminMobileUsers title="Tenants" mode="tenants" tenants={tenants} loading={tenantsLoading} error={tenantsError} avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} onViewTenant={(tenant) => setSearchDetail({ group: 'Tenant', item: tenant })} onDeleteTenant={deleteTenant} />
     }
-    if (activeTab === 'payments') {
+    if (tab === 'payments') {
       return <AdminMobilePayments payments={payments} loading={paymentsLoading} actionKey={actionKey} avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} onConfirm={(payment) => runAdminAction(`payment:${payment.id}`, () => confirmPayment(payment.id))} onReject={(payment) => runAdminAction(`payment:${payment.id}`, () => rejectPayment(payment.id))} onViewProof={openSignedPaymentProof} />
     }
-    if (activeTab === 'prebookings') {
+    if (tab === 'prebookings') {
       return renderMobileOperationList({
         title: 'Pre-bookings',
         subtitle: `${preBookings.length} pending requests`,
@@ -442,7 +619,7 @@ function AdminDashboardContent() {
         ),
       })
     }
-    if (activeTab === 'applications') {
+    if (tab === 'applications') {
       return renderMobileOperationList({
         title: 'Applications',
         subtitle: `${applications.length} pending applications`,
@@ -460,7 +637,7 @@ function AdminDashboardContent() {
         ),
       })
     }
-    if (activeTab === 'approvedapps') {
+    if (tab === 'approvedapps') {
       return renderMobileOperationList({
         title: 'Approved apps',
         subtitle: `${approvedApps.length} processed`,
@@ -470,7 +647,7 @@ function AdminDashboardContent() {
         renderItem: application => <article key={application.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{application.name}</p><p className="truncate text-[11px] text-slate-500">Room {application.rooms?.room_number || 'N/A'} / {application.processed_at ? new Date(application.processed_at).toLocaleDateString() : 'N/A'}</p></div><AdminStatusChip tone={application.status === 'approved' ? 'emerald' : 'red'}>{application.status}</AdminStatusChip></div></article>,
       })
     }
-    if (activeTab === 'complaints') {
+    if (tab === 'complaints') {
       return renderMobileOperationList({
         title: 'Complaints',
         subtitle: `${complaints.length} platform complaints`,
@@ -480,7 +657,7 @@ function AdminDashboardContent() {
         renderItem: complaint => <article key={complaint.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{complaint.title}</p><p className="truncate text-[11px] text-slate-500">{complaint.tenants?.name || 'N/A'}</p></div><AdminStatusChip tone={complaint.status === 'open' ? 'red' : complaint.status === 'in_progress' ? 'amber' : 'emerald'}>{complaint.status}</AdminStatusChip></div><div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${complaint.id}`, () => resolveComplaint(complaint.id))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Resolve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`complaint:${complaint.id}`, () => deleteComplaint(complaint.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Delete</button></div></article>,
       })
     }
-    if (activeTab === 'vacate') {
+    if (tab === 'vacate') {
       return renderMobileOperationList({
         title: 'Vacates',
         subtitle: `${vacateRequests.length} requests`,
@@ -490,7 +667,7 @@ function AdminDashboardContent() {
         renderItem: request => <article key={request.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{request.tenants?.name || 'N/A'}</p><p className="truncate text-[11px] text-slate-500">Room {request.tenants?.rooms?.room_number || 'N/A'} / {request.expected_check_out ? new Date(request.expected_check_out).toLocaleDateString() : 'N/A'}</p></div><AdminStatusChip tone={request.status === 'pending' ? 'amber' : 'emerald'}>{request.status}</AdminStatusChip></div>{request.status === 'pending' ? <div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${request.id}`, () => approveVacate(request.id, request.tenant_id, request.expected_check_out))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Approve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`vacate:${request.id}`, () => rejectVacate(request.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div> : null}</article>,
       })
     }
-    if (activeTab === 'roomchange') {
+    if (tab === 'roomchange') {
       return renderMobileOperationList({
         title: 'Room changes',
         subtitle: `${roomChanges.length} requests`,
@@ -500,7 +677,7 @@ function AdminDashboardContent() {
         renderItem: request => <article key={request.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{request.tenants?.name || 'N/A'}</p><p className="truncate text-[11px] text-slate-500">{request.old_room?.room_number || 'N/A'} to {request.new_room?.room_number || 'N/A'}</p></div><div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${request.id}`, () => approveRoomChange(request.id, request.tenant_id, request.new_room_id, request.old_room_id))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Approve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`roomchange:${request.id}`, () => rejectRoomChange(request.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div></article>,
       })
     }
-    if (activeTab === 'notices') {
+    if (tab === 'notices') {
       return renderMobileOperationList({
         title: 'Notices',
         subtitle: `${notices.length} global notices`,
@@ -510,22 +687,31 @@ function AdminDashboardContent() {
         renderItem: notice => <article key={notice.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{notice.title}</p><p className="truncate text-[11px] text-slate-500">{notice.type} / {notice.created_at ? new Date(notice.created_at).toLocaleDateString() : 'N/A'}</p></div>{notice.is_urgent ? <AdminStatusChip tone="red">Urgent</AdminStatusChip> : null}</div><div className="mt-2 flex justify-end"><button onClick={() => deleteNotice(notice.id)} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600">Delete</button></div></article>,
       })
     }
-    if (activeTab === 'analytics') {
+    if (tab === 'analytics') {
       return <AdminMobilePage title="Analytics" subtitle="Platform insights" avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)}><AdminAnalytics {...adminAnalytics} /></AdminMobilePage>
     }
-    if (activeTab === 'membership') {
+    if (tab === 'membership') {
       return <AdminMobilePage title="Membership" subtitle="Owner memberships" avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)}><MembershipManager owners={membershipOwners} requests={membershipRequests} loading={membershipLoading} processingId={membershipProcessingId} getDaysLeft={getDaysLeft} sendRenewalEmail={sendRenewalEmail} grantMembership={grantMembership} revokeMembership={revokeMembership} reviewRequest={reviewRequest} onRefresh={() => refreshMemberships(false)} /></AdminMobilePage>
     }
-    if (process.env.NODE_ENV !== 'production') console.warn('[HostelSet] Unhandled admin mobile view key:', activeTab)
-    return <AdminMobileDashboard stats={statsData} globalStats={globalStats} realtimeConnected={realtimeConnected} avatar="A" onProfile={() => setProfileMenuOpen(value => !value)} onNavigate={openSection} onRefresh={refreshStats} />
+    if (process.env.NODE_ENV !== 'production') console.warn('[HostelSet] Unhandled admin mobile view key:', tab)
+    return <AdminMobileDashboard stats={statsData} actionCards={actionCenterCards} globalStats={globalStats} realtimeConnected={realtimeConnected} avatar="A" onProfile={() => setProfileMenuOpen(value => !value)} onNavigate={openSection} onRefresh={refreshAdminStats} />
   }
+  const renderMountedAdminMobileTabs = () => (
+    <div data-admin-mobile-mounted-tabs>
+      {ADMIN_PERSISTENT_TABS.filter(tab => mountedTabs.has(tab) || tab === activeTab).map(tab => (
+        <AdminTabPanel key={tab} tab={tab} active={activeTab === tab}>
+          {renderAdminMobileTab(tab)}
+        </AdminTabPanel>
+      ))}
+    </div>
+  )
 
   return (
     <div className="dashboard-shell min-h-screen max-w-full overflow-x-hidden bg-[#f8f9fa] font-sans selection:bg-orange-500 selection:text-white">
       <div className="lg:hidden">
-        {renderAdminMobileView()}
+        {renderMountedAdminMobileTabs()}
         <div className="fixed right-3 top-14 z-[70]">
-          <AccountMenu open={profileMenuOpen} onClose={()=>setProfileMenuOpen(false)} name="Administrator" subtitle="HostelSet platform" avatar="" fallbackIcon="settings" actions={[{label:'Refresh dashboard',onClick:refreshStats},{label:'Logout',onClick:handleLogout,danger:true}]}/>
+          <AccountMenu open={profileMenuOpen} onClose={()=>setProfileMenuOpen(false)} name="Administrator" subtitle="HostelSet platform" avatar="" fallbackIcon="settings" actions={[{label:'Refresh dashboard',onClick:refreshAdminStats},{label:'Logout',onClick:handleLogout,danger:true}]}/>
         </div>
       </div>
       <DashboardSidebar role="Admin" items={adminSidebarItems} activeId={activeTab} onSelect={openSection} footer={<div><p className="text-sm font-bold text-white">Platform console</p><p className={`mt-1 text-xs ${realtimeConnected?'text-emerald-400':'text-slate-400'}`}>{realtimeConnected?'Live data':'Connecting'}</p></div>}/>
@@ -544,7 +730,7 @@ function AdminDashboardContent() {
             </span>
             <ThemeToggle compact />
             <NotificationBell />
-            <button type="button" onClick={() => refreshStats()} className="inline-flex items-center gap-1.5 text-sm font-medium text-orange-400 transition hover:text-orange-300"><DashboardIcon name="dashboard" className="h-4 w-4" />Refresh</button>
+            <button type="button" onClick={refreshAdminStats} className="inline-flex items-center gap-1.5 text-sm font-medium text-orange-400 transition hover:text-orange-300"><DashboardIcon name="dashboard" className="h-4 w-4" />Refresh</button>
             <button onClick={handleLogout} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-3 sm:px-6 py-2 rounded-full text-sm font-semibold transition shadow-md">Logout</button>
           </div>
         </div>
@@ -570,18 +756,46 @@ function AdminDashboardContent() {
             </Card>
           )})}
         </div>}
+        {activeTab === 'overview' && (
+          <AdminActionCenter
+            cards={actionCenterCards}
+            membershipRequests={pendingMembershipRequests}
+            applications={pendingApplications}
+            complaints={openComplaints}
+            vacateRequests={pendingVacateRequests}
+            roomChanges={pendingRoomChanges}
+            notices={notices.slice(0, 4)}
+            paymentIssues={paymentIssues}
+            onOpen={openSection}
+            onReviewMembership={(requestId, approve) => runAdminAction(`membership:${requestId}`, () => reviewRequest(requestId, approve))}
+            processingId={membershipProcessingId || actionKey}
+          />
+        )}
 
         {/* ----- TABS ----- */}
         <div className="hidden"><DashboardSectionNav label="Admin dashboard sections" items={tabs} activeId={activeTab} onSelect={openSection} /></div>
         <div ref={sectionRef} className="scroll-mt-28">
         {/* ----- OVERVIEW ----- */}
-        {activeTab === 'overview' && <EnterpriseAdminConsole />}
-        {activeTab === 'global-search' && <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><h2 className="mb-2 text-lg font-bold text-slate-900">Global search</h2><p className="mb-4 text-sm text-slate-500">Search platform records and open matching details.</p><AdminGlobalSearch onOpen={(group, item) => setSearchDetail({ group, item })} /></div>}
-        {activeTab === 'analytics' && <AdminAnalytics {...adminAnalytics} />}
+        {mountedTabs.has('overview') && (
+          <AdminTabPanel tab="overview" active={activeTab === 'overview'}>
+            <EnterpriseAdminConsole />
+          </AdminTabPanel>
+        )}
+        {mountedTabs.has('global-search') && (
+          <AdminTabPanel tab="global-search" active={activeTab === 'global-search'}>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><h2 className="mb-2 text-lg font-bold text-slate-900">Global search</h2><p className="mb-4 text-sm text-slate-500">Search platform records and open matching details.</p><AdminGlobalSearch onOpen={(group, item) => setSearchDetail({ group, item })} /></div>
+          </AdminTabPanel>
+        )}
+        {mountedTabs.has('analytics') && (
+          <AdminTabPanel tab="analytics" active={activeTab === 'analytics'}>
+            <AdminAnalytics {...adminAnalytics} />
+          </AdminTabPanel>
+        )}
 
 
         {/* ----- PROPERTIES ----- */}
-        {activeTab === 'properties' && (
+        {mountedTabs.has('properties') && (
+          <AdminTabPanel tab="properties" active={activeTab === 'properties'}>
           <AdminTable
             loading={propertiesLoading}
             headers={['Property Name', 'Owner', 'Status', 'Property ID (UUID)', 'Actions']}
@@ -604,10 +818,13 @@ function AdminDashboardContent() {
             )}
             emptyMessage="No properties registered yet."
           />
+        
+          </AdminTabPanel>
         )}
 
         {/* ----- TENANTS ----- */}
-        {activeTab === 'tenants' && (
+        {mountedTabs.has('tenants') && (
+          <AdminTabPanel tab="tenants" active={activeTab === 'tenants'}>
           <div className="space-y-3">
             <div className="flex items-center justify-between bg-white border border-gray-100 rounded-xl px-4 py-3">
               <p className="text-sm text-gray-500"><span className="font-bold text-slate-800">{tenants.length}</span> tenant{tenants.length !== 1 ? 's' : ''} visible to this admin</p>
@@ -636,10 +853,13 @@ function AdminDashboardContent() {
               emptyMessage="No tenant rows are visible. Apply the admin RLS migration if tenants exist in Supabase."
             />
           </div>
+        
+          </AdminTabPanel>
         )}
 
         {/* ----- OWNERS ----- */}
-        {activeTab === 'owners' && (
+        {mountedTabs.has('owners') && (
+          <AdminTabPanel tab="owners" active={activeTab === 'owners'}>
           <AdminTable
             loading={ownersLoading}
             headers={['Owner Name', 'Email', 'Owner ID (UUID)', 'Status', 'Actions']}
@@ -664,10 +884,13 @@ function AdminDashboardContent() {
             )}
             emptyMessage="No owners registered yet."
           />
+        
+          </AdminTabPanel>
         )}
 
         {/* ----- USERS ----- */}
-        {activeTab === 'users' && (
+        {mountedTabs.has('users') && (
+          <AdminTabPanel tab="users" active={activeTab === 'users'}>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="mb-6 flex flex-col md:flex-row justify-between items-center gap-4 border-b border-gray-100 pb-4">
               <h3 className="text-lg font-bold text-[#1a1a1a]">User Management</h3>
@@ -737,10 +960,13 @@ function AdminDashboardContent() {
               emptyMessage="No users found matching your search."
             />
           </div>
+        
+          </AdminTabPanel>
         )}
 
         {/* ----- PAYMENTS ----- */}
-        {activeTab === 'payments' && (
+        {mountedTabs.has('payments') && (
+          <AdminTabPanel tab="payments" active={activeTab === 'payments'}>
           <AdminTable
             loading={paymentsLoading}
             headers={['Tenant', 'Amount', 'Date', 'Status', 'Actions']}
@@ -783,10 +1009,13 @@ function AdminDashboardContent() {
             )}
             emptyMessage="No payments found."
           />
+        
+          </AdminTabPanel>
         )}
 
         {/* ----- PRE-BOOKINGS ----- */}
-        {activeTab === 'prebookings' && (
+        {mountedTabs.has('prebookings') && (
+          <AdminTabPanel tab="prebookings" active={activeTab === 'prebookings'}>
           <AdminTable
             loading={preBookingsLoading}
             headers={['Name', 'Room', 'Property', 'Fee', 'Actions']}
@@ -805,10 +1034,13 @@ function AdminDashboardContent() {
             )}
             emptyMessage="No pre-bookings found."
           />
+        
+          </AdminTabPanel>
         )}
 
         {/* ----- APPLICATIONS ----- */}
-        {activeTab === 'applications' && (
+        {mountedTabs.has('applications') && (
+          <AdminTabPanel tab="applications" active={activeTab === 'applications'}>
           <AdminTable
             loading={applicationsLoading}
             headers={['Applicant', 'Room', 'Rent / Deposit', 'Payment Verification', 'Actions']}
@@ -827,10 +1059,13 @@ function AdminDashboardContent() {
             )}
             emptyMessage="No pending applications."
           />
+        
+          </AdminTabPanel>
         )}
 
         {/* ----- APPROVED APPLICATIONS ----- */}
-        {activeTab === 'approvedapps' && (
+        {mountedTabs.has('approvedapps') && (
+          <AdminTabPanel tab="approvedapps" active={activeTab === 'approvedapps'}>
           <AdminTable
             loading={approvedAppsLoading}
             headers={['Name', 'Room', 'Status', 'Processed']}
@@ -849,10 +1084,13 @@ function AdminDashboardContent() {
             )}
             emptyMessage="No processed applications yet."
           />
+        
+          </AdminTabPanel>
         )}
 
         {/* ----- COMPLAINTS ----- */}
-        {activeTab === 'complaints' && (
+        {mountedTabs.has('complaints') && (
+          <AdminTabPanel tab="complaints" active={activeTab === 'complaints'}>
           <AdminTable
             loading={complaintsLoading}
             headers={['Title', 'Tenant', 'Status', 'Actions']}
@@ -874,10 +1112,13 @@ function AdminDashboardContent() {
             )}
             emptyMessage="No complaints in the system."
           />
+        
+          </AdminTabPanel>
         )}
 
         {/* ----- VACATE ----- */}
-        {activeTab === 'vacate' && (
+        {mountedTabs.has('vacate') && (
+          <AdminTabPanel tab="vacate" active={activeTab === 'vacate'}>
           <AdminTable
             loading={vacateLoading}
             headers={['Tenant', 'Room', 'Checkout Date', 'Status', 'Actions']}
@@ -904,10 +1145,13 @@ function AdminDashboardContent() {
             )}
             emptyMessage="No vacate requests found."
           />
+        
+          </AdminTabPanel>
         )}
 
         {/* ----- ROOM CHANGE ----- */}
-        {activeTab === 'roomchange' && (
+        {mountedTabs.has('roomchange') && (
+          <AdminTabPanel tab="roomchange" active={activeTab === 'roomchange'}>
           <AdminTable
             loading={roomChangesLoading}
             headers={['Tenant', 'Old Room', 'New Room', 'Actions']}
@@ -925,10 +1169,13 @@ function AdminDashboardContent() {
             )}
             emptyMessage="No room change requests found."
           />
+        
+          </AdminTabPanel>
         )}
 
         {/* ----- NOTICES ----- */}
-        {activeTab === 'notices' && (
+        {mountedTabs.has('notices') && (
+          <AdminTabPanel tab="notices" active={activeTab === 'notices'}>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="mb-6 border-b border-gray-100 pb-4">
               <h3 className="text-xl font-bold text-[#1a1a1a] mb-4">Post Global Notice</h3>
@@ -958,10 +1205,13 @@ function AdminDashboardContent() {
               </tr>
             )} emptyMessage="No global notices posted." />
           </div>
+        
+          </AdminTabPanel>
         )}
 
         {/* ----- MEMBERSHIP MANAGEMENT (USING THE MODULAR COMPONENT) ----- */}
-        {activeTab === 'membership' && (
+        {mountedTabs.has('membership') && (
+          <AdminTabPanel tab="membership" active={activeTab === 'membership'}>
           <MembershipManager 
             owners={membershipOwners}
             requests={membershipRequests}
@@ -974,6 +1224,8 @@ function AdminDashboardContent() {
             reviewRequest={reviewRequest}
             onRefresh={() => refreshMemberships(false)}
           />
+        
+          </AdminTabPanel>
         )}
         </div>
 
@@ -1032,3 +1284,4 @@ export default function AdminDashboard() {
     </AdminProvider>
   );
 }
+

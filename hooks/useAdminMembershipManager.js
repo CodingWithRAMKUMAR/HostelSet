@@ -3,6 +3,39 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
+const OWNER_MEMBERSHIP_SELECT = 'id, full_name, email, phone, is_active, properties!properties_owner_id_fkey(id, name, membership_active, membership_expiry)';
+const MEMBERSHIP_REQUEST_SELECT = [
+  'id',
+  'owner_id',
+  'property_id',
+  'plan_id',
+  'amount',
+  'status',
+  'requested_at',
+  'reviewed_at',
+  'reviewed_by',
+  'admin_note',
+  'owner:users!membership_requests_owner_id_fkey(id, full_name, email, phone, is_active)',
+  'property:properties!membership_requests_property_id_fkey(id, name, address, city, lifecycle_status, archived_at)',
+].join(', ');
+
+const normalizeMembershipRequest = request => ({
+  ...request,
+  owner: request.owner || {
+    id: request.owner_id || null,
+    full_name: 'Unknown owner',
+    email: 'Not available',
+    phone: 'Not available',
+    is_active: false,
+  },
+  property: request.property || {
+    id: request.property_id || null,
+    name: 'No property linked',
+    address: 'Not available',
+    city: '',
+  },
+});
+
 export function useAdminMembershipManager(enabled = true) {
   const [owners, setOwners] = useState([]);
   const [requests, setRequests] = useState([]);
@@ -15,20 +48,28 @@ export function useAdminMembershipManager(enabled = true) {
     const [ownersResult, requestsResult] = await Promise.all([
       supabase
         .from('users')
-        .select('id, full_name, email, phone, properties(id, name, membership_active, membership_expiry)')
+        .select(OWNER_MEMBERSHIP_SELECT)
         .eq('role', 'owner')
         .order('created_at', { ascending: false }),
       supabase
         .from('membership_requests')
-        .select('id, owner_id, property_id, plan_id, amount, status, requested_at, admin_note, owner:owner_id(full_name, email, phone), property:property_id(name)')
+        .select(MEMBERSHIP_REQUEST_SELECT)
         .eq('status', 'pending')
         .order('requested_at', { ascending: true }),
     ]);
-    if (ownersResult.error || requestsResult.error) {
-      toast.error('Failed to load memberships: ' + (ownersResult.error || requestsResult.error).message);
+
+    if (ownersResult.error) {
+      console.error('Admin membership owners load failed:', ownersResult.error);
+      toast.error('Failed to load membership owners.');
     } else {
       setOwners(ownersResult.data || []);
-      setRequests(requestsResult.data || []);
+    }
+
+    if (requestsResult.error) {
+      console.error('Admin membership requests load failed:', requestsResult.error);
+      toast.error('Failed to load membership requests.');
+    } else {
+      setRequests((requestsResult.data || []).map(normalizeMembershipRequest));
     }
     setLoading(false);
   }, [enabled]);
@@ -44,6 +85,7 @@ export function useAdminMembershipManager(enabled = true) {
       });
       if (error) throw error;
       toast.success(approve ? 'Membership approved and activated.' : 'Membership request rejected.');
+      setRequests(current => current.filter(request => request.id !== requestId));
       await loadMemberships(true);
       return true;
     } catch (error) {

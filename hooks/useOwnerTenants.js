@@ -78,7 +78,7 @@ export function useOwnerTenants(property, rooms, tenants, setTenants, setStats, 
       }
       toast.success(result.emailSent ? `Tenant "${formData.name}" added and invited!` : `Tenant "${formData.name}" added. Password email can be resent.`);
       setFormData({ name:'', phone:'', email:'', blood_group:'', rent_amount:'', room_id:'', advance_amount:'0', joining_fee:'0', profile_photo_file:null });
-      await loadData(true);
+      await loadData({ background: true, force: true, reason: 'add-tenant-reconciliation' });
     } catch (error) { toast.error('Failed to add tenant: ' + error.message); }
     finally { setIsSubmitting(false); }
   };

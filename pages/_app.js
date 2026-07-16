@@ -32,6 +32,7 @@ export default function App({ Component, pageProps }) {
   const router = useRouter()
   const [authorized, setAuthorized] = useState(false)
   const isDashboardRoute = isDashboardPath(router.pathname)
+  const errorBoundaryKey = isDashboardRoute ? router.pathname : router.asPath
 
   useEffect(() => {
     if (!isDashboardRoute) return undefined
@@ -95,7 +96,7 @@ export default function App({ Component, pageProps }) {
     setAuthorized(false)
     checkSession()
     return () => { active = false }
-  }, [router.pathname, router.asPath])
+  }, [router.pathname])
 
   useEffect(() => {
     const handlePageShow = async (event) => {
@@ -152,12 +153,12 @@ export default function App({ Component, pageProps }) {
         {!isDashboardRoute || authorized ? (
           isDashboardRoute ? (
             <NotificationProvider>
-              <ErrorBoundary key={router.asPath}>
+              <ErrorBoundary key={errorBoundaryKey}>
                 <Component {...pageProps} />
               </ErrorBoundary>
             </NotificationProvider>
           ) : (
-            <ErrorBoundary key={router.asPath}>
+            <ErrorBoundary key={errorBoundaryKey}>
               <Component {...pageProps} />
             </ErrorBoundary>
           )

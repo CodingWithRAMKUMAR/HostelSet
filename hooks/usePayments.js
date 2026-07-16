@@ -71,7 +71,7 @@ export function usePayments(tenant, refreshData, owner) {
       });
       if (paymentError) throw paymentError;
       toast.success('Payment proof submitted!');
-      await Promise.all([loadPayments(), refreshData(true)]);
+      await loadPayments();
       return true;
     } catch (error) {
       console.error('Payment error:', error);
@@ -91,8 +91,15 @@ export function usePayments(tenant, refreshData, owner) {
 
     const channel = supabase.channel('payments-tenant-isolated')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_history', filter: `tenant_id=eq.${tenant.id}` }, (payload) => {
-        loadPayments();
-        if (payload.eventType === 'UPDATE' && payload.new?.tenant_id === tenant.id) refreshData(true);
+        const changedPayment = payload.new || payload.old;
+        if (changedPayment?.tenant_id !== tenant.id) return;
+        setPaymentHistory(current => {
+          if (payload.eventType === 'DELETE') return current.filter(payment => payment.id !== changedPayment.id);
+          const index = current.findIndex(payment => payment.id === changedPayment.id);
+          if (index === -1) return [changedPayment, ...current];
+          return current.map(payment => payment.id === changedPayment.id ? { ...payment, ...changedPayment } : payment);
+        });
+        setPaymentsLoaded(true);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'owner_settings', filter: `owner_id=eq.${tenant.property?.owner_id}` }, () => {
         loadUPIDetails();
