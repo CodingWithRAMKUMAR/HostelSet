@@ -16,6 +16,7 @@ export default function StatsCards({ stats, onSelect }) {
     { group: 'Operations', label: 'Complaints', value: stats?.totalComplaints || 0, icon: 'complaints', color: 'bg-rose-100 text-rose-600', tab: 'complaints' },
     { group: 'Requests', label: 'Applications', value: stats?.pendingApplications || 0, icon: 'requests', color: 'bg-fuchsia-100 text-fuchsia-600', tab: 'applications' },
     { group: 'Requests', label: 'Existing Imports', value: stats?.pendingImports || 0, icon: 'requests', color: 'bg-teal-100 text-teal-700', tab: 'existing-imports' },
+    { group: 'Requests', label: 'Pre-bookings', value: stats?.pendingPreBookings || 0, icon: 'requests', color: 'bg-violet-100 text-violet-700', tab: 'pre-bookings' },
     { group: 'Requests', label: 'Vacate Requests', value: stats?.pendingVacate || 0, icon: 'home', color: 'bg-yellow-100 text-yellow-700', tab: 'vacate' },
     { group: 'Requests', label: 'Room Changes', value: stats?.pendingRoomChanges || 0, icon: 'requests', color: 'bg-sky-100 text-sky-600', tab: 'room-change' },
   ];

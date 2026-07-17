@@ -86,20 +86,13 @@ function publicAvailabilityModel({ properties = [], rooms = [], tenants = [], pr
     const roomRows = publicRooms.map(room => {
       const reservedBeds = prebookings.filter(booking =>
         booking.room_id === room.id &&
-        booking.status === 'approved' &&
-        !booking.deleted_at &&
-        !tenants.some(tenant =>
-          tenant.property_id === property.id &&
-          tenant.room_id === room.id &&
-          ['active', 'notice_period', 'payment_pending'].includes(tenant.status) &&
-          booking.user_id &&
-          tenant.user_id === booking.user_id
-        )
+        booking.status === 'reserved' &&
+        !booking.deleted_at
       ).length
       return {
         ...room,
         reservedBeds,
-        availableBedsNow: Math.max(0, Number(room.capacity || 0) - Number(room.current_occupants || 0) - reservedBeds),
+        availableBedsNow: Math.max(0, Number(room.capacity || 0) - Number(room.current_occupants || 0)),
       }
     })
     return {
@@ -587,16 +580,42 @@ test('public availability migration uses one canonical public availability query
   assert.match(migration, /grant execute on function public\.get_public_properties\(\) to anon, authenticated/)
 })
 
-test('public availability SQL subtracts approved prebooking reservations from immediate availability', () => {
-  const migration = source('supabase/migrations/202607170002_public_availability_visibility.sql')
+function reservationCapacity({ capacity, prebookings = [] }) {
+  const activeReservations = prebookings.filter(booking => booking.status === 'reserved' && !booking.deleted_at).length
+  return {
+    activeReservations,
+    remainingReservationSlots: Math.max(0, Number(capacity || 0) - activeReservations),
+    canReserve: activeReservations < Number(capacity || 0),
+  }
+}
+
+test('public availability SQL tracks reserved prebooking capacity without consuming immediate beds', () => {
+  const migration = source('supabase/migrations/202607170005_prebooking_reservation_workflow.sql')
   assert.match(migration, /create or replace function public\.refresh_room_public_availability\(p_room_id uuid\)/)
-  assert.match(migration, /booking\.status = 'approved'/)
+  assert.match(migration, /booking\.status = 'reserved'/)
   assert.match(migration, /booking\.deleted_at is null/)
-  assert.match(migration, /not exists \([\s\S]*from public\.tenants tenant[\s\S]*tenant\.user_id = booking\.user_id/)
-  assert.match(migration, /has_approved_prebooking = exists \([\s\S]*booking\.deleted_at is null[\s\S]*tenant\.user_id = booking\.user_id/)
-  assert.match(migration, /update public\.rooms room[\s\S]*has_approved_prebooking = exists/)
-  assert.match(migration, /room\.capacity - coalesce\(room\.current_occupants, 0\) - coalesce\(reservation\.reserved_beds, 0\)/)
+  assert.match(migration, /create or replace function public\.get_public_property_rooms\(p_property_id uuid\)/)
+  assert.match(migration, /booking\.status = 'reserved'[\s\S]*booking\.deleted_at is null[\s\S]*as reserved_prebooking_count/)
+  assert.doesNotMatch(migration, /reserved_prebooking_count\s*=/)
+  assert.match(migration, /update public\.rooms room[\s\S]*has_approved_prebooking = \([\s\S]*select count\(\*\) > 0/)
+  assert.match(migration, /room\.capacity - coalesce\(room\.current_occupants, 0\)/)
+  assert.doesNotMatch(migration, /room\.capacity - coalesce\(room\.current_occupants, 0\) - coalesce\(reservation\.reserved_beds, 0\)/)
   assert.match(migration, /count\(\*\) filter \(where room\.available_beds_now > 0\)::integer as available_room_count/)
+})
+
+test('prebooking reservation capacity counts active reserved rows only', () => {
+  assert.deepStrictEqual(reservationCapacity({ capacity: 1, prebookings: [] }), { activeReservations: 0, remainingReservationSlots: 1, canReserve: true })
+  assert.strictEqual(reservationCapacity({ capacity: 1, prebookings: [{ status: 'reserved' }] }).canReserve, false)
+  assert.strictEqual(reservationCapacity({ capacity: 4, prebookings: [{ status: 'reserved' }, { status: 'reserved' }, { status: 'reserved' }] }).canReserve, true)
+  assert.strictEqual(reservationCapacity({ capacity: 4, prebookings: [{ status: 'reserved' }, { status: 'reserved' }, { status: 'reserved' }, { status: 'reserved' }] }).canReserve, false)
+  assert.deepStrictEqual(reservationCapacity({ capacity: 4, prebookings: [
+    { status: 'reserved' },
+    { status: 'pending' },
+    { status: 'rejected' },
+    { status: 'cancelled' },
+    { status: 'converted' },
+    { status: 'reserved', deleted_at: '2026-07-17T00:00:00Z' },
+  ] }), { activeReservations: 1, remainingReservationSlots: 3, canReserve: true })
 })
 
 test('public availability SQL exposes only public aggregate fields', () => {
@@ -629,9 +648,9 @@ test('public availability model covers visibility, reservations, and upcoming va
   const reserved = publicAvailabilityModel({
     properties: [baseProperty],
     rooms: [{ id: 'room-1', property_id: 'property-1', status: 'vacant', capacity: 2, current_occupants: 1 }],
-    prebookings: [{ id: 'booking-1', room_id: 'room-1', status: 'approved', deleted_at: null }],
+    prebookings: [{ id: 'booking-1', room_id: 'room-1', status: 'reserved', deleted_at: null }],
   })[0]
-  assert.strictEqual(reserved.availableRoomCount, 0)
+  assert.strictEqual(reserved.availableRoomCount, 1)
   assert.strictEqual(reserved.reservedRoomCount, 1)
 
   const convertedApprovedPrebooking = publicAvailabilityModel({
@@ -648,7 +667,7 @@ test('public availability model covers visibility, reservations, and upcoming va
     rooms: [{ id: 'room-1', property_id: 'property-1', status: 'vacant', capacity: 2, current_occupants: 1 }],
     prebookings: [
       { id: 'booking-1', room_id: 'room-1', status: 'rejected', deleted_at: null },
-      { id: 'booking-2', room_id: 'room-1', status: 'approved', deleted_at: '2026-07-17T00:00:00Z' },
+      { id: 'booking-2', room_id: 'room-1', status: 'reserved', deleted_at: '2026-07-17T00:00:00Z' },
     ],
   })[0]
   assert.strictEqual(rejectedOrCancelled.availableRoomCount, 1)
@@ -1280,6 +1299,86 @@ test('rent reminder template names match database and Brevo mapping', () => {
     assert.match(brevoSource, new RegExp(envName))
     assert.match(dryRunSource, new RegExp(envName))
   }
+})
+
+test('prebooking fee displayed publicly cannot be inserted as zero by the visitor API', () => {
+  const propertySource = source('pages/property/[id].js')
+  const visitorSubmitSource = source('pages/api/visitor/submit.js')
+  const ownerContextSource = source('context/OwnerContext.js')
+  const settingsModalSource = source('components/owner/modals/SettingsModal.js')
+  assert.match(propertySource, /const DEFAULT_PREBOOKING_FEE = 3000/)
+  assert.match(propertySource, /pre_booking_fee: Number\(settings\?\.pre_booking_fee\) > 0 \? Number\(settings\.pre_booking_fee\) : DEFAULT_PREBOOKING_FEE/)
+  assert.match(visitorSubmitSource, /const DEFAULT_PREBOOKING_FEE = 3000/)
+  assert.match(visitorSubmitSource, /const preBookingFee = Number\.isFinite\(configuredFee\) && configuredFee > 0[\s\S]*Number\(room\.deposit_amount \|\| DEFAULT_PREBOOKING_FEE\)/)
+  assert.match(visitorSubmitSource, /pre_booking_fee_amount: preBookingFee/)
+  assert.doesNotMatch(visitorSubmitSource, /pre_booking_fee_amount:\s*Number\(settings\.pre_booking_fee \|\| 0\)/)
+  assert.match(ownerContextSource, /pre_booking_fee:3000/)
+  assert.match(settingsModalSource, /Pre-booking fee/)
+})
+
+test('public prebooking UI is reservation-capacity aware', () => {
+  const propertySource = source('pages/property/[id].js')
+  assert.match(propertySource, /buildReservationCounts/)
+  assert.match(propertySource, /get_public_property_rooms/)
+  assert.match(propertySource, /reserved_prebooking_count/)
+  assert.match(propertySource, /Partially reserved/)
+  assert.match(propertySource, /Future vacancies fully reserved/)
+  assert.match(propertySource, /activeReservations[\s\S]*capacity/)
+  assert.match(propertySource, /openPrebookModal\(room\.id, roomVacate\?\.vacateDate\)/)
+})
+
+test('owner overview is the primary workspace for imports and prebookings', () => {
+  const ownerDashboardSource = source('pages/owner/dashboard.js')
+  const mobileOverviewSource = source('components/owner/mobile/OwnerMobileDashboard.js')
+  const statsCardsSource = source('components/owner/StatsCards.js')
+  assert.match(ownerDashboardSource, /Pending Existing Tenant Imports/)
+  assert.match(ownerDashboardSource, /Pending Pre-bookings/)
+  assert.match(ownerDashboardSource, /Quick Review/)
+  assert.match(ownerDashboardSource, /existingImports\.latestPending/)
+  assert.match(ownerDashboardSource, /pendingPreBookings/)
+  assert.match(mobileOverviewSource, /Pre-bookings/)
+  assert.match(mobileOverviewSource, /Imports/)
+  assert.match(statsCardsSource, /Pre-bookings/)
+})
+
+test('owner request hooks use property-scoped realtime and server-side rejection RPCs', () => {
+  const ownerApplicationsSource = source('hooks/useOwnerApplications.js')
+  const ownerPrebookingsSource = source('hooks/useOwnerPreBookings.js')
+  const existingImportsSource = source('hooks/useExistingTenantImports.js')
+  const ownerPreBookingListSource = source('components/owner/PreBookingList.js')
+  assert.match(ownerApplicationsSource, /filter: `property_id=eq\.\$\{property\.id\}`/)
+  assert.match(ownerPrebookingsSource, /filter: `property_id=eq\.\$\{property\.id\}`/)
+  assert.doesNotMatch(ownerPrebookingsSource, /reserved_prebooking_count/)
+  assert.match(ownerPreBookingListSource, /reservedCountsByRoom/)
+  assert.match(ownerPreBookingListSource, /activeReservations >= capacity/)
+  assert.match(ownerPreBookingListSource, /Reservation capacity reached/)
+  assert.match(ownerApplicationsSource, /rpc\('reject_application'/)
+  assert.match(ownerPrebookingsSource, /rpc\('reject_prebooking'/)
+  assert.match(existingImportsSource, /const \[latestPending, setLatestPending\]/)
+  assert.match(existingImportsSource, /\.limit\(5\)/)
+})
+
+test('approval API delegates tenant creation to canonical RPC transaction', () => {
+  const approveApiSource = source('pages/api/requests/approve.js')
+  assert.match(approveApiSource, /rpc\('approve_application_atomic', \{ p_application_id: id, p_user_id: userId \}\)/)
+  assert.doesNotMatch(approveApiSource, /from\('applications'\)\.update\(\{ user_id: userId \}\)/)
+  assert.match(approveApiSource, /rpc\('reserve_prebooking_atomic', \{ p_booking_id: id \}\)/)
+  assert.doesNotMatch(approveApiSource, /inviteTenantForSetup\(\{ email: booking\.email/)
+  assert.match(approveApiSource, /These details belong to an existing non-tenant account/)
+})
+
+test('prebooking reservation migration defines isolated reservation and conversion protections', () => {
+  const migrationSource = source('supabase/migrations/202607170005_prebooking_reservation_workflow.sql')
+  assert.match(migrationSource, /create or replace function public\.reserve_prebooking_atomic\(p_booking_id uuid\)/)
+  assert.match(migrationSource, /create or replace function public\.approve_prebooking_atomic\(p_booking_id uuid, p_user_id uuid\)[\s\S]*reserve_prebooking_atomic/)
+  assert.match(migrationSource, /create or replace function public\.convert_reserved_prebooking_to_tenant/)
+  assert.match(migrationSource, /drop index if exists public\.prebookings_one_reserved_room_uidx/)
+  assert.doesNotMatch(migrationSource, /create unique index if not exists prebookings_one_reserved_room_uidx/)
+  assert.match(migrationSource, /active_reservations >= coalesce\(room_record\.capacity, 0\)/)
+  assert.match(migrationSource, /order by reserved_booking\.reserved_at asc nulls last, reserved_booking\.created_at asc, reserved_booking\.id asc/)
+  assert.match(migrationSource, /payment_history_one_prebooking_payment_uidx/)
+  assert.match(migrationSource, /status in \('pending','approved','rejected','reserved','converted','cancelled','refunded'\)/)
+  assert.match(migrationSource, /Pre-booking fee amount is invalid/)
 })
 
 Promise.all(asyncTests).catch(error => {

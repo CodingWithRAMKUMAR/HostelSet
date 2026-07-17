@@ -32,7 +32,7 @@ export function useAdminApplications(enabled = true) {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Approval failed');
-      toast.success(result.emailSent ? 'Application approved and password email sent.' : 'Application approved; password email needs resending.');
+      toast.success(result.setupEmailSent ? 'Application approved and password setup email sent.' : 'Application approved successfully.');
       await loadApplications();
     } catch (error) {
       toast.error('Failed to approve application: ' + error.message);
@@ -41,7 +41,7 @@ export function useAdminApplications(enabled = true) {
 
   const rejectApplication = async (appId) => {
     if (!confirm('Reject this application?')) return;
-    const { error } = await supabase.from('applications').update({ status: 'rejected' }).eq('id', appId);
+    const { error } = await supabase.rpc('reject_application', { p_application_id: appId, p_reason: null });
     if (error) toast.error('Failed to reject application');
     else { toast.success('Application rejected.'); await loadApplications(); }
   };

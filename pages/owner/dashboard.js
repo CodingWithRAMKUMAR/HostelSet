@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 import BrandLogo from '../../components/BrandLogo';
 import NotificationBell from '../../components/common/NotificationBell';
 import ThemeToggle from '../../components/common/ThemeToggle';
-import { formatCurrency } from '../../lib/utils';
+import { formatCurrency, formatDate } from '../../lib/utils';
 import { buildDashboardHref, isCanonicalDashboardQuery, pushDashboardHistory, replaceDashboardHistory, resolveOwnerDashboardQuery } from '../../lib/dashboardRouting';
 import { filterTenantsByRentStatus, summarizeTenantRentStatuses } from '../../lib/tenantRentStatus';
 
@@ -328,7 +328,7 @@ function OwnerDashboardContent() {
   const { notices, postNotice, deleteNotice } = useOwnerNotices(property, propertyReady);
   const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, propertyReady);
   const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, propertyReady);
-  const { preBookings, approvePreBooking, rejectPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, propertyReady);
+  const { preBookings, approvePreBooking, rejectPreBooking, convertReservedPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, propertyReady);
   const existingImports = useExistingTenantImports(property, propertyReady, () => loadData({ background: true, force: true, reason: 'existing-import-action-reconciliation' }));
   const ownerAnalytics = useOwnerAnalytics(property, analyticsVisited || activeTab === OWNER_VIEW_KEYS.ANALYTICS);
 
@@ -714,8 +714,25 @@ function OwnerDashboardContent() {
     }
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.rpc('archive_tenant', { p_tenant_id: tenantToDelete.id, p_reason: String(reason).trim() });
+      const { data, error } = await supabase.rpc('archive_tenant', { p_tenant_id: tenantToDelete.id, p_reason: String(reason).trim() });
       if (error) throw error;
+      if (data?.occupancy_released && data?.room_id) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            const response = await fetch('/api/requests/convert-reserved-prebooking', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+              body: JSON.stringify({ roomId: data.room_id }),
+            });
+            const conversion = await response.json().catch(() => ({}));
+            if (response.ok && conversion.converted && conversion.setupEmailSent) toast.success('Reserved pre-booking converted and setup email sent.');
+            else if (!response.ok) toast.error(conversion.error || 'Reserved pre-booking conversion failed. You can retry from pre-bookings.');
+          }
+        } catch (conversionError) {
+          toast.error('Reserved pre-booking conversion failed. You can retry from pre-bookings.');
+        }
+      }
       profileCache.current.delete(tenantToDelete.id);
       paymentCache.current.delete(tenantToDelete.id);
       await loadData({ background: true, force: true, reason: 'archive-tenant-reconciliation' });
@@ -984,6 +1001,12 @@ function OwnerDashboardContent() {
   const safeRoomChangeRequests = useMemo(() => Array.isArray(roomChangeRequests) ? roomChangeRequests : [], [roomChangeRequests])
   const safeApplications = useMemo(() => Array.isArray(applications) ? applications : [], [applications])
   const safePreBookings = useMemo(() => Array.isArray(preBookings) ? preBookings : [], [preBookings])
+  const pendingPreBookings = useMemo(() => safePreBookings.filter(booking => booking.status === 'pending'), [safePreBookings])
+  const reservedPreBookings = useMemo(() => safePreBookings.filter(booking => booking.status === 'reserved'), [safePreBookings])
+  const reservationCountsByRoom = useMemo(() => reservedPreBookings.reduce((counts, booking) => {
+    counts[booking.room_id] = (counts[booking.room_id] || 0) + 1
+    return counts
+  }, {}), [reservedPreBookings])
   const safeExistingImports = useMemo(() => Array.isArray(existingImports.imports) ? existingImports.imports : [], [existingImports.imports])
   const searchLower = searchTerm.trim().toLowerCase()
   const matchesSearch = useCallback((...values) => !searchLower || values.some(value => String(value ?? '').toLowerCase().includes(searchLower)), [searchLower])
@@ -1050,8 +1073,8 @@ function OwnerDashboardContent() {
     { id: 'rent-payments', label: 'Payments', icon: 'payments' }, { id: 'more', label: 'More', icon: 'more' },
   ], [])
   const ownerSidebarItems = useMemo(() => ownerTabs.map(item => ({ ...item, icon: ({ overview:'dashboard', rooms:'rooms', tenants:'users', 'rent-payments':'payments', 'payment-history':'payments', notices:'notices', complaints:'complaints', analytics:'analytics', membership:'settings' })[item.id] || 'settings', disabled: !membershipActive && !['overview', 'membership'].includes(item.id) })), [ownerTabs, membershipActive])
-  const overviewStats = useMemo(() => ({ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length, pendingApplications: safeApplications.length, pendingImports: existingImports.pendingCount, totalComplaints: safeComplaints.length, pendingVacate: safeVacateRequests.filter(request => request.status === 'pending').length, pendingRoomChanges: safeRoomChangeRequests.length, pendingRentConfirmations: safePendingRentPayments.length }), [stats, safeTenants.length, safeNotices.length, safeApplications.length, existingImports.pendingCount, safeComplaints.length, safeVacateRequests, safeRoomChangeRequests.length, safePendingRentPayments.length])
-  const mobileOverviewCounts = useMemo(() => ({ tenants: safeTenants.length, applications: safeApplications.length, complaints: safeComplaints.length, payments: safePendingRentPayments.length, vacate: safeVacateRequests.filter(item => item.status === 'pending').length, roomChanges: safeRoomChangeRequests.length }), [safeTenants.length, safeApplications.length, safeComplaints.length, safePendingRentPayments.length, safeVacateRequests, safeRoomChangeRequests.length])
+  const overviewStats = useMemo(() => ({ ...stats, tenantCount: safeTenants.length, activeNotices: safeNotices.length, pendingApplications: safeApplications.length, pendingImports: existingImports.pendingCount, pendingPreBookings: pendingPreBookings.length, totalComplaints: safeComplaints.length, pendingVacate: safeVacateRequests.filter(request => request.status === 'pending').length, pendingRoomChanges: safeRoomChangeRequests.length, pendingRentConfirmations: safePendingRentPayments.length }), [stats, safeTenants.length, safeNotices.length, safeApplications.length, existingImports.pendingCount, pendingPreBookings.length, safeComplaints.length, safeVacateRequests, safeRoomChangeRequests.length, safePendingRentPayments.length])
+  const mobileOverviewCounts = useMemo(() => ({ tenants: safeTenants.length, applications: safeApplications.length, imports: existingImports.pendingCount, preBookings: pendingPreBookings.length, complaints: safeComplaints.length, payments: safePendingRentPayments.length, vacate: safeVacateRequests.filter(item => item.status === 'pending').length, roomChanges: safeRoomChangeRequests.length }), [safeTenants.length, safeApplications.length, existingImports.pendingCount, pendingPreBookings.length, safeComplaints.length, safePendingRentPayments.length, safeVacateRequests, safeRoomChangeRequests.length])
 
   const hasUsableDashboardData = Boolean(property?.id) || safeRooms.length > 0 || safeTenants.length > 0
 
@@ -1082,9 +1105,58 @@ function OwnerDashboardContent() {
   }
 
   const logout = async () => { await signOut(); window.location.replace('/login') }
+  const overviewImportRows = existingImports.latestPending || []
+  const overviewPreBookingRows = [...pendingPreBookings, ...reservedPreBookings].slice(0, 5)
+  const RequestQueueRow = ({ item, type }) => {
+    const isImport = type === 'import'
+    const id = item.id
+    const applicant = isImport ? item.full_name : item.name
+    const room = item.rooms?.room_number || item.room_number || 'N/A'
+    const status = isImport ? String(item.status || '').replaceAll('_', ' ') : item.status
+    const amount = isImport ? item.current_rent : item.pre_booking_fee_amount
+    const processing = isImport ? existingImports.processingId === id : prebookingProcessingId === id
+    const capacity = Number(item.rooms?.capacity || 0)
+    const activeReservations = Number(reservationCountsByRoom[item.room_id] || 0)
+    const reservationCapacityReached = !isImport && capacity > 0 && activeReservations >= capacity
+    return (
+      <article className="grid gap-3 border-t border-slate-100 py-3 first:border-t-0 md:grid-cols-[1.35fr_1fr_0.8fr_0.8fr_1.2fr] md:items-center">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-slate-900">{applicant || 'Applicant'}</p>
+          <p className="truncate text-xs text-slate-500">{property?.name || 'Property'} - Room {room}</p>
+        </div>
+        <div className="text-xs text-slate-600">
+          <p>{formatDate(item.created_at)}</p>
+          <p className="capitalize">{status || 'pending'}</p>
+          {!isImport && <p>{activeReservations} of {capacity || 'N/A'} reserved</p>}
+        </div>
+        <p className="text-sm font-bold text-slate-800">{formatCurrency(amount || 0)}</p>
+        <button type="button" onClick={() => openSection(isImport ? 'existing-imports' : 'pre-bookings')} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Quick Review</button>
+        <div className="flex flex-wrap gap-2 md:justify-end">
+          {!isImport && item.status === 'reserved' ? <span className="rounded-lg bg-purple-50 px-3 py-2 text-xs font-bold text-purple-700">Waiting for vacancy</span> : <button type="button" disabled={Boolean(processing) || reservationCapacityReached} onClick={() => isImport ? existingImports.approve(id) : approvePreBooking(id, item)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{processing ? 'Processing...' : reservationCapacityReached ? 'Capacity reached' : (isImport ? 'Approve' : 'Reserve')}</button>}
+          {(isImport || item.status === 'pending') && <button type="button" disabled={Boolean(processing)} onClick={() => isImport ? existingImports.reject(id) : rejectPreBooking(id)} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-700 disabled:opacity-50">Reject</button>}
+        </div>
+      </article>
+    )
+  }
+  const RequestQueue = ({ title, count, rows, type, tab }) => (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" aria-labelledby={`owner-${type}-queue`}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 id={`owner-${type}-queue`} className="font-bold text-slate-800">{title}</h2>
+          <p className="text-sm text-slate-500">{count} pending request{count === 1 ? '' : 's'}</p>
+        </div>
+        <button type="button" onClick={() => openSection(tab)} className="rounded-lg border border-orange-200 px-3 py-2 text-sm font-bold text-orange-700 hover:bg-orange-50">View All</button>
+      </div>
+      {rows.length ? rows.map(item => <RequestQueueRow key={`${type}:${item.id}`} item={item} type={type} />) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No pending requests.</p>}
+    </section>
+  )
   const renderOwnerOverview = () => (
     <div className="space-y-4 sm:space-y-6">
       <StatsCards stats={overviewStats} onSelect={openSection} />
+      <div className="grid gap-4 xl:grid-cols-2">
+        <RequestQueue title="Pending Existing Tenant Imports" count={existingImports.pendingCount} rows={overviewImportRows} type="import" tab="existing-imports" />
+        <RequestQueue title="Pending Pre-bookings" count={safePreBookings.length} rows={overviewPreBookingRows} type="prebooking" tab="pre-bookings" />
+      </div>
       {searchLower && (
         <div className="rounded-xl border border-orange-100 bg-white p-4 shadow-sm">
           <p className="mb-3 text-sm font-semibold text-slate-700">Search results for "{searchTerm.trim()}"</p>
@@ -1125,7 +1197,7 @@ function OwnerDashboardContent() {
       case 'archived-tenants': return <ArchivedTenantList tenants={filteredArchivedTenants} onViewHistory={fetchArchivedTenantHistory} loadingId={loadingArchivedTenantId} />
       case 'rent-payments': return <RentPaymentsList payments={filteredPendingPayments} onConfirm={(id) => handleReviewRentPayment(id, true)} onReject={(id) => handleReviewRentPayment(id, false)} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={isSubmitting} />
       case 'payment-history': return <PaymentHistoryTable payments={filteredAllPayments} getRoomNumberById={getRoomNumberById} onViewScreenshot={openSignedPaymentScreenshot} />
-      case 'pre-bookings': return <PreBookingList bookings={filteredPreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={Boolean(prebookingProcessingId)} />
+      case 'pre-bookings': return <PreBookingList bookings={filteredPreBookings} onApprove={(id, data) => approvePreBooking(id, data)} onReject={rejectPreBooking} onConvert={(id, data) => convertReservedPreBooking(id, data)} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={Boolean(prebookingProcessingId)} />
       case 'applications': return <ApplicationList applications={filteredApplications} onApprove={(id, data) => approveApplication(id, data)} onReject={rejectApplication} onResendEmail={resendPasswordEmail} onViewScreenshot={openSignedPaymentScreenshot} isSubmitting={Boolean(applicationProcessingId)} />
       case 'existing-imports': return <div className="space-y-5"><ExistingTenantImportSettings link={existingImports.link} property={property} busy={existingImports.linkBusy} onGenerate={existingImports.rotateLink} onToggle={existingImports.setLinkEnabled} /><ExistingTenantImportList imports={filteredExistingImports} loading={existingImports.loading} total={existingImports.total} page={existingImports.page} pageSize={existingImports.pageSize} processingId={existingImports.processingId} onApprove={existingImports.approve} onReject={existingImports.reject} onUpdateRentAnswer={existingImports.updateRentAnswer} onPage={existingImports.loadPage} onViewDocument={openExistingImportDocument} /></div>
       case 'complaints': return <ComplaintList complaints={filteredComplaints} onRespond={(complaint) => { setSelectedComplaint(complaint); setComplaintResponse(''); setShowComplaintResponseModal(true) }} onResolve={handleResolveComplaint} isSubmitting={isSubmitting} />

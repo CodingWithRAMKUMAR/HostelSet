@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from '../../../lib/server/supabaseAdmin'
 import { allowPostOnly, requireJson, setPrivateApiResponse } from '../../../lib/server/publicApiSecurity'
 import { logger } from '../../../lib/logger'
+import { convertReservedPrebooking } from '../../../lib/server/prebookingConversion'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i
 
@@ -44,7 +45,17 @@ export default async function handler(req, res) {
     })
     if (error) throw error
 
-    return res.status(200).json({ success: true, archived: true, result: data || null })
+    let conversion = null
+    if (data?.occupancy_released && data?.room_id) {
+      try {
+        conversion = await convertReservedPrebooking({ caller, actorId: admin.id, roomId: data.room_id })
+      } catch (conversionError) {
+        logger.warn('Tenant archived, but reserved pre-booking conversion did not complete', { message: conversionError.message, roomId: data.room_id })
+        conversion = { converted: false, error: conversionError.message || 'Pre-booking conversion failed' }
+      }
+    }
+
+    return res.status(200).json({ success: true, archived: true, result: data || null, conversion })
   } catch (error) {
     logger.error('Admin tenant archive failed', error, { route: '/api/admin/delete-tenant', tenantId })
     const rawMessage = String(error?.message || '')

@@ -521,6 +521,10 @@ function AdminDashboardContent() {
   const pendingVacateRequests = useMemo(() => vacateRequests.filter(request => request.status === 'pending'), [vacateRequests]);
   const pendingRoomChanges = useMemo(() => roomChanges.filter(request => (request.status || 'pending') === 'pending'), [roomChanges]);
   const paymentIssues = useMemo(() => payments.filter(payment => ['payment_pending', 'pending', 'failed', 'rejected'].includes(payment.status)), [payments]);
+  const reservationCountsByRoom = useMemo(() => preBookings.reduce((counts, booking) => {
+    if (booking.status === 'reserved') counts[booking.room_id] = (counts[booking.room_id] || 0) + 1;
+    return counts;
+  }, {}), [preBookings]);
   const actionCenterCards = useMemo(() => [
     { id: 'membership', label: 'Pending memberships', value: pendingMembershipRequests.length, tab: 'membership' },
     { id: 'applications', label: 'Pending applications', value: pendingApplications.length, tab: 'applications' },
@@ -618,7 +622,7 @@ function AdminDashboardContent() {
     if (tab === 'prebookings') {
       return renderMobileOperationList({
         title: 'Pre-bookings',
-        subtitle: `${preBookings.length} pending requests`,
+        subtitle: `${preBookings.length} pre-bookings`,
         loading: preBookingsLoading,
         items: preBookings,
         emptyMessage: 'No pre-bookings found.',
@@ -628,7 +632,7 @@ function AdminDashboardContent() {
               <div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{booking.name}</p><p className="truncate text-[11px] text-slate-500">Room {booking.rooms?.room_number || 'N/A'} / {booking.rooms?.properties?.name || 'N/A'}</p></div>
               <p className="shrink-0 text-xs font-black text-slate-700">{formatCurrency(booking.pre_booking_fee_amount || 0)}</p>
             </div>
-            <div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${booking.id}`, () => approvePreBooking(booking.id, booking.user_id, booking.room_id, booking.property_id, booking.name, booking.phone, booking.email, booking.rooms?.monthly_rent))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">Approve</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${booking.id}`, () => rejectPreBooking(booking.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div>
+            {booking.status === 'pending' ? <div className="mt-2 flex justify-end gap-2"><button disabled={Boolean(actionKey) || (Number(reservationCountsByRoom[booking.room_id] || 0) >= Number(booking.rooms?.capacity || 0))} onClick={() => runAdminAction(`prebooking:${booking.id}`, () => approvePreBooking(booking.id, booking.user_id, booking.room_id, booking.property_id, booking.name, booking.phone, booking.email, booking.rooms?.monthly_rent))} className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 disabled:opacity-50">{Number(reservationCountsByRoom[booking.room_id] || 0) >= Number(booking.rooms?.capacity || 0) ? 'Capacity reached' : 'Reserve'}</button><button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${booking.id}`, () => rejectPreBooking(booking.id))} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-50">Reject</button></div> : <p className="mt-2 text-right text-xs font-bold text-purple-700">{booking.status === 'reserved' ? 'Reserved - waiting for vacancy' : 'Converted'}</p>}
           </article>
         ),
       })
@@ -1041,8 +1045,10 @@ function AdminDashboardContent() {
                 <td className="px-6 py-4 text-gray-500">{b.rooms?.properties?.name || 'N/A'}</td>
                 <td className="px-6 py-4 text-gray-500">{formatCurrency(b.pre_booking_fee_amount || 0)}</td>
                 <td className="px-6 py-4 flex gap-2">
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${b.id}`, () => approvePreBooking(b.id, b.user_id, b.room_id, b.property_id, b.name, b.phone, b.email, b.rooms?.monthly_rent))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processing...' : 'Approve'}</button>
-                  <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${b.id}`, () => rejectPreBooking(b.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processing...' : 'Reject'}</button>
+                  {b.status === 'pending' ? <>
+                    <button disabled={Boolean(actionKey) || (Number(reservationCountsByRoom[b.room_id] || 0) >= Number(b.rooms?.capacity || 0))} onClick={() => runAdminAction(`prebooking:${b.id}`, () => approvePreBooking(b.id, b.user_id, b.room_id, b.property_id, b.name, b.phone, b.email, b.rooms?.monthly_rent))} className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processing...' : Number(reservationCountsByRoom[b.room_id] || 0) >= Number(b.rooms?.capacity || 0) ? 'Capacity reached' : 'Reserve'}</button>
+                    <button disabled={Boolean(actionKey)} onClick={() => runAdminAction(`prebooking:${b.id}`, () => rejectPreBooking(b.id))} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider disabled:opacity-50">{actionKey === `prebooking:${b.id}` ? 'Processing...' : 'Reject'}</button>
+                  </> : <span className="text-xs font-semibold text-purple-700">{b.status === 'reserved' ? 'Waiting for vacancy' : 'Converted'}</span>}
                 </td>
               </tr>
             )}

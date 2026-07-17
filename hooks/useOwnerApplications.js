@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getResetPasswordRedirectTo, supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
-import { useRealtimeRefresh } from './useRealtimeRefresh';
 
 export function useOwnerApplications(property, enabled = true) {
   const [applications, setApplications] = useState([]);
   const [processingId, setProcessingId] = useState(null);
+  const refreshTimer = useRef();
 
-  const loadApplications = async () => {
+  const loadApplications = useCallback(async () => {
     if (!property?.id) return;
     const { data, error } = await supabase
       .from('applications')
@@ -31,7 +31,7 @@ export function useOwnerApplications(property, enabled = true) {
       };
     });
     setApplications(prepared);
-  };
+  }, [property?.id]);
 
   const approveApplication = async (appId, appData) => {
     if (processingId) return;
@@ -61,10 +61,7 @@ export function useOwnerApplications(property, enabled = true) {
 
   const rejectApplication = async (appId) => {
     if (!confirm('Reject this application?')) return;
-    const { error } = await supabase
-      .from('applications')
-      .update({ status: 'rejected', processed_at: new Date().toISOString() })
-      .eq('id', appId);
+    const { error } = await supabase.rpc('reject_application', { p_application_id: appId, p_reason: null });
     if (error) toast.error('Failed to reject application: ' + error.message);
     else { toast.success('Application rejected.'); await loadApplications(); }
   };
@@ -89,8 +86,22 @@ export function useOwnerApplications(property, enabled = true) {
   useEffect(() => {
     setApplications([]);
     if (property?.id && enabled) loadApplications();
-  }, [property?.id, enabled]);
-  useRealtimeRefresh(`owner-applications-live:${property?.id || 'waiting'}`, ['applications', 'rooms'], loadApplications, Boolean(property?.id && enabled));
+  }, [property?.id, enabled, loadApplications]);
+  useEffect(() => {
+    if (!property?.id || !enabled) return undefined;
+    const channel = supabase
+      .channel(`owner-applications:${property.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'applications', filter: `property_id=eq.${property.id}` }, () => {
+        clearTimeout(refreshTimer.current);
+        refreshTimer.current = setTimeout(loadApplications, 150);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `property_id=eq.${property.id}` }, () => {
+        clearTimeout(refreshTimer.current);
+        refreshTimer.current = setTimeout(loadApplications, 150);
+      })
+      .subscribe();
+    return () => { clearTimeout(refreshTimer.current); supabase.removeChannel(channel); };
+  }, [property?.id, enabled, loadApplications]);
 
   return { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId };
 }

@@ -55,6 +55,7 @@ function OwnerMobileDashboard({ property, stats, counts, membershipActive, membe
           <Stat label="Collected" icon="payments" value={formatCurrency(stats?.totalCollected || 0)} />
           <Stat label="Pending" icon="payments" value={formatCurrency(stats?.pendingAmount || 0)} onClick={() => onNavigate('rent-payments')} />
           <Stat label="Applications" icon="requests" value={counts?.applications || 0} onClick={() => onNavigate('applications')} />
+          <Stat label="Pre-bookings" icon="requests" value={counts?.preBookings || 0} onClick={() => onNavigate('pre-bookings')} />
           <Stat label="Complaints" icon="complaints" value={counts?.complaints || 0} onClick={() => onNavigate('complaints')} />
         </section>
 
@@ -64,6 +65,8 @@ function OwnerMobileDashboard({ property, stats, counts, membershipActive, membe
             {[
               ['rent-payments', 'Payments', counts?.payments || 0, 'payments'],
               ['applications', 'Applications', counts?.applications || 0, 'requests'],
+              ['existing-imports', 'Imports', counts?.imports || 0, 'requests'],
+              ['pre-bookings', 'Pre-bookings', counts?.preBookings || 0, 'requests'],
               ['vacate', 'Vacate', counts?.vacate || 0, 'requests'],
               ['room-change', 'Room changes', counts?.roomChanges || 0, 'requests'],
             ].map(([id, label, count, icon]) => (

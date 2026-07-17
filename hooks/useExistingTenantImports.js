@@ -7,6 +7,7 @@ const PAGE_SIZE = 20
 export function useExistingTenantImports(property, listEnabled = false, onApproved) {
   const [link, setLink] = useState(null)
   const [imports, setImports] = useState([])
+  const [latestPending, setLatestPending] = useState([])
   const [pendingCount, setPendingCount] = useState(0)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
@@ -17,13 +18,15 @@ export function useExistingTenantImports(property, listEnabled = false, onApprov
 
   const loadSummary = useCallback(async () => {
     if (!property?.id) return
-    const [linkResult, countResult] = await Promise.all([
+    const [linkResult, countResult, latestResult] = await Promise.all([
       supabase.from('existing_tenant_import_links').select('*').eq('property_id', property.id).maybeSingle(),
       supabase.from('existing_tenant_imports').select('id', { count: 'exact', head: true }).eq('property_id', property.id).eq('status', 'pending_owner_review').is('deleted_at', null),
+      supabase.from('existing_tenant_imports').select('*,rooms(room_number)').eq('property_id', property.id).eq('status', 'pending_owner_review').is('deleted_at', null).order('created_at', { ascending: false }).limit(5),
     ])
     if (linkResult.error) throw linkResult.error
     if (countResult.error) throw countResult.error
-    setLink(linkResult.data || null); setPendingCount(countResult.count || 0)
+    if (latestResult.error) throw latestResult.error
+    setLink(linkResult.data || null); setPendingCount(countResult.count || 0); setLatestPending(latestResult.data || [])
   }, [property?.id])
 
   const loadImports = useCallback(async (targetPage = page) => {
@@ -111,5 +114,5 @@ export function useExistingTenantImports(property, listEnabled = false, onApprov
     return () => { clearTimeout(timer.current); supabase.removeChannel(channel) }
   }, [property?.id, refresh])
 
-  return { link, linkBusy, imports, pendingCount, total, page, pageSize: PAGE_SIZE, loading, processingId, rotateLink, setLinkEnabled, approve, reject, updateRentAnswer, loadPage: loadImports }
+  return { link, linkBusy, imports, latestPending, pendingCount, total, page, pageSize: PAGE_SIZE, loading, processingId, rotateLink, setLinkEnabled, approve, reject, updateRentAnswer, loadPage: loadImports }
 }

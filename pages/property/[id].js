@@ -16,6 +16,8 @@ import { propertyPublicPath, UUID_PATTERN } from '../../lib/propertySlug'
 import { BLOOD_GROUPS } from '../../lib/bloodGroups'
 
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.hostelset.com').replace(/\/$/, '')
+const DEFAULT_APPLICATION_DEPOSIT = 3000
+const DEFAULT_PREBOOKING_FEE = 3000
 
 const normalizeProperty = property => property ? {
   ...property,
@@ -28,7 +30,7 @@ const settingsFor = (property, settings) => ({
   upi_phone: settings?.upi_phone || '',
   advance_months: settings?.advance_months || 1,
   joining_fee: settings?.joining_fee || 0,
-  pre_booking_fee: settings?.pre_booking_fee ?? 999,
+  pre_booking_fee: Number(settings?.pre_booking_fee) > 0 ? Number(settings.pre_booking_fee) : DEFAULT_PREBOOKING_FEE,
 })
 
 const buildVacateInfo = roomRows => {
@@ -46,9 +48,31 @@ const buildVacateInfo = roomRows => {
   return info
 }
 
-const buildApprovedPrebookings = roomRows => Object.fromEntries(
-  roomRows.filter(room => room.has_approved_prebooking).map(room => [room.id, true]),
+const buildReservationCounts = roomRows => Object.fromEntries(
+  roomRows.map(room => [room.id, Number(room.reserved_prebooking_count || 0)]),
 )
+
+const isMissingPublicRoomsRpc = error => error?.code === 'PGRST202'
+  || /get_public_property_rooms/i.test(String(error?.message || ''))
+
+const fetchPublicRooms = async propertyId => {
+  const rpcResult = await supabase.rpc('get_public_property_rooms', { p_property_id: propertyId })
+  if (!rpcResult.error) return rpcResult
+  if (!isMissingPublicRoomsRpc(rpcResult.error)) return rpcResult
+
+  const fallback = await supabase
+    .from('rooms')
+    .select('*')
+    .eq('property_id', propertyId)
+    .in('status', ['vacant', 'occupied'])
+    .gt('capacity', 0)
+    .order('room_number')
+  if (fallback.error) return fallback
+  return {
+    data: (fallback.data || []).map(room => ({ ...room, reserved_prebooking_count: 0 })),
+    error: null,
+  }
+}
 
 const propertyImageLoader = ({ src }) => src
 
@@ -117,8 +141,8 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const [prebookCheckingPhone, setPrebookCheckingPhone] = useState(false)
   const [prebookCheckingEmail, setPrebookCheckingEmail] = useState(false)
 
-  // To disable pre‑book button if room already has an approved pre‑booking
-  const [approvedPrebookings, setApprovedPrebookings] = useState(() => buildApprovedPrebookings(initialRooms))
+  // Public-safe active reservation counts are derived by the public rooms RPC.
+  const [reservationCounts, setReservationCounts] = useState(() => buildReservationCounts(initialRooms))
   const redirectTimerRef = useRef(null)
   const resolvedPropertyId = property?.id || (UUID_PATTERN.test(String(id || '')) ? id : null)
 
@@ -158,7 +182,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       setRooms(initialRooms)
       setOwnerSettings(settingsFor(normalizedProperty, initialSettings))
       setVacateInfo(buildVacateInfo(initialRooms))
-      setApprovedPrebookings(buildApprovedPrebookings(initialRooms))
+      setReservationCounts(buildReservationCounts(initialRooms))
       setLoadError('')
       setLoading(false)
       return
@@ -177,7 +201,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       if (propertyError) throw propertyError
       if (!propertyData) throw new Error('This property is currently unavailable for public applications.')
       const [{ data: roomsData, error: roomsError }, { data: settingsData }] = await Promise.all([
-        supabase.from('rooms').select('*').eq('property_id', propertyData.id).order('room_number'),
+        fetchPublicRooms(propertyData.id),
         supabase.from('owner_settings').select('*').eq('property_id', propertyData.id).maybeSingle(),
       ])
       if (roomsError) throw roomsError
@@ -190,7 +214,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       }
 
       loadVacateInfo(roomsData || [])
-      loadApprovedPrebookings(roomsData || [])
+      loadReservationCounts(roomsData || [])
     } catch (error) {
       console.error('Error:', error)
       if (!background) setLoadError('We could not load this property. Please check your connection and try again.')
@@ -203,12 +227,12 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
     setVacateInfo(buildVacateInfo(roomRows))
   }
 
-  const loadApprovedPrebookings = (roomRows) => {
-    setApprovedPrebookings(buildApprovedPrebookings(roomRows))
+  const loadReservationCounts = (roomRows) => {
+    setReservationCounts(buildReservationCounts(roomRows))
   }
 
   const calculateTotalAmount = () => {
-    return 3000
+    return DEFAULT_APPLICATION_DEPOSIT
   }
 
   const handleFileChange = (e, setter) => {
@@ -342,12 +366,12 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
         .select('id')
         .eq('phone', cleanPhone)
         .eq('property_id', resolvedPropertyId)
-        .in('status', ['pending', 'approved'])
+        .in('status', ['pending', 'reserved', 'approved'])
         .is('deleted_at', null)
         .maybeSingle()
       if (existingPrebook) {
-        if (existingPrebook.status === 'approved') {
-          setPrebookPhoneError('You already have an approved pre‑booking for this property.')
+        if (['reserved', 'approved'].includes(existingPrebook.status)) {
+          setPrebookPhoneError('You already have an active pre‑booking for this property.')
           setPrebookPhoneValid(false)
           return false
         } else {
@@ -396,12 +420,12 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
         .select('id')
         .eq('email', email)
         .eq('property_id', resolvedPropertyId)
-        .in('status', ['pending', 'approved'])
+        .in('status', ['pending', 'reserved', 'approved'])
         .is('deleted_at', null)
         .maybeSingle()
       if (existingPrebook) {
-        if (existingPrebook.status === 'approved') {
-          setPrebookEmailError('You already have an approved pre‑booking for this property.')
+        if (['reserved', 'approved'].includes(existingPrebook.status)) {
+          setPrebookEmailError('You already have an active pre‑booking for this property.')
           setPrebookEmailValid(false)
           return false
         } else {
@@ -643,7 +667,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       }, 30000)
       const result = await readApiResponse(response, 'Pre-booking submission failed')
       if (!response.ok) throw new Error(result.error || 'Submission failed')
-      toast.success('Pre-booking request sent! Owner will verify payment and approve.')
+      toast.success(result.message || 'Your pre-booking request has been submitted and is awaiting owner verification.')
       setShowPrebookPaymentModal(false)
       setPrebookForm({ name: '', phone: '', email: '', move_in_date: '', message: '' })
       setPrebookRoomId(null); setPrebookIdProof(null); setPrebookPhoto(null)
@@ -754,7 +778,9 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const maxRent = rents.length ? Math.max(...rents) : null
   const rentText = minRent == null ? 'Contact the property for current rent' : minRent === maxRent ? `${formatCurrency(minRent)} per month` : `${formatCurrency(minRent)}–${formatCurrency(maxRent)} per month`
   const roomTypes = [...new Set(rooms.map(room => getSharingDetails(room.sharing_type)?.label).filter(Boolean))]
-  const availableSlots = rooms.reduce((total, room) => total + Math.max(0, Number(room.capacity || 0) - Number(room.current_occupants || 0)), 0)
+  const availableSlots = rooms.reduce((total, room) => {
+    return total + Math.max(0, Number(room.capacity || 0) - Number(room.current_occupants || 0))
+  }, 0)
   const genderLabel = property.property_type === 'boys' ? 'Boys' : property.property_type === 'girls' ? 'Girls' : 'Co-living'
   const locality = property.address || city
   const fullAddress = property.formatted_address || [property.address, property.city, property.pincode].filter(Boolean).join(', ')
@@ -928,21 +954,27 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {rooms.map((room) => {
                   const sharing = getSharingDetails(room.sharing_type)
-                  const isAvailable = room.current_occupants < room.capacity
-                  const availableSlots = room.capacity - room.current_occupants
+                  const capacity = Number(room.capacity || 0)
+                  const occupants = Number(room.current_occupants || 0)
+                  const isAvailable = occupants < capacity
+                  const availableSlots = Math.max(0, capacity - occupants)
                   const roomVacate = vacateInfo[room.id]
-                  const hasApprovedPrebooking = approvedPrebookings[room.id]
-                  const isPrebookable = Boolean(roomVacate) && !hasApprovedPrebooking
-                  const isReserved = hasApprovedPrebooking
+                  const activeReservations = Number(reservationCounts[room.id] || 0)
+                  const reservationCapacityReached = capacity > 0 && activeReservations >= capacity
+                  const isReserved = reservationCapacityReached && !isAvailable
+                  const isPrebookable = capacity > 0 && !reservationCapacityReached
 
                   let badgeText = ''
                   let badgeColor = ''
-                  if (isAvailable && !isReserved) {
-                    badgeText = `${availableSlots} slot available`
-                    badgeColor = 'bg-green-100 text-green-700'
-                  } else if (isReserved) {
-                    badgeText = 'Reserved'
+                  if (reservationCapacityReached) {
+                    badgeText = 'Future vacancies fully reserved'
                     badgeColor = 'bg-purple-100 text-purple-700'
+                  } else if (activeReservations > 0) {
+                    badgeText = 'Partially reserved'
+                    badgeColor = 'bg-violet-100 text-violet-700'
+                  } else if (isAvailable) {
+                    badgeText = `${availableSlots} bed${availableSlots === 1 ? '' : 's'} available now`
+                    badgeColor = 'bg-green-100 text-green-700'
                   } else if (isPrebookable) {
                     badgeText = 'Pre‑bookable'
                     badgeColor = 'bg-blue-100 text-blue-700'
@@ -958,7 +990,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.18 }}
                       className={`group bg-white rounded-2xl border shadow-sm hover:shadow-xl transition-all duration-150 overflow-hidden ${
-                        isAvailable && !isReserved ? 'border-green-200 hover:border-green-400' : (isPrebookable ? 'border-blue-200 hover:border-blue-400' : 'border-gray-200 opacity-70')
+                        isAvailable ? 'border-green-200 hover:border-green-400' : (isPrebookable ? 'border-blue-200 hover:border-blue-400' : 'border-gray-200 opacity-70')
                       }`}
                     >
                       <div className="p-6">
@@ -975,18 +1007,19 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                         <div className="mb-4">
                           <p className="text-3xl font-bold text-slate-800">{formatCurrency(room.monthly_rent)}</p>
                           <p className="text-gray-400 text-sm">per month</p>
-                          <p className="text-gray-400 text-sm mt-1">Application deposit: {formatCurrency(3000)}</p>
+                          <p className="text-gray-400 text-sm mt-1">Application deposit: {formatCurrency(DEFAULT_APPLICATION_DEPOSIT)}</p>
                         </div>
                         <div className="mb-4">
                           <div className="flex justify-between text-sm mb-1">
                             <span className="text-gray-500">Occupancy</span>
-                            <span className="text-slate-600">{room.current_occupants}/{room.capacity}</span>
+                            <span className="text-slate-600">{occupants}/{capacity}</span>
                           </div>
                           <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div className="bg-slate-600 h-2 rounded-full transition-all duration-150" style={{ width: `${(room.current_occupants / room.capacity) * 100}%` }} />
+                            <div className="bg-slate-600 h-2 rounded-full transition-all duration-150" style={{ width: `${capacity ? (occupants / capacity) * 100 : 0}%` }} />
                           </div>
+                          <p className="mt-2 text-xs font-semibold text-slate-500">{activeReservations} of {capacity || 'N/A'} future reservation slots taken</p>
                         </div>
-                        {isPrebookable && !isReserved && (
+                        {roomVacate && !reservationCapacityReached && (
                           <div className="mt-2 mb-2">
                             <span className="inline-block bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full">
                               {roomVacate.daysLeft > 1 ? `Vacates in ${roomVacate.daysLeft} days` : roomVacate.daysLeft === 1 ? 'Vacates tomorrow' : 'Ready to vacate'}
@@ -995,19 +1028,24 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                         )}
                         {isReserved ? (
                           <button disabled className="w-full bg-gray-400 text-white py-3 rounded-xl font-semibold cursor-not-allowed">
-                            Reserved (Pre‑booked)
+                            Reserved - Next vacancy already booked
                           </button>
                         ) : isAvailable ? (
                           <button onClick={() => { setSelectedRoom(room.id); setShowApplyModal(true) }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition transform hover:-translate-y-0.5 duration-200">
                             Apply for this Hostel →
                           </button>
                         ) : isPrebookable ? (
-                          <button onClick={() => openPrebookModal(room.id, roomVacate.vacateDate)} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition transform hover:-translate-y-0.5 duration-200">
+                          <button onClick={() => openPrebookModal(room.id, roomVacate?.vacateDate)} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition transform hover:-translate-y-0.5 duration-200">
                             📅 Pre‑book this room
                           </button>
                         ) : (
                           <button disabled className="w-full bg-gray-300 text-gray-500 py-3 rounded-xl font-semibold cursor-not-allowed">
                             Full – Not available
+                          </button>
+                        )}
+                        {isAvailable && isPrebookable && (
+                          <button onClick={() => openPrebookModal(room.id, roomVacate?.vacateDate)} className="mt-2 w-full rounded-xl border border-blue-200 bg-blue-50 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">
+                            Pre-book future bed
                           </button>
                         )}
                       </div>
@@ -1439,7 +1477,7 @@ export async function getStaticProps({ params }) {
   }
 
   const [resolvedRoomsResult, resolvedSettingsResult] = await Promise.all([
-    supabase.from('rooms').select('*').eq('property_id', propertyResult.data.id).order('room_number'),
+    fetchPublicRooms(propertyResult.data.id),
       supabase.from('owner_settings').select('upi_id, upi_phone, advance_months, joining_fee, pre_booking_fee').eq('property_id', propertyResult.data.id).maybeSingle(),
   ])
 

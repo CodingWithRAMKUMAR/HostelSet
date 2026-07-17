@@ -38,6 +38,10 @@ export default function SettingsModal({ settings, setSettings, property, onSave,
             <input type="number" className="h-9 w-full rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" value={settings.due_day ?? ''} onChange={setNumber('due_day', 5)} min="1" max="30" />
           </div>
           <div>
+            <label className="mb-1 block text-xs font-bold text-gray-700">Pre-booking fee (&#8377;)</label>
+            <input type="number" className="h-9 w-full rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" value={settings.pre_booking_fee ?? ''} onChange={setNumber('pre_booking_fee', 3000)} min="1" />
+          </div>
+          <div>
             <label className="mb-1 block text-xs font-bold text-gray-700">Your UPI ID</label>
             <input type="text" className="h-9 w-full rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="yourname@okhdfcbank" value={settings.upi_id || ''} onChange={(e) => setSettings({ ...settings, upi_id: e.target.value })} />
             <p className="mt-1 text-xs text-gray-400">Tenants can pay to this UPI ID.</p>

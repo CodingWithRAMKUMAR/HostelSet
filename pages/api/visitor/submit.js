@@ -10,6 +10,8 @@ export const config = { api: { bodyParser: { sizeLimit: '1mb' } } }
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const DEFAULT_APPLICATION_DEPOSIT = 3000
+const DEFAULT_PREBOOKING_FEE = 3000
 
 function decodeFile(file, label, imageOnly = false) {
   if (!file?.data || !file?.type) throw new Error(`${label} is required`)
@@ -94,11 +96,22 @@ async function processVisitorSubmission(req, res) {
     if (kind === 'application' && Number(room.current_occupants || 0) >= Number(room.capacity || 0)) {
       return res.status(409).json({ error: 'This room is full. Please select another room.' })
     }
+    if (kind === 'prebooking') {
+      const { count: activeReservationCount, error: reservationError } = await supabaseAdmin
+        .from('pre_bookings')
+        .select('id', { count: 'exact', head: true })
+        .eq('room_id', roomId)
+        .eq('status', 'reserved')
+        .is('deleted_at', null)
+      if (reservationError) throw reservationError
+      if (Number(activeReservationCount || 0) >= Number(room.capacity || 0)) return res.status(409).json({ error: 'This room has no remaining reservation capacity.' })
+    }
 
     const table = kind === 'prebooking' ? 'pre_bookings' : 'applications'
+    const activeStatuses = kind === 'prebooking' ? ['pending', 'reserved', 'approved'] : ['pending', 'approved']
     const [{ data: duplicatePhone }, { data: duplicateEmail }] = await Promise.all([
-      supabaseAdmin.from(table).select('id').eq('property_id', propertyId).eq('phone', phone).in('status', ['pending', 'approved']).is('deleted_at', null).limit(1),
-      supabaseAdmin.from(table).select('id').eq('property_id', propertyId).eq('email', email).in('status', ['pending', 'approved']).is('deleted_at', null).limit(1),
+      supabaseAdmin.from(table).select('id').eq('property_id', propertyId).eq('phone', phone).in('status', activeStatuses).is('deleted_at', null).limit(1),
+      supabaseAdmin.from(table).select('id').eq('property_id', propertyId).eq('email', email).in('status', activeStatuses).is('deleted_at', null).limit(1),
     ])
     if (duplicatePhone?.length || duplicateEmail?.length) return res.status(409).json({ error: 'An active request already exists for these details.' })
 
@@ -116,10 +129,15 @@ async function processVisitorSubmission(req, res) {
       if (!expectedMoveIn || Number.isNaN(Date.parse(expectedMoveIn))) throw new Error('A valid move-in date is required')
       const { data: settings } = await supabaseAdmin.from('owner_settings').select('pre_booking_fee, upi_id').eq('property_id', propertyId).maybeSingle()
       if (!settings?.upi_id) throw new Error('Owner payment details are not configured')
+      const configuredFee = Number(settings.pre_booking_fee)
+      const preBookingFee = Number.isFinite(configuredFee) && configuredFee > 0
+        ? configuredFee
+        : Number(room.deposit_amount || DEFAULT_PREBOOKING_FEE)
+      if (!Number.isFinite(preBookingFee) || preBookingFee <= 0) throw new Error('Pre-booking fee is not configured')
       const { error } = await supabaseAdmin.from('pre_bookings').insert({
         property_id: propertyId, room_id: roomId, user_id: null, name, phone, email, message,
         expected_move_in_date: expectedMoveIn, id_proof: idPath, photo: photoPath,
-        status: 'pending', payment_status: 'pending', pre_booking_fee_amount: Number(settings.pre_booking_fee || 0),
+        status: 'pending', payment_status: 'pending', pre_booking_fee_amount: preBookingFee,
         payment_screenshot: paymentPath, payment_transaction_id: String(transactionId || '').trim().slice(0, 120) || null,
       })
       if (error) throw error
@@ -132,7 +150,7 @@ async function processVisitorSubmission(req, res) {
       ])
       if (byPhone?.[0] && byEmail?.[0] && byPhone[0].id !== byEmail[0].id) throw new Error('The phone and email belong to different accounts')
       const userId = byPhone?.[0]?.id || byEmail?.[0]?.id || null
-      const deposit = 3000
+      const deposit = Number(room.deposit_amount || DEFAULT_APPLICATION_DEPOSIT)
       const { error } = await supabaseAdmin.from('applications').insert({
         user_id: userId, property_id: propertyId, room_id: roomId, name, phone, email, blood_group: bloodGroup, message,
         status: 'pending', id_proof: idPath, photo: photoPath, payment_screenshot: paymentPath,
@@ -142,7 +160,12 @@ async function processVisitorSubmission(req, res) {
       if (error) throw error
     }
 
-    return res.status(201).json({ success: true })
+    return res.status(201).json({
+      success: true,
+      message: kind === 'prebooking'
+        ? 'Your pre-booking request has been submitted and is awaiting owner verification.'
+        : 'Application submitted successfully.',
+    })
   } catch (error) {
     await removeFiles(uploaded)
     logger.error('Visitor submission failed', error, { route: '/api/visitor/submit', stage: 'processing' })
