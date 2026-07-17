@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from 'react'
 import NotificationBell from '../../common/NotificationBell'
 import DashboardIcon from '../../dashboard/DashboardIcon'
-import { formatCurrency, formatDate } from '../../../lib/utils'
+import { formatCurrency, formatDate, formatRentDueDetail } from '../../../lib/utils'
 import OwnerMobileTenantActionsSheet from './OwnerMobileTenantActionsSheet'
 import { classifyTenantRent, summarizeTenantRentStatuses } from '../../../lib/tenantRentStatus'
 
@@ -103,7 +103,7 @@ function OwnerMobileTenants({ tenants = [], getTenantPhotoUrl = () => null, onBa
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-black leading-tight text-slate-900">{tenant.name || 'Unnamed'}</p>
                 <p className="mt-0.5 truncate text-[10px] font-semibold leading-tight text-slate-500">Room {tenant.room_number || tenant.room_id || 'N/A'} · {tenant.phone || 'No phone'}</p>
-                <p className="mt-0.5 truncate text-[10px] leading-tight text-slate-500">{label}{due.dueDate ? ` · ${formatDate(due.dueDate)}` : ''}</p>
+                <p className="mt-0.5 truncate text-[10px] leading-tight text-slate-500">{formatRentDueDetail(due, formatDate)}</p>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1">
                 <span title={label} className={`max-w-[6rem] truncate rounded-full px-1.5 py-0.5 text-[9px] font-black leading-tight ${due.bucket === 'paid' ? 'bg-emerald-100 text-emerald-700' : due.status === 'pending_confirmation' ? 'bg-purple-100 text-purple-700' : due.status === 'overdue' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>{due.bucket === 'paid' ? 'Paid' : label}</span>

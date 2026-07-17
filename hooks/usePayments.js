@@ -89,7 +89,7 @@ export function usePayments(tenant, refreshData, owner) {
     loadPayments();
     loadUPIDetails();
 
-    const channel = supabase.channel('payments-tenant-isolated')
+    const channel = supabase.channel(`tenant:${tenant.id}:payments`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_history', filter: `tenant_id=eq.${tenant.id}` }, (payload) => {
         const changedPayment = payload.new || payload.old;
         if (changedPayment?.tenant_id !== tenant.id) return;

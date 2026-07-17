@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from 'react';
-import { formatCurrency, formatDate } from '../../lib/utils';
+import { formatCurrency, formatDate, formatRentDueDetail } from '../../lib/utils';
 import { enrichTenantRentStatus } from '../../lib/tenantRentStatus';
 
 function TenantAvatar({ tenant }) {
@@ -60,7 +60,7 @@ function TenantTable({
       {rows.map(({ tenant: t, due }) => {
         const vacate = vacateRequests.find(v => v.tenant_id === t.id && v.status === 'approved');
         const label = rentLabel(due);
-        const dueDate = due.dueDate ? formatDate(due.dueDate) : null;
+        const dueDetail = formatRentDueDetail(due, formatDate);
 
         return (
           <div key={t.id} className="max-w-full min-w-0 rounded-2xl border border-gray-100 bg-white p-3 shadow-sm transition hover:shadow-md">
@@ -82,7 +82,7 @@ function TenantTable({
               <div className="min-w-0">
                 <p className="text-[11px] leading-tight text-slate-400">{due.category === 'paid' ? 'Current cycle' : 'Pending'}</p>
                 <p className="truncate text-sm font-bold leading-tight text-slate-900">{formatCurrency(due.dueAmount || 0)}</p>
-                {dueDate && <p className="mt-0.5 text-[11px] font-semibold text-slate-500">{due.category === 'paid' ? `Next due ${dueDate}` : `Due ${dueDate}`}</p>}
+                {dueDetail && <p className="mt-0.5 text-[11px] font-semibold text-slate-500">{dueDetail}</p>}
               </div>
               {vacate && <p className="truncate text-right text-[11px] text-gray-500">Vacate {formatDate(vacate.expected_check_out)}</p>}
             </div>

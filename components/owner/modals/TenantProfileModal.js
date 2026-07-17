@@ -1,4 +1,4 @@
-import { formatCurrency, formatDate } from '../../../lib/utils'
+import { formatCurrency, formatDate, formatRentDueDetail } from '../../../lib/utils'
 import { displayBloodGroup } from '../../../lib/bloodGroups'
 import { useState } from 'react'
 
@@ -57,6 +57,7 @@ export default function TenantProfileModal({ tenant, application, extraDocuments
                 <Detail label="Blood group" value={displayBloodGroup(tenant?.blood_group)} />
                 <Detail label="Status" value={tenant?.status} />
                 <Detail label="Rent status" value={rentSummary?.label || tenant?.rent_status} />
+                <Detail label={rentSummary?.status === 'paid' ? 'Next rent due' : 'Rent due'} value={rentSummary ? formatRentDueDetail(rentSummary, formatDate) : null} />
                 <Detail label="Move-in date" value={formatDate(tenant?.move_in_date)} />
                 <Detail label="Monthly rent" value={formatCurrency(tenant?.rent_amount)} />
                 <Detail label="Total paid" value={formatCurrency(tenant?.total_paid || 0)} />

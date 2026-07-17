@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { clearHostelSetSessionCache, getRestoredSession, supabase, syncServerSession } from '../lib/supabase';
+import { cleanupRealtimeChannel, createRealtimeChannel, logRealtimeEvent, subscribeRealtimeChannel } from '../lib/realtime';
 import toast from 'react-hot-toast';
 
 const TenantContext = createContext();
@@ -375,6 +376,7 @@ export function TenantProvider({ children }) {
     setRealtimeConnected(false);
     const handleTenantRealtime = (payload) => {
       if (!active) return;
+      logRealtimeEvent(payload);
       if (payload.table === 'tenants') patchTenantRealtime(payload);
       else if (payload.table === 'rooms') patchRoomRealtime(payload);
       else if (payload.table === 'properties') patchPropertyRealtime(payload);
@@ -382,8 +384,8 @@ export function TenantProvider({ children }) {
       else if (payload.table === 'check_out_requests') patchRoommateVacateRealtime(payload);
       else markTenantPerf('realtime-local-patch-skipped', `table=${payload.table || 'unknown'}`);
     };
-    let channel = supabase
-      .channel(`tenant-dashboard-live:${tenant.id}`)
+    const channelName = `tenant:${tenant.id}:user:${tenant.user_id}:property:${property.id}:core`;
+    let channel = createRealtimeChannel(supabase, channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tenants', filter: `user_id=eq.${tenant.user_id}` }, handleTenantRealtime)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tenants', filter: `room_id=eq.${room.id}` }, handleTenantRealtime)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${room.id}` }, handleTenantRealtime)
@@ -394,10 +396,10 @@ export function TenantProvider({ children }) {
       channel = channel.on('postgres_changes', { event: '*', schema: 'public', table: 'users', filter: `id=eq.${property.owner_id}` }, handleTenantRealtime);
     }
 
-    channel.subscribe((status) => { if (active) setRealtimeConnected(status === 'SUBSCRIBED'); });
+    subscribeRealtimeChannel(channel, channelName, (isConnected) => { if (active) setRealtimeConnected(isConnected); });
     return () => {
       active = false;
-      supabase.removeChannel(channel);
+      cleanupRealtimeChannel(supabase, channel, channelName, 'tenant-provider-remount');
     };
   }, [tenant?.id, tenant?.user_id, room?.id, property?.id, property?.owner_id, patchOwnerRealtime, patchPropertyRealtime, patchRoomRealtime, patchRoommateVacateRealtime, patchTenantRealtime]);
 

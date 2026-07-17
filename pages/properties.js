@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import Head from 'next/head'
 import { motion } from 'framer-motion'
@@ -13,6 +13,43 @@ const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.hostelset.com'
 const PAGE_TITLE = 'Browse Hostels and PGs | HostelSet'
 const PAGE_DESCRIPTION = 'Search active hostel and PG properties on HostelSet by city, room availability, rent, and location.'
 const SOCIAL_IMAGE = `${SITE_URL}/brand/logo-primary.png`
+const BROWSE_CACHE_KEY = 'hostelsetBrowseProperties:v2'
+const BROWSE_CACHE_TTL_MS = 5 * 60 * 1000
+
+const markBrowsePerf = (label, detail = '', startedAt = null) => {
+  if (typeof window === 'undefined' || window.localStorage?.getItem('hostelsetBrowsePerf') !== '1' || typeof performance === 'undefined') return
+  const elapsed = typeof startedAt === 'number' ? ` ${Math.round(performance.now() - startedAt)}ms` : ''
+  console.info(`[BrowseHostels] ${label}${elapsed}${detail ? ` ${detail}` : ''}`)
+}
+
+const readBrowseCache = () => {
+  if (typeof window === 'undefined') return []
+  try {
+    const cached = JSON.parse(window.sessionStorage.getItem(BROWSE_CACHE_KEY) || 'null')
+    if (!cached?.savedAt || Date.now() - cached.savedAt > BROWSE_CACHE_TTL_MS) return []
+    return Array.isArray(cached.properties) ? cached.properties : []
+  } catch {
+    return []
+  }
+}
+
+const writeBrowseCache = properties => {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(BROWSE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), properties }))
+  } catch {}
+}
+
+const normalizePublicProperties = rows => (rows || []).map(property => ({
+  ...property,
+  latitude: property.latitude == null ? null : Number(property.latitude),
+  longitude: property.longitude == null ? null : Number(property.longitude),
+  totalRooms: Number(property.total_rooms || 0),
+  availableRooms: Number(property.available_room_count || 0),
+  activeTenantCount: Number(property.active_tenant_count || 0),
+  lowestRent: property.lowest_rent == null ? null : Number(property.lowest_rent),
+  firstPhoto: property.photos && property.photos.length > 0 ? property.photos[0] : null,
+}))
 
 function distanceKm(origin, property) {
   if (!origin || !Number.isFinite(property.latitude) || !Number.isFinite(property.longitude)) return null
@@ -24,89 +61,109 @@ function distanceKm(origin, property) {
 }
 
 export default function PropertiesPage() {
-  const [properties, setProperties] = useState([])
-  const [filteredProperties, setFilteredProperties] = useState([])
+  const cachedPropertiesRef = useRef(null)
+  const getInitialProperties = () => {
+    if (!cachedPropertiesRef.current) cachedPropertiesRef.current = readBrowseCache()
+    return cachedPropertiesRef.current
+  }
+  const [properties, setProperties] = useState(getInitialProperties)
   const [cities, setCities] = useState([])
   const [selectedCity, setSelectedCity] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => getInitialProperties().length === 0)
+  const [refreshing, setRefreshing] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [view, setView] = useState('list')
   const [userLocation, setUserLocation] = useState(null)
   const [locationStatus, setLocationStatus] = useState('')
+  const inFlightRef = useRef(null)
 
-  useEffect(() => {
-    loadProperties()
-  }, [])
-
-  useEffect(() => {
-    // Filter properties by city and search query
+  const filteredProperties = useMemo(() => {
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : null
     let filtered = properties
-    if (selectedCity) {
-      filtered = filtered.filter(p => p.city === selectedCity)
-    }
+    if (selectedCity) filtered = filtered.filter(property => property.city === selectedCity)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
-      filtered = filtered.filter(
-        p =>
-          p.name.toLowerCase().includes(q) ||
-          (p.city && p.city.toLowerCase().includes(q))
+      filtered = filtered.filter(property =>
+        property.name.toLowerCase().includes(q) ||
+        (property.city && property.city.toLowerCase().includes(q))
       )
     }
     const withDistance = filtered.map(property => ({ ...property, distance: distanceKm(userLocation, property) }))
     if (userLocation) withDistance.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity))
-    setFilteredProperties(withDistance)
+    markBrowsePerf('search-filter', `count=${withDistance.length}`, startedAt)
+    return withDistance
   }, [selectedCity, searchQuery, properties, userLocation])
+
+  const loadProperties = useCallback(async (backgroundOrOptions = false) => {
+    const options = typeof backgroundOrOptions === 'object'
+      ? backgroundOrOptions
+      : { background: Boolean(backgroundOrOptions) }
+    const background = Boolean(options.background)
+    const reason = options.reason || (background ? 'background-refresh' : 'manual-refresh')
+    if (inFlightRef.current) return inFlightRef.current
+
+    const request = (async () => {
+      const startedAt = typeof performance !== 'undefined' ? performance.now() : null
+      markBrowsePerf('fetch-start', `reason=${reason}`)
+      if (!background && properties.length === 0) setLoading(true)
+      if (background) setRefreshing(true)
+      if (!background) setLoadError('')
+      try {
+        const { data, error } = await supabase.rpc('get_public_properties_v2')
+        if (error) throw error
+        const nextProperties = normalizePublicProperties(data)
+        setProperties(nextProperties)
+        setCities([...new Set(nextProperties.map(property => property.city).filter(Boolean))].sort())
+        writeBrowseCache(nextProperties)
+        setLoadError('')
+        markBrowsePerf('first-usable-property-list', `source=network count=${nextProperties.length}`, startedAt)
+      } catch (error) {
+        console.error('Error loading properties:', error)
+        if (!background || properties.length === 0) {
+          setLoadError('Properties could not be loaded. Check your connection and try again.')
+        }
+      } finally {
+        if (!background) setLoading(false)
+        setRefreshing(false)
+        markBrowsePerf('fetch-end', `reason=${reason}`, startedAt)
+        inFlightRef.current = null
+      }
+    })()
+    inFlightRef.current = request
+    return request
+  }, [properties.length])
+
+  useEffect(() => {
+    if (properties.length) {
+      setCities([...new Set(properties.map(property => property.city).filter(Boolean))].sort())
+      markBrowsePerf('first-usable-property-list', `source=cache count=${properties.length}`)
+    }
+    loadProperties({ background: properties.length > 0, reason: 'initial-load' })
+  }, [])
+
+  useEffect(() => {
+    const refreshVisible = () => loadProperties({ background: true, reason: 'visibility-refresh' })
+    const onVisibility = () => { if (document.visibilityState === 'visible') refreshVisible() }
+    window.addEventListener('focus', refreshVisible)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', refreshVisible)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [loadProperties])
+
+  useRealtimeRefresh('public:properties:availability', ['properties', 'rooms'], loadProperties, true, 120)
 
   const useMyLocation = () => {
     if (!navigator.geolocation) { setLocationStatus('Location is not supported on this device.'); return }
-    setLocationStatus('Finding your location…')
+    setLocationStatus('Finding your location...')
     navigator.geolocation.getCurrentPosition(
       position => { setUserLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude }); setLocationStatus('Showing nearest hostels first.'); setView('map') },
       () => setLocationStatus('Location permission was not available. You can still search by city.'),
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
     )
   }
-
-  const loadProperties = async (background = false) => {
-    if (!background) setLoading(true)
-    setLoadError('')
-    try {
-      const { data: propertiesData, error: propError } = await supabase.rpc('get_public_properties_v2')
-
-      if (propError) throw propError
-
-      if (!propertiesData || propertiesData.length === 0) {
-        setProperties([])
-        setFilteredProperties([])
-        return
-      }
-
-      const propertiesWithStats = propertiesData.map(property => {
-        return {
-          ...property,
-          totalRooms: Number(property.total_rooms || 0),
-          availableRooms: Number(property.available_room_count || 0),
-          activeTenantCount: Number(property.active_tenant_count || 0),
-          lowestRent: property.lowest_rent == null ? null : Number(property.lowest_rent),
-          firstPhoto: property.photos && property.photos.length > 0 ? property.photos[0] : null,
-        }
-      })
-
-      // Extract unique cities for filter
-      const uniqueCities = [...new Set(propertiesWithStats.map(p => p.city).filter(Boolean))]
-      setCities(uniqueCities.sort())
-      setProperties(propertiesWithStats)
-      setFilteredProperties(propertiesWithStats)
-    } catch (error) {
-      console.error('Error loading properties:', error)
-      setLoadError('Properties could not be loaded. Check your connection and try again.')
-    } finally {
-      if (!background) setLoading(false)
-    }
-  }
-
-  useRealtimeRefresh('public-properties-live', ['properties', 'rooms', 'tenants'], loadProperties, true, 120)
 
   return (
     <>
@@ -127,135 +184,129 @@ export default function PropertiesPage() {
         <meta name="twitter:url" content={`${SITE_URL}/properties`} />
         <meta name="twitter:image" content={SOCIAL_IMAGE} />
       </Head>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-6 py-6">
-        <div className="container mx-auto mb-6 flex flex-wrap items-center justify-between gap-3">
-          <Link href="/" className="text-sm font-bold text-slate-800">HostelSet</Link>
-          <nav className="flex flex-wrap items-center gap-3 text-sm font-semibold text-slate-600" aria-label="Browse navigation">
-            <Link href="/" className="hover:text-slate-900">Home</Link>
-            <Link href="/faq" className="hover:text-slate-900">FAQ</Link>
-            <Link href="/login/tenant" className="hover:text-slate-900">Tenant Login</Link>
-            <Link href="/register" className="rounded-full bg-slate-900 px-3 py-1.5 text-white hover:bg-slate-700">Register Your Property</Link>
-          </nav>
-        </div>
-        <div className="container mx-auto text-center">
-          <motion.h1
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-4xl md:text-5xl font-bold text-slate-800 mb-3"
-          >
-            Find Your Perfect PG
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-lg text-gray-500 mb-8"
-          >
-            Compare rooms, rent, and facilities. Apply to a hostel first; tenant account access comes after owner approval.
-          </motion.p>
 
-          {/* Search & Filter */}
-          <div className="max-w-2xl mx-auto flex flex-col sm:flex-row gap-3">
-            <input
-              type="text"
-              placeholder="Search by property name or city..."
-              className="flex-1 px-4 py-3 border border-gray-200 rounded-full focus:outline-none focus:border-slate-800 transition"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
-            <select
-              className="px-4 py-3 border border-gray-200 rounded-full focus:outline-none focus:border-slate-800 transition"
-              value={selectedCity}
-              onChange={e => setSelectedCity(e.target.value)}
-            >
-              <option value="">All Cities</option>
-              {cities.map(city => (
-                <option key={city} value={city}>{city}</option>
-              ))}
-            </select>
+      <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
+        <div className="border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950 sm:px-6 sm:py-5">
+          <div className="container mx-auto mb-5 flex flex-wrap items-center justify-between gap-3">
+            <Link href="/" className="text-sm font-black text-slate-900 dark:text-white">HostelSet</Link>
+            <nav className="flex flex-wrap items-center gap-3 text-sm font-semibold text-slate-600 dark:text-slate-300" aria-label="Browse navigation">
+              <Link href="/" className="hover:text-slate-950 dark:hover:text-white">Home</Link>
+              <Link href="/faq" className="hover:text-slate-950 dark:hover:text-white">FAQ</Link>
+              <Link href="/login/tenant" className="hover:text-slate-950 dark:hover:text-white">Tenant Login</Link>
+              <Link href="/register" className="rounded-full bg-slate-900 px-3 py-1.5 text-white hover:bg-slate-700 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">Register Your Property</Link>
+            </nav>
           </div>
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-            <button onClick={useMyLocation} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Use my location</button>
-            <button onClick={() => setView('list')} className={`rounded-full px-4 py-2 text-sm font-semibold ${view === 'list' ? 'bg-slate-800 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}>List</button>
-            <button onClick={() => setView('map')} className={`rounded-full px-4 py-2 text-sm font-semibold ${view === 'map' ? 'bg-slate-800 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}>Map</button>
-          </div>
-          {locationStatus && <p className="mt-3 text-sm text-slate-500" role="status">{locationStatus}</p>}
-        </div>
-      </div>
+          <div className="container mx-auto text-center">
+            <motion.h1 initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} className="mb-3 text-3xl font-black tracking-tight text-slate-950 dark:text-white md:text-5xl">
+              Find Your Perfect PG
+            </motion.h1>
+            <motion.p initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16 }} className="mx-auto mb-6 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-base">
+              Compare rooms, rent, and facilities. Apply to a hostel first; tenant account access comes after owner approval.
+            </motion.p>
 
-      {/* Property Cards */}
-      <div className="container mx-auto px-4 py-12">
-        {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true" aria-label="Loading properties">
-            {[0,1,2].map(item => <div key={item} className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="h-36 animate-pulse bg-slate-200"/><div className="space-y-3 p-4"><div className="h-5 w-2/3 animate-pulse rounded bg-slate-200"/><div className="h-4 w-1/2 animate-pulse rounded bg-slate-100"/><div className="h-10 animate-pulse rounded-xl bg-slate-200"/></div></div>)}
-          </div>
-        ) : loadError ? (
-          <div className="text-center py-20"><p className="text-red-600 mb-4">{loadError}</p><button onClick={loadProperties} className="btn-primary">Try again</button></div>
-        ) : filteredProperties.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-gray-500">No currently occupied hostels are available to browse. Please check again soon.</p>
-          </div>
-        ) : view === 'map' ? (
-          <NearbyHostelMap properties={filteredProperties} userLocation={userLocation} />
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredProperties.map((property, index) => (
-              <motion.div
-                key={property.id}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                whileHover={{ y: -5 }}
-                className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-150 hover:shadow-lg"
+            <div className="mx-auto flex max-w-2xl flex-col gap-2.5 sm:flex-row">
+              <input
+                type="text"
+                placeholder="Search by property name or city..."
+                className="min-h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-950 transition placeholder:text-slate-400 focus:border-slate-900 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-orange-400"
+                value={searchQuery}
+                onChange={event => setSearchQuery(event.target.value)}
+              />
+              <select
+                className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-950 transition focus:border-slate-900 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-orange-400"
+                value={selectedCity}
+                onChange={event => setSelectedCity(event.target.value)}
               >
-                {/* Image */}
-                <div className="relative h-36 bg-slate-100 sm:h-40">
-                  {property.firstPhoto ? (
-                    <img
-                      src={property.firstPhoto}
-                      alt={property.name}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-sm font-bold text-gray-400">
-                      HostelSet
-                    </div>
-                  )}
-                  {property.lowestRent && (
-                    <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-semibold text-slate-800">
-                      From {formatCurrency(property.lowestRent)}/mo
-                    </div>
-                  )}
-                </div>
-
-                {/* Details */}
-                <div className="p-4">
-                  <h3 className="text-xl font-bold text-slate-800 mb-1">{property.name}</h3>
-                  <p className="text-sm text-gray-500 mb-3">{property.city || 'Location not specified'}</p>
-                  {property.distance != null && <p className="mb-3 text-sm font-semibold text-blue-700">{property.distance < 1 ? `${Math.round(property.distance * 1000)} m away` : `${property.distance.toFixed(1)} km away`}</p>}
-                  <div className="flex justify-between items-center text-sm text-gray-600 mb-4">
-                    <span>{property.totalRooms} rooms</span>
-                    <span>{property.activeTenantCount} active tenant{property.activeTenantCount === 1 ? '' : 's'}</span>
-                  </div>
-                  <p className={`mb-3 text-xs font-bold ${property.availableRooms > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>{property.availableRooms > 0 ? `${property.availableRooms} room${property.availableRooms === 1 ? '' : 's'} with availability` : 'Currently full'}</p>
-                  <Link
-                    href={propertyPublicPath(property)}
-                    className="block w-full rounded-xl bg-orange-600 py-2.5 text-center font-bold text-white transition hover:bg-orange-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500"
-                  >
-                    View Details →
-                  </Link>
-                  {Number.isFinite(property.latitude) && Number.isFinite(property.longitude) && <a href={`https://www.google.com/maps/dir/?api=1&destination=${property.latitude},${property.longitude}`} target="_blank" rel="noreferrer" className="mt-2 block w-full rounded-full border border-slate-300 py-2 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50">Get Directions</a>}
-                </div>
-              </motion.div>
-            ))}
+                <option value="">All Cities</option>
+                {cities.map(city => <option key={city} value={city}>{city}</option>)}
+              </select>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <button onClick={useMyLocation} className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">Use my location</button>
+              <button onClick={() => setView('list')} className={`min-h-10 rounded-xl px-3 py-2 text-sm font-semibold ${view === 'list' ? 'bg-slate-900 text-white dark:bg-orange-500' : 'border border-slate-300 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}>List</button>
+              <button onClick={() => setView('map')} className={`min-h-10 rounded-xl px-3 py-2 text-sm font-semibold ${view === 'map' ? 'bg-slate-900 text-white dark:bg-orange-500' : 'border border-slate-300 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}>Map</button>
+            </div>
+            <div className="mt-3 min-h-5 text-sm text-slate-500 dark:text-slate-400" role="status">{refreshing ? 'Refreshing availability...' : locationStatus}</div>
           </div>
-        )}
-      </div>
-      <PublicFooter />
+        </div>
+
+        <div className="container mx-auto px-3 py-6 sm:px-4 sm:py-8">
+          {loading && properties.length === 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-busy="true" aria-label="Loading properties">
+              {[0, 1, 2, 3].map(item => (
+                <div key={item} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                  <div className="aspect-[16/9] animate-pulse bg-slate-200 dark:bg-slate-800" />
+                  <div className="space-y-2 p-3">
+                    <div className="h-4 w-2/3 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+                    <div className="h-3 w-1/2 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
+                    <div className="h-9 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : loadError ? (
+            <div className="py-16 text-center"><p className="mb-4 text-red-600 dark:text-red-300">{loadError}</p><button onClick={() => loadProperties({ reason: 'retry' })} className="btn-primary">Try again</button></div>
+          ) : filteredProperties.length === 0 ? (
+            <div className="py-16 text-center"><p className="text-slate-500 dark:text-slate-400">No hostels match these filters right now.</p></div>
+          ) : view === 'map' ? (
+            <NearbyHostelMap properties={filteredProperties} userLocation={userLocation} />
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {filteredProperties.map((property, index) => (
+                <motion.div
+                  key={property.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.16 }}
+                  className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-orange-500/40"
+                >
+                  <div className="relative aspect-[16/9] bg-slate-100 dark:bg-slate-800">
+                    {property.firstPhoto ? (
+                      <img
+                        src={property.firstPhoto}
+                        alt={property.name}
+                        loading={index < 2 ? 'eager' : 'lazy'}
+                        decoding="async"
+                        onLoad={() => markBrowsePerf('image-ready', `id=${property.id}`)}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-sm font-bold text-slate-400 dark:text-slate-500">HostelSet</div>
+                    )}
+                    {property.lowestRent && (
+                      <div className="absolute bottom-2 left-2 rounded-full bg-white/95 px-2.5 py-1 text-xs font-bold text-slate-900 shadow-sm dark:bg-slate-950/90 dark:text-white">
+                        From {formatCurrency(property.lowestRent)}/mo
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-3">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="truncate text-base font-black text-slate-950 dark:text-white">{property.name}</h3>
+                        <p className="mt-0.5 truncate text-xs font-medium text-slate-500 dark:text-slate-400">{property.city || 'Location not specified'}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-black ${property.availableRooms > 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'}`}>{property.availableRooms > 0 ? 'Available' : 'Full'}</span>
+                    </div>
+                    {property.distance != null && <p className="mb-2 text-xs font-semibold text-blue-700 dark:text-blue-300">{property.distance < 1 ? `${Math.round(property.distance * 1000)} m away` : `${property.distance.toFixed(1)} km away`}</p>}
+                    <div className="mb-3 flex justify-between gap-2 text-xs text-slate-600 dark:text-slate-300">
+                      <span>{property.totalRooms} rooms</span>
+                      <span>{property.activeTenantCount} active tenant{property.activeTenantCount === 1 ? '' : 's'}</span>
+                    </div>
+                    <p className={`mb-3 text-xs font-bold ${property.availableRooms > 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>{property.availableRooms > 0 ? `${property.availableRooms} room${property.availableRooms === 1 ? '' : 's'} with availability` : 'Currently full'}</p>
+                    <Link href={propertyPublicPath(property)} className="block min-h-10 w-full rounded-lg bg-orange-600 px-3 py-2.5 text-center text-sm font-black text-white transition hover:bg-orange-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500">
+                      View Details
+                    </Link>
+                    {Number.isFinite(property.latitude) && Number.isFinite(property.longitude) && (
+                      <a href={`https://www.google.com/maps/dir/?api=1&destination=${property.latitude},${property.longitude}`} target="_blank" rel="noreferrer" className="mt-2 block min-h-9 w-full rounded-lg border border-slate-300 py-2 text-center text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Get Directions</a>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </div>
+        <PublicFooter />
       </div>
     </>
   )

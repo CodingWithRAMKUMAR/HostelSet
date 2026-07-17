@@ -18,7 +18,7 @@ import { usePayments } from '../../hooks/usePayments'
 import { useRoomChange } from '../../hooks/useRoomChange'
 // ------------------------------------------------
 
-import { calculateRentDueStatus, formatCurrency, formatDate, formatRentDueLabel, getSharingDetails, isPendingRentPayment } from '../../lib/utils'
+import { calculateRentDueStatus, formatCurrency, formatDate, formatRentDueDetail, formatRentDueLabel, getSharingDetails, isPendingRentPayment } from '../../lib/utils'
 import { normalizeBloodGroup } from '../../lib/bloodGroups'
 import { uploadProfilePhotoWithSignedUrl, validateProfilePhotoFile } from '../../lib/profilePhotos'
 
@@ -546,10 +546,10 @@ function TenantDashboardContent() {
               {formatRentDueLabel(rentStatus)}
             </div>
           </div>
-          {rentStatus.dueDate && (
+          {(rentStatus.currentCycleDueDate || rentStatus.nextDueDate || rentStatus.dueDate) && (
             <div className="mt-4 text-center relative z-10">
               <div className="inline-block bg-black/40 backdrop-blur-sm px-5 py-2.5 rounded-lg text-orange-400 font-bold border border-orange-500/30">
-                Due date: {formatDate(rentStatus.dueDate)}
+                {formatRentDueDetail(rentStatus, formatDate)}
               </div>
             </div>
           )}

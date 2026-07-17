@@ -3,7 +3,9 @@ const fs = require('fs')
 const path = require('path')
 const {
   calculateCanonicalRentDue,
+  formatRentDueDetail,
   formatRentDueLabel,
+  isConfirmedRent,
 } = require('../lib/rentDue')
 const {
   classifyTenantRent,
@@ -295,6 +297,211 @@ test('labels expose due today and pending confirmation clearly', () => {
   assert.strictEqual(formatRentDueLabel(calculateCanonicalRentDue(tenant(), [payment({ status: 'pending' })], NOW)), 'Pending confirmation')
 })
 
+const importedJunePaidTenant = () => ({
+  id: '56615b49-f02c-404f-9713-fcaae17941c4',
+  rent_amount: 15000,
+  pending_amount: 0,
+  rent_status: 'paid',
+  move_in_date: '2026-06-16',
+  status: 'active',
+  created_at: '2026-07-17T09:00:00.000000',
+  total_paid: 15000,
+})
+
+const realJulyPayment = (overrides = {}) => ({
+  id: 'a9f39d84-9d54-4a14-8d12-72494c024c74',
+  tenant_id: '56615b49-f02c-404f-9713-fcaae17941c4',
+  amount: 15000,
+  status: 'success',
+  payment_method: 'upi',
+  payment_date: '2026-07-16',
+  created_at: '2026-07-16T16:24:27.472385',
+  ...overrides,
+})
+
+test('imported tenant baseline covers only the last paid June cycle', () => {
+  const beforePayment = calculateCanonicalRentDue(importedJunePaidTenant(), [], new Date(2026, 6, 17))
+  assert.strictEqual(beforePayment.baselinePaidPeriods, 1)
+  assert.strictEqual(localDate(beforePayment.paidThroughDate), '2026-06-16')
+  assert.strictEqual(localDate(beforePayment.currentCycleDueDate), '2026-07-16')
+  assert.strictEqual(beforePayment.status, 'overdue')
+  assert.strictEqual(beforePayment.daysUntilDue, -1)
+  assert.strictEqual(beforePayment.currentCycleDueAmount, 15000)
+  assert.strictEqual(beforePayment.cycleAllocations[0].baselineAmount, 15000)
+  assert.strictEqual(beforePayment.cycleAllocations[1].remainingAmount, 15000)
+})
+
+test('real successful UPI payment on due date covers imported tenant July cycle without advancing to September', () => {
+  const row = importedJunePaidTenant()
+  const paymentRow = realJulyPayment()
+  const result = calculateCanonicalRentDue(row, [paymentRow], new Date(2026, 6, 17))
+  assert.strictEqual(isConfirmedRent(paymentRow), true)
+  assert.strictEqual(result.status, 'paid')
+  assert.strictEqual(result.dueAmount, 0)
+  assert.strictEqual(result.currentCycleDueAmount, 0)
+  assert.strictEqual(result.paidPeriods, 2)
+  assert.strictEqual(result.baselinePaidPeriods, 1)
+  assert.strictEqual(localDate(result.currentCycleDueDate), '2026-07-16')
+  assert.strictEqual(localDate(result.paidThroughDate), '2026-07-16')
+  assert.strictEqual(localDate(result.nextDueDate), '2026-08-16')
+  assert.notStrictEqual(localDate(result.nextDueDate), '2026-09-16')
+  assert.deepStrictEqual(result.cycleAllocations[1].paymentIds, [paymentRow.id])
+  assert.strictEqual(result.cycleAllocations[2].status, 'unpaid')
+})
+
+test('actual queried imported tenant and payment row shape resolves July as paid', () => {
+  const actualTenant = {
+    ...importedJunePaidTenant(),
+    created_at: '2026-07-11T13:58:10.116607',
+    updated_at: '2026-07-16T16:28:38.442385',
+  }
+  const actualPayment = realJulyPayment({ created_at: '2026-07-16T16:24:27.472385', updated_at: '2026-07-16T16:28:38.442385+00:00' })
+  const result = calculateCanonicalRentDue(actualTenant, [actualPayment], new Date(2026, 6, 17))
+  assert.strictEqual(result.status, 'paid')
+  assert.strictEqual(result.currentCycleDueAmount, 0)
+  assert.strictEqual(localDate(result.currentCycleDueDate), '2026-07-16')
+  assert.strictEqual(localDate(result.nextDueDate), '2026-08-16')
+})
+
+test('import timestamp does not mark every pre-import cycle as paid', () => {
+  const oldImported = importedJunePaidTenant()
+  oldImported.move_in_date = '2026-05-16'
+  const result = calculateCanonicalRentDue(oldImported, [], new Date(2026, 6, 17))
+  assert.strictEqual(result.baselinePaidPeriods, 1)
+  assert.strictEqual(localDate(result.paidThroughDate), '2026-05-16')
+  assert.strictEqual(localDate(result.currentCycleDueDate), '2026-06-16')
+})
+
+test('explicit paid-through date is used when available', () => {
+  const row = { ...importedJunePaidTenant(), paid_through_date: '2026-06-16' }
+  const result = calculateCanonicalRentDue(row, [realJulyPayment()], new Date(2026, 6, 17))
+  assert.strictEqual(result.baselinePaidPeriods, 1)
+  assert.strictEqual(localDate(result.currentCycleDueDate), '2026-07-16')
+  assert.strictEqual(localDate(result.nextDueDate), '2026-08-16')
+})
+
+test('baseline and confirmed payment do not cover the same cycle', () => {
+  const juneHistory = realJulyPayment({ id: 'june-history', payment_date: '2026-06-16' })
+  const julyHistory = realJulyPayment({ id: 'july-history', payment_date: '2026-07-16' })
+  const result = calculateCanonicalRentDue({ ...importedJunePaidTenant(), paid_through_date: '2026-06-16' }, [juneHistory, julyHistory], new Date(2026, 6, 17))
+  assert.strictEqual(result.baselinePaidPeriods, 1)
+  assert.strictEqual(result.paidPeriods, 2)
+  assert.deepStrictEqual(result.cycleAllocations[0].paymentIds, [])
+  assert.deepStrictEqual(result.cycleAllocations[1].paymentIds, ['july-history'])
+})
+
+test('total_paid does not create an extra paid cycle when payment history already has July rent', () => {
+  const row = { ...importedJunePaidTenant(), total_paid: 30000 }
+  const result = calculateCanonicalRentDue(row, [realJulyPayment()], new Date(2026, 6, 17))
+  assert.strictEqual(result.paidPeriods, 2)
+  assert.strictEqual(localDate(result.nextDueDate), '2026-08-16')
+})
+
+test('paid status exposes separate paid current cycle and next due date', () => {
+  const result = calculateCanonicalRentDue(importedJunePaidTenant(), [realJulyPayment()], new Date(2026, 6, 17))
+  assert.strictEqual(result.status, 'paid')
+  assert.strictEqual(localDate(result.currentCycleDueDate), '2026-07-16')
+  assert.strictEqual(localDate(result.nextDueDate), '2026-08-16')
+  assert.strictEqual(formatRentDueDetail(result, date => localDate(date)), 'Next rent due: 2026-08-16')
+})
+
+test('tenant mobile UI uses next-rent wording instead of ambiguous paid-date wording', () => {
+  const tenantMobileDashboard = source('components/tenant/mobile/TenantMobileDashboard.js')
+  assert.match(tenantMobileDashboard, /formatRentDueDetail\(rentStatus, formatDate\)/)
+  assert.match(source('lib/rentDue.js'), /Next rent due:/)
+  assert.doesNotMatch(tenantMobileDashboard, /\$\{label\}.*formatDate\(rentStatus\.dueDate\)/)
+})
+
+test('new non-imported tenant first payment still allocates to first cycle', () => {
+  const row = tenant({ rent_amount: 15000, move_in_date: '2026-07-16', rent_status: 'pending', pending_amount: 15000, total_paid: 0 })
+  const result = calculateCanonicalRentDue(row, [realJulyPayment()], new Date(2026, 6, 17))
+  assert.strictEqual(result.baselinePaidPeriods, 0)
+  assert.strictEqual(result.paidPeriods, 1)
+  assert.strictEqual(localDate(result.currentCycleDueDate), '2026-07-16')
+  assert.strictEqual(localDate(result.nextDueDate), '2026-08-16')
+})
+
+test('rent payment method casing and missing payment_type do not exclude legitimate rent', () => {
+  const row = tenant({ rent_amount: 15000, move_in_date: '2026-07-16' })
+  for (const method of ['upi', 'Upi', 'UPI']) {
+    const result = calculateCanonicalRentDue(row, [payment({ amount: 15000, payment_method: method, status: 'success', payment_type: undefined, payment_date: '2026-07-16' })], new Date(2026, 6, 17))
+    assert.strictEqual(result.status, 'paid', method)
+    assert.strictEqual(result.dueAmount, 0, method)
+  }
+})
+
+test('security deposit and deposit payments remain excluded from rent coverage', () => {
+  const row = tenant({ rent_amount: 15000, move_in_date: '2026-07-16' })
+  for (const method of ['security_deposit', 'deposit']) {
+    const result = calculateCanonicalRentDue(row, [payment({ amount: 15000, payment_method: method, status: 'success', payment_date: '2026-07-16' })], new Date(2026, 6, 17))
+    assert.strictEqual(result.status, 'overdue', method)
+    assert.strictEqual(result.dueAmount, 15000, method)
+  }
+})
+
+test('payment on due date and UTC Kolkata boundary allocate to intended cycle', () => {
+  const row = tenant({ rent_amount: 15000, move_in_date: '2026-07-16' })
+  const dueDatePayment = payment({ amount: 15000, payment_method: 'upi', status: 'success', payment_date: '2026-07-16', created_at: '2026-07-15T19:00:00.000Z' })
+  const result = calculateCanonicalRentDue(row, [dueDatePayment], new Date(2026, 6, 17))
+  assert.strictEqual(result.status, 'paid')
+  assert.strictEqual(result.dueAmount, 0)
+  assert.strictEqual(localDate(result.dueDate), '2026-08-16')
+})
+
+test('realtime success update recomputes tenant and owner canonical status to paid', () => {
+  const row = tenant({ rent_amount: 15000, move_in_date: '2026-07-16' })
+  const pending = payment({ amount: 15000, payment_method: 'upi', status: 'payment_pending', payment_date: '2026-07-16' })
+  const confirmed = { ...pending, status: 'success' }
+  assert.strictEqual(calculateCanonicalRentDue(row, [pending], new Date(2026, 6, 17)).status, 'pending_confirmation')
+  const tenantResult = calculateCanonicalRentDue(row, [confirmed], new Date(2026, 6, 17))
+  const ownerResult = enrichTenantRentStatus(row, [confirmed], new Date(2026, 6, 17))
+  assert.strictEqual(tenantResult.status, 'paid')
+  assert.strictEqual(ownerResult.status, 'paid')
+  assert.strictEqual(ownerResult.dueAmount, 0)
+})
+
+test('partial rent payment leaves only the correct current-cycle balance', () => {
+  const row = importedJunePaidTenant()
+  const result = calculateCanonicalRentDue(row, [realJulyPayment({ amount: 6000 })], new Date(2026, 6, 17))
+  assert.strictEqual(result.status, 'overdue')
+  assert.strictEqual(result.dueAmount, 9000)
+  assert.strictEqual(localDate(result.currentCycleDueDate), '2026-07-16')
+  assert.strictEqual(result.paidAmountForOpenCycle, 6000)
+})
+
+test('future August payment is not allocated back to July once July is covered', () => {
+  const augustPayment = realJulyPayment({ id: 'august-rent', payment_date: '2026-08-16' })
+  const result = calculateCanonicalRentDue(importedJunePaidTenant(), [realJulyPayment(), augustPayment], new Date(2026, 6, 17))
+  assert.strictEqual(result.paidPeriods, 3)
+  assert.deepStrictEqual(result.cycleAllocations[1].paymentIds, ['a9f39d84-9d54-4a14-8d12-72494c024c74'])
+  assert.deepStrictEqual(result.cycleAllocations[2].paymentIds, ['august-rent'])
+})
+
+test('tenant and owner canonical summaries agree for imported July payment and realtime success update advances once', () => {
+  const row = importedJunePaidTenant()
+  const pending = realJulyPayment({ status: 'payment_pending' })
+  const confirmed = { ...pending, status: 'success' }
+  const pendingResult = calculateCanonicalRentDue(row, [pending], new Date(2026, 6, 17))
+  assert.strictEqual(pendingResult.status, 'pending_confirmation')
+  assert.strictEqual(localDate(pendingResult.currentCycleDueDate), '2026-07-16')
+  const tenantResult = calculateCanonicalRentDue(row, [confirmed], new Date(2026, 6, 17))
+  const ownerResult = enrichTenantRentStatus(row, [confirmed], new Date(2026, 6, 17))
+  assert.strictEqual(tenantResult.status, 'paid')
+  assert.strictEqual(ownerResult.status, 'paid')
+  assert.strictEqual(localDate(tenantResult.nextDueDate), '2026-08-16')
+  assert.strictEqual(localDate(ownerResult.nextDueDate), '2026-08-16')
+  assert.notStrictEqual(localDate(tenantResult.nextDueDate), '2026-09-16')
+})
+
+test('tenant dashboard distinguishes total paid from current pending amount', () => {
+  const tenantDashboard = source('pages/tenant/dashboard.js')
+  const tenantMobileDashboard = source('components/tenant/mobile/TenantMobileDashboard.js')
+  assert.match(tenantDashboard, /Total Paid/)
+  assert.match(tenantDashboard, /rentStatus\.dueAmount/)
+  assert.match(tenantMobileDashboard, /Total paid/)
+  assert.doesNotMatch(tenantMobileDashboard, /label="Paid"/)
+})
+
 test('phone login accepts supported Indian phone formats', () => {
   assert.strictEqual(normalizeIndianPhone('9876543210'), '9876543210')
   assert.strictEqual(normalizeIndianPhone('+91 98765-43210'), '9876543210')
@@ -554,11 +761,39 @@ test('owner core load is deduped by identity and in-flight requests', () => {
 
 test('owner realtime patches local records without full core reload', () => {
   const ownerContext = source('context/OwnerContext.js')
-  const realtimeBlock = ownerContext.match(/useEffect\(\(\) => \{\s*if \(!property\?\.id\)[\s\S]*?owner-core-live:\$\{property\.id\}`[\s\S]*?\n  \}, \[property\?\.id, property\?\.owner_id, patchPaymentRealtime, patchRoomRealtime, patchTenantRealtime\]\);/)?.[0] || ''
+  const realtimeBlock = ownerContext.match(/useEffect\(\(\) => \{\s*if \(!property\?\.id\)[\s\S]*?owner:\$\{property\.owner_id\}:property:\$\{property\.id\}:core[\s\S]*?\n  \}, \[property\?\.id, property\?\.owner_id, patchPaymentRealtime, patchRoomRealtime, patchTenantRealtime\]\);/)?.[0] || ''
   assert.match(ownerContext, /const patchTenantRealtime = useCallback/)
   assert.match(ownerContext, /const patchPaymentRealtime = useCallback/)
   assert.match(ownerContext, /realtime-local-patch/)
+  assert.match(ownerContext, /createRealtimeChannel\(supabase, channelName\)/)
+  assert.match(ownerContext, /pendingRentConfirmations: nextPending\.length/)
   assert.strictEqual(realtimeBlock.includes('loadData('), false)
+})
+
+test('scoped realtime channels and diagnostics are used for core dashboards', () => {
+  const ownerContext = source('context/OwnerContext.js')
+  const tenantContext = source('context/TenantContext.js')
+  const realtimeHelper = source('lib/realtime.js')
+  assert.match(ownerContext, /owner:\$\{property\.owner_id\}:property:\$\{property\.id\}:core/)
+  assert.match(tenantContext, /tenant:\$\{tenant\.id\}:user:\$\{tenant\.user_id\}:property:\$\{property\.id\}:core/)
+  assert.match(realtimeHelper, /hostelsetRealtimeDebug/)
+  assert.match(realtimeHelper, /duplicate-channel-prevented/)
+  assert.match(realtimeHelper, /subscribe-status/)
+  assert.match(source('lib/supabase.js'), /syncRealtimeAuth\(supabase, session\)/)
+})
+
+test('browse hostels uses SWR cache, public-safe realtime, and compact dark cards', () => {
+  const browseSource = source('pages/properties.js')
+  assert.match(browseSource, /hostelsetBrowseProperties:v2/)
+  assert.match(browseSource, /sessionStorage\.setItem\(BROWSE_CACHE_KEY/)
+  assert.match(browseSource, /setRefreshing\(true\)/)
+  assert.match(browseSource, /useRealtimeRefresh\('public:properties:availability', \['properties', 'rooms'\]/)
+  assert.doesNotMatch(browseSource, /\['properties', 'rooms', 'tenants'\]/)
+  assert.match(browseSource, /dark:bg-slate-950/)
+  assert.match(browseSource, /xl:grid-cols-4/)
+  assert.match(browseSource, /aspect-\[16\/9\]/)
+  assert.match(browseSource, /loading=\{index < 2 \? 'eager' : 'lazy'\}/)
+  assert.match(browseSource, /hostelsetBrowsePerf/)
 })
 
 test('owner core reads independent data concurrently', () => {

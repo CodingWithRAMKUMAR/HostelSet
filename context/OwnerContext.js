@@ -4,6 +4,7 @@ import { clearHostelSetSessionCache, getRestoredSession, supabase } from '../lib
 import { calculateMembershipStatus } from '../lib/utils';
 import { enrichTenantRentStatus } from '../lib/tenantRentStatus';
 import { isPendingRentPayment } from '../lib/rentDue';
+import { cleanupRealtimeChannel, createRealtimeChannel, logRealtimeEvent, subscribeRealtimeChannel } from '../lib/realtime';
 import toast from 'react-hot-toast';
 
 const OwnerContext = createContext();
@@ -53,6 +54,17 @@ const upsertRecord = (records, record) => {
 };
 
 const removeRecord = (records, id) => id ? records.filter(item => item.id !== id) : records;
+const summarizeRooms = (rows = []) => {
+  const totalRooms = rows.length;
+  const occupied = rows.filter(room => Number(room.current_occupants || 0) >= Number(room.capacity || 0)).length;
+  return { totalRooms, occupied, vacant: totalRooms - occupied };
+};
+const summarizeOwnerRentStats = (rows = []) => ({
+  pendingAmount: rows.reduce((sum, tenant) => sum + (tenant.rentSummary?.hasUnpaidRent ? Number(tenant.rentSummary.dueAmount || 0) : 0), 0),
+  overdueCount: rows.filter(tenant => tenant.rentSummary?.status === 'overdue' || tenant.dueStatus?.status === 'overdue').length,
+  noticePeriodCount: rows.filter(tenant => tenant.status === 'notice_period').length,
+  pendingPaymentCount: rows.filter(tenant => tenant.status === 'payment_pending').length,
+});
 
 export function OwnerProvider({ children }) {
   const router = useRouter();
@@ -387,12 +399,20 @@ export function OwnerProvider({ children }) {
     const row = payload.new || payload.old;
     if (!row?.id) return;
     if (payload.eventType === 'DELETE') {
-      setRooms(current => removeRecord(current, row.id));
+      setRooms(current => {
+        const next = removeRecord(current, row.id);
+        setStats(prev => ({ ...prev, ...summarizeRooms(next) }));
+        return next;
+      });
       markOwnerDataPerf('realtime-local-patch', `table=rooms action=delete id=${row.id}`);
       return;
     }
     if (row.property_id !== property?.id) return;
-    setRooms(current => upsertRecord(current, row));
+    setRooms(current => {
+      const next = upsertRecord(current, row);
+      setStats(prev => ({ ...prev, ...summarizeRooms(next) }));
+      return next;
+    });
     markOwnerDataPerf('realtime-local-patch', `table=rooms action=${String(payload.eventType || '').toLowerCase()} id=${row.id}`);
   }, [property?.id]);
 
@@ -401,7 +421,15 @@ export function OwnerProvider({ children }) {
     if (!row?.id) return;
     const activeStatuses = new Set(['active', 'notice_period', 'payment_pending']);
     if (payload.eventType === 'DELETE' || row.status === 'inactive' || row.status === 'archived') {
-      setTenants(current => removeRecord(current, row.id));
+      setTenants(current => {
+        const next = removeRecord(current, row.id);
+        setStats(prev => ({
+          ...prev,
+          noticePeriodCount: next.filter(tenant => tenant.status === 'notice_period').length,
+          pendingPaymentCount: next.filter(tenant => tenant.status === 'payment_pending').length,
+        }));
+        return next;
+      });
       markOwnerDataPerf('realtime-local-patch', `table=tenants action=remove id=${row.id}`);
       return;
     }
@@ -416,7 +444,13 @@ export function OwnerProvider({ children }) {
         dueStatus: existing?.dueStatus || existing?.rentSummary || enrichTenantRentStatus(row, []),
         rentSummary: existing?.rentSummary || existing?.dueStatus || enrichTenantRentStatus(row, []),
       };
-      return upsertRecord(current, merged);
+      const next = upsertRecord(current, merged);
+      setStats(prev => ({
+        ...prev,
+        noticePeriodCount: next.filter(tenant => tenant.status === 'notice_period').length,
+        pendingPaymentCount: next.filter(tenant => tenant.status === 'payment_pending').length,
+      }));
+      return next;
     });
     markOwnerDataPerf('realtime-local-patch', `table=tenants action=${String(payload.eventType || '').toLowerCase()} id=${row.id}`);
   }, [property?.id]);
@@ -452,6 +486,17 @@ export function OwnerProvider({ children }) {
       const nextPending = payload.eventType === 'DELETE' || !isPendingRentPayment(record)
         ? removeRecord(current.pendingRentPayments || [], row.id)
         : upsertRecord(current.pendingRentPayments || [], record);
+      setStats(prev => ({ ...prev, pendingRentConfirmations: nextPending.length }));
+      setTenants(currentTenants => {
+        const nextTenants = currentTenants.map(tenant => {
+          if (tenant.id !== row.tenant_id) return tenant;
+          const tenantPayments = nextAll.filter(payment => payment.tenant_id === tenant.id);
+          const rentSummary = enrichTenantRentStatus(tenant, tenantPayments);
+          return { ...tenant, rentSummary, dueStatus: rentSummary };
+        });
+        setStats(prev => ({ ...prev, ...summarizeOwnerRentStats(nextTenants), pendingRentConfirmations: nextPending.length }));
+        return nextTenants;
+      });
       return {
         ...current,
         pendingRentPayments: nextPending,
@@ -506,6 +551,7 @@ export function OwnerProvider({ children }) {
     setRealtimeConnected(false);
     const handleCoreRealtime = (payload) => {
       if (!active) return;
+      logRealtimeEvent(payload);
       if (payload.table === 'rooms') patchRoomRealtime(payload);
       else if (payload.table === 'tenants') patchTenantRealtime(payload);
       else if (payload.table === 'payment_history') patchPaymentRealtime(payload);
@@ -517,8 +563,8 @@ export function OwnerProvider({ children }) {
         markOwnerDataPerf('realtime-local-patch-skipped', `table=${payload.table || 'unknown'} action=${String(payload.eventType || '').toLowerCase()}`);
       }
     };
-    const channel = supabase
-      .channel(`owner-core-live:${property.id}`)
+    const channelName = `owner:${property.owner_id}:property:${property.id}:core`;
+    const channel = createRealtimeChannel(supabase, channelName)
       .on('postgres_changes', { event:'*', schema:'public', table:'properties', filter:`owner_id=eq.${property.owner_id}` }, handleCoreRealtime)
       .on('postgres_changes', { event:'*', schema:'public', table:'rooms', filter:`property_id=eq.${property.id}` }, handleCoreRealtime)
       .on('postgres_changes', { event:'*', schema:'public', table:'tenants', filter:`property_id=eq.${property.id}` }, handleCoreRealtime)
@@ -531,11 +577,11 @@ export function OwnerProvider({ children }) {
         markOwnerDataPerf('resource-specific-refresh', 'table=membership_requests');
         loadMembershipRequest(property.owner_id, property.id).catch((error) => console.error('Membership request refresh failed:', error));
       })
-      .subscribe((status) => { if (active) setRealtimeConnected(status === 'SUBSCRIBED'); });
+    subscribeRealtimeChannel(channel, channelName, (isConnected) => { if (active) setRealtimeConnected(isConnected); });
 
     return () => {
       active = false;
-      supabase.removeChannel(channel);
+      cleanupRealtimeChannel(supabase, channel, channelName, 'owner-provider-remount');
     };
   }, [property?.id, property?.owner_id, patchPaymentRealtime, patchRoomRealtime, patchTenantRealtime]);
 

@@ -99,7 +99,7 @@ export function useRoomChange(tenant, refreshData) {
     if (!tenant?.id) return;
     loadRoomChangeState().catch((error) => console.error('Room change state error:', error));
 
-    const channel = supabase.channel('roomchange-tenant-isolated')
+    const channel = supabase.channel(`tenant:${tenant.id}:room-change`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'room_change_requests', filter: `tenant_id=eq.${tenant.id}` }, (payload) => {
         const changedRequest = payload.new || payload.old;
         if (changedRequest?.tenant_id === tenant.id) {

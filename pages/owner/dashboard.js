@@ -1024,10 +1024,10 @@ function OwnerDashboardContent() {
   ].filter(([, , count]) => count > 0), [filteredTenants.length, filteredArchivedTenants.length, filteredRooms.length, filteredPendingPayments.length, filteredAllPayments.length, filteredApplications.length, filteredExistingImports.length, filteredPreBookings.length, filteredComplaints.length, filteredNotices.length, filteredVacateRequests.length, filteredRoomChangeRequests.length])
   const ownerTabs = useMemo(() => [
     ['overview', 'Overview'], ['analytics', 'Analytics'], ['rooms', `Rooms (${safeRooms.length})`], ['tenants', `Tenants (${safeTenants.length})`],
-    ['archived-tenants', `Archived (${safeArchivedTenants.length})`], ['rent-payments', `Rent (${stats.pendingRentConfirmations})`], ['payment-history', 'History'],
+    ['archived-tenants', `Archived (${safeArchivedTenants.length})`], ['rent-payments', `Rent (${safePendingRentPayments.length})`], ['payment-history', 'History'],
     ['pre-bookings', 'Pre-bookings'], ['applications', `Applications (${safeApplications.length})`], ['existing-imports', `Imports (${existingImports.pendingCount})`],
-    ['complaints', `Complaints (${stats.totalComplaints || 0})`], ['vacate', `Vacate (${stats.pendingVacate || 0})`], ['room-change', `Room change (${safeRoomChangeRequests.length})`], ['notices', `Notices (${safeNotices.length})`], ['membership', 'Membership'],
-  ].map(([id, label]) => ({ id, label })), [safeRooms.length, safeTenants.length, safeArchivedTenants.length, stats.pendingRentConfirmations, safeApplications.length, existingImports.pendingCount, stats.totalComplaints, stats.pendingVacate, safeRoomChangeRequests.length, safeNotices.length])
+    ['complaints', `Complaints (${safeComplaints.length})`], ['vacate', `Vacate (${safeVacateRequests.filter(request => request.status === 'pending').length})`], ['room-change', `Room change (${safeRoomChangeRequests.length})`], ['notices', `Notices (${safeNotices.length})`], ['membership', 'Membership'],
+  ].map(([id, label]) => ({ id, label })), [safeRooms.length, safeTenants.length, safeArchivedTenants.length, safePendingRentPayments.length, safeApplications.length, existingImports.pendingCount, safeComplaints.length, safeVacateRequests, safeRoomChangeRequests.length, safeNotices.length])
   const ownerViewTitle = ownerTabs.find(item => item.id === activeTab)?.label.replace(/ \(.*\)$/, '') || 'Dashboard'
   const ownerBottomItems = useMemo(() => [
     { id: 'overview', label: 'Dashboard', icon: 'dashboard' }, { id: 'rooms', label: 'Rooms', icon: 'rooms' }, { id: 'tenants', label: 'Tenants', icon: 'users' },

@@ -1,5 +1,5 @@
 ﻿import MobileTopbar from '../../dashboard/MobileTopbar'
-import { formatCurrency, formatDate, formatRentDueLabel, getSharingDetails } from '../../../lib/utils'
+import { formatCurrency, formatDate, formatRentDueDetail, formatRentDueLabel, getSharingDetails } from '../../../lib/utils'
 
 function Header({ title, subtitle, avatar, avatarUrl, avatarAlt, onProfile }) {
   return (
@@ -18,8 +18,7 @@ function Stat({ label, value, onClick }) {
 }
 
 function formatNextDue(rentStatus) {
-  const label = formatRentDueLabel(rentStatus)
-  return rentStatus?.dueDate ? `${label} · ${formatDate(rentStatus.dueDate)}` : label
+  return formatRentDueDetail(rentStatus, formatDate)
 }
 
 export default function TenantMobileDashboard({ tenant, room, property, roommates = [], notices = [], complaints = [], rentStatus = {}, existingVacateRequest, pendingRoomChangeRequest, avatar = 'U', avatarUrl, avatarAlt, onProfile, onNavigate, onPayRent }) {
@@ -42,7 +41,7 @@ export default function TenantMobileDashboard({ tenant, room, property, roommate
         <section className="grid grid-cols-2 gap-2">
           <Stat label="Monthly rent" value={formatCurrency(tenant?.rent_amount || 0)} onClick={() => onNavigate('payments')} />
           <Stat label="Pending" value={formatCurrency(tenant?.rentSummary?.dueAmount ?? tenant?.dueStatus?.dueAmount ?? tenant?.pending_amount ?? 0)} onClick={() => onNavigate('payments')} />
-          <Stat label="Paid" value={formatCurrency(tenant?.total_paid || 0)} onClick={() => onNavigate('payments')} />
+          <Stat label="Total paid" value={formatCurrency(tenant?.total_paid || 0)} onClick={() => onNavigate('payments')} />
           <Stat label="Deposit" value={formatCurrency(tenant?.security_deposit_amount || 0)} />
           <Stat label="Roommates" value={roommates.length} onClick={() => onNavigate('roommates')} />
           <Stat label="Notices" value={notices.length} onClick={() => onNavigate('notices')} />

@@ -26,7 +26,7 @@ export function useComplaints(tenant) {
   useEffect(() => {
     if (!tenant?.id) return;
     loadComplaints();
-    const channel = supabase.channel('complaints-tenant-isolated')
+    const channel = supabase.channel(`tenant:${tenant.id}:complaints`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'complaints', filter: `tenant_id=eq.${tenant.id}` }, (payload) => {
         if (payload.new?.tenant_id === tenant.id) {
           if (payload.eventType === 'UPDATE' && payload.new.status !== payload.old?.status) {

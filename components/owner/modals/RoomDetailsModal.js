@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import dynamic from 'next/dynamic';
 import { supabase, signPrivateDocumentFields, findTenantDocumentRecord } from '../../../lib/supabase';
-import { formatCurrency, formatDate } from '../../../lib/utils';
+import { formatCurrency, formatDate, formatRentDueDetail } from '../../../lib/utils';
 import toast from 'react-hot-toast';
 import { useBodyScrollLock } from '../../../hooks/useBodyScrollLock';
 
@@ -230,6 +230,9 @@ export default function RoomDetailsModal({
                           <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${rentBadgeClass(tenant.rentSummary || tenant.dueStatus)}`}>
                             {(tenant.rentSummary || tenant.dueStatus)?.label || tenant.rent_status || 'Unknown'}
                           </span>
+                          {(tenant.rentSummary || tenant.dueStatus) && (
+                            <p className="mt-1 text-xs font-medium text-gray-500">{formatRentDueDetail(tenant.rentSummary || tenant.dueStatus, formatDate)}</p>
+                          )}
                         </div>
                       </div>
 
