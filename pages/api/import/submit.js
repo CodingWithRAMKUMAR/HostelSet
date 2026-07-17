@@ -58,6 +58,24 @@ function todayIsoDate() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function isRentAnchorDate(moveInDate, paidThroughDate) {
+  if (!isValidDateString(moveInDate) || !isValidDateString(paidThroughDate)) return false
+  const [startYear, startMonth, startDay] = moveInDate.split('-').map(Number)
+  const [targetYear, targetMonth, targetDay] = paidThroughDate.split('-').map(Number)
+  let offset = 0
+  while (offset < 600) {
+    const index = startYear * 12 + startMonth - 1 + offset
+    const year = Math.floor(index / 12)
+    const monthIndex = index % 12
+    const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
+    const dueDay = Math.min(startDay, lastDay)
+    if (year === targetYear && monthIndex + 1 === targetMonth && dueDay === targetDay) return true
+    if (year > targetYear || (year === targetYear && monthIndex + 1 > targetMonth)) return false
+    offset += 1
+  }
+  return false
+}
+
 async function verifyObject(path, prefix, imageOnly, label) {
   if (!path?.startsWith(prefix) || path.includes('..')) throw new PublicImportError(`${label} upload is invalid.`)
   const split = path.lastIndexOf('/')
@@ -82,6 +100,7 @@ export default async function handler(req, res) {
     const roomId = String(readField(body, 'room_id', 'roomId') || '')
     const currentRent = Number(readField(body, 'current_rent_amount', 'currentRent'))
     const moveInDate = String(readField(body, 'move_in_date', 'moveInDate') || '')
+    const paidThroughDate = String(readField(body, 'paid_through_date', 'paidThroughDate') || '')
     const occupation = String(body.occupation || '')
     const bloodGroup = normalizeBloodGroup(readField(body, 'blood_group', 'bloodGroup'))
     const notes = String(body.notes || '').trim().slice(0, 2000) || null
@@ -95,7 +114,11 @@ export default async function handler(req, res) {
     if (!/^\d{10}$/.test(emergencyContact)) return invalid(res, 'Please enter a valid 10-digit emergency contact number.', { field: 'emergency_contact' })
     if (!UUID.test(roomId)) return invalid(res, 'Please select a room.', { field: 'room_id' })
     if (!Number.isFinite(currentRent) || currentRent <= 0 || currentRent > 1000000) return invalid(res, 'Please enter a valid current rent amount.', { field: 'current_rent_amount' })
-    if (!isValidDateString(moveInDate) || moveInDate > todayIsoDate()) return invalid(res, 'Please select a valid move-in date.', { field: 'move_in_date' })
+    if (!isValidDateString(moveInDate) || moveInDate > todayIsoDate()) return invalid(res, 'Please select a valid hostel joined date.', { field: 'move_in_date' })
+    if (!isValidDateString(paidThroughDate)) return invalid(res, 'Please select the last paid rent due date.', { field: 'paid_through_date' })
+    if (paidThroughDate < moveInDate) return invalid(res, 'Last paid rent due date cannot be before the hostel joined date.', { field: 'paid_through_date' })
+    if (paidThroughDate > todayIsoDate()) return invalid(res, 'Last paid rent due date cannot be in the future.', { field: 'paid_through_date' })
+    if (!isRentAnchorDate(moveInDate, paidThroughDate)) return invalid(res, 'Last paid rent due date must match the tenant rent due-day cycle.', { field: 'paid_through_date' })
     if (!['student', 'employee', 'other'].includes(occupation)) return invalid(res, 'Please select an occupation.', { field: 'occupation' })
     if (!bloodGroup) return invalid(res, 'Please select a valid blood group.', { field: 'blood_group' })
     if (!idProof) return invalid(res, 'Please upload ID proof.', { field: 'id_proof_path' })
@@ -125,7 +148,7 @@ export default async function handler(req, res) {
     const { error: insertError } = await supabaseAdmin.from('existing_tenant_imports').insert({
       link_id: link.id, property_id: link.property_id, room_id: room.id, user_id: null,
       full_name: fullName, phone, email, room_number: room.room_number, current_rent: currentRent,
-      move_in_date: moveInDate, emergency_contact: emergencyContact, occupation, blood_group: bloodGroup,
+      move_in_date: moveInDate, paid_through_date: paidThroughDate, emergency_contact: emergencyContact, occupation, blood_group: bloodGroup,
       id_proof: idProof, profile_photo: profilePhoto, notes, status: 'pending_owner_review',
     })
     if (insertError) {

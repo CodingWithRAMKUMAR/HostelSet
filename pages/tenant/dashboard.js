@@ -32,6 +32,7 @@ import DashboardSidebar from '../../components/dashboard/DashboardSidebar'
 import DashboardIcon from '../../components/dashboard/DashboardIcon'
 import AccountMenu from '../../components/dashboard/AccountMenu'
 import { resetDashboardScroll } from '../../lib/dashboardScroll'
+import { dashboardPanelProps, prepareDashboardTabFocus } from '../../lib/dashboardFocus'
 import { buildDashboardHref, isCanonicalDashboardQuery, pushDashboardHistory, replaceDashboardHistory, resolveDashboardQuery } from '../../lib/dashboardRouting'
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 import TenantMobileDashboard from '../../components/tenant/mobile/TenantMobileDashboard'
@@ -75,7 +76,7 @@ function TenantTabPanel({ tab, active, children }) {
   }, [active, tab])
 
   return (
-    <section hidden={!active} aria-hidden={!active} data-tenant-tab={tab}>
+    <section {...dashboardPanelProps('tenant', tab, active)} data-tenant-tab={tab}>
       {children}
     </section>
   )
@@ -130,6 +131,8 @@ function TenantDashboardContent() {
   const [mobileMenu, setMobileMenu] = useState(null)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const sectionRef = useRef(null)
+  const activeTabRef = useRef(activeTab)
+  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
   const openSection = tab => {
     markTenantViewPerf('tab-click', String(tab))
     const nextTab = TENANT_VIEW_KEYS.has(tab) ? tab : 'overview'
@@ -148,14 +151,16 @@ function TenantDashboardContent() {
     }
     const href = buildDashboardHref('tenant', nextTab, router.query)
     markTenantViewPerf('set-activeTab', nextTab)
+    prepareDashboardTabFocus('tenant', activeTabRef.current, nextTab)
     setActiveTab(nextTab)
-    setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll()
+    setMobileMenu(null); setProfileMenuOpen(false); setShowComplaintModal(false); setShowPaymentModal(false); setShowVacateModal(false); setShowProfileModal(false); setShowRoomChangeModal(false); setShowScreenshotModal(false); resetDashboardScroll()
     window.requestAnimationFrame?.(() => pushDashboardHistory(router, href)) || pushDashboardHistory(router, href)
   }
   const navigateDashboardBack = () => {
     setMobileMenu(null); setProfileMenuOpen(false)
     if (activeTab !== 'overview') {
       replaceDashboardHistory(router, buildDashboardHref('tenant', 'overview', router.query))
+      prepareDashboardTabFocus('tenant', activeTabRef.current, 'overview')
       setActiveTab('overview')
       resetDashboardScroll()
       return
@@ -182,15 +187,17 @@ function TenantDashboardContent() {
     const resolved = resolveDashboardQuery('tenant', router.query)
     if (!isCanonicalDashboardQuery('tenant', router.query)) {
       replaceDashboardHistory(router, buildDashboardHref('tenant', resolved.view, router.query))
+      prepareDashboardTabFocus('tenant', activeTabRef.current, resolved.view)
       setActiveTab(resolved.view)
       setMobileMenu(null)
       resetDashboardScroll()
       return
     }
-    setActiveTab(current => {
-      if (current !== resolved.view) resetDashboardScroll()
-      return resolved.view
-    })
+    if (activeTabRef.current !== resolved.view) {
+      resetDashboardScroll()
+      prepareDashboardTabFocus('tenant', activeTabRef.current, resolved.view)
+    }
+    setActiveTab(resolved.view)
     setMobileMenu(null)
   }, [router.isReady, router.query.tab, router.query.payment_id, router.query.notice_id, router.query.complaint_id, router.query.request_id])
 

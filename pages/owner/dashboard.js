@@ -37,6 +37,7 @@ import DashboardSidebar from '../../components/dashboard/DashboardSidebar';
 import DashboardIcon from '../../components/dashboard/DashboardIcon';
 import AccountMenu from '../../components/dashboard/AccountMenu';
 import { resetDashboardScroll } from '../../lib/dashboardScroll';
+import { dashboardPanelProps, prepareDashboardTabFocus } from '../../lib/dashboardFocus';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import OwnerMobileDashboard from '../../components/owner/mobile/OwnerMobileDashboard';
 import OwnerMobileRooms from '../../components/owner/mobile/OwnerMobileRooms';
@@ -167,7 +168,7 @@ function OwnerMobileTabPanel({ tab, active, children }) {
     if (active) markOwnerPerf('visible-commit', tab)
   }, [active, tab])
   return (
-    <section key={tab} hidden={!active} aria-hidden={!active} data-owner-mobile-tab={tab}>
+    <section key={tab} {...dashboardPanelProps('owner', tab, active)} data-owner-mobile-tab={tab}>
       {children}
     </section>
   )
@@ -231,6 +232,8 @@ function OwnerDashboardContent() {
   const [mobileMenu, setMobileMenu] = useState(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const sectionRef = useRef(null);
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   const openSection = (tab) => {
     markOwnerPerf('tab-click', String(tab))
     const nextTab = OWNER_VIEW_ALIASES[tab] || tab;
@@ -250,9 +253,11 @@ function OwnerDashboardContent() {
     }
     const href = buildDashboardHref('owner', nextTab, router.query)
     markOwnerPerf('set-activeTab', nextTab)
+    prepareDashboardTabFocus('owner', activeTabRef.current, nextTab)
     setActiveTab(nextTab);
     setMobileMenu(null);
     setProfileMenuOpen(false);
+    closeOwnerOverlaysForNavigation();
     resetDashboardScroll();
     if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
       window.requestAnimationFrame(() => {
@@ -269,6 +274,7 @@ function OwnerDashboardContent() {
     setProfileMenuOpen(false);
     if (activeTab !== OWNER_VIEW_KEYS.OVERVIEW) {
       replaceDashboardHistory(router, buildDashboardHref('owner', OWNER_VIEW_KEYS.OVERVIEW, router.query));
+      prepareDashboardTabFocus('owner', activeTabRef.current, OWNER_VIEW_KEYS.OVERVIEW);
       setActiveTab(OWNER_VIEW_KEYS.OVERVIEW);
       resetDashboardScroll();
       return
@@ -297,16 +303,18 @@ function OwnerDashboardContent() {
     const resolved = resolveOwnerDashboardQuery(router.query)
     if (!isCanonicalDashboardQuery('owner', router.query)) {
       replaceDashboardHistory(router, buildDashboardHref('owner', resolved.view, router.query))
+      prepareDashboardTabFocus('owner', activeTabRef.current, resolved.view)
       setActiveTab(resolved.view)
       setFocusedRequestId(resolved.requestId)
       setMobileMenu(null)
       resetDashboardScroll()
       return
     }
-    setActiveTab(current => {
-      if (current !== resolved.view) resetDashboardScroll()
-      return resolved.view
-    })
+    if (activeTabRef.current !== resolved.view) {
+      resetDashboardScroll()
+      prepareDashboardTabFocus('owner', activeTabRef.current, resolved.view)
+    }
+    setActiveTab(resolved.view)
     setFocusedRequestId(resolved.requestId)
     setMobileMenu(null)
   }, [router.isReady, router.query.tab, router.query.request_id])
@@ -372,6 +380,14 @@ function OwnerDashboardContent() {
   const profileCache = useRef(new Map());
   const paymentCache = useRef(new Map());
   const [tenantPhotoUrls, setTenantPhotoUrls] = useState({});
+  function closeOwnerOverlaysForNavigation() {
+    setShowAddModal(false); setShowRoomModal(false); setShowPaymentModal(false); setShowNoticeModal(false); setShowRoomDetailsModal(false); setShowSettingsModal(false);
+    setShowComplaintResponseModal(false); setShowConfirmDeleteModal(false); setShowMembershipModal(false); setShowPaymentConfirmModal(false);
+    setShowApplicationDetailModal(false); setShowScreenshotModal(false); setShowOwnerProfileModal(false); setShowArchivedHistoryModal(false);
+    setShowRoomChangeReasonModal(false); setShowTenantPaymentsModal(false); setShowTenantProfileModal(false);
+    setSelectedVacateRequest(null); setSelectedRoom(null); setSelectedTenant(null); setSelectedComplaint(null); setSelectedApplication(null);
+    setSelectedRoomChangeRequest(null); setConfirmingTenant(null); setTenantToDelete(null); setScreenshotUrl('');
+  }
   const hasOpenOverlay = showPaymentModal || showConfirmDeleteModal || showSettingsModal || showAddModal || showRoomModal || showNoticeModal || showMembershipModal || showOwnerProfileModal || showArchivedHistoryModal || showComplaintResponseModal || showRoomChangeReasonModal || Boolean(selectedVacateRequest) || showPaymentConfirmModal || showRoomDetailsModal || showTenantPaymentsModal || showTenantProfileModal || showScreenshotModal || profileMenuOpen || mobileMenu === 'more';
   useBodyScrollLock(hasOpenOverlay);
   const tenantPhotoSignature = useMemo(() => safeTenantPhotoIds(tenants).map(item => item.cacheKey).join('|'), [tenants]);

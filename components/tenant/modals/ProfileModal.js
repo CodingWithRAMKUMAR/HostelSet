@@ -81,6 +81,7 @@ export default function ProfileModal({
                 <InfoRow icon="users" label="Blood group" value={displayBloodGroup(tenant?.blood_group)} />
                 <InfoRow icon="rooms" label="Room" value={room?.room_number} />
                 <InfoRow icon="calendar" label={rentStatus?.status === 'paid' ? 'Next due' : 'Rent due'} value={formatRentDueDetail(rentStatus, formatDate)} />
+                {tenant?.paid_through_date && <InfoRow icon="calendar" label="Last paid rent due date" value={formatDate(tenant.paid_through_date)} />}
                 <InfoRow icon="calendar" label="Joined" value={formatDate(tenant?.move_in_date)} />
               </div>
             </div>

@@ -35,6 +35,7 @@ import MobileBottomNav from '../../components/dashboard/MobileBottomNav';
 import DashboardMoreMenu from '../../components/dashboard/DashboardMoreMenu';
 import AccountMenu from '../../components/dashboard/AccountMenu';
 import { resetDashboardScroll } from '../../lib/dashboardScroll';
+import { dashboardPanelProps, prepareDashboardTabFocus } from '../../lib/dashboardFocus';
 import { buildDashboardHref, isCanonicalDashboardQuery, pushDashboardHistory, replaceDashboardHistory, resolveDashboardQuery } from '../../lib/dashboardRouting';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import AdminMobileDashboard from '../../components/admin/mobile/AdminMobileDashboard';
@@ -71,7 +72,7 @@ function AdminTabPanel({ tab, active, children }) {
   }, [active, tab])
 
   return (
-    <section hidden={!active} aria-hidden={!active} data-admin-tab={tab}>
+    <section {...dashboardPanelProps('admin', tab, active)} data-admin-tab={tab}>
       {children}
     </section>
   )
@@ -355,6 +356,8 @@ function AdminDashboardContent() {
   const [mobileMenu, setMobileMenu] = useState(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const sectionRef = useRef(null);
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   const refreshAdminStats = () => refreshStats({ background: true, force: true, reason: 'manual-refresh' });
   const openSection = (tab, focusQuery = {}) => {
     markAdminViewPerf('tab-click', String(tab));
@@ -372,14 +375,16 @@ function AdminDashboardContent() {
     }
     const href = buildDashboardHref('admin', nextTab, { ...router.query, ...focusQuery });
     markAdminViewPerf('set-activeTab', nextTab);
+    prepareDashboardTabFocus('admin', activeTabRef.current, nextTab);
     setActiveTab(nextTab);
-    setMobileMenu(null); setProfileMenuOpen(false); resetDashboardScroll();
+    setMobileMenu(null); setProfileMenuOpen(false); closeAdminOverlaysForNavigation(); resetDashboardScroll();
     window.requestAnimationFrame?.(() => pushDashboardHistory(router, href)) || pushDashboardHistory(router, href);
   };
   const navigateDashboardBack = () => {
     setMobileMenu(null); setProfileMenuOpen(false);
     if (activeTab !== 'overview') {
       replaceDashboardHistory(router, buildDashboardHref('admin', 'overview', router.query));
+      prepareDashboardTabFocus('admin', activeTabRef.current, 'overview');
       setActiveTab('overview');
       resetDashboardScroll();
       return;
@@ -408,6 +413,13 @@ function AdminDashboardContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchDetail, setSearchDetail] = useState(null);
   const [applicationProof, setApplicationProof] = useState(null);
+  function closeAdminOverlaysForNavigation() {
+    setProfileMenuOpen(false)
+    setMobileMenu(null)
+    setSearchDetail(null)
+    setApplicationProof(null)
+    closeModals()
+  }
   const hasOpenOverlay = profileMenuOpen || mobileMenu === 'more' || Boolean(searchDetail) || Boolean(applicationProof) || Boolean(selectedProperty) || Boolean(selectedOwner);
   useBodyScrollLock(hasOpenOverlay);
 
@@ -416,15 +428,17 @@ function AdminDashboardContent() {
     const resolved = resolveDashboardQuery('admin', router.query)
     if (!isCanonicalDashboardQuery('admin', router.query)) {
       replaceDashboardHistory(router, buildDashboardHref('admin', resolved.view, router.query))
+      prepareDashboardTabFocus('admin', activeTabRef.current, resolved.view)
       setActiveTab(resolved.view)
       setMobileMenu(null)
       resetDashboardScroll()
       return
     }
-    setActiveTab(current => {
-      if (current !== resolved.view) resetDashboardScroll()
-      return resolved.view
-    })
+    if (activeTabRef.current !== resolved.view) {
+      resetDashboardScroll()
+      prepareDashboardTabFocus('admin', activeTabRef.current, resolved.view)
+    }
+    setActiveTab(resolved.view)
     setMobileMenu(null)
   }, [router.isReady, router.query.tab, router.query.property_id, router.query.membership_id, router.query.payment_id, router.query.application_id, router.query.complaint_id, router.query.request_id])
 

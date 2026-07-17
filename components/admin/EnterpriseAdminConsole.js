@@ -142,8 +142,17 @@ export default function EnterpriseAdminConsole() {
   useEffect(() => {
     const channel = supabase.channel('enterprise-admin-console')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'existing_tenant_imports' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'applications' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pre_bookings' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_history' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'complaints' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'check_out_requests' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'room_change_requests' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, () => load(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tenants' }, () => load(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'properties' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => load(true))
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [load])
@@ -451,7 +460,7 @@ export default function EnterpriseAdminConsole() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Tenant</th><th className="p-3">Property</th><th className="p-3">Room</th><th className="p-3">Rent</th><th className="p-3">Status</th></tr></thead>
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Tenant</th><th className="p-3">Property</th><th className="p-3">Room</th><th className="p-3">Rent</th><th className="p-3">Last paid rent due date</th><th className="p-3">Status</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {pagedImports.map(item => (
                   <tr key={item.id}>
@@ -459,10 +468,11 @@ export default function EnterpriseAdminConsole() {
                     <td className="p-3">{item.properties?.name || 'N/A'}</td>
                     <td className="p-3">{item.rooms?.room_number || item.room_number}</td>
                     <td className="p-3">{formatCurrency(item.current_rent)}</td>
+                    <td className="p-3">{formatDate(item.paid_through_date)}</td>
                     <td className="p-3">{statusPill(item.status)}</td>
                   </tr>
                 ))}
-                {!pagedImports.length && <tr><td colSpan={5} className="p-6 text-center text-slate-500">No imports match the current filters.</td></tr>}
+                {!pagedImports.length && <tr><td colSpan={6} className="p-6 text-center text-slate-500">No imports match the current filters.</td></tr>}
               </tbody>
             </table>
           </div>

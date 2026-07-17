@@ -58,7 +58,7 @@ export default function TenantProfileModal({ tenant, application, extraDocuments
                 <Detail label="Status" value={tenant?.status} />
                 <Detail label="Rent status" value={rentSummary?.label || tenant?.rent_status} />
                 <Detail label={rentSummary?.status === 'paid' ? 'Next rent due' : 'Rent due'} value={rentSummary ? formatRentDueDetail(rentSummary, formatDate) : null} />
-                <Detail label="Move-in date" value={formatDate(tenant?.move_in_date)} />
+                <Detail label="Hostel joined date" value={formatDate(tenant?.move_in_date)} />
                 <Detail label="Monthly rent" value={formatCurrency(tenant?.rent_amount)} />
                 <Detail label="Total paid" value={formatCurrency(tenant?.total_paid || 0)} />
                 <Detail label="Pending amount" value={formatCurrency(rentSummary?.dueAmount ?? tenant?.pending_amount ?? 0)} />
@@ -81,7 +81,8 @@ export default function TenantProfileModal({ tenant, application, extraDocuments
                   <Detail label="Status" value={application.status} />
                   <Detail label="Submitted" value={formatDate(application.created_at)} />
                   <Detail label="Processed" value={application.processed_at ? formatDate(application.processed_at) : null} />
-                  <Detail label="Expected move-in" value={formatDate(application.expected_move_in_date || application.expected_move_in)} />
+                  <Detail label={application.source_type === 'existing_tenant_import' ? 'Hostel joined date' : 'Expected move-in'} value={formatDate(application.expected_move_in_date || application.expected_move_in)} />
+                  <Detail label="Last paid rent due date" value={application.paid_through_date ? formatDate(application.paid_through_date) : null} />
                   <Detail label="Address" value={application.address} />
                   <Detail label="Guardian name" value={application.guardian_name} />
                   <Detail label="Guardian phone" value={application.guardian_phone || application.guardian_contact} />

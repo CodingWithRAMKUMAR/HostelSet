@@ -49,6 +49,76 @@ const localDate = (date) => [
 const source = (relativePath) => fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8')
 const asyncTests = []
 
+function importedTenantInitialRentState({ moveInDate, paidThroughDate, currentRent, referenceDate }) {
+  const rent = Math.max(Number(currentRent || 0), 0)
+  const moveIn = new Date(`${moveInDate}T00:00:00`)
+  const reference = new Date(`${referenceDate}T00:00:00`)
+  if (!moveInDate || Number.isNaN(moveIn.getTime()) || rent <= 0) return { pending_amount: 0, total_paid: 0, rent_status: 'paid' }
+  if (!paidThroughDate) {
+    return moveIn <= reference
+      ? { pending_amount: rent, total_paid: 0, rent_status: 'pending' }
+      : { pending_amount: 0, total_paid: 0, rent_status: 'paid' }
+  }
+  const paidThrough = new Date(`${paidThroughDate}T00:00:00`)
+  let nextDue = new Date(moveIn)
+  while (nextDue <= paidThrough) {
+    const monthIndex = nextDue.getFullYear() * 12 + nextDue.getMonth() + 1
+    const year = Math.floor(monthIndex / 12)
+    const month = monthIndex % 12
+    const lastDay = new Date(year, month + 1, 0).getDate()
+    nextDue = new Date(year, month, Math.min(moveIn.getDate(), lastDay))
+  }
+  return nextDue <= reference
+    ? { pending_amount: rent, total_paid: 0, rent_status: 'pending' }
+    : { pending_amount: 0, total_paid: 0, rent_status: 'paid' }
+}
+
+function publicAvailabilityModel({ properties = [], rooms = [], tenants = [], prebookings = [] }) {
+  const visibleProperties = properties.filter(property =>
+    property.is_active !== false &&
+    (property.lifecycle_status || 'active') === 'active' &&
+    !property.archived_at
+  )
+  return visibleProperties.map(property => {
+    const publicRooms = rooms.filter(room =>
+      room.property_id === property.id &&
+      ['vacant', 'occupied'].includes(room.status) &&
+      Number(room.capacity || 0) > 0
+    )
+    if (!publicRooms.length) return null
+    const activeTenants = tenants.filter(tenant => tenant.property_id === property.id && ['active', 'notice_period', 'payment_pending'].includes(tenant.status)).length
+    const roomRows = publicRooms.map(room => {
+      const reservedBeds = prebookings.filter(booking =>
+        booking.room_id === room.id &&
+        booking.status === 'approved' &&
+        !booking.deleted_at &&
+        !tenants.some(tenant =>
+          tenant.property_id === property.id &&
+          tenant.room_id === room.id &&
+          ['active', 'notice_period', 'payment_pending'].includes(tenant.status) &&
+          booking.user_id &&
+          tenant.user_id === booking.user_id
+        )
+      ).length
+      return {
+        ...room,
+        reservedBeds,
+        availableBedsNow: Math.max(0, Number(room.capacity || 0) - Number(room.current_occupants || 0) - reservedBeds),
+      }
+    })
+    return {
+      id: property.id,
+      activeTenantCount: activeTenants,
+      totalRooms: roomRows.length,
+      availableRoomCount: roomRows.filter(room => room.availableBedsNow > 0).length,
+      reservedRoomCount: roomRows.filter(room => room.reservedBeds > 0).length,
+      upcomingVacateRoomCount: roomRows.filter(room => room.next_vacate_date && room.next_vacate_date >= '2026-07-17').length,
+      totalCapacity: roomRows.reduce((sum, room) => sum + Number(room.capacity || 0), 0),
+      currentOccupants: roomRows.reduce((sum, room) => sum + Number(room.current_occupants || 0), 0),
+    }
+  }).filter(Boolean)
+}
+
 function test(name, fn) {
   try {
     const result = fn()
@@ -295,6 +365,8 @@ test('admin membership requests preserve rows and normalize missing relations', 
 test('labels expose due today and pending confirmation clearly', () => {
   assert.strictEqual(formatRentDueLabel(calculateCanonicalRentDue(tenant(), [], NOW)), 'Due today')
   assert.strictEqual(formatRentDueLabel(calculateCanonicalRentDue(tenant(), [payment({ status: 'pending' })], NOW)), 'Pending confirmation')
+  assert.strictEqual(formatRentDueDetail(calculateCanonicalRentDue(tenant({ move_in_date: '2026-07-15' }), [], NOW), date => localDate(date)), 'Overdue by 1 day · Due 2026-07-15')
+  assert.strictEqual(formatRentDueDetail(calculateCanonicalRentDue(tenant({ move_in_date: '2026-07-19' }), [], NOW), date => localDate(date)), 'Due in 3 days · 2026-07-19')
 })
 
 const importedJunePaidTenant = () => ({
@@ -380,6 +452,55 @@ test('explicit paid-through date is used when available', () => {
   assert.strictEqual(localDate(result.nextDueDate), '2026-08-16')
 })
 
+test('explicit paid-through allocation is unaffected by import date', () => {
+  const row = { ...importedJunePaidTenant(), paid_through_date: '2026-06-16', created_at: '2026-09-30T10:00:00.000Z' }
+  const result = calculateCanonicalRentDue(row, [], new Date(2026, 6, 17))
+  assert.strictEqual(result.baselinePaidPeriods, 1)
+  assert.strictEqual(localDate(result.currentCycleDueDate), '2026-07-16')
+  assert.strictEqual(result.status, 'overdue')
+})
+
+test('paid-through date equal to July covers July without payment history', () => {
+  const result = calculateCanonicalRentDue({ ...importedJunePaidTenant(), paid_through_date: '2026-07-16' }, [], new Date(2026, 6, 17))
+  assert.strictEqual(result.status, 'paid')
+  assert.strictEqual(result.baselinePaidPeriods, 2)
+  assert.strictEqual(localDate(result.currentCycleDueDate), '2026-07-16')
+  assert.strictEqual(localDate(result.nextDueDate), '2026-08-16')
+})
+
+test('hostel joined February 12 and last paid rent due July 12 is paid through July', () => {
+  const row = {
+    ...importedJunePaidTenant(),
+    move_in_date: '2026-02-12',
+    paid_through_date: '2026-07-12',
+    rent_amount: 12000,
+    total_paid: 0,
+    created_at: '2026-07-17T09:00:00.000000',
+  }
+  const result = calculateCanonicalRentDue(row, [], new Date(2026, 6, 17))
+  assert.strictEqual(result.status, 'paid')
+  assert.strictEqual(result.baselinePaidPeriods, 6)
+  assert.strictEqual(result.dueAmount, 0)
+  assert.strictEqual(localDate(result.currentCycleDueDate), '2026-07-12')
+  assert.strictEqual(localDate(result.paidThroughDate), '2026-07-12')
+  assert.strictEqual(localDate(result.nextDueDate), '2026-08-12')
+  assert.notStrictEqual(result.message, 'Overdue by 5 days')
+  assert.deepStrictEqual(result.cycleAllocations.slice(0, 6).map(cycle => [localDate(cycle.dueDate), cycle.baselineAmount, cycle.remainingAmount]), [
+    ['2026-02-12', 12000, 0],
+    ['2026-03-12', 12000, 0],
+    ['2026-04-12', 12000, 0],
+    ['2026-05-12', 12000, 0],
+    ['2026-06-12', 12000, 0],
+    ['2026-07-12', 12000, 0],
+  ])
+})
+
+test('null paid-through date keeps conservative legacy fallback', () => {
+  const result = calculateCanonicalRentDue({ ...importedJunePaidTenant(), paid_through_date: null, created_at: '2026-09-30T10:00:00.000Z' }, [], new Date(2026, 6, 17))
+  assert.strictEqual(result.baselinePaidPeriods, 1)
+  assert.strictEqual(localDate(result.currentCycleDueDate), '2026-07-16')
+})
+
 test('baseline and confirmed payment do not cover the same cycle', () => {
   const juneHistory = realJulyPayment({ id: 'june-history', payment_date: '2026-06-16' })
   const julyHistory = realJulyPayment({ id: 'july-history', payment_date: '2026-07-16' })
@@ -410,6 +531,206 @@ test('tenant mobile UI uses next-rent wording instead of ambiguous paid-date wor
   assert.match(tenantMobileDashboard, /formatRentDueDetail\(rentStatus, formatDate\)/)
   assert.match(source('lib/rentDue.js'), /Next rent due:/)
   assert.doesNotMatch(tenantMobileDashboard, /\$\{label\}.*formatDate\(rentStatus\.dueDate\)/)
+})
+
+test('import flow records and displays last paid rent due date explicitly', () => {
+  const importPage = source('pages/import/[token].js')
+  const importApi = source('pages/api/import/submit.js')
+  const ownerImportList = source('components/owner/ExistingTenantImportList.js')
+  const adminConsole = source('components/admin/EnterpriseAdminConsole.js')
+  const migration = source('supabase/migrations/202607170001_import_paid_through_date.sql')
+  assert.match(importPage, /Hostel joined date/)
+  assert.match(importPage, /Last paid rent due date/)
+  assert.match(importPage, /Select the due date of the latest monthly rent you have already paid/)
+  assert.match(importPage, /paid_through_date: form\.paidThroughDate/)
+  assert.match(importPage, /Last paid rent due date cannot be before the hostel joined date/)
+  assert.match(importPage, /Last paid rent due date cannot be in the future/)
+  assert.match(importApi, /paidThroughDate < moveInDate/)
+  assert.match(importApi, /paidThroughDate > todayIsoDate\(\)/)
+  assert.match(importApi, /paid_through_date: paidThroughDate/)
+  assert.match(ownerImportList, /Hostel joined/)
+  assert.match(ownerImportList, /Last paid rent due date:/)
+  assert.match(adminConsole, /Last paid rent due date/)
+  assert.match(migration, /add column if not exists paid_through_date date/)
+  assert.match(migration, /import_record\.paid_through_date/)
+})
+
+test('admin enterprise console subscribes to all displayed lifecycle queues', () => {
+  const adminConsole = source('components/admin/EnterpriseAdminConsole.js')
+  for (const table of ['existing_tenant_imports', 'applications', 'pre_bookings', 'payment_history', 'complaints', 'check_out_requests', 'room_change_requests', 'notices', 'tenants', 'properties', 'rooms', 'users']) {
+    assert.match(adminConsole, new RegExp(`table: '${table}'`), `${table} must refresh the enterprise admin console`)
+  }
+})
+
+test('public availability migration does not require active tenants for approved properties with rooms', () => {
+  const migration = source('supabase/migrations/202607170002_public_availability_visibility.sql')
+  assert.match(migration, /exists \([\s\S]*from public\.rooms room[\s\S]*room\.property_id = property\.id/)
+  assert.match(migration, /left join tenant_stats/)
+  assert.match(migration, /coalesce\(tenant_stats\.active_tenant_count, 0\)/)
+  assert.match(migration, /coalesce\(room_stats\.total_rooms, 0\) > 0/)
+  assert.doesNotMatch(migration, /\n\s{2}join tenant_stats on tenant_stats\.property_id = property\.id/)
+})
+
+test('public availability migration uses one canonical public availability query for old and v2 RPCs', () => {
+  const migration = source('supabase/migrations/202607170002_public_availability_visibility.sql')
+  assert.match(migration, /create or replace function public\.get_public_property_availability_rows\(\)/)
+  assert.strictEqual((migration.match(/from public\.get_public_property_availability_rows\(\) availability/g) || []).length, 2)
+  assert.match(migration, /set search_path = ''/)
+  assert.strictEqual(/execute\s+[^;]*\|\|/i.test(migration), false)
+  assert.match(migration, /revoke all on function public\.get_public_property_availability_rows\(\) from public, anon, authenticated/)
+  assert.match(migration, /grant execute on function public\.get_public_properties_v2\(\) to anon, authenticated/)
+  assert.match(migration, /grant execute on function public\.get_public_properties\(\) to anon, authenticated/)
+})
+
+test('public availability SQL subtracts approved prebooking reservations from immediate availability', () => {
+  const migration = source('supabase/migrations/202607170002_public_availability_visibility.sql')
+  assert.match(migration, /create or replace function public\.refresh_room_public_availability\(p_room_id uuid\)/)
+  assert.match(migration, /booking\.status = 'approved'/)
+  assert.match(migration, /booking\.deleted_at is null/)
+  assert.match(migration, /not exists \([\s\S]*from public\.tenants tenant[\s\S]*tenant\.user_id = booking\.user_id/)
+  assert.match(migration, /has_approved_prebooking = exists \([\s\S]*booking\.deleted_at is null[\s\S]*tenant\.user_id = booking\.user_id/)
+  assert.match(migration, /update public\.rooms room[\s\S]*has_approved_prebooking = exists/)
+  assert.match(migration, /room\.capacity - coalesce\(room\.current_occupants, 0\) - coalesce\(reservation\.reserved_beds, 0\)/)
+  assert.match(migration, /count\(\*\) filter \(where room\.available_beds_now > 0\)::integer as available_room_count/)
+})
+
+test('public availability SQL exposes only public aggregate fields', () => {
+  const migration = source('supabase/migrations/202607170002_public_availability_visibility.sql')
+  assert.doesNotMatch(migration, /tenant\.(name|phone|email|id_proof|photo|payment_screenshot)/)
+  assert.doesNotMatch(migration, /request\.(tenant_name|tenant_id|reason)/)
+  assert.doesNotMatch(migration, /booking\.(name|phone|email|id_proof|photo|payment_screenshot|payment_transaction_id)/)
+  assert.match(migration, /address text/)
+  assert.match(migration, /formatted_address text/)
+  assert.match(migration, /contact_number text/)
+  assert.match(migration, /latitude double precision/)
+  assert.match(migration, /longitude double precision/)
+})
+
+test('public availability model covers visibility, reservations, and upcoming vacancy semantics', () => {
+  const baseProperty = { id: 'property-1', is_active: true, lifecycle_status: 'active', archived_at: null }
+  assert.deepStrictEqual(publicAvailabilityModel({ properties: [baseProperty], rooms: [] }), [], 'property without rooms is hidden')
+  assert.deepStrictEqual(publicAvailabilityModel({ properties: [{ ...baseProperty, is_active: false }], rooms: [{ id: 'room-1', property_id: 'property-1', status: 'vacant', capacity: 2, current_occupants: 0 }] }), [], 'inactive property is hidden')
+  assert.deepStrictEqual(publicAvailabilityModel({ properties: [{ ...baseProperty, archived_at: '2026-07-17T00:00:00Z' }], rooms: [{ id: 'room-1', property_id: 'property-1', status: 'vacant', capacity: 2, current_occupants: 0 }] }), [], 'archived property is hidden')
+  assert.deepStrictEqual(publicAvailabilityModel({ properties: [baseProperty], rooms: [{ id: 'room-1', property_id: 'property-1', status: 'maintenance', capacity: 2, current_occupants: 0 }] }), [], 'maintenance/unavailable room statuses do not count because they are not real public room statuses')
+
+  const activeVisible = publicAvailabilityModel({ properties: [baseProperty], rooms: [{ id: 'room-1', property_id: 'property-1', status: 'vacant', capacity: 2, current_occupants: 0 }] })[0]
+  assert.strictEqual(activeVisible.totalRooms, 1)
+  assert.strictEqual(activeVisible.availableRoomCount, 1)
+  assert.strictEqual(activeVisible.activeTenantCount, 0)
+
+  const full = publicAvailabilityModel({ properties: [baseProperty], rooms: [{ id: 'room-1', property_id: 'property-1', status: 'occupied', capacity: 2, current_occupants: 2 }] })[0]
+  assert.strictEqual(full.availableRoomCount, 0)
+
+  const reserved = publicAvailabilityModel({
+    properties: [baseProperty],
+    rooms: [{ id: 'room-1', property_id: 'property-1', status: 'vacant', capacity: 2, current_occupants: 1 }],
+    prebookings: [{ id: 'booking-1', room_id: 'room-1', status: 'approved', deleted_at: null }],
+  })[0]
+  assert.strictEqual(reserved.availableRoomCount, 0)
+  assert.strictEqual(reserved.reservedRoomCount, 1)
+
+  const convertedApprovedPrebooking = publicAvailabilityModel({
+    properties: [baseProperty],
+    rooms: [{ id: 'room-1', property_id: 'property-1', status: 'vacant', capacity: 3, current_occupants: 2 }],
+    tenants: [{ id: 'tenant-1', user_id: 'user-1', property_id: 'property-1', room_id: 'room-1', status: 'active' }],
+    prebookings: [{ id: 'booking-1', user_id: 'user-1', room_id: 'room-1', status: 'approved', deleted_at: null }],
+  })[0]
+  assert.strictEqual(convertedApprovedPrebooking.availableRoomCount, 1)
+  assert.strictEqual(convertedApprovedPrebooking.reservedRoomCount, 0)
+
+  const rejectedOrCancelled = publicAvailabilityModel({
+    properties: [baseProperty],
+    rooms: [{ id: 'room-1', property_id: 'property-1', status: 'vacant', capacity: 2, current_occupants: 1 }],
+    prebookings: [
+      { id: 'booking-1', room_id: 'room-1', status: 'rejected', deleted_at: null },
+      { id: 'booking-2', room_id: 'room-1', status: 'approved', deleted_at: '2026-07-17T00:00:00Z' },
+    ],
+  })[0]
+  assert.strictEqual(rejectedOrCancelled.availableRoomCount, 1)
+  assert.strictEqual(rejectedOrCancelled.reservedRoomCount, 0)
+
+  const upcoming = publicAvailabilityModel({ properties: [baseProperty], rooms: [{ id: 'room-1', property_id: 'property-1', status: 'occupied', capacity: 1, current_occupants: 1, next_vacate_date: '2026-07-20' }] })[0]
+  assert.strictEqual(upcoming.availableRoomCount, 0)
+  assert.strictEqual(upcoming.upcomingVacateRoomCount, 1)
+
+  const completedVacate = publicAvailabilityModel({ properties: [baseProperty], rooms: [{ id: 'room-1', property_id: 'property-1', status: 'vacant', capacity: 1, current_occupants: 0 }] })[0]
+  assert.strictEqual(completedVacate.availableRoomCount, 1)
+})
+
+test('import approval SQL initializes rent state from explicit paid-through baseline', () => {
+  const migration = source('supabase/migrations/202607170001_import_paid_through_date.sql')
+  assert.match(migration, /calculate_imported_tenant_initial_rent_state/)
+  assert.match(migration, /tenants\.total_paid remains HostelSet-recorded confirmed payment history/)
+  assert.match(migration, /no synthetic payment_history rows/)
+  assert.match(migration, /rent_state\.pending_amount/)
+  assert.match(migration, /rent_state\.total_paid/)
+  assert.match(migration, /rent_state\.rent_status/)
+  assert.doesNotMatch(migration, /current_rent,\s*0,\s*0,\s*'paid'/)
+})
+
+test('import approval SQL marks paid through current due cycle as paid with zero pending', () => {
+  assert.deepStrictEqual(importedTenantInitialRentState({
+    moveInDate: '2026-02-12',
+    paidThroughDate: '2026-07-12',
+    currentRent: 12000,
+    referenceDate: '2026-07-17',
+  }), { pending_amount: 0, total_paid: 0, rent_status: 'paid' })
+})
+
+test('import approval SQL marks previous paid-through cycle overdue as pending current rent', () => {
+  assert.deepStrictEqual(importedTenantInitialRentState({
+    moveInDate: '2026-02-12',
+    paidThroughDate: '2026-06-12',
+    currentRent: 12000,
+    referenceDate: '2026-07-17',
+  }), { pending_amount: 12000, total_paid: 0, rent_status: 'pending' })
+})
+
+test('import approval SQL does not treat a future next cycle as paid history', () => {
+  assert.deepStrictEqual(importedTenantInitialRentState({
+    moveInDate: '2026-02-12',
+    paidThroughDate: '2026-06-12',
+    currentRent: 12000,
+    referenceDate: '2026-07-10',
+  }), { pending_amount: 0, total_paid: 0, rent_status: 'paid' })
+})
+
+test('import approval SQL null paid-through fallback is conservative', () => {
+  assert.deepStrictEqual(importedTenantInitialRentState({
+    moveInDate: '2026-02-12',
+    paidThroughDate: null,
+    currentRent: 12000,
+    referenceDate: '2026-07-17',
+  }), { pending_amount: 12000, total_paid: 0, rent_status: 'pending' })
+})
+
+test('both import approval RPC variants use equivalent rent initialization and preserve side effects', () => {
+  const migration = source('supabase/migrations/202607170001_import_paid_through_date.sql')
+  assert.strictEqual((migration.match(/select \* into rent_state[\s\S]{0,220}calculate_imported_tenant_initial_rent_state/g) || []).length, 2)
+  assert.strictEqual((migration.match(/rent_state\.pending_amount, rent_state\.total_paid, rent_state\.rent_status/g) || []).length, 2)
+  assert.match(migration, /for update/)
+  assert.match(migration, /Selected room is full/)
+  assert.match(migration, /Tenant already exists for this property/)
+  assert.match(migration, /status = 'approved', tenant_id = new_tenant_id/)
+  assert.match(migration, /status = 'approved', user_id = effective_user_id, tenant_id = new_tenant_id/)
+  assert.match(migration, /profile_photo like import_record\.property_id::text \|\| '\/imports\/photos\/%'/)
+  assert.match(migration, /current_occupants = coalesce\(current_occupants, 0\) \+ 1/)
+  assert.match(migration, /return jsonb_build_object\('success', true, 'tenant_id', import_record\.tenant_id, 'status', 'approved'\)/)
+})
+
+test('dashboard tab focus helper prevents hidden panels retaining focus', () => {
+  const helper = source('lib/dashboardFocus.js')
+  for (const dashboard of ['pages/tenant/dashboard.js', 'pages/owner/dashboard.js', 'pages/admin/dashboard.js']) {
+    const dashboardSource = source(dashboard)
+    assert.match(dashboardSource, /dashboardPanelProps/)
+    assert.match(dashboardSource, /prepareDashboardTabFocus/)
+  }
+  assert.match(helper, /currentPanel\.contains\(activeElement\)/)
+  assert.match(helper, /activeElement\.blur\(\)/)
+  assert.match(helper, /focusDashboardPanel\(scope, nextTab\)/)
+  assert.match(helper, /'aria-hidden': active \? 'false' : 'true'/)
+  assert.match(helper, /inert: active \? undefined : ''/)
+  assert.match(helper, /tabIndex: active \? -1 : undefined/)
 })
 
 test('new non-imported tenant first payment still allocates to first cycle', () => {
@@ -673,7 +994,7 @@ test('switching main owner mobile tabs never renders an empty content container'
   assert.match(ownerDashboard, /data-owner-mobile-mounted-tabs/)
   assert.match(ownerDashboard, /data-owner-mobile-tab=\{tab\}/)
   assert.match(ownerDashboard, /<OwnerMobileTabPanel key=\{tab\} tab=\{tab\} active=\{activeTab === tab\}>/)
-  assert.match(ownerDashboard, /hidden=\{!active\}/)
+  assert.match(ownerDashboard, /dashboardPanelProps\('owner', tab, active\)/)
   assert.match(ownerDashboard, /PERSISTENT_OWNER_MOBILE_TABS\.includes\(activeTab\)/)
 })
 

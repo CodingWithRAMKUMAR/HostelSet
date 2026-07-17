@@ -6,7 +6,46 @@ import BrandLogo from '../../components/BrandLogo'
 import { supabase } from '../../lib/supabase'
 import { BLOOD_GROUPS } from '../../lib/bloodGroups'
 
-const initial = { fullName: '', phone: '', email: '', bloodGroup: '', roomId: '', currentRent: '', moveInDate: '', emergencyContact: '', occupation: '', notes: '' }
+const initial = { fullName: '', phone: '', email: '', bloodGroup: '', roomId: '', currentRent: '', moveInDate: '', paidThroughDate: '', emergencyContact: '', occupation: '', notes: '' }
+
+function isValidDateString(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false
+  const [year, month, day] = value.split('-').map(Number)
+  const parsed = new Date(Date.UTC(year, month - 1, day))
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day
+}
+
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function isRentAnchorDate(moveInDate, paidThroughDate) {
+  if (!isValidDateString(moveInDate) || !isValidDateString(paidThroughDate)) return false
+  const [startYear, startMonth, startDay] = moveInDate.split('-').map(Number)
+  const [targetYear, targetMonth, targetDay] = paidThroughDate.split('-').map(Number)
+  let offset = 0
+  while (offset < 600) {
+    const index = startYear * 12 + startMonth - 1 + offset
+    const year = Math.floor(index / 12)
+    const monthIndex = index % 12
+    const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
+    const dueDay = Math.min(startDay, lastDay)
+    if (year === targetYear && monthIndex + 1 === targetMonth && dueDay === targetDay) return true
+    if (year > targetYear || (year === targetYear && monthIndex + 1 > targetMonth)) return false
+    offset += 1
+  }
+  return false
+}
+
+function validatePaidThrough(moveInDate, paidThroughDate) {
+  if (!paidThroughDate) return 'Please select the last paid rent due date.'
+  if (!isValidDateString(paidThroughDate)) return 'Please select a valid last paid rent due date.'
+  if (!isValidDateString(moveInDate)) return 'Please select a valid hostel joined date first.'
+  if (paidThroughDate < moveInDate) return 'Last paid rent due date cannot be before the hostel joined date.'
+  if (paidThroughDate > todayIsoDate()) return 'Last paid rent due date cannot be in the future.'
+  if (!isRentAnchorDate(moveInDate, paidThroughDate)) return 'Last paid rent due date must match the tenant rent due-day cycle.'
+  return ''
+}
 
 async function jsonRequest(url, options) {
   const response = await fetch(url, options)
@@ -59,6 +98,8 @@ export default function ExistingTenantImportPage() {
     event.preventDefault()
     if (submitting) return
     if (!form.bloodGroup) { setError('Please select a blood group.'); return }
+    const paidThroughError = validatePaidThrough(form.moveInDate, form.paidThroughDate)
+    if (paidThroughError) { setError(paidThroughError); return }
     setSubmitting(true); setError(''); setProgress('Validating details…')
     try {
       setProgress('Uploading documents…')
@@ -73,6 +114,7 @@ export default function ExistingTenantImportPage() {
         room_id: form.roomId,
         current_rent_amount: form.currentRent,
         move_in_date: form.moveInDate,
+        paid_through_date: form.paidThroughDate,
         emergency_contact: form.emergencyContact,
         occupation: form.occupation,
         notes: form.notes,
@@ -94,7 +136,22 @@ export default function ExistingTenantImportPage() {
           <h1 className="text-2xl font-bold text-slate-900">Existing Tenant Import</h1>
           <p className="mt-2 text-slate-600">Submit your current tenancy details for <strong>{details.property.name}</strong>{details.property.city ? `, ${details.property.city}` : ''}. The owner will review them before activating your tenant account.</p>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            {[['fullName','Full name','text'],['phone','Phone','tel'],['email','Email','email'],['currentRent','Current rent amount','number'],['moveInDate','Move-in date','date'],['emergencyContact','Emergency contact','tel']].map(([name,label,type]) => <label key={name} className="text-sm font-medium text-slate-700">{label}<input required name={name} type={type} min={type === 'number' ? 1 : undefined} value={form[name]} onChange={change} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /></label>)}
+            {[['fullName','Full name','text'],['phone','Phone','tel'],['email','Email','email'],['currentRent','Current rent amount','number'],['moveInDate','Hostel joined date','date'],['emergencyContact','Emergency contact','tel']].map(([name,label,type]) => <label key={name} className="text-sm font-medium text-slate-700">{label}<input required name={name} type={type} min={type === 'number' ? 1 : undefined} value={form[name]} onChange={change} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /></label>)}
+            <label className="text-sm font-medium text-slate-700">Last paid rent due date
+              <input required name="paidThroughDate" type="date" min={form.moveInDate || undefined} max={todayIsoDate()} value={form.paidThroughDate} onChange={change} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" />
+              <span className="mt-1 block text-xs text-slate-500">
+                Select the due date of the latest monthly rent you have already paid.
+                <br />
+                <br />
+                Example:
+                <br />
+                <br />
+                If your rent is due on the 12th every month and you have already paid the July rent, select 12 Jul 2026.
+                <br />
+                <br />
+                Your next rent will then become due on 12 Aug 2026.
+              </span>
+            </label>
             <label className="text-sm font-medium text-slate-700">Room number<select required name="roomId" value={form.roomId} onChange={change} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5"><option value="">Select room</option>{details.rooms.map(room => <option key={room.id} value={room.id}>Room {room.room_number}</option>)}</select></label>
             <label className="text-sm font-medium text-slate-700">Blood group *<select required name="bloodGroup" value={form.bloodGroup} onChange={change} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5"><option value="">Select blood group</option>{BLOOD_GROUPS.map(group => <option key={group} value={group}>{group}</option>)}</select></label>
             <label className="text-sm font-medium text-slate-700">Occupation<select required name="occupation" value={form.occupation} onChange={change} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5"><option value="">Select</option><option value="student">Student</option><option value="employee">Employee</option><option value="other">Other</option></select></label>
