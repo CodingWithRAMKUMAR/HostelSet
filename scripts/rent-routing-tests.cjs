@@ -3,9 +3,12 @@ const fs = require('fs')
 const path = require('path')
 const {
   calculateCanonicalRentDue,
+  currentRentDueDateFromMoveIn,
   formatRentDueDetail,
   formatRentDueLabel,
   isConfirmedRent,
+  nextRentDueDateFromMoveIn,
+  previousRentDueDateFromMoveIn,
 } = require('../lib/rentDue')
 const {
   classifyTenantRent,
@@ -49,28 +52,21 @@ const localDate = (date) => [
 const source = (relativePath) => fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8')
 const asyncTests = []
 
-function importedTenantInitialRentState({ moveInDate, paidThroughDate, currentRent, referenceDate }) {
+function importedTenantInitialRentState({ moveInDate, paidThroughDate, currentRent, referenceDate, currentRentCyclePaid = null }) {
   const rent = Math.max(Number(currentRent || 0), 0)
-  const moveIn = new Date(`${moveInDate}T00:00:00`)
-  const reference = new Date(`${referenceDate}T00:00:00`)
-  if (!moveInDate || Number.isNaN(moveIn.getTime()) || rent <= 0) return { pending_amount: 0, total_paid: 0, rent_status: 'paid' }
-  if (!paidThroughDate) {
-    return moveIn <= reference
-      ? { pending_amount: rent, total_paid: 0, rent_status: 'pending' }
-      : { pending_amount: 0, total_paid: 0, rent_status: 'paid' }
+  const currentDueDate = currentRentDueDateFromMoveIn(moveInDate, referenceDate)
+  if (!moveInDate || !currentDueDate || rent <= 0) return { pending_amount: 0, total_paid: 0, rent_status: 'paid' }
+  let cyclePaid = currentRentCyclePaid
+  if (cyclePaid === null) cyclePaid = Boolean(paidThroughDate && paidThroughDate >= currentDueDate)
+  const resolvedPaidThroughDate = cyclePaid ? currentDueDate : previousRentDueDateFromMoveIn(moveInDate, currentDueDate)
+  return {
+    pending_amount: cyclePaid ? 0 : rent,
+    total_paid: 0,
+    rent_status: cyclePaid ? 'paid' : 'pending',
+    paid_through_date: resolvedPaidThroughDate,
+    current_rent_due_date: currentDueDate,
+    current_rent_cycle_paid: cyclePaid,
   }
-  const paidThrough = new Date(`${paidThroughDate}T00:00:00`)
-  let nextDue = new Date(moveIn)
-  while (nextDue <= paidThrough) {
-    const monthIndex = nextDue.getFullYear() * 12 + nextDue.getMonth() + 1
-    const year = Math.floor(monthIndex / 12)
-    const month = monthIndex % 12
-    const lastDay = new Date(year, month + 1, 0).getDate()
-    nextDue = new Date(year, month, Math.min(moveIn.getDate(), lastDay))
-  }
-  return nextDue <= reference
-    ? { pending_amount: rent, total_paid: 0, rent_status: 'pending' }
-    : { pending_amount: 0, total_paid: 0, rent_status: 'paid' }
 }
 
 function publicAvailabilityModel({ properties = [], rooms = [], tenants = [], prebookings = [] }) {
@@ -533,26 +529,35 @@ test('tenant mobile UI uses next-rent wording instead of ambiguous paid-date wor
   assert.doesNotMatch(tenantMobileDashboard, /\$\{label\}.*formatDate\(rentStatus\.dueDate\)/)
 })
 
-test('import flow records and displays last paid rent due date explicitly', () => {
+test('import flow records and displays current rent cycle answer explicitly', () => {
   const importPage = source('pages/import/[token].js')
   const importApi = source('pages/api/import/submit.js')
   const ownerImportList = source('components/owner/ExistingTenantImportList.js')
   const adminConsole = source('components/admin/EnterpriseAdminConsole.js')
-  const migration = source('supabase/migrations/202607170001_import_paid_through_date.sql')
+  const migration = source('supabase/migrations/202607170003_import_current_rent_answer.sql')
+  const appliedMigration = source('supabase/migrations/202607170001_import_paid_through_date.sql')
   assert.match(importPage, /Hostel joined date/)
-  assert.match(importPage, /Last paid rent due date/)
-  assert.match(importPage, /Select the due date of the latest monthly rent you have already paid/)
-  assert.match(importPage, /paid_through_date: form\.paidThroughDate/)
-  assert.match(importPage, /Last paid rent due date cannot be before the hostel joined date/)
-  assert.match(importPage, /Last paid rent due date cannot be in the future/)
-  assert.match(importApi, /paidThroughDate < moveInDate/)
-  assert.match(importApi, /paidThroughDate > todayIsoDate\(\)/)
+  assert.match(importPage, /Has the rent due on/)
+  assert.match(importPage, /Yes, paid/)
+  assert.match(importPage, /No, not paid/)
+  assert.match(importPage, /current_rent_cycle_paid: form\.currentCyclePaid === 'yes'/)
+  assert.match(importPage, /paid_through_date: derivedPaidThroughDate/)
+  assert.doesNotMatch(importPage, /name="paidThroughDate"/)
+  assert.match(importApi, /currentRentDueDateFromMoveIn\(moveInDate\)/)
+  assert.match(importApi, /previousRentDueDateFromMoveIn\(moveInDate, currentRentDueDate\)/)
+  assert.match(importApi, /paidThroughDate > currentRentDueDate/)
   assert.match(importApi, /paid_through_date: paidThroughDate/)
   assert.match(ownerImportList, /Hostel joined/)
+  assert.match(ownerImportList, /Current rent due date:/)
+  assert.match(ownerImportList, /Tenant answer:/)
+  assert.match(ownerImportList, /onUpdateRentAnswer/)
   assert.match(ownerImportList, /Last paid rent due date:/)
   assert.match(adminConsole, /Last paid rent due date/)
-  assert.match(migration, /add column if not exists paid_through_date date/)
-  assert.match(migration, /import_record\.paid_through_date/)
+  assert.match(adminConsole, /Tenant answer/)
+  assert.match(adminConsole, /update_existing_tenant_import_rent_answer/)
+  assert.match(appliedMigration, /add column if not exists paid_through_date date/)
+  assert.match(migration, /add column if not exists current_rent_due_date date/)
+  assert.match(migration, /add column if not exists current_rent_cycle_paid boolean/)
 })
 
 test('admin enterprise console subscribes to all displayed lifecycle queues', () => {
@@ -657,42 +662,83 @@ test('public availability model covers visibility, reservations, and upcoming va
   assert.strictEqual(completedVacate.availableRoomCount, 1)
 })
 
-test('import approval SQL initializes rent state from explicit paid-through baseline', () => {
-  const migration = source('supabase/migrations/202607170001_import_paid_through_date.sql')
+test('import approval SQL initializes rent state from explicit current-cycle answer', () => {
+  const migration = source('supabase/migrations/202607170003_import_current_rent_answer.sql')
   assert.match(migration, /calculate_imported_tenant_initial_rent_state/)
   assert.match(migration, /tenants\.total_paid remains HostelSet-recorded confirmed payment history/)
   assert.match(migration, /no synthetic payment_history rows/)
   assert.match(migration, /rent_state\.pending_amount/)
   assert.match(migration, /rent_state\.total_paid/)
   assert.match(migration, /rent_state\.rent_status/)
+  assert.match(migration, /current_rent_cycle_paid/)
+  assert.match(migration, /update_existing_tenant_import_rent_answer/)
   assert.doesNotMatch(migration, /current_rent,\s*0,\s*0,\s*'paid'/)
 })
 
-test('import approval SQL marks paid through current due cycle as paid with zero pending', () => {
-  assert.deepStrictEqual(importedTenantInitialRentState({
+test('import approval marks current cycle paid with zero pending and August next due', () => {
+  const state = importedTenantInitialRentState({
     moveInDate: '2026-02-12',
-    paidThroughDate: '2026-07-12',
     currentRent: 12000,
     referenceDate: '2026-07-17',
-  }), { pending_amount: 0, total_paid: 0, rent_status: 'paid' })
-})
-
-test('import approval SQL marks previous paid-through cycle overdue as pending current rent', () => {
+    currentRentCyclePaid: true,
+  })
   assert.deepStrictEqual(importedTenantInitialRentState({
     moveInDate: '2026-02-12',
-    paidThroughDate: '2026-06-12',
     currentRent: 12000,
     referenceDate: '2026-07-17',
-  }), { pending_amount: 12000, total_paid: 0, rent_status: 'pending' })
+    currentRentCyclePaid: true,
+  }), {
+    pending_amount: 0,
+    total_paid: 0,
+    rent_status: 'paid',
+    paid_through_date: '2026-07-12',
+    current_rent_due_date: '2026-07-12',
+    current_rent_cycle_paid: true,
+  })
+  assert.strictEqual(nextRentDueDateFromMoveIn('2026-02-12', state.current_rent_due_date), '2026-08-12')
 })
 
-test('import approval SQL does not treat a future next cycle as paid history', () => {
-  assert.deepStrictEqual(importedTenantInitialRentState({
+test('import approval marks current cycle unpaid as pending and overdue by five days', () => {
+  const state = importedTenantInitialRentState({
     moveInDate: '2026-02-12',
-    paidThroughDate: '2026-06-12',
     currentRent: 12000,
-    referenceDate: '2026-07-10',
-  }), { pending_amount: 0, total_paid: 0, rent_status: 'paid' })
+    referenceDate: '2026-07-17',
+    currentRentCyclePaid: false,
+  })
+  assert.deepStrictEqual(state, {
+    pending_amount: 12000,
+    total_paid: 0,
+    rent_status: 'pending',
+    paid_through_date: '2026-06-12',
+    current_rent_due_date: '2026-07-12',
+    current_rent_cycle_paid: false,
+  })
+  const result = calculateCanonicalRentDue({
+    id: 'imported-feb',
+    status: 'active',
+    move_in_date: '2026-02-12',
+    paid_through_date: state.paid_through_date,
+    rent_status: state.rent_status,
+    pending_amount: state.pending_amount,
+    rent_amount: 12000,
+    total_paid: 0,
+  }, [], new Date(2026, 6, 17))
+  assert.strictEqual(result.status, 'overdue')
+  assert.strictEqual(result.daysUntilDue, -5)
+})
+
+test('import approval does not produce future or advance paid state', () => {
+  const state = importedTenantInitialRentState({
+    moveInDate: '2026-02-12',
+    currentRent: 12000,
+    referenceDate: '2026-07-17',
+    currentRentCyclePaid: true,
+  })
+  assert.strictEqual(state.paid_through_date, state.current_rent_due_date)
+  assert.notStrictEqual(state.paid_through_date, '2026-08-12')
+  assert.strictEqual(nextRentDueDateFromMoveIn('2026-02-12', state.current_rent_due_date), '2026-08-12')
+  const migration = source('supabase/migrations/202607170003_import_current_rent_answer.sql')
+  assert.match(migration, /paid_through_date is null or current_rent_due_date is null or paid_through_date <= current_rent_due_date/)
 })
 
 test('import approval SQL null paid-through fallback is conservative', () => {
@@ -701,18 +747,27 @@ test('import approval SQL null paid-through fallback is conservative', () => {
     paidThroughDate: null,
     currentRent: 12000,
     referenceDate: '2026-07-17',
-  }), { pending_amount: 12000, total_paid: 0, rent_status: 'pending' })
+  }), {
+    pending_amount: 12000,
+    total_paid: 0,
+    rent_status: 'pending',
+    paid_through_date: '2026-06-12',
+    current_rent_due_date: '2026-07-12',
+    current_rent_cycle_paid: false,
+  })
 })
 
 test('both import approval RPC variants use equivalent rent initialization and preserve side effects', () => {
-  const migration = source('supabase/migrations/202607170001_import_paid_through_date.sql')
-  assert.strictEqual((migration.match(/select \* into rent_state[\s\S]{0,220}calculate_imported_tenant_initial_rent_state/g) || []).length, 2)
-  assert.strictEqual((migration.match(/rent_state\.pending_amount, rent_state\.total_paid, rent_state\.rent_status/g) || []).length, 2)
+  const migration = source('supabase/migrations/202607170003_import_current_rent_answer.sql')
+  assert.strictEqual((migration.match(/from public\.calculate_imported_tenant_initial_rent_state/g) || []).length, 2)
+  assert.ok((migration.match(/rent_state\.pending_amount/g) || []).length >= 2)
+  assert.ok((migration.match(/rent_state\.total_paid/g) || []).length >= 2)
+  assert.ok((migration.match(/rent_state\.rent_status/g) || []).length >= 2)
   assert.match(migration, /for update/)
   assert.match(migration, /Selected room is full/)
   assert.match(migration, /Tenant already exists for this property/)
-  assert.match(migration, /status = 'approved', tenant_id = new_tenant_id/)
-  assert.match(migration, /status = 'approved', user_id = effective_user_id, tenant_id = new_tenant_id/)
+  assert.match(migration, /status = 'approved'[\s\S]*tenant_id = new_tenant_id/)
+  assert.match(migration, /status = 'approved'[\s\S]*user_id = effective_user_id[\s\S]*tenant_id = new_tenant_id/)
   assert.match(migration, /profile_photo like import_record\.property_id::text \|\| '\/imports\/photos\/%'/)
   assert.match(migration, /current_occupants = coalesce\(current_occupants, 0\) \+ 1/)
   assert.match(migration, /return jsonb_build_object\('success', true, 'tenant_id', import_record\.tenant_id, 'status', 'approved'\)/)

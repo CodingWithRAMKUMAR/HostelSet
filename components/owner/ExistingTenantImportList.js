@@ -2,10 +2,19 @@ import { useState } from 'react'
 import { displayBloodGroup } from '../../lib/bloodGroups'
 
 function formatImportDate(value) {
-  return value ? new Date(value).toLocaleDateString('en-IN') : 'Not provided'
+  if (!value) return 'Not provided'
+  const [year, month, day] = String(value).split('-').map(Number)
+  if (!year || !month || !day) return value
+  return new Date(year, month - 1, day).toLocaleDateString('en-IN')
 }
 
-export default function ExistingTenantImportList({ imports, loading, total, page, pageSize, processingId, onApprove, onReject, onPage, onViewDocument = () => {} }) {
+function rentAnswerLabel(value) {
+  if (value === true) return 'Paid'
+  if (value === false) return 'Not paid'
+  return 'Not answered'
+}
+
+export default function ExistingTenantImportList({ imports, loading, total, page, pageSize, processingId, onApprove, onReject, onUpdateRentAnswer = () => {}, onPage, onViewDocument = () => {} }) {
   const [openingKey, setOpeningKey] = useState('')
   const openDocument = async (item, documentType) => {
     const key = `${item.id}:${documentType}`
@@ -25,10 +34,19 @@ export default function ExistingTenantImportList({ imports, loading, total, page
         <div>
           <h3 className="font-semibold text-slate-900">{item.full_name}</h3>
           <p className="text-sm text-slate-600">Room {item.rooms?.room_number || item.room_number} - Rs {Number(item.current_rent).toLocaleString('en-IN')} - {item.phone} - {item.email}</p>
-          <p className="mt-1 text-xs text-slate-500">Hostel joined {formatImportDate(item.move_in_date)} - Last paid rent due date: {formatImportDate(item.paid_through_date)} - {item.occupation} - Blood group: {displayBloodGroup(item.blood_group)} - Emergency: {item.emergency_contact}</p>
+          <p className="mt-1 text-xs text-slate-500">Hostel joined date: {formatImportDate(item.move_in_date)} - Current rent due date: {formatImportDate(item.current_rent_due_date)} - Tenant answer: {rentAnswerLabel(item.current_rent_cycle_paid)} - Last paid rent due date: {formatImportDate(item.paid_through_date)} - {item.occupation} - Blood group: {displayBloodGroup(item.blood_group)} - Emergency: {item.emergency_contact}</p>
         </div>
         <span className="h-fit rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">{item.status.replaceAll('_', ' ')}</span>
       </div>
+      {item.status === 'pending_owner_review' && (
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Correct current cycle answer</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" disabled={Boolean(processingId) || item.current_rent_cycle_paid === true} onClick={() => onUpdateRentAnswer(item.id, true)} className={`rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50 ${item.current_rent_cycle_paid === true ? 'bg-emerald-600 text-white' : 'border border-emerald-200 bg-white text-emerald-700'}`}>Yes, paid</button>
+            <button type="button" disabled={Boolean(processingId) || item.current_rent_cycle_paid === false} onClick={() => onUpdateRentAnswer(item.id, false)} className={`rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50 ${item.current_rent_cycle_paid === false ? 'bg-amber-600 text-white' : 'border border-amber-200 bg-white text-amber-700'}`}>No, not paid</button>
+          </div>
+        </div>
+      )}
       {item.notes && <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{item.notes}</p>}
       <div className="mt-3 flex flex-wrap gap-2">
         {item.profile_photo && <button type="button" disabled={Boolean(openingKey)} onClick={() => openDocument(item, 'photo')} className="rounded-lg border px-3 py-1.5 text-sm text-indigo-700 disabled:opacity-50">{openingKey === `${item.id}:photo` ? 'Opening document...' : 'View photo'}</button>}

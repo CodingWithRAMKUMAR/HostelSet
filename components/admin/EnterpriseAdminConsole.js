@@ -90,6 +90,7 @@ export default function EnterpriseAdminConsole() {
   const [selectedOwner, setSelectedOwner] = useState(null)
   const [ownerProfile, setOwnerProfile] = useState(null)
   const [importPage, setImportPage] = useState(0)
+  const [importRentProcessingId, setImportRentProcessingId] = useState('')
   const [screenshotUrl, setScreenshotUrl] = useState('')
   const [loadWarnings, setLoadWarnings] = useState([])
 
@@ -177,6 +178,21 @@ export default function EnterpriseAdminConsole() {
   }), [data.imports, filters.importStatus, query])
 
   const pagedImports = filteredImports.slice(importPage * PAGE_SIZE, importPage * PAGE_SIZE + PAGE_SIZE)
+
+  const updateImportRentAnswer = async (importId, currentCyclePaid) => {
+    if (importRentProcessingId) return
+    setImportRentProcessingId(importId)
+    try {
+      const { error } = await supabase.rpc('update_existing_tenant_import_rent_answer', { p_import_id: importId, p_current_rent_cycle_paid: currentCyclePaid })
+      if (error) throw error
+      toast.success('Import rent answer updated')
+      await load(true)
+    } catch (error) {
+      toast.error(error.message)
+    } finally {
+      setImportRentProcessingId('')
+    }
+  }
 
   const stats = useMemo(() => {
     const capacity = data.properties.flatMap(property => property.rooms || []).reduce((sum, room) => sum + Number(room.capacity || 0), 0)
@@ -460,7 +476,7 @@ export default function EnterpriseAdminConsole() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Tenant</th><th className="p-3">Property</th><th className="p-3">Room</th><th className="p-3">Rent</th><th className="p-3">Last paid rent due date</th><th className="p-3">Status</th></tr></thead>
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Tenant</th><th className="p-3">Property</th><th className="p-3">Room</th><th className="p-3">Rent</th><th className="p-3">Rent baseline</th><th className="p-3">Tenant answer</th><th className="p-3">Status</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {pagedImports.map(item => (
                   <tr key={item.id}>
@@ -468,11 +484,27 @@ export default function EnterpriseAdminConsole() {
                     <td className="p-3">{item.properties?.name || 'N/A'}</td>
                     <td className="p-3">{item.rooms?.room_number || item.room_number}</td>
                     <td className="p-3">{formatCurrency(item.current_rent)}</td>
-                    <td className="p-3">{formatDate(item.paid_through_date)}</td>
+                    <td className="p-3">
+                      <p className="text-xs text-slate-500">Hostel joined date</p>
+                      <p>{formatDate(item.move_in_date)}</p>
+                      <p className="mt-2 text-xs text-slate-500">Current rent due date</p>
+                      <p>{formatDate(item.current_rent_due_date)}</p>
+                      <p className="mt-2 text-xs text-slate-500">Last paid rent due date</p>
+                      <p>{formatDate(item.paid_through_date)}</p>
+                    </td>
+                    <td className="p-3">
+                      <p className="font-semibold">{item.current_rent_cycle_paid === true ? 'Paid' : item.current_rent_cycle_paid === false ? 'Not paid' : 'Not answered'}</p>
+                      {item.status === 'pending_owner_review' && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          <button disabled={Boolean(importRentProcessingId) || item.current_rent_cycle_paid === true} onClick={() => updateImportRentAnswer(item.id, true)} className="rounded border border-emerald-200 px-2 py-1 text-xs font-semibold text-emerald-700 disabled:opacity-50">Yes, paid</button>
+                          <button disabled={Boolean(importRentProcessingId) || item.current_rent_cycle_paid === false} onClick={() => updateImportRentAnswer(item.id, false)} className="rounded border border-amber-200 px-2 py-1 text-xs font-semibold text-amber-700 disabled:opacity-50">No, not paid</button>
+                        </div>
+                      )}
+                    </td>
                     <td className="p-3">{statusPill(item.status)}</td>
                   </tr>
                 ))}
-                {!pagedImports.length && <tr><td colSpan={6} className="p-6 text-center text-slate-500">No imports match the current filters.</td></tr>}
+                {!pagedImports.length && <tr><td colSpan={7} className="p-6 text-center text-slate-500">No imports match the current filters.</td></tr>}
               </tbody>
             </table>
           </div>

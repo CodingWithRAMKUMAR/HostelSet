@@ -89,6 +89,17 @@ export function useExistingTenantImports(property, listEnabled = false, onApprov
     } catch (error) { toast.error(error.message) }
     finally { setProcessingId(null) }
   }
+  const updateRentAnswer = async (id, currentCyclePaid) => {
+    if (processingId) return
+    setProcessingId(id)
+    try {
+      const { error } = await supabase.rpc('update_existing_tenant_import_rent_answer', { p_import_id: id, p_current_rent_cycle_paid: currentCyclePaid })
+      if (error) throw error
+      toast.success('Import rent answer updated')
+      await refresh()
+    } catch (error) { toast.error(error.message) }
+    finally { setProcessingId(null) }
+  }
 
   useEffect(() => { loadSummary().catch(error => toast.error(error.message)) }, [loadSummary])
   useEffect(() => { setImports([]); setTotal(0); setPage(0); if (listEnabled) loadImports(0) }, [property?.id, listEnabled])
@@ -100,5 +111,5 @@ export function useExistingTenantImports(property, listEnabled = false, onApprov
     return () => { clearTimeout(timer.current); supabase.removeChannel(channel) }
   }, [property?.id, refresh])
 
-  return { link, linkBusy, imports, pendingCount, total, page, pageSize: PAGE_SIZE, loading, processingId, rotateLink, setLinkEnabled, approve, reject, loadPage: loadImports }
+  return { link, linkBusy, imports, pendingCount, total, page, pageSize: PAGE_SIZE, loading, processingId, rotateLink, setLinkEnabled, approve, reject, updateRentAnswer, loadPage: loadImports }
 }
