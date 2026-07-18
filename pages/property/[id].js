@@ -779,7 +779,12 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const rentText = minRent == null ? 'Contact the property for current rent' : minRent === maxRent ? `${formatCurrency(minRent)} per month` : `${formatCurrency(minRent)}–${formatCurrency(maxRent)} per month`
   const roomTypes = [...new Set(rooms.map(room => getSharingDetails(room.sharing_type)?.label).filter(Boolean))]
   const availableSlots = rooms.reduce((total, room) => {
-    return total + Math.max(0, Number(room.capacity || 0) - Number(room.current_occupants || 0))
+    const physicalVacancies = Math.max(
+      0,
+      Number(room.capacity || 0) - Number(room.current_occupants || 0),
+    )
+    const reservedVacancies = Number(room.reserved_prebooking_count || 0)
+    return total + Math.max(0, physicalVacancies - reservedVacancies)
   }, 0)
   const genderLabel = property.property_type === 'boys' ? 'Boys' : property.property_type === 'girls' ? 'Girls' : 'Co-living'
   const locality = property.address || city
@@ -811,7 +816,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       name: `${getSharingDetails(room.sharing_type)?.label || 'Room'} at ${property.name}`,
       price: Number(room.monthly_rent),
       priceCurrency: 'INR',
-      availability: Number(room.current_occupants || 0) < Number(room.capacity || 0) ? 'https://schema.org/InStock' : 'https://schema.org/SoldOut',
+      availability: Number(room.current_occupants || 0) + Number(room.reserved_prebooking_count || 0) < Number(room.capacity || 0) ? 'https://schema.org/InStock' : 'https://schema.org/SoldOut',
       url: canonicalUrl,
     })),
     subjectOf: property.photos?.map((photo, index) => ({ '@type': 'ImageObject', contentUrl: (() => { try { return new URL(photo, SITE_URL).toString() } catch { return absoluteImage } })(), caption: `${imageAlt} - photo ${index + 1}` })),
@@ -956,21 +961,21 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                   const sharing = getSharingDetails(room.sharing_type)
                   const capacity = Number(room.capacity || 0)
                   const occupants = Number(room.current_occupants || 0)
-                  const isAvailable = occupants < capacity
-                  const availableSlots = Math.max(0, capacity - occupants)
+                  const physicalAvailableSlots = Math.max(0, capacity - occupants)
                   const roomVacate = vacateInfo[room.id]
                   const activeReservations = Number(reservationCounts[room.id] || 0)
-                  const reservationCapacityReached = capacity > 0 && activeReservations >= capacity
-                  const isReserved = reservationCapacityReached && !isAvailable
-                  const isPrebookable = capacity > 0 && !reservationCapacityReached
+                  const availableSlots = Math.max(0, physicalAvailableSlots - activeReservations)
+                  const isAvailable = availableSlots > 0
+                  const isReserved = activeReservations > 0 && availableSlots === 0
+                  const isPrebookable = capacity > 0 && occupants >= capacity && Boolean(roomVacate) && !isReserved
 
                   let badgeText = ''
                   let badgeColor = ''
-                  if (reservationCapacityReached) {
-                    badgeText = 'Future vacancies fully reserved'
+                  if (isReserved) {
+                    badgeText = 'Reserved'
                     badgeColor = 'bg-purple-100 text-purple-700'
                   } else if (activeReservations > 0) {
-                    badgeText = 'Partially reserved'
+                    badgeText = `${availableSlots} unreserved bed${availableSlots === 1 ? '' : 's'} available`
                     badgeColor = 'bg-violet-100 text-violet-700'
                   } else if (isAvailable) {
                     badgeText = `${availableSlots} bed${availableSlots === 1 ? '' : 's'} available now`
@@ -1017,9 +1022,13 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                           <div className="w-full bg-gray-200 rounded-full h-2">
                             <div className="bg-slate-600 h-2 rounded-full transition-all duration-150" style={{ width: `${capacity ? (occupants / capacity) * 100 : 0}%` }} />
                           </div>
-                          <p className="mt-2 text-xs font-semibold text-slate-500">{activeReservations} of {capacity || 'N/A'} future reservation slots taken</p>
+                          <p className="mt-2 text-xs font-semibold text-slate-500">
+                            {activeReservations > 0
+                              ? `${activeReservations} active reservation${activeReservations === 1 ? '' : 's'}`
+                              : 'No active reservations'}
+                          </p>
                         </div>
-                        {roomVacate && !reservationCapacityReached && (
+                        {roomVacate && isPrebookable && (
                           <div className="mt-2 mb-2">
                             <span className="inline-block bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full">
                               {roomVacate.daysLeft > 1 ? `Vacates in ${roomVacate.daysLeft} days` : roomVacate.daysLeft === 1 ? 'Vacates tomorrow' : 'Ready to vacate'}
