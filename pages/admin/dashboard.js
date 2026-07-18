@@ -23,6 +23,7 @@ import { useAdminNotices } from '../../hooks/useAdminNotices';
 import { useAdminMembershipManager } from '../../hooks/useAdminMembershipManager';
 import { useAdminModals } from '../../hooks/useAdminModals';
 import { useAdminAnalytics } from '../../hooks/useAdminAnalytics';
+import { useAdminOverviewSnapshot } from '../../hooks/useAdminOverviewSnapshot';
 import { Skeleton, TableSkeletonRows } from '../../components/ui/Skeleton';
 import { useModalAccessibility } from '../../hooks/useModalAccessibility';
 import AdminGlobalSearch from '../../components/admin/AdminGlobalSearch';
@@ -50,15 +51,15 @@ const MembershipManager = dynamic(() => import('../../components/admin/Membershi
 const EnterpriseAdminConsole = dynamic(() => import('../../components/admin/EnterpriseAdminConsole'), { ssr: false });
 const AdminAnalytics = dynamic(() => import('../../components/analytics/AdminAnalytics'));
 
-const ADMIN_VIEW_KEYS = new Set(['overview', 'analytics', 'global-search', 'properties', 'tenants', 'owners', 'users', 'payments', 'prebookings', 'applications', 'approvedapps', 'complaints', 'vacate', 'roomchange', 'notices', 'membership'])
+const ADMIN_VIEW_KEYS = new Set(['overview', 'enterprise', 'analytics', 'global-search', 'properties', 'tenants', 'owners', 'users', 'payments', 'prebookings', 'applications', 'approvedapps', 'complaints', 'vacate', 'roomchange', 'notices', 'membership'])
 const ADMIN_PERSISTENT_TABS = ['overview', 'membership', 'properties', 'owners', 'tenants', 'payments', 'applications', 'complaints', 'vacate', 'roomchange', 'notices', 'analytics', 'global-search', 'users', 'prebookings', 'approvedapps']
-const ADMIN_OVERVIEW_QUEUE_TABS = new Set(['membership', 'applications', 'complaints', 'vacate', 'roomchange', 'notices', 'payments', 'prebookings'])
+const ADMIN_OVERVIEW_QUEUE_TABS = new Set()
 const ADMIN_VIEW_ALIASES = {
   search: 'global-search',
   'room-change': 'roomchange',
   roomChange: 'roomchange',
   applicationsApproved: 'approvedapps',
-  imports: 'overview',
+  imports: 'enterprise',
 }
 
 function markAdminViewPerf(label, detail = '') {
@@ -116,7 +117,7 @@ const displayDateTime = value => {
   return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-function AdminActionCenter({ cards, membershipRequests, applications, complaints, vacateRequests, roomChanges, notices, paymentIssues, onOpen, onReviewMembership, processingId }) {
+function AdminActionCenter({ cards, membershipRequests, applications, complaints, vacateRequests, roomChanges, notices, noticeCount, paymentIssueCount, onOpen, onReviewMembership, processingId }) {
   const primaryMembership = membershipRequests[0]
   const recentQueues = [
     ...membershipRequests.slice(0, 2).map(item => ({
@@ -226,16 +227,135 @@ function AdminActionCenter({ cards, membershipRequests, applications, complaints
         <div className="grid gap-2">
           <button type="button" onClick={() => onOpen('payments')} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-left">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Payment issues</p>
-            <p className="mt-1 text-lg font-black text-slate-900">{paymentIssues.length}</p>
+            <p className="mt-1 text-lg font-black text-slate-900">{paymentIssueCount}</p>
           </button>
           <button type="button" onClick={() => onOpen('notices')} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-left">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Recent notices</p>
-            <p className="mt-1 text-lg font-black text-slate-900">{notices.length}</p>
+            <p className="mt-1 text-lg font-black text-slate-900">{noticeCount}</p>
             <p className="mt-1 truncate text-xs text-slate-500">{notices[0]?.title || 'No global notices posted'}</p>
           </button>
         </div>
       </div>
     </section>
+  )
+}
+
+function AdminNoticeComposer({ onPost, compact = false }) {
+  const [form, setForm] = useState({ title: '', content: '', type: 'general', is_urgent: false })
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const fileInputRef = useRef(null)
+
+  useEffect(() => () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview)
+  }, [imagePreview])
+
+  const clearImage = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    setImagePreview('')
+    setImageFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const selectImage = event => {
+    const file = event.target.files?.[0] || null
+    if (!file) {
+      clearImage()
+      return
+    }
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Choose a JPEG, PNG, WEBP, or GIF image.')
+      event.target.value = ''
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Notice image must be smaller than 5 MB.')
+      event.target.value = ''
+      return
+    }
+    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    setImageFile(file)
+    setImagePreview(URL.createObjectURL(file))
+  }
+
+  const submitNotice = async event => {
+    event.preventDefault()
+    if (submitting) return
+    setSubmitting(true)
+    try {
+      const posted = await onPost(
+        form.title.trim(),
+        form.content.trim(),
+        form.type,
+        form.is_urgent,
+        imageFile,
+      )
+      if (!posted) return
+      setForm({ title: '', content: '', type: 'general', is_urgent: false })
+      clearImage()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submitNotice} className={`rounded-2xl border border-slate-200 bg-white ${compact ? 'p-3' : 'p-4 sm:p-5'}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-black text-slate-900">Post global notice</h3>
+          <p className="mt-1 text-xs text-slate-500">Visible to every HostelSet owner and tenant.</p>
+        </div>
+        {form.is_urgent && <span className="rounded-full bg-red-100 px-2 py-1 text-[10px] font-black text-red-700">URGENT</span>}
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="grid gap-1 text-xs font-bold text-slate-700">
+          Title
+          <input required maxLength={160} value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} placeholder="Notice title" className="min-h-[2.75rem] rounded-xl border border-slate-300 px-3 text-sm font-normal outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+        </label>
+        <label className="grid gap-1 text-xs font-bold text-slate-700">
+          Type
+          <select value={form.type} onChange={event => setForm(current => ({ ...current, type: event.target.value }))} className="min-h-[2.75rem] rounded-xl border border-slate-300 px-3 text-sm font-normal outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+            <option value="general">General</option>
+            <option value="urgent">Urgent</option>
+            <option value="maintenance">Maintenance</option>
+            <option value="payment">Payment</option>
+            <option value="event">Event</option>
+            <option value="emergency">Emergency</option>
+          </select>
+        </label>
+      </div>
+
+      <label className="mt-3 grid gap-1 text-xs font-bold text-slate-700">
+        Message
+        <textarea required maxLength={5000} rows={compact ? 3 : 4} value={form.content} onChange={event => setForm(current => ({ ...current, content: event.target.value }))} placeholder="Write the announcement" className="resize-y rounded-xl border border-slate-300 px-3 py-2 text-sm font-normal outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+      </label>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <label className="grid gap-1 text-xs font-bold text-slate-700">
+          Image (optional)
+          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={selectImage} className="block w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-normal file:mr-3 file:rounded-lg file:border-0 file:bg-orange-100 file:px-3 file:py-1.5 file:font-bold file:text-orange-700" />
+          <span className="font-normal text-slate-400">JPEG, PNG, WEBP, or GIF. Maximum 5 MB.</span>
+        </label>
+        <label className="flex min-h-[2.75rem] items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-700">
+          <input type="checkbox" checked={form.is_urgent} onChange={event => setForm(current => ({ ...current, is_urgent: event.target.checked }))} className="rounded border-slate-300 text-orange-500 focus:ring-orange-500" />
+          Mark urgent
+        </label>
+      </div>
+
+      {imagePreview && (
+        <div className="relative mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+          <img src={imagePreview} alt="Selected notice preview" className={`${compact ? 'max-h-40' : 'max-h-56'} w-full object-contain`} />
+          <button type="button" onClick={clearImage} className="absolute right-2 top-2 rounded-full bg-slate-950/80 px-3 py-1 text-xs font-bold text-white">Remove image</button>
+        </div>
+      )}
+
+      <button type="submit" disabled={submitting} className="mt-4 min-h-[2.75rem] w-full rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-5 text-sm font-black text-white shadow-sm transition hover:from-orange-600 hover:to-amber-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
+        {submitting ? (imageFile ? 'Uploading and posting…' : 'Posting…') : 'Post global notice'}
+      </button>
+    </form>
   )
 }
 
@@ -358,7 +478,6 @@ function AdminDashboardContent() {
   const sectionRef = useRef(null);
   const activeTabRef = useRef(activeTab);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
-  const refreshAdminStats = () => refreshStats({ background: true, force: true, reason: 'manual-refresh' });
   const openSection = (tab, focusQuery = {}) => {
     markAdminViewPerf('tab-click', String(tab));
     const nextTab = ADMIN_VIEW_ALIASES[tab] || tab;
@@ -408,9 +527,12 @@ function AdminDashboardContent() {
   const { owners: membershipOwners, requests: membershipRequests, loading: membershipLoading, processingId: membershipProcessingId, getDaysLeft, sendRenewalEmail, grantMembership, revokeMembership, reviewRequest, refresh: refreshMemberships } = useAdminMembershipManager(isAdminSectionEnabled('membership'));
   const { selectedProperty, selectedOwner, viewPropertyDetails, viewOwnerDetails, closeModals } = useAdminModals();
   const adminAnalytics = useAdminAnalytics(isAdminSectionEnabled('analytics'));
+  const { snapshot: overviewSnapshot, refreshSnapshot: refreshAdminOverview } = useAdminOverviewSnapshot(activeTab === 'overview');
+  const refreshAdminStats = () => Promise.all([
+    refreshStats({ background: true, force: true, reason: 'manual-refresh' }),
+    refreshAdminOverview({ background: true, force: true, reason: 'manual-refresh' }),
+  ]);
 
-  const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchDetail, setSearchDetail] = useState(null);
   const [applicationProof, setApplicationProof] = useState(null);
   function closeAdminOverlaysForNavigation() {
@@ -515,30 +637,32 @@ function AdminDashboardContent() {
     { label: 'Pending Complaints', value: statsLoading ? '-' : globalStats.pendingComplaints, icon: 'complaints', color: 'bg-red-100 text-red-600' },
     { label: 'Pending Vacates', value: statsLoading ? '-' : globalStats.pendingVacates, icon: 'home', color: 'bg-amber-100 text-amber-600' },
   ];
-  const pendingMembershipRequests = useMemo(() => membershipRequests.filter(request => (request.status || 'pending') === 'pending'), [membershipRequests]);
-  const pendingApplications = useMemo(() => applications.filter(application => (application.status || 'pending') === 'pending'), [applications]);
-  const openComplaints = useMemo(() => complaints.filter(complaint => ['open', 'in_progress'].includes(complaint.status)), [complaints]);
-  const pendingVacateRequests = useMemo(() => vacateRequests.filter(request => request.status === 'pending'), [vacateRequests]);
-  const pendingRoomChanges = useMemo(() => roomChanges.filter(request => (request.status || 'pending') === 'pending'), [roomChanges]);
-  const paymentIssues = useMemo(() => payments.filter(payment => ['payment_pending', 'pending', 'failed', 'rejected'].includes(payment.status)), [payments]);
+  const pendingMembershipRequests = overviewSnapshot.membershipRequests;
+  const pendingApplications = overviewSnapshot.applications;
+  const openComplaints = overviewSnapshot.complaints;
+  const pendingVacateRequests = overviewSnapshot.vacateRequests;
+  const pendingRoomChanges = overviewSnapshot.roomChanges;
+  const overviewNotices = overviewSnapshot.notices;
+  const overviewCounts = overviewSnapshot.counts;
   const reservationCountsByRoom = useMemo(() => preBookings.reduce((counts, booking) => {
     if (booking.status === 'reserved') counts[booking.room_id] = (counts[booking.room_id] || 0) + 1;
     return counts;
   }, {}), [preBookings]);
   const actionCenterCards = useMemo(() => [
-    { id: 'membership', label: 'Pending memberships', value: pendingMembershipRequests.length, tab: 'membership' },
-    { id: 'applications', label: 'Pending applications', value: pendingApplications.length, tab: 'applications' },
-    { id: 'complaints', label: 'Open complaints', value: openComplaints.length, tab: 'complaints' },
-    { id: 'vacate', label: 'Pending vacates', value: pendingVacateRequests.length, tab: 'vacate' },
-    { id: 'roomchange', label: 'Room changes', value: pendingRoomChanges.length, tab: 'roomchange' },
-    { id: 'payments', label: 'Payment issues', value: paymentIssues.length, tab: 'payments' },
-  ], [openComplaints.length, paymentIssues.length, pendingApplications.length, pendingMembershipRequests.length, pendingRoomChanges.length, pendingVacateRequests.length]);
+    { id: 'membership', label: 'Pending memberships', value: overviewCounts.pendingMemberships, tab: 'membership' },
+    { id: 'applications', label: 'Pending applications', value: overviewCounts.pendingApplications, tab: 'applications' },
+    { id: 'complaints', label: 'Open complaints', value: overviewCounts.openComplaints, tab: 'complaints' },
+    { id: 'vacate', label: 'Pending vacates', value: overviewCounts.pendingVacates, tab: 'vacate' },
+    { id: 'roomchange', label: 'Room changes', value: overviewCounts.pendingRoomChanges, tab: 'roomchange' },
+    { id: 'payments', label: 'Payment issues', value: overviewCounts.paymentIssues, tab: 'payments' },
+  ], [overviewCounts]);
 
   // TABS
   const tabs = [
     { id: 'analytics', label: 'Analytics' },
     { id: 'global-search', label: 'Global Search' },
     { id: 'overview', label: 'Overview' },
+    { id: 'enterprise', label: 'Enterprise console' },
     { id: 'properties', label: 'Properties' },
     { id: 'tenants', label: 'Tenants' },
     { id: 'owners', label: 'Owners' },
@@ -603,6 +727,9 @@ function AdminDashboardContent() {
     }
     if (tab === 'global-search') {
       return <AdminMobileSearch avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} onOpen={(group, item) => setSearchDetail({ group, item })} />
+    }
+    if (tab === 'enterprise') {
+      return <AdminMobilePage title="Enterprise console" subtitle="Deep platform records" avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)}><EnterpriseAdminConsole /></AdminMobilePage>
     }
     if (tab === 'properties') {
       return <AdminMobileProperties properties={properties} loading={propertiesLoading} avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)} onView={viewPropertyDetails} onArchive={archiveProperty} onRestore={restoreProperty} />
@@ -696,14 +823,21 @@ function AdminDashboardContent() {
       })
     }
     if (tab === 'notices') {
-      return renderMobileOperationList({
-        title: 'Notices',
-        subtitle: `${notices.length} global notices`,
-        loading: noticesLoading,
-        items: notices,
-        emptyMessage: 'No global notices posted.',
-        renderItem: notice => <article key={notice.id} className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{notice.title}</p><p className="truncate text-[11px] text-slate-500">{notice.type} / {notice.created_at ? new Date(notice.created_at).toLocaleDateString() : 'N/A'}</p></div>{notice.is_urgent ? <AdminStatusChip tone="red">Urgent</AdminStatusChip> : null}</div><div className="mt-2 flex justify-end"><button onClick={() => deleteNotice(notice.id)} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600">Delete</button></div></article>,
-      })
+      return <AdminMobilePage title="Notices" subtitle={`${notices.length} global notices`} avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)}>
+        <div className="space-y-3">
+          <AdminNoticeComposer onPost={postNotice} compact />
+          {noticesLoading && notices.length === 0 ? <AdminLoadingState label="Loading notices…" /> : notices.length === 0 ? <AdminEmptyState title="No global notices posted" description="Use the form above to publish the first announcement." /> : notices.map(notice => (
+            <article key={notice.id} className={`overflow-hidden rounded-2xl border bg-white shadow-sm ${notice.is_urgent ? 'border-red-200' : 'border-slate-100'}`}>
+              {notice.image_url && <img src={notice.image_url} alt={notice.title || 'Notice image'} loading="lazy" className="max-h-48 w-full bg-slate-100 object-contain" />}
+              <div className="p-3">
+                <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{notice.title}</p><p className="truncate text-[11px] text-slate-500">{notice.type} / {notice.created_at ? new Date(notice.created_at).toLocaleDateString() : 'N/A'}</p></div>{notice.is_urgent ? <AdminStatusChip tone="red">Urgent</AdminStatusChip> : null}</div>
+                <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-600">{notice.content}</p>
+                <div className="mt-2 flex justify-end"><button onClick={() => deleteNotice(notice.id)} className="rounded-lg bg-red-50 px-2 py-1 text-xs font-bold text-red-600">Delete</button></div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </AdminMobilePage>
     }
     if (tab === 'analytics') {
       return <AdminMobilePage title="Analytics" subtitle="Platform insights" avatar="A" onBack={navigateDashboardBack} onProfile={() => setProfileMenuOpen(value => !value)}><AdminAnalytics {...adminAnalytics} /></AdminMobilePage>
@@ -721,6 +855,11 @@ function AdminDashboardContent() {
           {renderAdminMobileTab(tab)}
         </AdminTabPanel>
       ))}
+      {activeTab === 'enterprise' && (
+        <AdminTabPanel tab="enterprise" active>
+          {renderAdminMobileTab('enterprise')}
+        </AdminTabPanel>
+      )}
     </div>
   )
 
@@ -782,10 +921,14 @@ function AdminDashboardContent() {
             complaints={openComplaints}
             vacateRequests={pendingVacateRequests}
             roomChanges={pendingRoomChanges}
-            notices={notices.slice(0, 4)}
-            paymentIssues={paymentIssues}
+            notices={overviewNotices}
+            noticeCount={overviewCounts.notices}
+            paymentIssueCount={overviewCounts.paymentIssues}
             onOpen={openSection}
-            onReviewMembership={(requestId, approve) => runAdminAction(`membership:${requestId}`, () => reviewRequest(requestId, approve))}
+            onReviewMembership={(requestId, approve) => runAdminAction(`membership:${requestId}`, async () => {
+              const reviewed = await reviewRequest(requestId, approve)
+              if (reviewed) await refreshAdminStats()
+            })}
             processingId={membershipProcessingId || actionKey}
           />
         )}
@@ -794,8 +937,8 @@ function AdminDashboardContent() {
         <div className="hidden"><DashboardSectionNav label="Admin dashboard sections" items={tabs} activeId={activeTab} onSelect={openSection} /></div>
         <div ref={sectionRef} className="scroll-mt-28">
         {/* ----- OVERVIEW ----- */}
-        {mountedTabs.has('overview') && (
-          <AdminTabPanel tab="overview" active={activeTab === 'overview'}>
+        {activeTab === 'enterprise' && (
+          <AdminTabPanel tab="enterprise" active>
             <EnterpriseAdminConsole />
           </AdminTabPanel>
         )}
@@ -1196,34 +1339,18 @@ function AdminDashboardContent() {
         {/* ----- NOTICES ----- */}
         {mountedTabs.has('notices') && (
           <AdminTabPanel tab="notices" active={activeTab === 'notices'}>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <div className="mb-6 border-b border-gray-100 pb-4">
-              <h3 className="text-xl font-bold text-[#1a1a1a] mb-4">Post Global Notice</h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <input type="text" placeholder="Notice Title" value={noticeForm.title} onChange={(e) => setNoticeForm({ ...noticeForm, title: e.target.value })} className="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" />
-                <div className="flex gap-4 items-center">
-                  <select value={noticeForm.type} onChange={(e) => setNoticeForm({ ...noticeForm, type: e.target.value })} className="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500">
-                    <option value="general">General</option>
-                    <option value="urgent">Urgent</option>
-                    <option value="maintenance">Maintenance</option>
-                  </select>
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input type="checkbox" checked={noticeForm.is_urgent} onChange={(e) => setNoticeForm({ ...noticeForm, is_urgent: e.target.checked })} className="rounded border-gray-300 text-orange-500 focus:ring-orange-500" />
-                    Urgent
-                  </label>
-                </div>
-              </div>
-              <textarea placeholder="Notice Content" rows="3" value={noticeForm.content} onChange={(e) => setNoticeForm({ ...noticeForm, content: e.target.value })} className="w-full mt-4 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" />
-              <button onClick={async () => { if (isSubmitting) return; setIsSubmitting(true); try { const posted = await postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent); if (posted) setNoticeForm({ title:'', content:'', type:'general', is_urgent:false }); } finally { setIsSubmitting(false); } }} disabled={isSubmitting} className="mt-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2 rounded-full font-semibold transition shadow-md disabled:opacity-50">{isSubmitting ? 'Posting...' : 'Post Notice'}</button>
-            </div>
+          <div className="space-y-5">
+            <AdminNoticeComposer onPost={postNotice} />
+            <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
             <AdminTable loading={noticesLoading} headers={['Title', 'Type', 'Date', 'Actions']} data={notices} renderRow={(n) => (
               <tr key={n.id} className="hover:bg-orange-50/50 transition">
-                <td className="px-6 py-4 font-semibold text-gray-800">{n.title} {n.is_urgent && <span className="ml-2 text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">URGENT</span>}</td>
+                <td className="px-6 py-4 font-semibold text-gray-800"><div className="flex items-center gap-3">{n.image_url && <img src={n.image_url} alt="" loading="lazy" className="h-12 w-16 shrink-0 rounded-lg bg-slate-100 object-cover" />}<span>{n.title} {n.is_urgent && <span className="ml-2 text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">URGENT</span>}</span></div></td>
                 <td className="px-6 py-4 capitalize text-gray-500">{n.type}</td>
                 <td className="px-6 py-4 text-gray-500">{new Date(n.created_at).toLocaleDateString()}</td>
                 <td className="px-6 py-4"><button onClick={() => deleteNotice(n.id)} className="text-red-500 hover:text-red-700 font-semibold text-xs uppercase tracking-wider">Delete</button></td>
               </tr>
             )} emptyMessage="No global notices posted." />
+            </div>
           </div>
         
           </AdminTabPanel>

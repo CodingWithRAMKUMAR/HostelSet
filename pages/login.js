@@ -189,26 +189,26 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 to-white">
-      <div className="bg-white rounded-2xl shadow-xl p-5 sm:p-8 max-w-md w-full border border-gray-100 animate-fade-in">
-        <div className="text-center mb-8">
-          <BrandLogo size="login" priority className="mx-auto mb-2" />
+    <div className="flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-gradient-to-br from-gray-50 to-white px-2 py-2 sm:p-4">
+      <div className="w-full max-w-md animate-fade-in rounded-2xl border border-gray-100 bg-white p-4 shadow-xl sm:p-6 md:p-8">
+        <div className="mb-4 text-center sm:mb-6">
+          <BrandLogo size="login" priority className="mx-auto mb-1 max-h-20 w-auto sm:mb-2 sm:max-h-28" />
           <h1 className="text-xl font-bold text-slate-900">{roleCopy.title}</h1>
-          <p className="text-gray-500 mt-1">{roleCopy.helper}</p>
+          <p className="mt-1 text-sm text-gray-500 sm:text-base">{roleCopy.helper}</p>
           {router.query.wrongRole && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">{roleCopy.wrong}</p>}
         </div>
 
         {!showReset ? (
-          <form onSubmit={handleSubmit} noValidate className="space-y-6">
+          <form onSubmit={handleSubmit} noValidate className="space-y-3 sm:space-y-5">
             <div>
-              <label htmlFor="login-identifier" className="block text-gray-700 font-semibold mb-2">Email or Mobile Number</label>
+              <label htmlFor="login-identifier" className="mb-1 block text-sm font-semibold text-gray-700 sm:mb-2 sm:text-base">Email or Mobile Number</label>
               <input
                 ref={identifierRef}
                 id="login-identifier"
                 name="identifier"
                 type="text"
                 placeholder="you@example.com or 9876543210"
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 transition"
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm transition focus:border-slate-800 focus:outline-none sm:px-4 sm:py-3 sm:text-base"
                 value={identifier}
                 onChange={(e) => { setIdentifier(e.target.value); if (formError) setFormError('') }}
                 autoComplete="username"
@@ -219,7 +219,7 @@ export default function Login() {
               <p className="text-xs text-gray-400 mt-1">Use the email or phone you registered with.</p>
             </div>
             <div>
-              <label htmlFor="login-password" className="block text-gray-700 font-semibold mb-2">Password</label>
+              <label htmlFor="login-password" className="mb-1 block text-sm font-semibold text-gray-700 sm:mb-2 sm:text-base">Password</label>
               <div className="relative">
                 <input
                   ref={passwordRef}
@@ -227,7 +227,7 @@ export default function Login() {
                   name="password"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800 pr-12 transition"
+                  className="w-full rounded-xl border border-gray-200 py-2.5 pl-3 pr-12 text-sm transition focus:border-slate-800 focus:outline-none sm:py-3 sm:pl-4 sm:text-base"
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); if (formError) setFormError('') }}
                   autoComplete="current-password"
@@ -250,7 +250,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50"
+              className="w-full rounded-xl bg-slate-800 py-2.5 font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50 sm:py-3"
             >
               {loading ? loginStatus || 'Logging in...' : 'Login →'}
             </button>
@@ -266,15 +266,15 @@ export default function Login() {
             </div>
           </form>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-3 sm:space-y-5">
             <div>
-              <label htmlFor="reset-email" className="block text-gray-700 font-semibold mb-2">Your Email Address</label>
+              <label htmlFor="reset-email" className="mb-1 block text-sm font-semibold text-gray-700 sm:mb-2 sm:text-base">Your Email Address</label>
               <input
                 id="reset-email"
                 name="email"
                 type="email"
                 placeholder="you@example.com"
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-slate-800"
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-slate-800 focus:outline-none sm:px-4 sm:py-3 sm:text-base"
                 value={resetEmail}
                 onChange={(e) => setResetEmail(e.target.value)}
                 autoComplete="email"
@@ -284,7 +284,7 @@ export default function Login() {
             <button
               onClick={handleResetPassword}
               disabled={loading}
-              className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50"
+              className="w-full rounded-xl bg-slate-800 py-2.5 font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50 sm:py-3"
             >
               {loading ? 'Sending...' : 'Send Reset Email'}
             </button>
@@ -297,15 +297,15 @@ export default function Login() {
           </div>
         )}
 
-        <div className="mt-6 text-center">
+        <div className="mt-4 text-center sm:mt-6">
           <Link href="/register" className="text-slate-600 hover:text-slate-800 text-sm transition">
             Register Your Property →
           </Link>
         </div>
-        <div className="mt-4 text-center">
+        <div className="mt-2 text-center sm:mt-4">
           <p className="text-xs text-gray-400">New tenants do not create accounts directly. Apply to a hostel first.</p>
         </div>
-        <div className="mt-4 flex justify-center gap-3 text-xs">
+        <div className="mt-2 flex justify-center gap-3 text-xs sm:mt-4">
           <Link href="/login/tenant" className="text-slate-500 hover:text-slate-900">Tenant</Link>
           <Link href="/login/owner" className="text-slate-500 hover:text-slate-900">Owner</Link>
           <Link href="/login/admin" className="text-slate-500 hover:text-slate-900">Admin</Link>

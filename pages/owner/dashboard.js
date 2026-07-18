@@ -363,7 +363,7 @@ function OwnerDashboardContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [collectionRequestId, setCollectionRequestId] = useState(null);
-  const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false });
+  const [noticeForm, setNoticeForm] = useState({ title: '', content: '', type: 'general', is_urgent: false, image_file: null });
   const [mountedMobileTabs, setMountedMobileTabs] = useState(() => new Set([OWNER_VIEW_KEYS.OVERVIEW]));
 
   // Modal States for History & Profile
@@ -982,9 +982,9 @@ function OwnerDashboardContent() {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const posted = await postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent);
+      const posted = await postNotice(noticeForm.title, noticeForm.content, noticeForm.type, noticeForm.is_urgent, noticeForm.image_file);
       if (posted) {
-        setNoticeForm({ title:'', content:'', type:'general', is_urgent:false });
+        setNoticeForm({ title:'', content:'', type:'general', is_urgent:false, image_file:null });
         setShowNoticeModal(false);
       }
     } finally { setIsSubmitting(false); }
@@ -1418,7 +1418,7 @@ function OwnerDashboardContent() {
         {showSettingsModal && <SettingsModal key="settings-modal" settings={settings} setSettings={setSettings} property={property} onSave={handleSaveSettings} onCancel={() => setShowSettingsModal(false)} isSubmitting={isSubmitting} />}
         {showAddModal && <AddTenantModal key="add-tenant-modal" formData={formData} setFormData={setFormData} rooms={rooms} onAdd={() => addTenant(isSubmitting, setIsSubmitting)} onCancel={() => setShowAddModal(false)} isSubmitting={isSubmitting} />}
         {showRoomModal && <AddRoomModal key="add-room-modal" roomForm={roomForm} setRoomForm={setRoomForm} sharingTypes={sharingTypes} onAdd={() => addRoom(isSubmitting, setIsSubmitting)} onCancel={() => setShowRoomModal(false)} isSubmitting={isSubmitting} />}
-        {showNoticeModal && <PostNoticeModal key="post-notice-modal" noticeForm={noticeForm} setNoticeForm={setNoticeForm} onPost={handlePostNotice} onCancel={() => { if (!isSubmitting) setShowNoticeModal(false); }} isSubmitting={isSubmitting} />}
+        {showNoticeModal && <PostNoticeModal key="post-notice-modal" noticeForm={noticeForm} setNoticeForm={setNoticeForm} onPost={handlePostNotice} onCancel={() => { if (!isSubmitting) { setShowNoticeModal(false); setNoticeForm({ title:'', content:'', type:'general', is_urgent:false, image_file:null }); } }} isSubmitting={isSubmitting} />}
         {showMembershipModal && <MembershipModal key="membership-modal" onSelectPlan={async (...args) => { const sent = await requestMembership(...args); if (sent) setShowMembershipModal(false); }} onCancel={() => setShowMembershipModal(false)} loading={membershipLoading} pendingRequest={pendingMembershipRequest} />}
         {showOwnerProfileModal && ownerProfile && <OwnerProfileModal key="owner-profile-modal" profile={ownerProfile} onSave={handleSaveOwnerProfile} onCancel={() => setShowOwnerProfileModal(false)} isSubmitting={isSubmitting} />}
         {showArchivedHistoryModal && <ArchivedTenantHistoryModal key="archived-history-modal" history={archivedHistory} loading={Boolean(loadingArchivedTenantId)} onClose={() => { setShowArchivedHistoryModal(false); setArchivedHistory(null); }} />}
