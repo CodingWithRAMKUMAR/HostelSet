@@ -49,6 +49,8 @@ export function TenantProvider({ children }) {
   const [roommates, setRoommates] = useState([]);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState(null);
   const [roommateVacateAlert, setRoommateVacateAlert] = useState(null);
+  const [dashboardSnapshot, setDashboardSnapshot] = useState(null);
+  const [dashboardSnapshotLoaded, setDashboardSnapshotLoaded] = useState(false);
   const [error, setError] = useState(null);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const userIdRef = useRef(null);
@@ -144,17 +146,38 @@ export function TenantProvider({ children }) {
       markTenantPerf(isBackground ? 'background-refresh-network-start' : 'core-load-start', `reason=${reason} key=${requestKey}${force ? ' force=true' : ''}`);
       if (!isBackground) setLoading(true);
       try {
-        const shouldCheckRole = !lastLoadedResultRef.current;
-        const [roleResult, tenantResult] = await Promise.all([
-          shouldCheckRole
-            ? timedTenantQuery('user-role', supabase.from('users').select('role').eq('id', userId).single())
-            : Promise.resolve({ data: { role: 'tenant' }, error: null }),
-          timedTenantQuery('tenant-profile', supabase
-            .from('tenants')
-            .select('*, rooms:room_id(*), property:property_id(*)')
-            .eq('user_id', userId)
-            .maybeSingle()),
-        ]);
+        const snapshotResult = await timedTenantQuery(
+          'tenant-dashboard-snapshot',
+          supabase.rpc('get_my_tenant_dashboard_snapshot'),
+        );
+        const snapshotData = !snapshotResult.error
+          && snapshotResult.data
+          && typeof snapshotResult.data === 'object'
+          && snapshotResult.data.snapshot_version === 1
+          ? snapshotResult.data
+          : null;
+
+        let roleResult;
+        let tenantResult;
+        if (snapshotData) {
+          roleResult = { data: { role: snapshotData.role }, error: null };
+          tenantResult = { data: snapshotData.tenant || null, error: null };
+        } else {
+          if (snapshotResult.error && process.env.NODE_ENV !== 'production') {
+            console.warn('[HostelSet] Tenant snapshot unavailable; using compatible query fallback.', snapshotResult.error.message);
+          }
+          const shouldCheckRole = !lastLoadedResultRef.current;
+          [roleResult, tenantResult] = await Promise.all([
+            shouldCheckRole
+              ? timedTenantQuery('user-role', supabase.from('users').select('role').eq('id', userId).single())
+              : Promise.resolve({ data: { role: 'tenant' }, error: null }),
+            timedTenantQuery('tenant-profile', supabase
+              .from('tenants')
+              .select('*, rooms:room_id(*), property:property_id(*)')
+              .eq('user_id', userId)
+              .maybeSingle()),
+          ]);
+        }
 
         if (roleResult.error || roleResult.data?.role !== 'tenant') {
           toast.error('Access denied. You are not registered as a tenant.');
@@ -174,6 +197,8 @@ export function TenantProvider({ children }) {
           setRoommates([]);
           setProfilePhotoUrl(null);
           setRoommateVacateAlert(null);
+          setDashboardSnapshot(null);
+          setDashboardSnapshotLoaded(false);
           setError('No tenant record found in the database.');
           lastLoadedKeyRef.current = null;
           lastLoadedRequestKeyRef.current = null;
@@ -184,6 +209,8 @@ export function TenantProvider({ children }) {
         setTenant(tenantData);
         setRoom(tenantData.rooms || null);
         setProperty(tenantData.property || null);
+        setDashboardSnapshot(snapshotData);
+        setDashboardSnapshotLoaded(Boolean(snapshotData));
         setError(null);
         loadTenantProfilePhoto(tenantData);
         if (!isBackground) {
@@ -192,7 +219,9 @@ export function TenantProvider({ children }) {
         }
 
         const [ownerResult, roommatesResult] = await Promise.all([
-          tenantData.property?.owner_id
+          snapshotData
+            ? Promise.resolve({ data: snapshotData.owner || null, error: null })
+            : tenantData.property?.owner_id
             ? timedTenantQuery('owner-contact', supabase.from('users').select('full_name, phone, email').eq('id', tenantData.property.owner_id).maybeSingle())
             : Promise.resolve({ data: null, error: null }),
           tenantData.room_id
@@ -286,6 +315,8 @@ export function TenantProvider({ children }) {
     setRoommates([]);
     setProfilePhotoUrl(null);
     setRoommateVacateAlert(null);
+    setDashboardSnapshot(null);
+    setDashboardSnapshotLoaded(false);
     setError(null);
     markTenantPerf('tenant-cache-cleared', 'reason=logout');
   }, []);
@@ -414,6 +445,8 @@ export function TenantProvider({ children }) {
       roommates,
       profilePhotoUrl,
       roommateVacateAlert,
+      dashboardSnapshot,
+      dashboardSnapshotLoaded,
       error,
       realtimeConnected,
       refreshData,

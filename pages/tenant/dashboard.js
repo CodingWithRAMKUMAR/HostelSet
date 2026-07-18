@@ -85,23 +85,23 @@ function TenantTabPanel({ tab, active, children }) {
 // ---------------- THE ACTUAL DASHBOARD CONTENT ----------------
 function TenantDashboardContent() {
   const router = useRouter();
-  
+
   // ---------------- MODULAR HOOKS ----------------
   const core = useTenant() || {};
-  const { tenant, room, property, owner, roommates, profilePhotoUrl, realtimeConnected, roommateVacateAlert, refreshData, setTenant } = core;
-  
-  const { notices = [] } = useNotices(tenant);
-  const { existingVacateRequest, lastVacateDecision, vacateLoaded, cancelVacateRequest, refreshVacate } = useVacate(tenant, setTenant);
-  const { complaints = [], submitComplaint: hookSubmitComplaint, deleteComplaint: hookDeleteComplaint } = useComplaints(tenant);
-  
-  const { 
-    paymentHistory = [], 
+  const { tenant, room, property, owner, roommates, profilePhotoUrl, realtimeConnected, roommateVacateAlert, dashboardSnapshot, dashboardSnapshotLoaded, refreshData, setTenant } = core;
+
+  const { notices = [] } = useNotices(tenant, dashboardSnapshot?.notices, dashboardSnapshotLoaded);
+  const { existingVacateRequest, lastVacateDecision, vacateLoaded, cancelVacateRequest, refreshVacate } = useVacate(tenant, setTenant, dashboardSnapshot?.vacate_requests, dashboardSnapshotLoaded);
+  const { complaints = [], submitComplaint: hookSubmitComplaint, deleteComplaint: hookDeleteComplaint } = useComplaints(tenant, dashboardSnapshot?.complaints, dashboardSnapshotLoaded);
+
+  const {
+    paymentHistory = [],
     paymentsLoaded,
-    paymentLoading, 
-    ownerUpiId, 
-    ownerUpiPhone, 
-    submitPaymentWithProof 
-  } = usePayments(tenant, refreshData, owner);
+    paymentLoading,
+    ownerUpiId,
+    ownerUpiPhone,
+    submitPaymentWithProof
+  } = usePayments(tenant, refreshData, owner, dashboardSnapshot?.payments, dashboardSnapshot?.owner_settings, dashboardSnapshotLoaded);
 
   const {
     pendingRoomChangeRequest,
@@ -116,7 +116,7 @@ function TenantDashboardContent() {
     openRoomChangeModal,
     submitRoomChangeRequest,
     roomChangeSubmitting
-  } = useRoomChange(tenant, refreshData);
+  } = useRoomChange(tenant, refreshData, dashboardSnapshot?.pending_room_change, dashboardSnapshot?.last_room_change_decision, dashboardSnapshotLoaded);
 
   // ----- UI States remaining -----
   const [showComplaintModal, setShowComplaintModal] = useState(false)
@@ -514,7 +514,7 @@ function TenantDashboardContent() {
         <TenantMobileMore open={mobileMenu === 'more'} title="Tenant menu" subtitle={property?.name} onClose={() => setMobileMenu(null)} items={tenantMobileMoreItems} />
       </div>
       <DashboardSidebar role="Tenant" items={tenantSidebarItems} activeId={activeTab} onSelect={openSection} footer={<div><p className="truncate text-sm font-bold text-white">{property?.name}</p><p className="mt-1 text-xs text-slate-400">Room {room?.room_number || '?'}</p></div>}/>
-      
+
       {/* --- NAVBAR (Premium Onyx & Gold) --- */}
       <nav className="dashboard-desktop-header">
         <div className="container mx-auto flex justify-between items-center gap-3">
@@ -539,7 +539,7 @@ function TenantDashboardContent() {
       </nav>
 
       <main className="dashboard-main container mx-auto hidden min-w-0 px-3 py-5 sm:px-4 sm:py-8 lg:block">
-        
+
         {/* --- WELCOME SECTION (GLASSMORPHISM) --- */}
         {activeTab === 'overview' && <div className="relative mb-3 overflow-hidden rounded-2xl border border-orange-500/20 bg-[#1a1a1a] p-3 shadow-xl sm:mb-8 sm:p-8">
           <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-orange-500/10 to-transparent rounded-full -mr-20 -mt-20 pointer-events-none" />

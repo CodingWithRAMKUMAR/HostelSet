@@ -2,13 +2,17 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
-export function useComplaints(tenant) {
+export function useComplaints(tenant, initialComplaints = null, snapshotLoaded = false) {
   const [complaints, setComplaints] = useState([]);
   const loadComplaints = async () => {
     if (!tenant?.id) return;
     const { data } = await supabase.from('complaints').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false });
     setComplaints(data || []);
   };
+  useEffect(() => {
+    if (!snapshotLoaded) return;
+    setComplaints(Array.isArray(initialComplaints) ? initialComplaints : []);
+  }, [initialComplaints, snapshotLoaded]);
   const submitComplaint = async (formData) => {
     if (!formData.title || !formData.description) { toast.error('Please fill all fields'); return false; }
     const { data, error } = await supabase.from('complaints').insert({ tenant_id:tenant.id, property_id:tenant.property_id, room_id:tenant.room_id, tenant_name:tenant.name, room_number:tenant.rooms?.room_number, title:formData.title, description:formData.description, priority:formData.priority, status:'open', created_at:new Date().toISOString() }).select('*').single();
@@ -25,7 +29,7 @@ export function useComplaints(tenant) {
   };
   useEffect(() => {
     if (!tenant?.id) return;
-    loadComplaints();
+    if (!snapshotLoaded) loadComplaints();
     const channel = supabase.channel(`tenant:${tenant.id}:complaints`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'complaints', filter: `tenant_id=eq.${tenant.id}` }, (payload) => {
         if (payload.new?.tenant_id === tenant.id) {
@@ -44,6 +48,6 @@ export function useComplaints(tenant) {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [tenant?.id]);
+  }, [tenant?.id, snapshotLoaded]);
   return { complaints, submitComplaint, deleteComplaint };
 }

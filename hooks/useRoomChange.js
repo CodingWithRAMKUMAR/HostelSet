@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
-export function useRoomChange(tenant, refreshData) {
+export function useRoomChange(tenant, refreshData, initialPendingRequest = null, initialLastDecision = null, snapshotLoaded = false) {
   const [pendingRoomChangeRequest, setPendingRoomChangeRequest] = useState(null);
   const [lastRoomChangeDecision, setLastRoomChangeDecision] = useState(null);
   const [availableRooms, setAvailableRooms] = useState([]);
@@ -10,6 +10,12 @@ export function useRoomChange(tenant, refreshData) {
   const [selectedNewRoom, setSelectedNewRoom] = useState('');
   const [roomChangeReason, setRoomChangeReason] = useState('');
   const [roomChangeSubmitting, setRoomChangeSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!snapshotLoaded) return;
+    setPendingRoomChangeRequest(initialPendingRequest || null);
+    setLastRoomChangeDecision(initialLastDecision || null);
+  }, [initialLastDecision, initialPendingRequest, snapshotLoaded]);
 
   const loadRoomChangeState = async () => {
     if (!tenant?.id) return;
@@ -97,7 +103,9 @@ export function useRoomChange(tenant, refreshData) {
   // Real-time room change updates
   useEffect(() => {
     if (!tenant?.id) return;
-    loadRoomChangeState().catch((error) => console.error('Room change state error:', error));
+    if (!snapshotLoaded) {
+      loadRoomChangeState().catch((error) => console.error('Room change state error:', error));
+    }
 
     const channel = supabase.channel(`tenant:${tenant.id}:room-change`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'room_change_requests', filter: `tenant_id=eq.${tenant.id}` }, (payload) => {
@@ -122,7 +130,7 @@ export function useRoomChange(tenant, refreshData) {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [tenant?.id]);
+  }, [tenant?.id, snapshotLoaded]);
 
   return {
     pendingRoomChangeRequest,

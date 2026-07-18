@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
-export function useNotices(tenant) {
+export function useNotices(tenant, initialNotices = null, snapshotLoaded = false) {
   const [notices, setNotices] = useState([]);
   const loadNotices = async () => {
     if (!tenant?.property_id) return;
@@ -11,8 +11,12 @@ export function useNotices(tenant) {
     setNotices(data || []);
   };
   useEffect(() => {
+    if (!snapshotLoaded) return;
+    setNotices(Array.isArray(initialNotices) ? initialNotices : []);
+  }, [initialNotices, snapshotLoaded]);
+  useEffect(() => {
     if (!tenant?.property_id) return;
-    loadNotices();
+    if (!snapshotLoaded) loadNotices();
     const channel = supabase.channel('notices-tenant-isolated')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, (payload) => {
         const changedNotice = payload.new || payload.old;
@@ -30,6 +34,6 @@ export function useNotices(tenant) {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [tenant?.property_id]);
+  }, [tenant?.property_id, snapshotLoaded]);
   return { notices };
 }

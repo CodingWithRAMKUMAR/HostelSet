@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { calculateCanonicalRentDue, isPendingRentPayment } from '../lib/rentDue';
 
-export function usePayments(tenant, refreshData, owner) {
+export function usePayments(tenant, refreshData, owner, initialPayments = null, initialOwnerSettings = null, snapshotLoaded = false) {
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [paymentsLoaded, setPaymentsLoaded] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -34,6 +34,14 @@ export function usePayments(tenant, refreshData, owner) {
     setOwnerUpiId(data?.upi_id || tenant.property?.owner_upi_id || '');
     setOwnerUpiPhone(data?.upi_phone || owner?.phone || '');
   };
+
+  useEffect(() => {
+    if (!snapshotLoaded) return;
+    setPaymentHistory(Array.isArray(initialPayments) ? initialPayments : []);
+    setPaymentsLoaded(true);
+    setOwnerUpiId(initialOwnerSettings?.upi_id || tenant?.property?.owner_upi_id || '');
+    setOwnerUpiPhone(initialOwnerSettings?.upi_phone || owner?.phone || '');
+  }, [initialOwnerSettings, initialPayments, owner?.phone, snapshotLoaded, tenant?.property?.owner_upi_id]);
 
   const uploadFile = async (file, prefix) => {
     const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${file.name.split('.').pop()}`;
@@ -85,9 +93,11 @@ export function usePayments(tenant, refreshData, owner) {
   // Real-time payment updates
   useEffect(() => {
     if (!tenant?.id) return;
-    setPaymentsLoaded(false);
-    loadPayments();
-    loadUPIDetails();
+    if (!snapshotLoaded) {
+      setPaymentsLoaded(false);
+      loadPayments();
+      loadUPIDetails();
+    }
 
     const channel = supabase.channel(`tenant:${tenant.id}:payments`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_history', filter: `tenant_id=eq.${tenant.id}` }, (payload) => {
@@ -107,7 +117,7 @@ export function usePayments(tenant, refreshData, owner) {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [tenant?.id, tenant?.property_id, tenant?.property?.owner_id, tenant?.property?.owner_upi_id, owner?.phone]);
+  }, [tenant?.id, tenant?.property_id, tenant?.property?.owner_id, tenant?.property?.owner_upi_id, owner?.phone, snapshotLoaded]);
 
   return {
     paymentHistory,
