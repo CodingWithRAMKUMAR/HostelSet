@@ -77,7 +77,7 @@ export function OwnerProvider({ children }) {
   const [rooms, setRooms] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [archivedTenants, setArchivedTenants] = useState([]);
-  const [settings, setSettings] = useState({ joining_fee:0, advance_months:1, due_day:5, pre_booking_fee:3000, upi_id:'', upi_phone:'' });
+  const [settings, setSettings] = useState({ joining_fee:0, advance_months:1, due_day:5, pre_booking_fee:3000, application_deposit:3000, upi_id:'', upi_phone:'' });
   const [stats, setStats] = useState({ totalRooms:0, occupied:0, vacant:0, totalCollected:0, depositCollected:0, pendingAmount:0, totalComplaints:0, pendingVacate:0, overdueCount:0, noticePeriodCount:0, pendingPaymentCount:0, pendingRentConfirmations:0, monthlyIncome:0 });
   const [membershipActive, setMembershipActive] = useState(false);
   const [membershipLoading, setMembershipLoading] = useState(false);
@@ -280,8 +280,8 @@ export function OwnerProvider({ children }) {
       if (!selectedProperty?.id) return;
       const { data, error } = await supabase.from('owner_settings').select('*').eq('owner_id', userId).eq('property_id', selectedProperty.id).maybeSingle();
       if (error) throw error;
-      if (data) setSettings({ joining_fee:data.joining_fee||0, advance_months:data.advance_months||1, due_day:data.due_day||5, pre_booking_fee:Number(data.pre_booking_fee) > 0 ? Number(data.pre_booking_fee) : 3000, upi_id:data.upi_id||'', upi_phone:data.upi_phone||'' });
-      else setSettings({ joining_fee:0, advance_months:1, due_day:5, pre_booking_fee:3000, upi_id:selectedProperty.owner_upi_id||'', upi_phone:'' });
+      if (data) setSettings({ joining_fee:data.joining_fee||0, advance_months:data.advance_months||1, due_day:data.due_day||5, pre_booking_fee:Number(data.pre_booking_fee) > 0 ? Number(data.pre_booking_fee) : 3000, application_deposit:Number(data.application_deposit) > 0 ? Number(data.application_deposit) : 3000, upi_id:data.upi_id||'', upi_phone:data.upi_phone||'' });
+      else setSettings({ joining_fee:0, advance_months:1, due_day:5, pre_booking_fee:3000, application_deposit:3000, upi_id:selectedProperty.owner_upi_id||'', upi_phone:'' });
     } catch (error) { console.error('Error loading settings:', error); toast.error('Failed to load settings'); }
   };
 
@@ -338,7 +338,7 @@ export function OwnerProvider({ children }) {
     const userId = localStorage.getItem('userId');
     if (!property?.id) throw new Error('Select a property first');
     const { data: existing } = await supabase.from('owner_settings').select('id').eq('owner_id', userId).eq('property_id', property.id).maybeSingle();
-    const updateData = { joining_fee:newSettings.joining_fee, advance_months:newSettings.advance_months, due_day:newSettings.due_day, pre_booking_fee:Number(newSettings.pre_booking_fee) > 0 ? Number(newSettings.pre_booking_fee) : 3000, upi_id:newSettings.upi_id, upi_phone:newSettings.upi_phone, updated_at:new Date().toISOString() };
+    const updateData = { joining_fee:newSettings.joining_fee, advance_months:newSettings.advance_months, due_day:newSettings.due_day, pre_booking_fee:Number(newSettings.pre_booking_fee) > 0 ? Number(newSettings.pre_booking_fee) : 3000, application_deposit:Number(newSettings.application_deposit) > 0 ? Number(newSettings.application_deposit) : 3000, upi_id:newSettings.upi_id, upi_phone:newSettings.upi_phone, updated_at:new Date().toISOString() };
     let error;
     if (existing) { const { error: updateError } = await supabase.from('owner_settings').update(updateData).eq('id', existing.id); error = updateError; }
     else { const { error: insertError } = await supabase.from('owner_settings').insert({ owner_id:userId, property_id:property.id, ...updateData }); error = insertError; }

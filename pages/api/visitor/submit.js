@@ -142,7 +142,12 @@ async function processVisitorSubmission(req, res) {
       })
       if (error) throw error
     } else {
-      const { data: settings } = await supabaseAdmin.from('owner_settings').select('upi_id').eq('property_id', propertyId).maybeSingle()
+      const { data: settings } = await supabaseAdmin
+        .from('owner_settings')
+        .select('application_deposit, upi_id')
+        .eq('property_id', propertyId)
+        .maybeSingle()
+
       if (!settings?.upi_id) throw new Error('Owner payment details are not configured')
       const [{ data: byPhone }, { data: byEmail }] = await Promise.all([
         supabaseAdmin.from('users').select('id, email').eq('phone', phone).limit(1),
@@ -150,7 +155,10 @@ async function processVisitorSubmission(req, res) {
       ])
       if (byPhone?.[0] && byEmail?.[0] && byPhone[0].id !== byEmail[0].id) throw new Error('The phone and email belong to different accounts')
       const userId = byPhone?.[0]?.id || byEmail?.[0]?.id || null
-      const deposit = Number(room.deposit_amount || DEFAULT_APPLICATION_DEPOSIT)
+      const configuredDeposit = Number(settings.application_deposit)
+      const deposit = Number.isFinite(configuredDeposit) && configuredDeposit > 0
+        ? configuredDeposit
+        : DEFAULT_APPLICATION_DEPOSIT
       const { error } = await supabaseAdmin.from('applications').insert({
         user_id: userId, property_id: propertyId, room_id: roomId, name, phone, email, blood_group: bloodGroup, message,
         status: 'pending', id_proof: idPath, photo: photoPath, payment_screenshot: paymentPath,

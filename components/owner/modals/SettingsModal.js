@@ -40,6 +40,12 @@ export default function SettingsModal({ settings, setSettings, property, onSave,
           <div>
             <label className="mb-1 block text-xs font-bold text-gray-700">Pre-booking fee (&#8377;)</label>
             <input type="number" className="h-9 w-full rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" value={settings.pre_booking_fee ?? ''} onChange={setNumber('pre_booking_fee', 3000)} min="1" />
+            <p className="mt-1 text-xs text-gray-400">Non-refundable fee charged for reserving a room before moving in.</p>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-bold text-gray-700">Application deposit (&#8377;)</label>
+            <input type="number" className="h-9 w-full rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" value={settings.application_deposit ?? ''} onChange={setNumber('application_deposit', 3000)} min="1" />
+            <p className="mt-1 text-xs text-gray-400">Deposit charged when a visitor submits a full room application.</p>
           </div>
           <div>
             <label className="mb-1 block text-xs font-bold text-gray-700">Your UPI ID</label>

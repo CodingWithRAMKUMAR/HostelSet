@@ -31,6 +31,9 @@ const settingsFor = (property, settings) => ({
   advance_months: settings?.advance_months || 1,
   joining_fee: settings?.joining_fee || 0,
   pre_booking_fee: Number(settings?.pre_booking_fee) > 0 ? Number(settings.pre_booking_fee) : DEFAULT_PREBOOKING_FEE,
+  application_deposit: Number(settings?.application_deposit) > 0
+    ? Number(settings.application_deposit)
+    : DEFAULT_APPLICATION_DEPOSIT,
 })
 
 const buildVacateInfo = roomRows => {
@@ -185,6 +188,9 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       setReservationCounts(buildReservationCounts(initialRooms))
       setLoadError('')
       setLoading(false)
+
+      // Refresh cached ISR values immediately from Supabase.
+      loadData(true)
       return
     }
 
@@ -231,8 +237,18 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
     setReservationCounts(buildReservationCounts(roomRows))
   }
 
+  const selectedRoomDetails = rooms.find(room => room.id === selectedRoom)
+
+  const getRoomApplicationDeposit = () => {
+    const configuredDeposit = Number(ownerSettings?.application_deposit)
+
+    return Number.isFinite(configuredDeposit) && configuredDeposit > 0
+      ? configuredDeposit
+      : DEFAULT_APPLICATION_DEPOSIT
+  }
+
   const calculateTotalAmount = () => {
-    return DEFAULT_APPLICATION_DEPOSIT
+    return getRoomApplicationDeposit()
   }
 
   const handleFileChange = (e, setter) => {
@@ -1012,7 +1028,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                         <div className="mb-4">
                           <p className="text-3xl font-bold text-slate-800">{formatCurrency(room.monthly_rent)}</p>
                           <p className="text-gray-400 text-sm">per month</p>
-                          <p className="text-gray-400 text-sm mt-1">Application deposit: {formatCurrency(DEFAULT_APPLICATION_DEPOSIT)}</p>
+                          <p className="text-gray-400 text-sm mt-1">Application deposit: {formatCurrency(getRoomApplicationDeposit())}</p>
                         </div>
                         <div className="mb-4">
                           <div className="flex justify-between text-sm mb-1">
@@ -1289,7 +1305,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" onClick={(e) => e.stopPropagation()}>
               <h2 className="mb-4 text-2xl font-bold text-slate-900 dark:text-white">Application / Security Deposit</h2>
               <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-                <p className="text-sm text-gray-600">Room {rooms.find(r => r.id === selectedRoom)?.room_number} – {getSharingDetails(rooms.find(r => r.id === selectedRoom)?.sharing_type)?.label}</p>
+                <p className="text-sm text-gray-600">Room {selectedRoomDetails?.room_number} – {getSharingDetails(selectedRoomDetails?.sharing_type)?.label}</p>
                 <p className="text-lg font-bold mt-1">Application / Security Deposit: {formatCurrency(calculateTotalAmount())}</p>
                 <p className="text-sm font-semibold text-red-700 mt-1">Non-refundable</p>
                 <p className="text-xs text-gray-600 mt-2">This deposit is only for application/security confirmation. Room rent is separate and must be paid after joining.</p>
@@ -1487,7 +1503,7 @@ export async function getStaticProps({ params }) {
 
   const [resolvedRoomsResult, resolvedSettingsResult] = await Promise.all([
     fetchPublicRooms(propertyResult.data.id),
-      supabase.from('owner_settings').select('upi_id, upi_phone, advance_months, joining_fee, pre_booking_fee').eq('property_id', propertyResult.data.id).maybeSingle(),
+      supabase.from('owner_settings').select('upi_id, upi_phone, advance_months, joining_fee, pre_booking_fee, application_deposit').eq('property_id', propertyResult.data.id).maybeSingle(),
   ])
 
   if (resolvedRoomsResult.error) throw resolvedRoomsResult.error
