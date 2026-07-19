@@ -917,8 +917,20 @@ function OwnerDashboardContent() {
   const handleApproveRoomChange = async (request) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
-    try { await approveRoomChange(request); }
-    finally { setIsSubmitting(false); }
+
+    try {
+      const approved = await approveRoomChange(request);
+
+      if (approved) {
+        await loadData({
+          background: true,
+          force: true,
+          reason: 'approve-room-change-reconciliation',
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleApproveVacate = async (requestId, tenantId, expectedDate) => {

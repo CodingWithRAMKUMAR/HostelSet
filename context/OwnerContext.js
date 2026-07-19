@@ -96,10 +96,17 @@ export function OwnerProvider({ children }) {
   const roomsRef = useRef([]);
   const tenantsRef = useRef([]);
   const archivedTenantsRef = useRef([]);
+  const paymentSeedRef = useRef({
+    propertyId: null,
+    pendingRentPayments: [],
+    allPayments: [],
+    version: 0,
+  });
 
   useEffect(() => { roomsRef.current = rooms; }, [rooms]);
   useEffect(() => { tenantsRef.current = tenants; }, [tenants]);
   useEffect(() => { archivedTenantsRef.current = archivedTenants; }, [archivedTenants]);
+  useEffect(() => { paymentSeedRef.current = paymentSeed; }, [paymentSeed]);
 
   const updateMembershipFromProperty = (propertyData) => {
     const membership = calculateMembershipStatus(propertyData);
@@ -437,12 +444,27 @@ export function OwnerProvider({ children }) {
     setTenants(current => {
       const existing = current.find(item => item.id === row.id);
       const room = roomsRef.current.find(item => item.id === row.room_id);
-      const merged = {
+      const mergedTenant = {
         ...(existing || {}),
         ...row,
         room_number: room?.room_number || existing?.room_number || 'N/A',
-        dueStatus: existing?.dueStatus || existing?.rentSummary || enrichTenantRentStatus(row, []),
-        rentSummary: existing?.rentSummary || existing?.dueStatus || enrichTenantRentStatus(row, []),
+      };
+      const tenantPayments = paymentSeedRef.current?.allPayments?.filter(
+        payment => payment.tenant_id === row.id
+      ) || [];
+      const {
+        rentSummary: previousRentSummary,
+        dueStatus: previousDueStatus,
+        ...tenantForRentCalculation
+      } = mergedTenant;
+      const rentSummary = enrichTenantRentStatus(
+        tenantForRentCalculation,
+        tenantPayments
+      );
+      const merged = {
+        ...mergedTenant,
+        dueStatus: rentSummary,
+        rentSummary,
       };
       const next = upsertRecord(current, merged);
       setStats(prev => ({

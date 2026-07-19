@@ -1,0 +1,1 @@
+alter table public.notices replica identity full;

@@ -19,7 +19,7 @@ export function useNotices(tenant, initialNotices = null, snapshotLoaded = false
     if (!snapshotLoaded) loadNotices();
     const channel = supabase.channel('notices-tenant-isolated')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, (payload) => {
-        const changedNotice = payload.new || payload.old;
+        const changedNotice = payload.eventType === 'DELETE' ? payload.old : payload.new;
         if (changedNotice?.property_id && changedNotice.property_id !== tenant.property_id) return;
         if (payload.eventType === 'INSERT' && (!payload.new?.property_id || payload.new.property_id === tenant.property_id)) {
           toast.success(payload.new?.property_id ? '📢 New notice posted by owner!' : '📢 New HostelSet announcement!');
