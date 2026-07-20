@@ -324,22 +324,49 @@ export function TenantProvider({ children }) {
   const patchTenantRealtime = useCallback((payload) => {
     const row = payload.new || payload.old;
     if (!row?.id) return;
+
     if (payload.eventType === 'DELETE' && row.id === tenantRef.current?.id) {
       setTenant(null);
+      setRoom(null);
+      setProperty(null);
+      setOwner(null);
+      setRoommates([]);
+      setRoommateVacateAlert(null);
+      setDashboardSnapshot(null);
+      setDashboardSnapshotLoaded(false);
       setError('No tenant record found in the database.');
       markTenantPerf('realtime-local-patch', `table=tenants action=delete id=${row.id}`);
       return;
     }
+
     if (row.id === tenantRef.current?.id) {
+      const currentTenant = tenantRef.current;
+      const relationChanged =
+        row.room_id !== currentTenant?.room_id ||
+        row.property_id !== currentTenant?.property_id ||
+        row.status !== currentTenant?.status;
+
       setTenant(current => current?.id === row.id ? { ...current, ...row } : current);
-      loadTenantProfilePhoto({ ...(tenantRef.current || {}), ...row });
-      markTenantPerf('realtime-local-patch', `table=tenants action=${String(payload.eventType || '').toLowerCase()} id=${row.id}`);
+      loadTenantProfilePhoto({ ...(currentTenant || {}), ...row });
+      markTenantPerf(
+        'realtime-local-patch',
+        `table=tenants action=${String(payload.eventType || '').toLowerCase()} id=${row.id}${relationChanged ? ' full-refresh=true' : ''}`,
+      );
+
+      if (relationChanged) {
+        void refreshData({
+          background: true,
+          force: true,
+          reason: 'tenant-relation-realtime-change',
+        });
+      }
       return;
     }
+
     if (row.room_id === roomRef.current?.id || payload.old?.room_id === roomRef.current?.id) {
       refreshRoommates('tenant-roommate-change');
     }
-  }, [loadTenantProfilePhoto, refreshRoommates]);
+  }, [loadTenantProfilePhoto, refreshData, refreshRoommates]);
 
   const patchRoomRealtime = useCallback((payload) => {
     const row = payload.new || payload.old;

@@ -376,7 +376,7 @@ export function OwnerProvider({ children }) {
       return false;
     }
     if (pendingMembershipRequest) {
-      toast('Your membership request is already waiting for admin approval.', { icon: '⏳' });
+      toast('Your membership request is already waiting for admin approval.', { icon: 'âŒ›' });
       return false;
     }
     setMembershipLoading(true);
@@ -426,57 +426,126 @@ export function OwnerProvider({ children }) {
   const patchTenantRealtime = useCallback((payload) => {
     const row = payload.new || payload.old;
     if (!row?.id) return;
+
     const activeStatuses = new Set(['active', 'notice_period', 'payment_pending']);
-    if (payload.eventType === 'DELETE' || row.status === 'inactive' || row.status === 'archived') {
+
+    const existingTenant =
+      tenantsRef.current.find(item => item.id === row.id) ||
+      archivedTenantsRef.current.find(item => item.id === row.id) ||
+      null;
+
+    const lifecycleChanged =
+      payload.eventType === 'DELETE' ||
+      existingTenant?.room_id !== row.room_id ||
+      existingTenant?.property_id !== row.property_id ||
+      existingTenant?.status !== row.status ||
+      existingTenant?.notice_period_end !== row.notice_period_end ||
+      existingTenant?.archived_at !== row.archived_at ||
+      existingTenant?.vacated_at !== row.vacated_at;
+
+    const reconcileTenantLifecycle = () => {
+      if (!lifecycleChanged) return;
+
+      void loadData({
+        background: true,
+        force: true,
+        propertyId: property?.id,
+        reason: 'tenant-lifecycle-realtime-change',
+      });
+    };
+
+    if (
+      payload.eventType === 'DELETE' ||
+      row.status === 'inactive' ||
+      row.status === 'archived'
+    ) {
       setTenants(current => {
         const next = removeRecord(current, row.id);
+
         setStats(prev => ({
           ...prev,
-          noticePeriodCount: next.filter(tenant => tenant.status === 'notice_period').length,
-          pendingPaymentCount: next.filter(tenant => tenant.status === 'payment_pending').length,
+          noticePeriodCount: next.filter(
+            tenant => tenant.status === 'notice_period'
+          ).length,
+          pendingPaymentCount: next.filter(
+            tenant => tenant.status === 'payment_pending'
+          ).length,
         }));
+
         return next;
       });
-      markOwnerDataPerf('realtime-local-patch', `table=tenants action=remove id=${row.id}`);
+
+      markOwnerDataPerf(
+        'realtime-local-patch',
+        `table=tenants action=remove id=${row.id}${lifecycleChanged ? ' full-refresh=true' : ''}`,
+      );
+
+      reconcileTenantLifecycle();
       return;
     }
-    if (row.property_id !== property?.id || !activeStatuses.has(row.status)) return;
+
+    if (row.property_id !== property?.id || !activeStatuses.has(row.status)) {
+      reconcileTenantLifecycle();
+      return;
+    }
+
     setTenants(current => {
       const existing = current.find(item => item.id === row.id);
       const room = roomsRef.current.find(item => item.id === row.room_id);
+
       const mergedTenant = {
         ...(existing || {}),
         ...row,
-        room_number: room?.room_number || existing?.room_number || 'N/A',
+        room_number:
+          room?.room_number ||
+          existing?.room_number ||
+          'N/A',
       };
-      const tenantPayments = paymentSeedRef.current?.allPayments?.filter(
-        payment => payment.tenant_id === row.id
-      ) || [];
+
+      const tenantPayments =
+        paymentSeedRef.current?.allPayments?.filter(
+          payment => payment.tenant_id === row.id
+        ) || [];
+
       const {
         rentSummary: previousRentSummary,
         dueStatus: previousDueStatus,
         ...tenantForRentCalculation
       } = mergedTenant;
+
       const rentSummary = enrichTenantRentStatus(
         tenantForRentCalculation,
         tenantPayments
       );
+
       const merged = {
         ...mergedTenant,
         dueStatus: rentSummary,
         rentSummary,
       };
+
       const next = upsertRecord(current, merged);
+
       setStats(prev => ({
         ...prev,
-        noticePeriodCount: next.filter(tenant => tenant.status === 'notice_period').length,
-        pendingPaymentCount: next.filter(tenant => tenant.status === 'payment_pending').length,
+        noticePeriodCount: next.filter(
+          tenant => tenant.status === 'notice_period'
+        ).length,
+        pendingPaymentCount: next.filter(
+          tenant => tenant.status === 'payment_pending'
+        ).length,
       }));
+
       return next;
     });
-    markOwnerDataPerf('realtime-local-patch', `table=tenants action=${String(payload.eventType || '').toLowerCase()} id=${row.id}`);
-  }, [property?.id]);
 
+    markOwnerDataPerf(
+      'realtime-local-patch',
+      `table=tenants action=${String(payload.eventType || '').toLowerCase()} id=${row.id}${lifecycleChanged ? ' full-refresh=true' : ''}`,
+    );
+
+    reconcileTenantLifecycle();
+  }, [loadData, property?.id]);
   const paymentDisplayRecord = useCallback((payment) => {
     if (!payment?.tenant_id) return payment;
     const tenant = [...tenantsRef.current, ...archivedTenantsRef.current].find(item => item.id === payment.tenant_id);
