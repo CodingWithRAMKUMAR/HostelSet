@@ -326,7 +326,7 @@ function OwnerDashboardContent() {
   const { vacateRequests, approveVacateRequest, rejectVacateRequest, rejectingId: vacateRejectingId } = useOwnerVacate(property, propertyReady);
   const { pendingRentPayments, allPayments, confirmRentPayment, rejectRentPayment } = useOwnerPayments(property, tenants, archivedTenants, setStats, loadData, propertyReady, paymentSeed);
   const { notices, postNotice, deleteNotice } = useOwnerNotices(property, propertyReady);
-  const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, propertyReady);
+  const { roomChangeRequests, approveRoomChange, rejectRoomChange } = useOwnerRoomChange(property, loadData, propertyReady);
   const { applications, approveApplication, rejectApplication, resendPasswordEmail, processingId: applicationProcessingId } = useOwnerApplications(property, propertyReady);
   const { preBookings, approvePreBooking, rejectPreBooking, convertReservedPreBooking, processingId: prebookingProcessingId } = useOwnerPreBookings(property, propertyReady);
   const existingImports = useExistingTenantImports(property, propertyReady, () => loadData({ background: true, force: true, reason: 'existing-import-action-reconciliation' }));
@@ -498,135 +498,66 @@ function OwnerDashboardContent() {
   // ----------------------------------------------------------------
   const handleApproveApplication = async (appId, appData) => {
     if (isSubmitting) return;
-    if (!appData) {
+
+    if (!appId || !appData) {
       toast.error('Application data is missing.');
       return;
     }
 
     setIsSubmitting(true);
+
     try {
-      // Applications created after payment already have a payment_pending tenant.
-      // Promote that record instead of creating a duplicate and counting the room twice.
-      const { data: existingTenant, error: existingTenantError } = await supabase
-        .from('tenants')
-        .select('id, name, status, room_id, user_id')
-        .eq('phone', appData.phone)
-        .eq('property_id', appData.property_id)
-        .maybeSingle();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (existingTenantError) throw existingTenantError;
+      if (sessionError) throw sessionError;
 
-      const moveInDate = appData.expected_move_in
-        ? new Date(appData.expected_move_in).toISOString().split('T')[0]
-        : new Date().toISOString().split('T')[0];
-
-      let roomOccupancyAlreadyCounted = false;
-
-      if (existingTenant) {
-        if (existingTenant.status !== 'payment_pending' || existingTenant.room_id !== appData.room_id) {
-          toast.error(`A tenant with this phone number (${appData.phone}) already exists. Duplicate prevented.`);
-          return;
-        }
-
-        const { error: promoteError } = await supabase
-          .from('tenants')
-          .update({
-            status: 'active',
-            user_id: existingTenant.user_id || appData.user_id,
-            move_in_date: moveInDate,
-          })
-          .eq('id', existingTenant.id);
-
-        if (promoteError) throw promoteError;
-        roomOccupancyAlreadyCounted = false;
-      } else {
-        let userId = appData.user_id;
-        if (!userId) {
-          const { data: existingUser, error: userError } = await supabase
-            .from('users')
-            .select('id')
-            .or(`phone.eq.${appData.phone},email.eq.${appData.email}`)
-            .maybeSingle();
-          if (userError) throw userError;
-          userId = existingUser?.id;
-        }
-
-        if (!userId) {
-          toast.error('Applicant account not found. Ask the applicant to submit again.');
-          return;
-        }
-
-        const { error: tenantError } = await supabase
-          .from('tenants')
-          .insert({
-            user_id: userId,
-            property_id: appData.property_id,
-            room_id: appData.room_id,
-            name: appData.name,
-            phone: appData.phone,
-            email: appData.email,
-            rent_amount: appData.rooms?.monthly_rent || 0,
-            pending_amount: appData.rooms?.monthly_rent || 0,
-            total_paid: 0,
-            rent_status: 'pending',
-            move_in_date: moveInDate,
-            status: 'active'
-          });
-
-        if (tenantError) throw tenantError;
+      if (!session?.access_token) {
+        throw new Error('Your session has expired. Please log in again.');
       }
 
-      if (!roomOccupancyAlreadyCounted) {
-        const { data: roomData, error: roomFetchError } = await supabase
-          .from('rooms')
-          .select('current_occupants, capacity')
-          .eq('id', appData.room_id)
-          .single();
-        if (roomFetchError) throw roomFetchError;
-        if ((roomData.current_occupants || 0) >= roomData.capacity) throw new Error('The selected room is already full.');
+      const response = await fetch('/api/requests/approve', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          type: 'application',
+          id: appId,
+        }),
+      });
 
-        const newOccupants = (roomData.current_occupants || 0) + 1;
-        const { error: roomError } = await supabase
-          .from('rooms')
-          .update({ current_occupants: newOccupants, status: newOccupants >= roomData.capacity ? 'occupied' : 'vacant' })
-          .eq('id', appData.room_id);
-        if (roomError) throw roomError;
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Application approval failed.');
       }
 
-      // ---------------------------------------------------------
-      // 3. Mark Application as Approved
-      // ---------------------------------------------------------
-      const { error: appError } = await supabase
-        .from('applications')
-        .update({ status: 'approved', processed_at: new Date().toISOString() })
-        .eq('id', appId);
-
-      if (appError) throw appError;
-
-      // ---------------------------------------------------------
-      // 4. Send Password Reset Email
-      // ---------------------------------------------------------
-      const redirectTo = getResetPasswordRedirectTo();
-      if (process.env.NODE_ENV !== 'production') {
-        console.info('[HostelSet] reset link requested', { method: 'resetPasswordForEmail', redirectTo });
-      }
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-        appData.email,
-        { redirectTo }
+      toast.success(
+        result.setupEmailSent
+          ? `${appData.name || 'Applicant'} approved and password setup email sent.`
+          : `${appData.name || 'Applicant'} approved successfully.`
       );
 
-      if (resetError) {
-        toast.warning("Tenant created, but password reset email could not be sent.");
-      } else {
-        toast.success("Password reset email sent to the tenant.");
+      if (result.notificationEmailSent === false) {
+        toast.warning(
+          'Application was approved, but the additional approval notification email was not sent.'
+        );
       }
 
-      toast.success(`${appData.name} approved. Tenant created.`);
-      await loadData({ background: true, force: true, reason: 'approve-application-reconciliation' });
-
+      await loadData({
+        background: true,
+        force: true,
+        reason: 'approve-application-reconciliation',
+      });
     } catch (error) {
       console.error('Approve error:', error);
-      toast.error('Failed to approve: ' + error.message);
+      toast.error(
+        'Failed to approve: ' + (error?.message || 'Unknown error')
+      );
     } finally {
       setIsSubmitting(false);
     }

@@ -60,7 +60,7 @@ const summarizeRooms = (rows = []) => {
   return { totalRooms, occupied, vacant: totalRooms - occupied };
 };
 const summarizeOwnerRentStats = (rows = []) => ({
-  pendingAmount: rows.reduce((sum, tenant) => sum + (tenant.rentSummary?.hasUnpaidRent ? Number(tenant.rentSummary.dueAmount || 0) : 0), 0),
+  pendingAmount: rows.reduce((sum, tenant) => sum + Math.max(Number(tenant.pending_amount || 0), 0), 0),
   overdueCount: rows.filter(tenant => tenant.rentSummary?.status === 'overdue' || tenant.dueStatus?.status === 'overdue').length,
   noticePeriodCount: rows.filter(tenant => tenant.status === 'notice_period').length,
   pendingPaymentCount: rows.filter(tenant => tenant.status === 'payment_pending').length,
@@ -201,7 +201,7 @@ export function OwnerProvider({ children }) {
             setLoading(false);
           }
           
-          const pendingAmount = tenantsWithRoomNumber.reduce((sum, tenant) => sum + (tenant.rentSummary?.hasUnpaidRent ? Number(tenant.rentSummary.dueAmount || 0) : 0), 0);
+          const pendingAmount = tenantsWithRoomNumber.reduce((sum, tenant) => sum + Math.max(Number(tenant.pending_amount || 0), 0), 0);
           const overdueCount = tenantsWithRoomNumber.filter(t => t.dueStatus.status === 'overdue').length;
           const noticePeriodCount = tenantsWithRoomNumber.filter(t => t.status === 'notice_period').length;
           const pendingPaymentCount = tenantsWithRoomNumber.filter(t => t.status === 'payment_pending').length;

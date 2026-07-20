@@ -342,11 +342,58 @@ function TenantDashboardContent() {
   }
 
   const getRentStatus = () => {
-    if (!tenant) return { status: 'loading', message: '', daysUntilDue: null, dueDate: null }
-    return calculateRentDueStatus(tenant, paymentHistory)
+    if (!tenant) {
+      return {
+        status: 'loading',
+        message: '',
+        daysUntilDue: null,
+        dueDate: null,
+        dueAmount: 0
+      }
+    }
+
+    const calculatedStatus = calculateRentDueStatus(tenant, paymentHistory)
+    const databasePendingAmount = Math.max(
+      Number(tenant.pending_amount || 0),
+      0
+    )
+
+    if (databasePendingAmount <= 0) {
+      return calculatedStatus
+    }
+
+    const databaseStatus = String(tenant.rent_status || '').toLowerCase()
+    const reconciledStatus =
+      databaseStatus === 'overdue'
+        ? 'overdue'
+        : calculatedStatus?.status === 'paid'
+          ? 'pending'
+          : calculatedStatus?.status || 'pending'
+
+    return {
+      ...calculatedStatus,
+      status: reconciledStatus,
+      dueAmount: databasePendingAmount,
+      currentCycleDueAmount: databasePendingAmount,
+      isFullyUpToDate: false,
+      paidForCurrentCycle: false,
+      currentCyclePaid: false,
+      urgent:
+        reconciledStatus === 'overdue' ||
+        reconciledStatus === 'due_today' ||
+        reconciledStatus === 'due_soon',
+      message:
+        reconciledStatus === 'overdue'
+          ? calculatedStatus?.status === 'overdue'
+            ? calculatedStatus.message
+            : 'Rent overdue'
+          : calculatedStatus?.status === 'paid'
+            ? 'Payment pending'
+            : calculatedStatus?.message || 'Payment pending'
+    }
   }
 
-  const rentStatus = getRentStatus() || { message: 'Loading...' }
+  const rentStatus = getRentStatus() || { message: 'Loading...', dueAmount: 0 }
   const isUrgent = rentStatus.urgent && ['due_soon', 'due_today', 'overdue', 'pending_confirmation'].includes(rentStatus.status)
   const hasPaymentAwaitingApproval = rentStatus.status === 'pending_confirmation' || paymentHistory.some(isPendingRentPayment)
   const hasOutstandingRent = rentStatus.status !== 'paid' && rentStatus.status !== 'inactive' && Number(rentStatus.dueAmount || 0) > 0

@@ -7,3 +7,20 @@ node_modules/
 .vercel
 HostelSet/
 .vscode/
+
+# Local backups and temporary audit files
+*.bak
+*.before-*
+*-backup
+backup-*/
+*.zip
+*-audit.txt
+*-usage.txt
+approval-api-usage.txt
+dashboard-approval-full.txt
+dashboard-legacy-approval.txt
+occupancy-audit.txt
+prebooking-occupancy-audit.txt
+rent-cycle-room-change-audit.txt
+tenant-create-audit.txt
+tenant-table-usage.txt

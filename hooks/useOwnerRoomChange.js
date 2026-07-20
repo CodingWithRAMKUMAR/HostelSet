@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useRealtimeRefresh } from './useRealtimeRefresh';
 
-export function useOwnerRoomChange(property, enabled = true) {
+export function useOwnerRoomChange(property, refreshOwnerData, enabled = true) {
   const [roomChangeRequests, setRoomChangeRequests] = useState([]);
 
   const loadRoomChangeRequests = async () => {
@@ -18,8 +18,23 @@ export function useOwnerRoomChange(property, enabled = true) {
   const approveRoomChange = async (request) => {
     if (!confirm(`Approve room change?`)) return;
     const { error } = await supabase.rpc('move_tenant_room', { p_tenant_id: request.tenant_id, p_new_room_id: request.new_room_id, p_old_room_id: request.old_room_id });
-    if (error) { toast.error('Failed to approve: ' + error.message); return false; }
-    await loadRoomChangeRequests();
+    if (error) { toast.error('Failed to approve: ' + error.message); return false; }    await loadRoomChangeRequests();
+
+    if (typeof refreshOwnerData === 'function') {
+      try {
+        await refreshOwnerData({
+          background: true,
+          force: true,
+          reason: 'room-change-approved-reconciliation'
+        });
+      } catch (refreshError) {
+        console.error(
+          'Owner dashboard refresh failed after room change:',
+          refreshError
+        );
+      }
+    }
+
     toast.success('Room change approved!');
     return true;
   };

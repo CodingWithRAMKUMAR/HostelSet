@@ -115,6 +115,38 @@ async function processVisitorSubmission(req, res) {
     ])
     if (duplicatePhone?.length || duplicateEmail?.length) return res.status(409).json({ error: 'An active request already exists for these details.' })
 
+    const [
+      { data: activeTenantByPhone, error: activeTenantPhoneError },
+      { data: activeTenantByEmail, error: activeTenantEmailError },
+    ] = await Promise.all([
+      supabaseAdmin
+        .from('tenants')
+        .select('id')
+        .eq('property_id', propertyId)
+        .eq('phone', phone)
+        .eq('status', 'active')
+        .is('archived_at', null)
+        .limit(1),
+      supabaseAdmin
+        .from('tenants')
+        .select('id')
+        .eq('property_id', propertyId)
+        .eq('email', email)
+        .eq('status', 'active')
+        .is('archived_at', null)
+        .limit(1),
+    ])
+
+    if (activeTenantPhoneError) throw activeTenantPhoneError
+    if (activeTenantEmailError) throw activeTenantEmailError
+
+    if (activeTenantByPhone?.length || activeTenantByEmail?.length) {
+      return res.status(409).json({
+        error: 'You are already an active tenant at this property. Please log in to your tenant account instead.',
+        code: 'ACTIVE_TENANT_EXISTS',
+      })
+    }
+
     const idPath = typeof files?.idProof === 'string' ? privatePath(files.idProof, propertyId, 'identity', 'ID proof') : await uploadPrivate(files?.idProof, `${propertyId}/identity`, 'ID proof')
     uploaded.push(idPath)
     const photoPath = typeof files?.photo === 'string' ? privatePath(files.photo, propertyId, 'photos', 'Photo') : await uploadPrivate(files?.photo, `${propertyId}/photos`, 'Photo', true)
