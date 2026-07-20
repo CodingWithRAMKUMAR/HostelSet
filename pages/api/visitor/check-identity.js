@@ -12,9 +12,10 @@ import { logger } from '../../../lib/logger'
 export const config = { api: { bodyParser: { sizeLimit: '32kb' } } }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const ACTIVE_TENANT_STATUSES = ['active', 'notice_period', 'payment_pending']
 const ACTIVE_APPLICATION_STATUSES = ['pending', 'approved']
 const ACTIVE_PREBOOKING_STATUSES = ['pending', 'reserved', 'approved']
-const UNAVAILABLE_MESSAGE = 'This phone number or email is already associated with an existing account or active request. Please log in or contact the property owner.'
+const UNAVAILABLE_MESSAGE = 'This phone number or email is associated with an active tenancy or active request. Please log in or contact the property owner.'
 
 async function hasRows(query) {
   const { data, error } = await query.limit(1)
@@ -27,13 +28,12 @@ async function identityExists({ propertyId, phone, email }) {
 
   if (phone) {
     checks.push(
-      hasRows(supabaseAdmin.from('users').select('id').eq('phone', phone)),
       hasRows(
         supabaseAdmin
           .from('tenants')
           .select('id')
           .eq('phone', phone)
-          .eq('status', 'active')
+          .in('status', ACTIVE_TENANT_STATUSES)
           .is('archived_at', null)
       ),
       hasRows(
@@ -59,13 +59,12 @@ async function identityExists({ propertyId, phone, email }) {
 
   if (email) {
     checks.push(
-      hasRows(supabaseAdmin.from('users').select('id').eq('email', email)),
       hasRows(
         supabaseAdmin
           .from('tenants')
           .select('id')
           .eq('email', email)
-          .eq('status', 'active')
+          .in('status', ACTIVE_TENANT_STATUSES)
           .is('archived_at', null)
       ),
       hasRows(

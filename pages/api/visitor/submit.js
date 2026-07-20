@@ -122,17 +122,15 @@ async function processVisitorSubmission(req, res) {
       supabaseAdmin
         .from('tenants')
         .select('id')
-        .eq('property_id', propertyId)
         .eq('phone', phone)
-        .eq('status', 'active')
+        .in('status', ['active', 'notice_period', 'payment_pending'])
         .is('archived_at', null)
         .limit(1),
       supabaseAdmin
         .from('tenants')
         .select('id')
-        .eq('property_id', propertyId)
         .eq('email', email)
-        .eq('status', 'active')
+        .in('status', ['active', 'notice_period', 'payment_pending'])
         .is('archived_at', null)
         .limit(1),
     ])
@@ -142,7 +140,7 @@ async function processVisitorSubmission(req, res) {
 
     if (activeTenantByPhone?.length || activeTenantByEmail?.length) {
       return res.status(409).json({
-        error: 'You are already an active tenant at this property. Please log in to your tenant account instead.',
+        error: 'You already have an active tenancy. Please log in to your tenant account instead.',
         code: 'ACTIVE_TENANT_EXISTS',
       })
     }
