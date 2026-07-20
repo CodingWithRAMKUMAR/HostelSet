@@ -279,7 +279,35 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
     return payload
   }
 
-  const uploadPrivateFile = async (file, category) => {
+  const optimizeUploadFile = async (file) => {
+    if (!file || !String(file.type || '').startsWith('image/') || file.size < 900 * 1024) return file
+    if (typeof window === 'undefined' || typeof document === 'undefined') return file
+
+    try {
+      const bitmap = await createImageBitmap(file)
+      const maxDimension = 1920
+      const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height))
+      const width = Math.max(1, Math.round(bitmap.width * scale))
+      const height = Math.max(1, Math.round(bitmap.height * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const context = canvas.getContext('2d')
+      if (!context) { bitmap.close?.(); return file }
+      context.drawImage(bitmap, 0, 0, width, height)
+      bitmap.close?.()
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82))
+      if (!blob || blob.size >= file.size) return file
+      const baseName = String(file.name || 'upload').replace(/\.[^.]+$/, '')
+      return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg', lastModified: file.lastModified || Date.now() })
+    } catch (error) {
+      console.warn('Image optimisation skipped:', error)
+      return file
+    }
+  }
+
+  const uploadPrivateFile = async (originalFile, category) => {
+    const file = await optimizeUploadFile(originalFile)
     const response = await fetchWithTimeout('/api/visitor/upload-url', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ propertyId: resolvedPropertyId, category, contentType: file.type, size: file.size }),
@@ -293,23 +321,48 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
 
   useRealtimeRefresh(`public-property-live:${id || 'waiting'}`, ['properties', 'rooms', 'owner_settings'], loadData, Boolean(id), 120)
 
-  // ========== Apply Form Validation (simplified) ==========
+  // ========== Secure visitor identity precheck ==========
+  const checkVisitorIdentity = async ({ phone, email, kind }) => {
+    if (!resolvedPropertyId) throw new Error('This property is unavailable. Please refresh and try again.')
+
+    const response = await fetchWithTimeout('/api/visitor/check-identity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        propertyId: resolvedPropertyId,
+        kind,
+        ...(phone ? { phone } : {}),
+        ...(email ? { email } : {}),
+      }),
+    }, 10000)
+
+    const result = await readApiResponse(response, 'Could not verify these details')
+    if (!response.ok) throw new Error(result.error || 'Could not verify these details')
+    return result.available === true
+  }
+
   const validatePhone = async (phone) => {
     const cleanPhone = cleanPhoneNumber(phone)
-    if (!cleanPhone || cleanPhone.length !== 10) {
+    if (!/^\d{10}$/.test(cleanPhone)) {
       setPhoneError('Enter a valid 10-digit phone number')
       setPhoneValid(false)
       return false
     }
+
     setCheckingPhone(true)
+    setPhoneValid(false)
     try {
+      const available = await checkVisitorIdentity({ phone: cleanPhone, kind: 'application' })
+      if (!available) {
+        setPhoneError('This phone number is already associated with an existing account or active request. Please log in or contact the property owner.')
+        return false
+      }
       setPhoneError('')
       setPhoneValid(true)
       return true
     } catch (error) {
       console.error('Phone validation error:', error)
-      setPhoneError('Validation failed')
-      setPhoneValid(false)
+      setPhoneError(error.message || 'Could not verify this phone number. Please try again.')
       return false
     } finally {
       setCheckingPhone(false)
@@ -317,20 +370,27 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   }
 
   const validateEmail = async (email) => {
-    if (!email || !email.includes('@')) {
+    const normalizedEmail = String(email || '').trim().toLowerCase()
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
       setEmailError('Enter a valid email address')
       setEmailValid(false)
       return false
     }
+
     setCheckingEmail(true)
+    setEmailValid(false)
     try {
+      const available = await checkVisitorIdentity({ email: normalizedEmail, kind: 'application' })
+      if (!available) {
+        setEmailError('This email is already associated with an existing account or active request. Please log in or contact the property owner.')
+        return false
+      }
       setEmailError('')
       setEmailValid(true)
       return true
     } catch (error) {
       console.error('Email validation error:', error)
-      setEmailError('Validation failed')
-      setEmailValid(false)
+      setEmailError(error.message || 'Could not verify this email. Please try again.')
       return false
     } finally {
       setCheckingEmail(false)
@@ -353,56 +413,28 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
     }
   }
 
-  // ========== Pre‑booking Form Validation (unchanged) ==========
   const validatePrebookPhone = async (phone) => {
     const cleanPhone = cleanPhoneNumber(phone)
-    if (!cleanPhone || cleanPhone.length !== 10) {
+    if (!/^\d{10}$/.test(cleanPhone)) {
       setPrebookPhoneError('Enter a valid 10-digit phone number')
       setPrebookPhoneValid(false)
       return false
     }
+
     setPrebookCheckingPhone(true)
+    setPrebookPhoneValid(false)
     try {
-      // Duplicate/account checks are enforced by the server without exposing PII.
-      setPrebookPhoneError('')
-      setPrebookPhoneValid(true)
-      return true
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('phone', cleanPhone)
-        .maybeSingle()
-      if (existingUser) {
-        setPrebookPhoneError('This phone number is already registered. Please login.')
-        setPrebookPhoneValid(false)
+      const available = await checkVisitorIdentity({ phone: cleanPhone, kind: 'prebooking' })
+      if (!available) {
+        setPrebookPhoneError('This phone number is already associated with an existing account or active request. Please log in or contact the property owner.')
         return false
-      }
-      const { data: existingPrebook } = await supabase
-        .from('pre_bookings')
-        .select('id')
-        .eq('phone', cleanPhone)
-        .eq('property_id', resolvedPropertyId)
-        .in('status', ['pending', 'reserved', 'approved'])
-        .is('deleted_at', null)
-        .maybeSingle()
-      if (existingPrebook) {
-        if (['reserved', 'approved'].includes(existingPrebook.status)) {
-          setPrebookPhoneError('You already have an active pre‑booking for this property.')
-          setPrebookPhoneValid(false)
-          return false
-        } else {
-          setPrebookPhoneError('You already have a pending pre‑booking for this property.')
-          setPrebookPhoneValid(false)
-          return false
-        }
       }
       setPrebookPhoneError('')
       setPrebookPhoneValid(true)
       return true
     } catch (error) {
       console.error('Prebook phone validation error:', error)
-      setPrebookPhoneError('Validation failed')
-      setPrebookPhoneValid(false)
+      setPrebookPhoneError(error.message || 'Could not verify this phone number. Please try again.')
       return false
     } finally {
       setPrebookCheckingPhone(false)
@@ -410,53 +442,27 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   }
 
   const validatePrebookEmail = async (email) => {
-    if (!email || !email.includes('@')) {
+    const normalizedEmail = String(email || '').trim().toLowerCase()
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
       setPrebookEmailError('Enter a valid email address')
       setPrebookEmailValid(false)
       return false
     }
+
     setPrebookCheckingEmail(true)
+    setPrebookEmailValid(false)
     try {
-      // Duplicate/account checks are enforced by the server without exposing PII.
-      setPrebookEmailError('')
-      setPrebookEmailValid(true)
-      return true
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', email)
-        .maybeSingle()
-      if (existingUser) {
-        setPrebookEmailError('This email is already registered. Please login.')
-        setPrebookEmailValid(false)
+      const available = await checkVisitorIdentity({ email: normalizedEmail, kind: 'prebooking' })
+      if (!available) {
+        setPrebookEmailError('This email is already associated with an existing account or active request. Please log in or contact the property owner.')
         return false
-      }
-      const { data: existingPrebook } = await supabase
-        .from('pre_bookings')
-        .select('id')
-        .eq('email', email)
-        .eq('property_id', resolvedPropertyId)
-        .in('status', ['pending', 'reserved', 'approved'])
-        .is('deleted_at', null)
-        .maybeSingle()
-      if (existingPrebook) {
-        if (['reserved', 'approved'].includes(existingPrebook.status)) {
-          setPrebookEmailError('You already have an active pre‑booking for this property.')
-          setPrebookEmailValid(false)
-          return false
-        } else {
-          setPrebookEmailError('You already have a pending pre‑booking for this property.')
-          setPrebookEmailValid(false)
-          return false
-        }
       }
       setPrebookEmailError('')
       setPrebookEmailValid(true)
       return true
     } catch (error) {
       console.error('Prebook email validation error:', error)
-      setPrebookEmailError('Validation failed')
-      setPrebookEmailValid(false)
+      setPrebookEmailError(error.message || 'Could not verify this email. Please try again.')
       return false
     } finally {
       setPrebookCheckingEmail(false)
@@ -477,26 +483,6 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       setPrebookEmailError('Email is required')
       setPrebookEmailValid(false)
     }
-  }
-
-  const findExistingUser = async (phone, email) => {
-    if (phone) {
-      const { data: userByPhone } = await supabase
-        .from('users')
-        .select('id, email')
-        .eq('phone', phone)
-        .limit(1)
-      if (userByPhone && userByPhone.length > 0) return userByPhone[0]
-    }
-    if (email) {
-      const { data: userByEmail } = await supabase
-        .from('users')
-        .select('id, email')
-        .eq('email', email)
-        .limit(1)
-      if (userByEmail && userByEmail.length > 0) return userByEmail[0]
-    }
-    return null
   }
 
   // ========== Regular Application Flow ==========
@@ -1243,7 +1229,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                       placeholder="Phone Number *" 
                       className={`flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 ${phoneError ? 'border-red-500 focus:ring-red-400' : 'border-gray-200 focus:ring-slate-400'}`}
                       value={applyForm.phone} 
-                      onChange={(e) => setApplyForm({...applyForm, phone: e.target.value})}
+                      onChange={(e) => { setApplyForm({...applyForm, phone: e.target.value}); setPhoneValid(false); setPhoneError('') }}
                       onBlur={handlePhoneBlur}
                       maxLength={10}
                     />
@@ -1257,7 +1243,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                     placeholder="Email * (will be used for login)" 
                     className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 ${emailError ? 'border-red-500 focus:ring-red-400' : 'border-gray-200 focus:ring-slate-400'}`}
                     value={applyForm.email} 
-                    onChange={(e) => setApplyForm({...applyForm, email: e.target.value})}
+                    onChange={(e) => { setApplyForm({...applyForm, email: e.target.value}); setEmailValid(false); setEmailError('') }}
                     onBlur={handleEmailBlur}
                     required
                   />
@@ -1301,8 +1287,8 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
       {/* Application/security confirmation payment modal */}
       <AnimatePresence>
         {showPaymentModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={closePaymentModal}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-2 pb-[calc(0.5rem_+_env(safe-area-inset-bottom))] pt-[calc(0.5rem_+_env(safe-area-inset-top))] backdrop-blur-sm sm:items-center sm:p-4" onClick={closePaymentModal}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="max-h-[calc(100dvh-1rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-4 pb-[calc(1rem_+_env(safe-area-inset-bottom))] text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 sm:max-h-[90vh] sm:p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="mb-4 text-2xl font-bold text-slate-900 dark:text-white">Application / Security Deposit</h2>
               <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
                 <p className="text-sm text-gray-600">Room {selectedRoomDetails?.room_number} – {getSharingDetails(selectedRoomDetails?.sharing_type)?.label}</p>
@@ -1366,7 +1352,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                       placeholder="Phone Number *" 
                       className={`flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 ${prebookPhoneError ? 'border-red-500 focus:ring-red-400' : 'border-gray-200 focus:ring-blue-400'}`}
                       value={prebookForm.phone} 
-                      onChange={(e) => setPrebookForm({...prebookForm, phone: e.target.value})}
+                      onChange={(e) => { setPrebookForm({...prebookForm, phone: e.target.value}); setPrebookPhoneValid(false); setPrebookPhoneError('') }}
                       onBlur={handlePrebookPhoneBlur}
                       maxLength={10}
                     />
@@ -1380,7 +1366,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                     placeholder="Email *" 
                     className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 ${prebookEmailError ? 'border-red-500 focus:ring-red-400' : 'border-gray-200 focus:ring-blue-400'}`}
                     value={prebookForm.email} 
-                    onChange={(e) => setPrebookForm({...prebookForm, email: e.target.value})}
+                    onChange={(e) => { setPrebookForm({...prebookForm, email: e.target.value}); setPrebookEmailValid(false); setPrebookEmailError('') }}
                     onBlur={handlePrebookEmailBlur}
                     required
                   />
@@ -1427,8 +1413,8 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
 
       <AnimatePresence>
         {showPrebookPaymentModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPrebookPaymentModal(false)}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-2 pb-[calc(0.5rem_+_env(safe-area-inset-bottom))] pt-[calc(0.5rem_+_env(safe-area-inset-top))] backdrop-blur-sm sm:items-center sm:p-4" onClick={() => { if (!prebookPaymentSubmitting) setShowPrebookPaymentModal(false) }}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="max-h-[calc(100dvh-1rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-4 pb-[calc(1rem_+_env(safe-area-inset-bottom))] text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 sm:max-h-[90vh] sm:p-6" onClick={(e) => e.stopPropagation()}>
               <h2 className="mb-4 text-2xl font-bold text-slate-900 dark:text-white">Pay Pre‑booking Fee</h2>
               <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
                 <p className="text-sm text-gray-600">Room {rooms.find(r => r.id === prebookRoomId)?.room_number}</p>
