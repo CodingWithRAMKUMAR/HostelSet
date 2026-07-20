@@ -1,4 +1,4 @@
-﻿import MobileTopbar from '../../dashboard/MobileTopbar'
+import MobileTopbar from '../../dashboard/MobileTopbar'
 import { formatDate } from '../../../lib/utils'
 
 import { useState } from 'react'
@@ -10,7 +10,7 @@ function Header({ onBack, title, subtitle, avatar, avatarUrl, avatarAlt, onProfi
   )
 }
 
-export default function TenantMobileRequests({ view = 'complaints', property, avatar = 'U', avatarUrl, avatarAlt, onBack, onProfile, complaints = [], roommates = [], room, onDeleteComplaint, onRaiseComplaint, isSubmitting, pendingRoomChangeRequest, onRoomChange, existingVacateRequest, vacateBlockedReason, onVacate, onCancelVacate }) {
+export default function TenantMobileRequests({ view = 'complaints', property, avatar = 'U', avatarUrl, avatarAlt, onBack, onProfile, complaints = [], roommates = [], room, onDeleteComplaint, onRaiseComplaint, isSubmitting, pendingRoomChangeRequest, onRoomChange, existingVacateRequest, vacateBlockedReason, cancelVacateBlockedReason, onVacate, onCancelVacate }) {
   const [selectedRoommate, setSelectedRoommate] = useState(null)
   const title = view === 'room-change' ? 'Room change' : view === 'vacate' ? 'Vacate' : view === 'roommates' ? 'Roommates' : 'Complaints'
   return (
@@ -42,7 +42,12 @@ export default function TenantMobileRequests({ view = 'complaints', property, av
           <section className="rounded-2xl border border-white/10 bg-white p-3 shadow-sm">
             <h2 className="text-sm font-black text-slate-900">{existingVacateRequest ? 'Vacate request' : 'Request vacate'}</h2>
             <p className="mt-1 text-xs leading-5 text-slate-600">{existingVacateRequest ? `Your request is ${existingVacateRequest.status}.` : (vacateBlockedReason || 'Submit a planned checkout request to your owner.')}</p>
-            {existingVacateRequest ? <button type="button" onClick={onCancelVacate} disabled={isSubmitting} className="mt-3 w-full rounded-xl border border-amber-300 px-3 py-2 text-sm font-bold text-amber-700 disabled:opacity-50">Cancel request</button> : <button type="button" onClick={onVacate} disabled={isSubmitting || Boolean(vacateBlockedReason)} className="mt-3 w-full rounded-xl bg-red-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">Request vacate</button>}
+            {existingVacateRequest ? (
+              <>
+                {cancelVacateBlockedReason && <p className="mt-2 rounded-xl bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-800">{cancelVacateBlockedReason}</p>}
+                <button type="button" onClick={onCancelVacate} disabled={isSubmitting || Boolean(cancelVacateBlockedReason)} className="mt-3 w-full rounded-xl border border-amber-300 px-3 py-2 text-sm font-bold text-amber-700 disabled:cursor-not-allowed disabled:opacity-50">{cancelVacateBlockedReason ? 'Cancellation unavailable' : 'Cancel request'}</button>
+              </>
+            ) : <button type="button" onClick={onVacate} disabled={isSubmitting || Boolean(vacateBlockedReason)} className="mt-3 w-full rounded-xl bg-red-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">Request vacate</button>}
           </section>
         )}
         {view === 'roommates' && (
