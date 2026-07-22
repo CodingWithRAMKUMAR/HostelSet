@@ -397,6 +397,26 @@ function TenantDashboardContent() {
   const isUrgent = rentStatus.urgent && ['due_soon', 'due_today', 'overdue', 'pending_confirmation'].includes(rentStatus.status)
   const hasPaymentAwaitingApproval = rentStatus.status === 'pending_confirmation' || paymentHistory.some(isPendingRentPayment)
   const hasOutstandingRent = rentStatus.status !== 'paid' && rentStatus.status !== 'inactive' && Number(rentStatus.dueAmount || 0) > 0
+  const canPayRent = paymentsLoaded && !hasPaymentAwaitingApproval && hasOutstandingRent
+  const paymentActionLabel = hasPaymentAwaitingApproval
+    ? 'Approval pending'
+    : canPayRent
+      ? 'Pay rent'
+      : 'Rent paid'
+
+  const openPaymentModal = () => {
+    if (!canPayRent) {
+      if (hasPaymentAwaitingApproval) {
+        toast.error('Your payment is awaiting owner approval.')
+      } else {
+        toast.error('No rent payment is currently due.')
+      }
+      return
+    }
+
+    setShowPaymentModal(true)
+  }
+
   const tenantWithRentSummary = { ...tenant, pending_amount: rentStatus.dueAmount || 0, rentSummary: rentStatus, dueStatus: rentStatus }
   const vacateBlockedReason = !vacateLoaded || !paymentsLoaded
     ? 'Checking vacate eligibility...'
@@ -495,10 +515,10 @@ function TenantDashboardContent() {
   }
   const renderTenantMobileTab = (tab) => {
     const common = { property, avatar: tenant?.name?.charAt(0) || 'U', avatarUrl: profilePhotoUrl, avatarAlt: tenant?.name ? `${tenant.name} profile photo` : 'Tenant profile photo', onProfile: openProfile, onBack: navigateDashboardBack }
-    if (tab === 'payments') return <TenantMobilePayments {...common} payments={paymentHistory} onPayRent={() => setShowPaymentModal(true)} onViewScreenshot={openSignedPaymentScreenshot} />
+    if (tab === 'payments') return <TenantMobilePayments {...common} payments={paymentHistory} canPayRent={canPayRent} paymentActionLabel={paymentActionLabel} onPayRent={openPaymentModal} onViewScreenshot={openSignedPaymentScreenshot} />
     if (tab === 'notices') return <TenantMobileNotices {...common} notices={notices} />
     if (['complaints', 'room-change', 'vacate', 'roommates'].includes(tab)) return <TenantMobileRequests {...common} view={tab} complaints={complaints} roommates={roommates} room={room} onDeleteComplaint={deleteComplaint} onRaiseComplaint={() => setShowComplaintModal(true)} isSubmitting={isSubmitting} pendingRoomChangeRequest={pendingRoomChangeRequest} onRoomChange={openRoomChangeModal} existingVacateRequest={existingVacateRequest} vacateBlockedReason={vacateBlockedReason} cancelVacateBlockedReason={cancelVacateBlockedReason} onVacate={() => setShowVacateModal(true)} onCancelVacate={cancelVacateRequest} />
-    return <TenantMobileDashboard tenant={tenantWithRentSummary} room={room} property={property} roommates={roommates} notices={notices} complaints={complaints} rentStatus={rentStatus} existingVacateRequest={existingVacateRequest} pendingRoomChangeRequest={pendingRoomChangeRequest} avatar={tenant?.name?.charAt(0) || 'U'} avatarUrl={profilePhotoUrl} avatarAlt={tenant?.name ? `${tenant.name} profile photo` : 'Tenant profile photo'} onProfile={openProfile} onNavigate={openSection} onPayRent={() => setShowPaymentModal(true)} />
+    return <TenantMobileDashboard tenant={tenantWithRentSummary} room={room} property={property} roommates={roommates} notices={notices} complaints={complaints} rentStatus={rentStatus} existingVacateRequest={existingVacateRequest} pendingRoomChangeRequest={pendingRoomChangeRequest} avatar={tenant?.name?.charAt(0) || 'U'} avatarUrl={profilePhotoUrl} avatarAlt={tenant?.name ? `${tenant.name} profile photo` : 'Tenant profile photo'} onProfile={openProfile} onNavigate={openSection} canPayRent={canPayRent} paymentActionLabel={paymentActionLabel} onPayRent={openPaymentModal} />
   }
   const renderMountedTenantMobileTabs = () => (
     <div data-tenant-mobile-mounted-tabs>
@@ -690,7 +710,7 @@ function TenantDashboardContent() {
 
         {/* --- ACTION BUTTONS (GRADIENT & GLASS) --- */}
         {activeTab === 'overview' && <section aria-labelledby="tenant-actions-title" className="mb-6 hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mb-8 lg:block"><div className="mb-3"><h2 id="tenant-actions-title" className="font-bold text-slate-900">Quick actions</h2><p className="text-sm text-slate-500">Pay rent or send a request to your property team.</p></div><div className="grid grid-cols-2 gap-2.5 sm:flex sm:flex-wrap sm:gap-3">
-          <button onPointerEnter={() => PayRentModal.preload?.()} onFocus={() => PayRentModal.preload?.()} onClick={() => setShowPaymentModal(true)} disabled={isSubmitting} className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold shadow-md transition disabled:opacity-50">Pay Rent (UPI)</button>
+          <button onPointerEnter={() => PayRentModal.preload?.()} onFocus={() => PayRentModal.preload?.()} onClick={openPaymentModal} disabled={isSubmitting || !canPayRent} className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-2.5 rounded-full text-sm font-semibold shadow-md transition disabled:cursor-not-allowed disabled:opacity-50">{canPayRent ? 'Pay Rent (UPI)' : paymentActionLabel}</button>
           <button onPointerEnter={() => ComplaintModal.preload?.()} onFocus={() => ComplaintModal.preload?.()} onClick={() => setShowComplaintModal(true)} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-orange-300/50 text-orange-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-orange-50 transition disabled:opacity-50">Raise Complaint</button>
           {!pendingRoomChangeRequest ? (
             <button onPointerEnter={() => RoomChangeModal.preload?.()} onFocus={() => RoomChangeModal.preload?.()} onClick={openRoomChangeModal} disabled={isSubmitting} className="w-full sm:w-auto border-2 border-blue-300/50 text-blue-700 bg-white/50 backdrop-blur-sm px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-50 transition disabled:opacity-50">Request Room Change</button>
@@ -724,7 +744,7 @@ function TenantDashboardContent() {
 
       {/* --- MODALS (LAZY LOADED) --- */}
       <AnimatePresence>
-        {showPaymentModal && (
+        {showPaymentModal && canPayRent && (
           <PayRentModal
             tenant={tenantWithRentSummary}
             room={room}

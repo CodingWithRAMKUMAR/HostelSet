@@ -21,7 +21,7 @@ function formatNextDue(rentStatus) {
   return formatRentDueDetail(rentStatus, formatDate)
 }
 
-export default function TenantMobileDashboard({ tenant, room, property, roommates = [], notices = [], complaints = [], rentStatus = {}, existingVacateRequest, pendingRoomChangeRequest, avatar = 'U', avatarUrl, avatarAlt, onProfile, onNavigate, onPayRent }) {
+export default function TenantMobileDashboard({ tenant, room, property, roommates = [], notices = [], complaints = [], rentStatus = {}, existingVacateRequest, pendingRoomChangeRequest, avatar = 'U', avatarUrl, avatarAlt, onProfile, onNavigate, onPayRent, canPayRent = false, paymentActionLabel = 'Pay rent' }) {
   return (
     <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
       <Header title="HostelSet" subtitle={property?.name} avatar={avatar} avatarUrl={avatarUrl} avatarAlt={avatarAlt} onProfile={onProfile} />
@@ -51,7 +51,7 @@ export default function TenantMobileDashboard({ tenant, room, property, roommate
         <section className="rounded-2xl border border-white/10 bg-white p-2 shadow-sm">
           <p className="mb-2 text-xs font-black text-slate-900">Quick actions</p>
           <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={onPayRent} className="h-8 rounded-xl bg-orange-500 px-2 text-xs font-bold text-white">Pay rent</button>
+            <button type="button" onClick={onPayRent} disabled={!canPayRent} className="h-8 rounded-xl bg-orange-500 px-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600">{paymentActionLabel}</button>
             <button type="button" onClick={() => onNavigate('complaints')} className="h-8 rounded-xl bg-slate-50 px-2 text-xs font-bold text-slate-700">Complaint</button>
             <button type="button" onClick={() => onNavigate('room-change')} className="h-8 rounded-xl bg-slate-50 px-2 text-xs font-bold text-slate-700">{pendingRoomChangeRequest ? 'Move pending' : 'Room change'}</button>
             <button type="button" onClick={() => onNavigate('vacate')} className="h-8 rounded-xl bg-slate-50 px-2 text-xs font-bold text-slate-700">{existingVacateRequest ? 'Vacate status' : 'Vacate'}</button>

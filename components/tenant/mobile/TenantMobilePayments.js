@@ -7,12 +7,12 @@ function Header({ onBack, title, subtitle, avatar, avatarUrl, avatarAlt, onProfi
   )
 }
 
-export default function TenantMobilePayments({ payments = [], property, avatar = 'U', avatarUrl, avatarAlt, onBack, onProfile, onPayRent, onViewScreenshot }) {
+export default function TenantMobilePayments({ payments = [], property, avatar = 'U', avatarUrl, avatarAlt, onBack, onProfile, onPayRent, onViewScreenshot, canPayRent = false, paymentActionLabel = 'Pay rent' }) {
   return (
     <div className="max-w-full overflow-x-hidden bg-slate-950 pb-[calc(5.1rem_+_env(safe-area-inset-bottom))]">
       <Header title="Payments" subtitle={property?.name} avatar={avatar} avatarUrl={avatarUrl} avatarAlt={avatarAlt} onBack={onBack} onProfile={onProfile} />
       <main className="mx-auto max-w-md space-y-2 px-3 py-2">
-        <button type="button" onClick={onPayRent} className="h-8 w-full rounded-xl bg-orange-500 px-3 text-xs font-black text-white shadow-sm">Pay rent with UPI</button>
+        <button type="button" onClick={onPayRent} disabled={!canPayRent} className="h-8 w-full rounded-xl bg-orange-500 px-3 text-xs font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600">{canPayRent ? 'Pay rent with UPI' : paymentActionLabel}</button>
         {payments.length === 0 ? <div className="rounded-2xl bg-white p-4 text-center text-sm text-slate-500">No payment history yet.</div> : payments.map(payment => (
           <div key={payment.id} className="rounded-2xl border border-white/10 bg-white p-2.5 shadow-sm">
             <div className="flex min-w-0 items-start justify-between gap-2">
