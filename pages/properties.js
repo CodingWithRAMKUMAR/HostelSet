@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import Head from 'next/head'
 import { motion } from 'framer-motion'
-import { publicSupabase as supabase } from '../lib/publicSupabase'
 import { formatCurrency } from '../lib/utils'
 import NearbyHostelMap from '../components/maps/NearbyHostelMap'
 import { usePublicRealtimeRefresh as useRealtimeRefresh } from '../hooks/usePublicRealtimeRefresh'
@@ -110,8 +109,19 @@ export default function PropertiesPage() {
       if (background) setRefreshing(true)
       if (!background) setLoadError('')
       try {
-        const { data, error } = await supabase.rpc('get_public_properties_v2')
-        if (error) throw error
+        const response = await fetch('/api/public/properties', {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+          },
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data?.error || 'Failed to load properties')
+        }
+
         const nextProperties = normalizePublicProperties(data)
         setProperties(nextProperties)
         setCities([...new Set(nextProperties.map(property => property.city).filter(Boolean))].sort())
@@ -311,3 +321,4 @@ export default function PropertiesPage() {
     </>
   )
 }
+
