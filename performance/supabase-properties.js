@@ -1,9 +1,14 @@
-import http from 'k6/http';
+﻿import http from 'k6/http';
 import { check, fail } from 'k6';
 import { Rate, Trend } from 'k6/metrics';
 
 const SUPABASE_URL = __ENV.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = __ENV.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const RATE = Number(__ENV.RATE || 100);
+const DURATION = __ENV.DURATION || '2m';
+const PRE_ALLOCATED_VUS = Number(__ENV.PRE_ALLOCATED_VUS || 300);
+const MAX_VUS = Number(__ENV.MAX_VUS || 800);
 
 const rpcNetworkErrors = new Rate('rpc_network_errors');
 const rpcHttpErrors = new Rate('rpc_http_errors');
@@ -19,11 +24,11 @@ export const options = {
   scenarios: {
     public_properties_rpc: {
       executor: 'constant-arrival-rate',
-      rate: 100,
+      rate: RATE,
       timeUnit: '1s',
-      duration: '2m',
-      preAllocatedVUs: 100,
-      maxVUs: 300,
+      duration: DURATION,
+      preAllocatedVUs: PRE_ALLOCATED_VUS,
+      maxVUs: MAX_VUS,
       gracefulStop: '30s',
     },
   },
@@ -35,6 +40,7 @@ export const options = {
     rpc_network_errors: ['rate<0.001'],
     rpc_http_errors: ['rate<0.01'],
     rpc_duration: ['p(95)<1000'],
+    dropped_iterations: ['count==0'],
   },
 };
 
@@ -75,10 +81,12 @@ export function setup() {
   } catch {
     fail('Supabase preflight returned invalid JSON.');
   }
+
+  return { rate: RATE };
 }
 
 export default function () {
-  const response = callPropertiesRpc('constant_100_rps');
+  const response = callPropertiesRpc(`constant_${RATE}_rps`);
 
   const networkError = response.status === 0;
   const httpError = response.status !== 0 && response.status !== 200;
@@ -91,9 +99,7 @@ export default function () {
     'RPC connection succeeded': (res) => res.status !== 0,
     'RPC status is 200': (res) => res.status === 200,
     'RPC returned a JSON array': (res) => {
-      if (res.status !== 200) {
-        return false;
-      }
+      if (res.status !== 200) return false;
 
       try {
         return Array.isArray(res.json());

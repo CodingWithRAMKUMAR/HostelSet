@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { publicSupabase as supabase } from '../../lib/publicSupabase'
 import { formatCurrency, getSharingDetails, getPropertyTypeLabel, cleanPhoneNumber, formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
-import NearbyHostelMap from '../../components/maps/NearbyHostelMap'
 import { usePublicRealtimeRefresh as useRealtimeRefresh } from '../../hooks/usePublicRealtimeRefresh'
 import BrandLogo from '../../components/BrandLogo'
 import Head from 'next/head'
@@ -76,6 +76,18 @@ const fetchPublicRooms = async propertyId => {
     error: null,
   }
 }
+
+const NearbyHostelMap = dynamic(
+  () => import('../../components/maps/NearbyHostelMap'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-h-[280px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-sm text-slate-500">
+        Loading map…
+      </div>
+    ),
+  }
+)
 
 const propertyImageLoader = ({ src }) => src
 
@@ -200,35 +212,95 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
   const loadData = async (background = false) => {
     if (!background) setLoading(true)
     if (!background) setLoadError('')
-    try {
-      const { data: propertyData, error: propertyError } = await supabase
-        .rpc('get_public_property_by_identifier', { p_identifier: String(id || '') })
-        .maybeSingle()
-      if (propertyError) throw propertyError
-      if (!propertyData) throw new Error('This property is currently unavailable for public applications.')
-      const [{ data: roomsData, error: roomsError }, { data: settingsData }] = await Promise.all([
-        fetchPublicRooms(propertyData.id),
-        supabase.from('owner_settings').select('*').eq('property_id', propertyData.id).maybeSingle(),
-      ])
-      if (roomsError) throw roomsError
-      const normalizedProperty = normalizeProperty(propertyData)
-      setProperty(normalizedProperty)
-      setRooms(roomsData || [])
 
-      if (normalizedProperty) {
-        setOwnerSettings(settingsFor(propertyData, settingsData))
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000)
+
+    try {
+      const identifier = String(id || '').trim()
+
+      if (!identifier) {
+        throw new Error('A property identifier is required.')
       }
 
-      loadVacateInfo(roomsData || [])
-      loadReservationCounts(roomsData || [])
+      const response = await fetch(
+        `/api/public/properties/${encodeURIComponent(identifier)}`,
+        {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+          },
+          signal: controller.signal,
+        }
+      )
+
+      const contentType = String(
+        response.headers.get('content-type') || ''
+      ).toLowerCase()
+
+      if (!contentType.includes('application/json')) {
+        await response.text().catch(() => '')
+
+        throw new Error(
+          'The property service returned an invalid response.'
+        )
+      }
+
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ||
+            'This property is currently unavailable for public applications.'
+        )
+      }
+
+      if (!payload?.property || !Array.isArray(payload?.rooms)) {
+        throw new Error(
+          'The property service returned incomplete information.'
+        )
+      }
+
+      const propertyData = payload.property
+      const roomsData = payload.rooms
+      const settingsData = payload.settings
+
+      const normalizedProperty = normalizeProperty(propertyData)
+
+      setProperty(normalizedProperty)
+      setRooms(roomsData)
+
+      if (normalizedProperty) {
+        setOwnerSettings(
+          settingsFor(normalizedProperty, settingsData)
+        )
+      }
+
+      loadVacateInfo(roomsData)
+      loadReservationCounts(roomsData)
     } catch (error) {
-      console.error('Error:', error)
-      if (!background) setLoadError('We could not load this property. Please check your connection and try again.')
+      if (error?.name === 'AbortError') {
+        console.error('Property details request timed out.')
+      } else {
+        console.error('Error loading property details:', error)
+      }
+
+      if (!background) {
+        setLoadError(
+          error?.name === 'AbortError'
+            ? 'The property is taking too long to load. Please try again.'
+            : error?.message ||
+                'We could not load this property. Please check your connection and try again.'
+        )
+      }
     } finally {
-      if (!background) setLoading(false)
+      clearTimeout(timeoutId)
+
+      if (!background) {
+        setLoading(false)
+      }
     }
   }
-
   const loadVacateInfo = (roomRows) => {
     setVacateInfo(buildVacateInfo(roomRows))
   }
@@ -958,7 +1030,7 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                 <p className="text-gray-500">This property currently has no rooms listed. Please check back later.</p>
               </div>
             ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid items-stretch gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {rooms.map((room) => {
                   const sharing = getSharingDetails(room.sharing_type)
                   const capacity = Number(room.capacity || 0)
@@ -996,69 +1068,71 @@ export default function PropertyDetail({ initialProperty = null, initialRooms = 
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.18 }}
-                      className={`group bg-white rounded-2xl border shadow-sm hover:shadow-xl transition-all duration-150 overflow-hidden ${
-                        isAvailable ? 'border-green-200 hover:border-green-400' : (isPrebookable ? 'border-blue-200 hover:border-blue-400' : 'border-gray-200 opacity-70')
+                      className={`group flex h-full min-w-0 flex-col rounded-2xl border bg-white text-slate-900 shadow-md transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 ${
+                        isAvailable ? 'border-green-200 hover:border-green-400' : (isPrebookable ? 'border-blue-200 hover:border-blue-400' : 'border-gray-200 dark:border-slate-700')
                       }`}
                     >
-                      <div className="p-6">
+                      <div className="flex h-full min-w-0 flex-col p-5 sm:p-6">
                         <div className="flex justify-between items-start mb-4">
                           <div>
-                            <h3 className="text-2xl font-bold text-slate-800">Room {room.room_number}</h3>
-                            <p className="text-sm text-gray-500 mt-1">{sharing.label} {sharing.icon}</p>
+                            <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Room {room.room_number}</h3>
+                            <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">{sharing.label} {sharing.icon}</p>
                             <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${room.room_audience === 'boys' ? 'bg-blue-100 text-blue-700' : room.room_audience === 'girls' ? 'bg-pink-100 text-pink-700' : 'bg-violet-100 text-violet-700'}`}>{room.room_audience === 'boys' ? 'Boys Room' : room.room_audience === 'girls' ? 'Girls Room' : 'Co-living Room'}</span>
                           </div>
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${badgeColor}`}>
+                          <span className={`max-w-[55%] shrink-0 whitespace-normal break-words rounded-full px-3 py-1 text-center text-xs font-semibold leading-tight ${badgeColor}`}>
                             {badgeText}
                           </span>
                         </div>
                         <div className="mb-4">
-                          <p className="text-3xl font-bold text-slate-800">{formatCurrency(room.monthly_rent)}</p>
-                          <p className="text-gray-400 text-sm">per month</p>
-                          <p className="text-gray-400 text-sm mt-1">Application deposit: {formatCurrency(getRoomApplicationDeposit())}</p>
+                          <p className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{formatCurrency(room.monthly_rent)}</p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">per month</p>
+                          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Application deposit: <span className="font-semibold text-slate-700 dark:text-slate-300">{formatCurrency(getRoomApplicationDeposit())}</span></p>
                         </div>
                         <div className="mb-4">
                           <div className="flex justify-between text-sm mb-1">
-                            <span className="text-gray-500">Occupancy</span>
-                            <span className="text-slate-600">{occupants}/{capacity}</span>
+                            <span className="text-slate-500 dark:text-slate-400">Occupancy</span>
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">{occupants}/{capacity}</span>
                           </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div className="bg-slate-600 h-2 rounded-full transition-all duration-150" style={{ width: `${capacity ? (occupants / capacity) * 100 : 0}%` }} />
+                          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                            <div className="h-2 rounded-full bg-slate-600 transition-all duration-150 dark:bg-slate-300" style={{ width: `${capacity ? (occupants / capacity) * 100 : 0}%` }} />
                           </div>
-                          <p className="mt-2 text-xs font-semibold text-slate-500">
+                          <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
                             {activeReservations > 0
                               ? `${activeReservations} active reservation${activeReservations === 1 ? '' : 's'}`
                               : 'No active reservations'}
                           </p>
                         </div>
+                        <div className="mt-auto pt-2">
                         {roomVacate && isPrebookable && (
                           <div className="mt-2 mb-2">
-                            <span className="inline-block bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full">
+                            <span className="inline-block rounded-full bg-orange-100 px-2 py-1 text-xs font-semibold text-orange-700 dark:bg-orange-950/60 dark:text-orange-300">
                               {roomVacate.daysLeft > 1 ? `Vacates in ${roomVacate.daysLeft} days` : roomVacate.daysLeft === 1 ? 'Vacates tomorrow' : 'Ready to vacate'}
                             </span>
                           </div>
                         )}
                         {isReserved ? (
-                          <button disabled className="w-full bg-gray-400 text-white py-3 rounded-xl font-semibold cursor-not-allowed">
+                          <button disabled className="w-full cursor-not-allowed rounded-xl bg-slate-300 py-3 font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                             Reserved - Next vacancy already booked
                           </button>
                         ) : isAvailable ? (
-                          <button onClick={() => { setSelectedRoom(room.id); setShowApplyModal(true) }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-semibold hover:bg-slate-700 transition transform hover:-translate-y-0.5 duration-200">
+                          <button onClick={() => { setSelectedRoom(room.id); setShowApplyModal(true) }} className="w-full rounded-xl bg-slate-800 py-3 font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 dark:bg-slate-700 dark:hover:bg-slate-600 dark:focus:ring-offset-slate-900">
                             Apply for this Hostel →
                           </button>
                         ) : isPrebookable ? (
-                          <button onClick={() => openPrebookModal(room.id, roomVacate?.vacateDate)} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition transform hover:-translate-y-0.5 duration-200">
+                          <button onClick={() => openPrebookModal(room.id, roomVacate?.vacateDate)} className="w-full rounded-xl bg-blue-600 py-3 font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
                             📅 Pre‑book this room
                           </button>
                         ) : (
-                          <button disabled className="w-full bg-gray-300 text-gray-500 py-3 rounded-xl font-semibold cursor-not-allowed">
+                          <button disabled className="w-full cursor-not-allowed rounded-xl bg-slate-300 py-3 font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                             Full – Not available
                           </button>
                         )}
                         {isAvailable && isPrebookable && (
-                          <button onClick={() => openPrebookModal(room.id, roomVacate?.vacateDate)} className="mt-2 w-full rounded-xl border border-blue-200 bg-blue-50 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">
+                          <button onClick={() => openPrebookModal(room.id, roomVacate?.vacateDate)} className="mt-2 w-full rounded-xl border border-blue-200 bg-blue-50 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-900/60">
                             Pre-book future bed
                           </button>
                         )}
+                        </div>
                       </div>
                     </motion.div>
                   )
@@ -1513,3 +1587,4 @@ export async function getStaticProps({ params }) {
     revalidate: 300,
   }
 }
+

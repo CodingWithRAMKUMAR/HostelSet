@@ -6,6 +6,11 @@ const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
 const SUPABASE_URL = __ENV.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = __ENV.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+const RATE = Number(__ENV.RATE || 200);
+const DURATION = __ENV.DURATION || '2m';
+const PRE_ALLOCATED_VUS = Number(__ENV.PRE_ALLOCATED_VUS || 300);
+const MAX_VUS = Number(__ENV.MAX_VUS || 500);
+
 const rpcNetworkErrors = new Rate('visitor_rpc_network_errors');
 const rpcHttpErrors = new Rate('visitor_rpc_http_errors');
 
@@ -19,11 +24,11 @@ export const options = {
   scenarios: {
     visitor_throughput: {
       executor: 'constant-arrival-rate',
-      rate: 200,
+      rate: RATE,
       timeUnit: '1s',
-      duration: '2m',
-      preAllocatedVUs: 300,
-      maxVUs: 500,
+      duration: DURATION,
+      preAllocatedVUs: PRE_ALLOCATED_VUS,
+      maxVUs: MAX_VUS,
       gracefulStop: '30s',
     },
   },
@@ -213,3 +218,4 @@ export default function (data) {
     },
   });
 }
+
